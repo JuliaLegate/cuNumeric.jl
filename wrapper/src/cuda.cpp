@@ -22,36 +22,40 @@
 #include "ufi.h"
 #include "cupynumeric.h"
 #include "legate.h"
+#include "legate/utilities/proc_local_storage.h"
 #include "legion.h"
 #include "cuda.h"
 
 namespace ufi {
     using namespace Legion;
-
+    static legate::ProcLocalStorage<uint64_t> cufunction_ptr{};
 
 // https://github.com/nv-legate/legate.pandas/blob/branch-22.01/src/udf/eval_udf_gpu.cc
 /*static*/ void RunPTXTask::gpu_variant(legate::TaskContext context)
 {
-  cudaStream_t stream_{0};
-  cudaStreamCreate(&stream_);
+  cudaStream_t stream_ = context.get_task_stream();
 
+  CUfunction func = reinterpret_cast<CUfunction>(cufunction_ptr.get());
   int32_t N = context.scalar(0).value<int32_t>();
 
-  uint64_t func_ptr;
-  void* device_func_ptr = (void*)context.input(0).data().read_accessor<uint64_t, 1>().ptr(Realm::Point<1>(0));
-  cudaMemcpy((void*)&func_ptr, (void*)device_func_ptr, sizeof(uint64_t), cudaMemcpyDeviceToHost);
-  
-  CUfunction func = reinterpret_cast<CUfunction>(func_ptr);
-
-  void *a = (void*)context.input(1).data().read_accessor<uint64_t, 1>().ptr(Realm::Point<1>(0));
-  void *b = (void*)context.input(2).data().read_accessor<uint64_t, 1>().ptr(Realm::Point<1>(0));
-  void *c = context.output(0).data().write_accessor<uint64_t, 1>().ptr(Realm::Point<1>(0));
-
+  void *a = (void*)context.input(0).data().read_accessor<float, 1>().ptr(Realm::Point<1>(0));
+  void *b = (void*)context.input(1).data().read_accessor<float, 1>().ptr(Realm::Point<1>(0));
+  void *c = context.output(0).data().write_accessor<float, 1>().ptr(Realm::Point<1>(0));
 
   unsigned int blockDimX = 256;
   unsigned int gridDimX = (N + blockDimX - 1) / blockDimX;
 
   void* args[] = { &a, &b, &c, &N }; 
+
+  std::vector<float> before;
+  before.resize(N);
+  
+  cudaMemcpy(before.data(), a, sizeof(float) * N, cudaMemcpyDeviceToHost);
+  cuStreamSynchronize(stream_);
+  
+  fprintf(stderr, "N is  %lu\n", N);
+  fprintf(stderr, "a before %f\n", before[0]);
+  
 
   CUresult status = cuLaunchKernel(
     func, gridDimX, 1, 1, blockDimX, 1, 1, 0, stream_, args, nullptr);
@@ -61,7 +65,12 @@ namespace ufi {
     exit(-1);
   }
 
-  cudaStreamDestroy(stream_);
+  cuStreamSynchronize(stream_);
+
+  std::vector<float> after;
+  after.resize(N);
+  cudaMemcpy(after.data(), c, sizeof(float) * N, cudaMemcpyDeviceToHost);
+  fprintf(stderr, "c after %f\n", after[0]);
 }
 
 
@@ -126,13 +135,8 @@ namespace ufi {
     CUfunction hfunc;
     result = cuModuleGetFunction(&hfunc, module, fun_name.c_str());
     assert(result == CUDA_SUCCESS);
-    auto int_func = reinterpret_cast<uint64_t>(hfunc);
 
-    // this is actually dumb
-    cudaMemcpy(output_acc.ptr(Realm::Point<1>(0)), &int_func, sizeof(uint64_t), cudaMemcpyHostToDevice);
-    // this doesn't work as we are on a GPU task due to necessary GPU context
-    // Realm::Point<1> p(0);
-    // output_acc.write(p, int_func);
+    cufunction_ptr.emplace(reinterpret_cast<uint64_t>(hfunc));
     }
 } // end ufi
 
