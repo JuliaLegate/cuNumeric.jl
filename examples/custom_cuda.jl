@@ -30,7 +30,7 @@ println("c: ", c_cpu[1])
 
 task = cuNumeric.@cuda_task kernel_add(a, b, c, Int32(1))
 
-cuNumeric.new_task(task.func, a, b, c, Int32(N)) 
+c = cuNumeric.new_task(task.func, a, b, c, Int32(N)) 
 cuNumeric.gpu_sync()
 # cuNumeric.@launch task=task threads=threads blocks=blocks kernel_add(a, b, c, Int32(1))
 c_cpu = c[:]

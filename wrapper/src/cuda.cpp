@@ -26,6 +26,37 @@
 #include "legion.h"
 #include "cuda.h"
 
+#define ERROR_CHECK(x) { \
+    cudaError_t status = x; \
+    if (status != cudaSuccess) { \
+        fprintf(stderr, "CUDA Error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(status)); \
+        cudaStreamDestroy(stream_); \
+        exit(-1); \
+    } \
+}
+
+#define DRIVER_ERROR_CHECK(x) { \
+    CUresult status = x; \
+    if (status != CUDA_SUCCESS) { \
+        const char* err_str = nullptr; \
+        cuGetErrorString(status, &err_str); \
+        fprintf(stderr, "CUDA Driver Error at %s:%d: %s\n", __FILE__, __LINE__, err_str); \
+        cudaStreamDestroy(stream_); \
+        exit(-1); \
+    } \
+}
+
+#define TEST_PRINT_DEBUG(dev_ptr, N, T, format, stream, message)         \
+{                                                                        \
+    std::vector<T> host_arr(N);                                          \
+    ERROR_CHECK(cudaMemcpy(host_arr.data(),                              \
+                           reinterpret_cast<const T*>(dev_ptr),          \
+                           sizeof(T) * N,                                \
+                           cudaMemcpyDeviceToHost));                     \
+    ERROR_CHECK(cudaStreamSynchronize(stream));                          \
+    fprintf(stderr, "[TEST_PRINT] %s: " format "\n", message, host_arr[0]); \
+}
+
 namespace ufi {
     using namespace Legion;
     static legate::ProcLocalStorage<uint64_t> cufunction_ptr{};
@@ -47,30 +78,19 @@ namespace ufi {
 
   void* args[] = { &a, &b, &c, &N }; 
 
-  std::vector<float> before;
-  before.resize(N);
-  
-  cudaMemcpy(before.data(), a, sizeof(float) * N, cudaMemcpyDeviceToHost);
-  cuStreamSynchronize(stream_);
-  
-  fprintf(stderr, "N is  %lu\n", N);
-  fprintf(stderr, "a before %f\n", before[0]);
-  
+  TEST_PRINT_DEBUG(a, N, float, "%f", stream_, "array a");
+  TEST_PRINT_DEBUG(b, N, float, "%f", stream_, "array b");   
+  TEST_PRINT_DEBUG(c, N, float, "%f", stream_, "array c");   
 
-  CUresult status = cuLaunchKernel(
-    func, gridDimX, 1, 1, blockDimX, 1, 1, 0, stream_, args, nullptr);
-  if (status != CUDA_SUCCESS) {
-    fprintf(stderr, "Failed to launch a CUDA kernel\n");
-    cudaStreamDestroy(stream_);
-    exit(-1);
-  }
+  fprintf(stderr, "N is  %u\n", N);
+  fprintf(stderr, "running function :%p\n", func);
 
-  cuStreamSynchronize(stream_);
+  DRIVER_ERROR_CHECK(cuLaunchKernel(
+    func, gridDimX, 1, 1, blockDimX, 1, 1, 0, stream_, args, nullptr
+  ));
 
-  std::vector<float> after;
-  after.resize(N);
-  cudaMemcpy(after.data(), c, sizeof(float) * N, cudaMemcpyDeviceToHost);
-  fprintf(stderr, "c after %f\n", after[0]);
+  DRIVER_ERROR_CHECK(cuStreamSynchronize(stream_));
+  TEST_PRINT_DEBUG(c, N, float, "%f", stream_, "after array c");   
 }
 
 
@@ -80,8 +100,10 @@ namespace ufi {
 {
     std::string ptx = context.scalar(0).value<std::string>();
 
-    auto output   = context.output(0);
-    auto output_acc = output.data().write_accessor<uint64_t, 1>();
+    std::cerr << ptx << std::endl;
+
+    // auto output   = context.output(0);
+    // auto output_acc = output.data().write_accessor<uint64_t, 1>();
 
     const unsigned num_options = 4;
     const size_t buffer_size   = 16384;
@@ -137,6 +159,8 @@ namespace ufi {
     assert(result == CUDA_SUCCESS);
 
     cufunction_ptr.emplace(reinterpret_cast<uint64_t>(hfunc));
+    fprintf(stderr, "placed function :%p\n", hfunc);
+
     }
 } // end ufi
 
@@ -172,17 +196,15 @@ cupynumeric::NDArray new_task(legate::LogicalStore cufunc, cupynumeric::NDArray 
     auto runtime = legate::Runtime::get_runtime();
     auto library = get_lib();
     auto task = runtime->create_task(library, legate::LocalTaskID{ufi::RUN_PTX_TASK});
-    task.add_input(cufunc); // first input is the cufunction pointer
+    // task.add_input(cufunc); // first input is the cufunction pointer
 
     auto& out_shape = output.shape();
     auto rhs1_temp = rhs1.get_store();
     auto rhs2_temp = rhs2.get_store();
-    auto rhs1_store = broadcast(out_shape, rhs1_temp);
-    auto rhs2_store = broadcast(out_shape, rhs2_temp);
-
+    
     auto p_lhs  = task.add_output(output.get_store());
-    auto p_rhs1 = task.add_input(rhs1_store);
-    auto p_rhs2 = task.add_input(rhs2_store);
+    auto p_rhs1 = task.add_input(broadcast(out_shape, rhs1_temp));
+    auto p_rhs2 = task.add_input(broadcast(out_shape, rhs2_temp));
 
     task.add_scalar_arg(legate::Scalar(N));
     task.add_constraint(legate::align(p_lhs, p_rhs1));
