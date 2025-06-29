@@ -32,8 +32,8 @@ end
 function __convert_arg(arg)
     if isa(arg, NDArray)
         T = cuNumeric.eltype(arg)
-        size = cuNumeric.size(arg)
-        return CUDA.zeros(T, size)
+        # size = cuNumeric.size(arg)
+        return CUDA.zeros(T, 1)
     elseif Base.isbits(arg)
         return arg
     else
@@ -68,6 +68,7 @@ macro cuda_task(call_expr)
         local _buf = IOBuffer()
         local _dummy = $cuNumeric.__dummy_args_for_ptx($(fargs...))
         # Create the PTX in runtime with actual values
+        println(_dummy)
         CUDA.@device_code_ptx io=_buf CUDA.@cuda launch=false $fname((_dummy...))
 
         local _ptx = String(take!(_buf))

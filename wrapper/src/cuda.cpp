@@ -30,7 +30,7 @@
     cudaError_t status = x; \
     if (status != cudaSuccess) { \
         fprintf(stderr, "CUDA Error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(status)); \
-        cudaStreamDestroy(stream_); \
+        if (stream_) cudaStreamDestroy(stream_); \
         exit(-1); \
     } \
 }
@@ -41,7 +41,7 @@
         const char* err_str = nullptr; \
         cuGetErrorString(status, &err_str); \
         fprintf(stderr, "CUDA Driver Error at %s:%d: %s\n", __FILE__, __LINE__, err_str); \
-        cudaStreamDestroy(stream_); \
+        if (stream_) cudaStreamDestroy(stream_); \
         exit(-1); \
     } \
 }
@@ -67,26 +67,83 @@ namespace ufi {
   cudaStream_t stream_ = context.get_task_stream();
 
   CUfunction func = reinterpret_cast<CUfunction>(cufunction_ptr.get());
-  int32_t N = context.scalar(0).value<int32_t>();
+
+  uint32_t padded_bytes = 16;
+  uint32_t N = context.scalar(0).value<uint32_t>();
 
   void *a = (void*)context.input(0).data().read_accessor<float, 1>().ptr(Realm::Point<1>(0));
   void *b = (void*)context.input(1).data().read_accessor<float, 1>().ptr(Realm::Point<1>(0));
-  void *c = context.output(0).data().write_accessor<float, 1>().ptr(Realm::Point<1>(0));
+  void *c = (void*)context.output(0).data().write_accessor<float, 1>().ptr(Realm::Point<1>(0));
 
-  unsigned int blockDimX = 256;
-  unsigned int gridDimX = (N + blockDimX - 1) / blockDimX;
+  uint32_t THREADS_PER_BLOCK = 256;
 
-  void* args[] = { &a, &b, &c, &N }; 
+  const uint32_t gridDimX = (N + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+  const uint32_t gridDimY = 1;
+  const uint32_t gridDimZ = 1;
+
+  const uint32_t blockDimX = THREADS_PER_BLOCK;
+  const uint32_t blockDimY = 1;
+  const uint32_t blockDimZ = 1;
+
+    struct CuDeviceArray {
+        void* ptr;         // device pointer to data
+        int64_t maxsize;   // total allocated size in bytes
+        int64_t length;    // length of the 1D array (number of elements)
+        int64_t reserved;  // reserved or padding field, set to 0
+    };
+
+  size_t buffer_size = padded_bytes + (3) * sizeof(CuDeviceArray) + context.scalar(0).size();
+  
+  std::vector<char> arg_buffer(buffer_size);
+  char *raw_arg_buffer = arg_buffer.data();
+
+  auto p = raw_arg_buffer;
+
+  p += padded_bytes;
+  
+//   *reinterpret_cast<const void **>(p) = a;
+//   p += sizeof(void *);
+//   *reinterpret_cast<const void **>(p) = b;
+//   p += sizeof(void *);
+//   *reinterpret_cast<void **>(p) = c;
+//   p += sizeof(void *);
+
+//   memcpy(p, context.scalar(0).ptr(), context.scalar(0).size());
+
+
+    CuDeviceArray a_desc = {a,  N * sizeof(float), N, 0};
+    CuDeviceArray b_desc = {b,  N * sizeof(float), N, 0};
+    CuDeviceArray c_desc = {c,  N * sizeof(float), N, 0};
+
+    memcpy(p, &a_desc, sizeof(CuDeviceArray));
+    p += sizeof(CuDeviceArray);
+    memcpy(p, &b_desc, sizeof(CuDeviceArray));
+    p += sizeof(CuDeviceArray);
+    memcpy(p, &c_desc, sizeof(CuDeviceArray));
+    p += sizeof(CuDeviceArray);
+
+
+    memcpy(p, &N, sizeof(uint32_t));
+
+
+  void *config[] = {
+    CU_LAUNCH_PARAM_BUFFER_POINTER,
+    static_cast<void *>(raw_arg_buffer),
+    CU_LAUNCH_PARAM_BUFFER_SIZE,
+    &buffer_size,
+    CU_LAUNCH_PARAM_END,
+  };
 
   TEST_PRINT_DEBUG(a, N, float, "%f", stream_, "array a");
-  TEST_PRINT_DEBUG(b, N, float, "%f", stream_, "array b");   
-  TEST_PRINT_DEBUG(c, N, float, "%f", stream_, "array c");   
+  TEST_PRINT_DEBUG(b, N, float, "%f", stream_, "array b");
+  TEST_PRINT_DEBUG(c, N, float, "%f", stream_, "array c");
 
   fprintf(stderr, "N is  %u\n", N);
   fprintf(stderr, "running function :%p\n", func);
-
+  
+  CUstream custream_ = reinterpret_cast<CUstream>(stream_);
   DRIVER_ERROR_CHECK(cuLaunchKernel(
-    func, gridDimX, 1, 1, blockDimX, 1, 1, 0, stream_, args, nullptr
+    func, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY, blockDimZ, 0, custream_, NULL, config
   ));
 
   DRIVER_ERROR_CHECK(cuStreamSynchronize(stream_));
@@ -192,7 +249,7 @@ legate::Library get_lib() {
     return runtime->get_library();
 }
 
-cupynumeric::NDArray new_task(legate::LogicalStore cufunc, cupynumeric::NDArray rhs1, cupynumeric::NDArray rhs2, cupynumeric::NDArray output, int32_t N) {
+cupynumeric::NDArray new_task(cupynumeric::NDArray rhs1, cupynumeric::NDArray rhs2, cupynumeric::NDArray output, uint32_t N) {
     auto runtime = legate::Runtime::get_runtime();
     auto library = get_lib();
     auto task = runtime->create_task(library, legate::LocalTaskID{ufi::RUN_PTX_TASK});
@@ -201,7 +258,7 @@ cupynumeric::NDArray new_task(legate::LogicalStore cufunc, cupynumeric::NDArray 
     auto& out_shape = output.shape();
     auto rhs1_temp = rhs1.get_store();
     auto rhs2_temp = rhs2.get_store();
-    
+
     auto p_lhs  = task.add_output(output.get_store());
     auto p_rhs1 = task.add_input(broadcast(out_shape, rhs1_temp));
     auto p_rhs2 = task.add_input(broadcast(out_shape, rhs2_temp));
@@ -236,7 +293,7 @@ void register_tasks() {
     ufi::RunPTXTask::register_variants(library);
 }
 
-void gpu_sync() {cudaDeviceSynchronize();}
+void gpu_sync() {cudaStream_t stream_ = nullptr; ERROR_CHECK(cudaDeviceSynchronize());}
 
 void wrap_cuda_methods(jlcxx::Module& mod){
     mod.method("register_tasks", &register_tasks);
