@@ -94,7 +94,6 @@ function cupynumeric_setup(AA::ArgcArgv)
     #println(ENV["LEGATE_AUTO_CONFIG"])
     #@info "LEGATE_AUTO_CONFIG: $(ENV["LEGATE_AUTO_CONFIG"])"
     #println(Base.get_bool_env("LEGATE_AUTO_CONFIG"))
-
     # cuNumeric.start_legate()
     #pipe = Pipe()
     #started = Base.Event()

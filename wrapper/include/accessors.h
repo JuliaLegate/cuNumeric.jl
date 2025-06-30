@@ -24,10 +24,14 @@
 #include <vector>
 
 #include "cupynumeric.h"
+<<<<<<< HEAD
+#include "jlcxx/jlcxx.hpp"
+    =======
+>>>>>>> main
 #include "jlcxx/jlcxx.hpp"
 #include "legion.h"
 
-using coord_t = long long;
+    using coord_t = long long;
 
 // To auto-magically generate templated classes and their
 // respective member functions you must define a `BuildParameterList`

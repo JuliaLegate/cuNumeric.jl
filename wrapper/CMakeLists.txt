@@ -52,6 +52,12 @@ set_target_properties(cupynumericwrapper PROPERTIES
     INSTALL_RPATH "${HDF5_PATH}/lib;${LEGATE_PATH}/lib;${CUPYNUMERIC_PATH}/lib"
 )
 
+
+set_target_properties(cupynumericwrapper PROPERTIES
+    BUILD_WITH_INSTALL_RPATH TRUE
+    INSTALL_RPATH "${HDF5_PATH}/lib;${LEGATE_PATH}/lib;${CUPYNUMERIC_PATH}/lib"
+)
+
 # both can be private I think
 target_link_libraries(cupynumericwrapper 
                         PRIVATE cupynumeric::cupynumeric

@@ -35,6 +35,8 @@ const LATEST_CUPYNUMERIC_VERSION = SUPPORTED_CUPYNUMERIC_VERSIONS[end]
 function run_sh(cmd::Cmd, filename::String)
     println(cmd)
 
+    println(cmd)
+
     build_log = joinpath(@__DIR__, "build.log")
     err_log = joinpath(@__DIR__, "$(filename).err")
 

@@ -47,5 +47,5 @@ cmake -S $CUNUMERIC_ROOT_DIR/wrapper -B $BUILD_DIR \
     -D CUPYNUMERIC_PATH="$CUPYNUMERIC_ROOT_DIR" \
     -D LEGATE_PATH=$LEGATE_ROOT_DIR \
     -D HDF5_PATH=$HDF5_ROOT_DIR \
-    -D CMAKE_BUILD_TYPE=Debug
+    -D CMAKE_BUILD_TYPE=Release
 cmake --build $BUILD_DIR  --parallel $NTHREADS --verbose
