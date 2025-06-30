@@ -1,5 +1,5 @@
 using CUDA
-using Random 
+using Random
 
 function __extract_kernel_name(ptx)
     for line in eachline(IOBuffer(ptx))
@@ -18,7 +18,7 @@ function __get_types_from_dummy(args...)
     for arg in args
         push!(types, typeof(CUDA.cudaconvert(arg)))
     end
-    return tuple(types...) 
+    return tuple(types...)
 end
 
 function __dummy_args_for_ptx(args...)
@@ -26,7 +26,7 @@ function __dummy_args_for_ptx(args...)
     for arg in args
         push!(converted, cuNumeric.__convert_arg(arg))
     end
-    return tuple(converted...) 
+    return tuple(converted...)
 end
 
 function __convert_arg(arg)
@@ -41,7 +41,6 @@ function __convert_arg(arg)
     end
 end
 
-
 function __tuple_set(args...)
     state = args[1]
     types = args[2]
@@ -51,20 +50,19 @@ function __tuple_set(args...)
     for ty in types.parameters
         push!(t, ty)
     end
-    return tuple(t...) 
+    return tuple(t...)
 end
-
 
 struct CUDATask
     func::Legate.LogicalStore
-    argtypes::NTuple{N, Type} where N
+    argtypes::NTuple{N,Type} where {N}
 end
 
 macro cuda_task(call_expr)
     fname = call_expr.args[1]
     fargs = call_expr.args[2:end]
-    
-    quote
+
+    esc(quote
         local _buf = IOBuffer()
         local _dummy = $cuNumeric.__dummy_args_for_ptx($(fargs...))
         # Create the PTX in runtime with actual values
@@ -76,31 +74,33 @@ macro cuda_task(call_expr)
         local _types = cuNumeric.__get_types_from_dummy(_dummy)
 
         cuNumeric.CUDATask(_func, _types)
-    end |> esc
+    end)
 end
-
 
 macro launch(ex...)
     @assert length(ex) == 4 "Usage: @launch task=taskname blocks=blocks threads=threads kernel(args...)"
 
-    task    = ex[1].args[2]
-    blocks  = ex[2].args[2]
+    task = ex[1].args[2]
+    blocks = ex[2].args[2]
     threads = ex[3].args[2]
-    call    = ex[end] 
+    call = ex[end]
 
-    funcname    = call.args[1]    # kernel_add
+    funcname = call.args[1]    # kernel_add
     kernel_args = call.args[2:end]
-    
-    quote
-        local _task = $task
 
+    esc(
+        quote
+            local _task = $task
 
-        CUDA.cudacall(
-            _task.func,
-            cuNumeric.__tuple_set(CUDA.KernelState, _task.argtypes...),
-            _kernel_state, $(kernel_args...);
-            threads=threads, blocks=blocks
-        )
-        CUDA.synchronize()
-    end |> esc
+            CUDA.cudacall(
+                _task.func,
+                cuNumeric.__tuple_set(CUDA.KernelState, _task.argtypes...),
+                _kernel_state,
+                $(kernel_args...);
+                threads=threads,
+                blocks=blocks,
+            )
+            CUDA.synchronize()
+        end,
+    )
 end

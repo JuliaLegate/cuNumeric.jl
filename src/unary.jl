@@ -1,8 +1,8 @@
 export square
 
-global const unary_op_map_no_args = Dict{Union{Function, Symbol}, Int}(
+global const unary_op_map_no_args = Dict{Union{Function,Symbol},Int}(
     Base.abs => Int(cuNumeric.ABSOLUTE),
-    Base.acos => Int(cuNumeric.ARCCOS), 
+    Base.acos => Int(cuNumeric.ARCCOS),
     # Base.acosh => Int(cuNumeric.ARCCOSH), #* makes testing annoying
     Base.asin => Int(cuNumeric.ARCSIN),
     Base.asinh => Int(cuNumeric.ARCSINH),
@@ -31,17 +31,17 @@ global const unary_op_map_no_args = Dict{Union{Function, Symbol}, Int}(
     Base.log2 => Int(cuNumeric.LOG2),
     # Base.:! => Int(cuNumeric.LOGICAL_NOT), #* makes testing annoying
     # Base.modf => Int(cuNumeric.MODF), #* makes testing annoying
-    Base.:- => Int(cuNumeric.NEGATIVE), 
+    Base.:- => Int(cuNumeric.NEGATIVE),
     #missing => Int(cuNumeric.POSITIVE), #What is this even for
     Base.rad2deg => Int(cuNumeric.RAD2DEG),
     # Base.sign => Int(cuNumeric.SIGN), #* makes testing annoying
     # Base.signbit => Int(cuNumeric.SIGNBIT), #* makes testing annoying
-    Base.sin => Int(cuNumeric.SIN),  
-    Base.sinh => Int(cuNumeric.SINH),  
+    Base.sin => Int(cuNumeric.SIN),
+    Base.sinh => Int(cuNumeric.SINH),
     Base.sqrt => Int(cuNumeric.SQRT),  # HAS SPECIAL MEANING FOR MATRIX
     :square => Int(cuNumeric.SQUARE),
-    Base.tan => Int(cuNumeric.TAN),  
-    Base.tanh => Int(cuNumeric.TANH),  
+    Base.tan => Int(cuNumeric.TAN),
+    Base.tanh => Int(cuNumeric.TANH),
 )
 
 """
@@ -50,7 +50,6 @@ square(arr::NDArray)
 Elementwise square of each element in `arr`. 
 """
 function square end
-
 
 # Generate code for all unary operators
 for (base_func, op_code) in unary_op_map_no_args
@@ -88,7 +87,7 @@ end
 # end
 
 # Could implement most of the missing functions here
-global const unary_reduction_map = Dict{Function, Int}(
+global const unary_reduction_map = Dict{Function,Int}(
     # Base.all => Int(cuNumeric.ALL), #* ANNOYING TO TEST
     # Base.any => Int(cuNumeric.ANY), #* ANNOYING TO TEST
     # Base.argmax => Int(cuNumeric.ARGMAX), #* WILL BE OFF BY 1
@@ -108,8 +107,6 @@ global const unary_reduction_map = Dict{Function, Int}(
     #missing => Int(cuNumeric.VARIANCE)
 )
 
-
-
 # #*TODO HOW TO GET THESE ACTING ON CERTAIN DIMS
 # Generate code for all unary reductions.
 for (base_func, op_code) in unary_reduction_map
@@ -127,19 +124,16 @@ end
 #     return f(arr)
 # end
 
-
 #### PROVIDE A MORE "JULIAN" WAY OF DOING THINGS
 #### WHEN YOU CALL MAP YOU EXPECT BROADCASTING
 #### THIS HAS SOME EXTRA OVERHEAD THOUGH SINCE
 #### YOU HAVE TO LOOK UP THE OP CODE AND CHECK IF ITS VALID
-
 
 #* TODO Overload broadcasting to just call this
 #* e.g. sin.(ndarray) should call this or the proper generated func
 function Base.map(f::Function, arr::NDArray)
     return f(arr) # Will try to call one of the functions generated above
 end
-
 
 # function get_unary_op(f::Function)
 #     if haskey(unary_op_map, f)

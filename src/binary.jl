@@ -1,4 +1,4 @@
-global const binary_op_map = Dict{Function, Int}(
+global const binary_op_map = Dict{Function,Int}(
     Base.:+ => Int(cuNumeric.ADD),
     Base.atan => Int(cuNumeric.ARCTAN2),
     # Base.:& => Int(cuNumeric.BITWISE_AND), #* ANNOYING TO TEST (no == for bools)
@@ -32,8 +32,7 @@ global const binary_op_map = Dict{Function, Int}(
     # Base.:(!=) => Int(cuNumeric.NOT_EQUAL), #* DONT REALLY WANT ELEMENTWISE !=, RATHER HAVE REDUCTION
     #Base.:^ => Int(cuNumeric.POWER),
     # Base.:(>>) => Int(cuNumeric.RIGHT_SHIFT), #* ANNOYING TO TEST (no == for bools)
-    Base.:(-) => Int(cuNumeric.SUBTRACT)
-    
+    Base.:(-) => Int(cuNumeric.SUBTRACT),
 )
 
 #* THIS SORT OF BREAKS WHAT A JULIA USER MIGHT EXPECT
@@ -48,10 +47,8 @@ for (base_func, op_code) in binary_op_map
             binary_op(out, $(op_code), rhs1, rhs2)
             return out
         end
-
     end
 end
-
 
 # This is more "Julian" since a user expects map to broadcast
 # their operation whereas the generated functions should technically

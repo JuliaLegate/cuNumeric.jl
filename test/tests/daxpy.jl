@@ -25,7 +25,6 @@
     -- NDArray addition and multiplication
 =#
 function daxpy_basic()
-    
     N = 100
     α = 56.6
     dims = (N, N)
@@ -48,8 +47,7 @@ function daxpy_basic()
     end
 
     result = α * x + y
-    result_cpu = α.*x_cpu .+ y_cpu
+    result_cpu = α .* x_cpu .+ y_cpu
     @test result == result_cpu
     @test result_cpu == result
-
 end

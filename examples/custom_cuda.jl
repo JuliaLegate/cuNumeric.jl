@@ -11,7 +11,6 @@ function kernel_add(a, b, c, N)
     return nothing
 end
 
-
 N = 1024
 threads = 256
 blocks = cld(N, threads)
@@ -19,7 +18,6 @@ blocks = cld(N, threads)
 a = cuNumeric.full(N, 1.0f0)
 b = cuNumeric.full(N, 2.0f0)
 c = cuNumeric.ones(Float32, N)
-
 
 a_cpu = a[:]
 println("a: ", a_cpu[1])
@@ -30,7 +28,7 @@ println("c: ", c_cpu[1])
 
 task = cuNumeric.@cuda_task kernel_add(a, b, c, UInt32(1))
 
-c = cuNumeric.new_task(a, b, c, UInt32(N)) 
+c = cuNumeric.new_task(a, b, c, UInt32(N))
 cuNumeric.gpu_sync()
 # cuNumeric.@launch task=task threads=threads blocks=blocks kernel_add(a, b, c, Int32(1))
 c_cpu = c[:]

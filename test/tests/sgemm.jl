@@ -21,11 +21,10 @@
     - Test a matrix matrix multiply
 =#
 function sgemm(max_diff)
-
     N = 100
     FT = Float32
 
-    dims = (N,N)
+    dims = (N, N)
 
     # Base julia arrays
     A_cpu = rand(FT, dims);

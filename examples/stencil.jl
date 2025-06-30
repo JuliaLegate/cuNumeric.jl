@@ -1,5 +1,5 @@
 
-import cuNumeric
+using cuNumeric: cuNumeric
 
 function initialize(N)
     println("Initializing stencil grid...")
@@ -16,11 +16,11 @@ function run_stencil(N, I, warmup)
 
     println("Running Jacobi stencil...")
 
-    center = grid[2:N+1, 2:N+1]
-    north  = grid[1:N,   2:N+1]
-    east   = grid[2:N+1, 3:N+2]
-    west   = grid[2:N+1, 1:N]
-    south  = grid[3:N+2, 2:N+1]
+    center = grid[2:(N + 1), 2:(N + 1)]
+    north = grid[1:N, 2:(N + 1)]
+    east = grid[2:(N + 1), 3:(N + 2)]
+    west = grid[2:(N + 1), 1:N]
+    south = grid[3:(N + 2), 2:(N + 1)]
 
     for i in 1:(I + warmup)
         average = center .+ north .+ east .+ west .+ south
@@ -28,6 +28,5 @@ function run_stencil(N, I, warmup)
         center = work
     end
 end
-
 
 run_stencil(1000, 100, 5)
