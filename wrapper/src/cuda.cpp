@@ -97,8 +97,6 @@ using FunctionMap = std::unordered_map<FunctionKey, CUfunction, FunctionKeyHash,
 
 static legate::ProcLocalStorage<FunctionMap> cufunction_ptr{};
 
-// static legate::ProcLocalStorage<uint64_t> cufunction_ptr{};
-
 // https://github.com/nv-legate/legate.pandas/blob/branch-22.01/src/udf/eval_udf_gpu.cc
 /*static*/ void RunPTXTask::gpu_variant(legate::TaskContext context) {
   cudaStream_t stream_ = context.get_task_stream();
@@ -107,104 +105,174 @@ static legate::ProcLocalStorage<FunctionMap> cufunction_ptr{};
   cuStreamGetCtx(stream_, &ctx);
 
   FunctionKey key = {ctx, kernel_name};
-  assert(cufunction_ptr.has_value() && "[RunPTXTask] hashmap has no data.");
+  assert(cufunction_ptr.has_value());
   FunctionMap &fmap = cufunction_ptr.get();
 
   auto it = fmap.find(key);
+  assert(it != fmap.end());
+  CUfunction func = it->second;
 
-  if (it == fmap.end()) {
-    // for DEBUG output
-    std::cerr << "[RunPTXTask] Could not find key: " << key_to_string(key)
-              << std::endl;
-    for (const auto &[k, v] : fmap) {
-      std::cerr << "[RunPTXTask] Map key: " << key_to_string(k) << std::endl;
-    }
-    assert(0 && "[RunPTXTask] key is not found in hashmap");
-  }
-  CUfunction func = it->second;  // second arg is function ptr.
-
-  uint32_t padded_bytes = 16;
-  uint32_t N = context.scalar(1).value<uint32_t>();
-
-  void *a = (void *)context.input(0).data().read_accessor<float, 1>().ptr(
-      Realm::Point<1>(0));
-  void *b = (void *)context.input(1).data().read_accessor<float, 1>().ptr(
-      Realm::Point<1>(0));
-  void *c = (void *)context.output(0).data().write_accessor<float, 1>().ptr(
-      Realm::Point<1>(0));
-
-  uint32_t THREADS_PER_BLOCK = 256;
-
-  const uint32_t gridDimX = (N + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-  const uint32_t gridDimY = 1;
-  const uint32_t gridDimZ = 1;
-
-  const uint32_t blockDimX = THREADS_PER_BLOCK;
-  const uint32_t blockDimY = 1;
-  const uint32_t blockDimZ = 1;
+  const std::size_t num_inputs = context.num_inputs();
+  const std::size_t num_outputs = context.num_outputs();
+  const std::size_t num_scalars = context.num_scalars();
+  const std::size_t num_reductions =
+      context.num_reductions();  // unused for now
 
   struct CuDeviceArray {
-    void *ptr;         // device pointer to data
-    int64_t maxsize;   // total allocated size in bytes
-    int64_t length;    // length of the 1D array (number of elements)
-    int64_t reserved;  // reserved or padding field, set to 0
+    void *ptr;
+    int64_t maxsize;
+    int64_t length;
+    int64_t reserved;
   };
 
-  size_t buffer_size =
-      padded_bytes + (3) * sizeof(CuDeviceArray) + context.scalar(1).size();
+  const std::size_t padded_bytes = 16;
+
+  // compute total size: all device arrays + all scalars (skip scalar 0 which is
+  // kernel name)
+  std::size_t buffer_size =
+      padded_bytes + (num_inputs + num_outputs) * sizeof(CuDeviceArray);
+  for (std::size_t i = 1; i < num_scalars; ++i)
+    buffer_size += context.scalar(i).size();
 
   std::vector<char> arg_buffer(buffer_size);
-  char *raw_arg_buffer = arg_buffer.data();
+  char *p = arg_buffer.data() + padded_bytes;
 
-  auto p = raw_arg_buffer;
+  auto write_device_array = [&](const legate::PhysicalArray &rf) {
+    void *dev_ptr = const_cast<void *>(static_cast<const void *>(
+        rf.data().read_accessor<float, 1>().ptr(Realm::Point<1>(0))));
+    CuDeviceArray desc = {dev_ptr,
+                          (int64_t)(rf.shape<1>().volume()) * sizeof(float),
+                          (int64_t)rf.shape<1>().volume(), 0};
+    memcpy(p, &desc, sizeof(CuDeviceArray));
+    p += sizeof(CuDeviceArray);
+  };
 
-  p += padded_bytes;
+  for (std::size_t i = 0; i < num_inputs; ++i)
+    write_device_array(context.input(i));
+  for (std::size_t i = 0; i < num_outputs; ++i)
+    write_device_array(context.output(i));
 
-  //   *reinterpret_cast<const void **>(p) = a;
-  //   p += sizeof(void *);
-  //   *reinterpret_cast<const void **>(p) = b;
-  //   p += sizeof(void *);
-  //   *reinterpret_cast<void **>(p) = c;
-  //   p += sizeof(void *);
-
-  //   memcpy(p, context.scalar(0).ptr(), context.scalar(0).size());
-
-  CuDeviceArray a_desc = {a, N * sizeof(float), N, 0};
-  CuDeviceArray b_desc = {b, N * sizeof(float), N, 0};
-  CuDeviceArray c_desc = {c, N * sizeof(float), N, 0};
-
-  memcpy(p, &a_desc, sizeof(CuDeviceArray));
-  p += sizeof(CuDeviceArray);
-  memcpy(p, &b_desc, sizeof(CuDeviceArray));
-  p += sizeof(CuDeviceArray);
-  memcpy(p, &c_desc, sizeof(CuDeviceArray));
-  p += sizeof(CuDeviceArray);
-
-  memcpy(p, &N, sizeof(uint32_t));
+  for (std::size_t i = 1; i < num_scalars; ++i) {
+    const auto &scalar = context.scalar(i);
+    memcpy(p, scalar.ptr(), scalar.size());
+    p += scalar.size();
+  }
 
   void *config[] = {
       CU_LAUNCH_PARAM_BUFFER_POINTER,
-      static_cast<void *>(raw_arg_buffer),
+      static_cast<void *>(arg_buffer.data()),
       CU_LAUNCH_PARAM_BUFFER_SIZE,
       &buffer_size,
       CU_LAUNCH_PARAM_END,
   };
 
-  TEST_PRINT_DEBUG(a, N, float, "%f", stream_, "array a");
-  TEST_PRINT_DEBUG(b, N, float, "%f", stream_, "array b");
-  TEST_PRINT_DEBUG(c, N, float, "%f", stream_, "array c");
-
-  fprintf(stderr, "N is  %u\n", N);
-  fprintf(stderr, "running function :%p\n", func);
+  const uint32_t N = context.scalar(1).value<uint32_t>();
+  const uint32_t THREADS_PER_BLOCK = 256;
+  const uint32_t gridDimX = (N + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
 
   CUstream custream_ = reinterpret_cast<CUstream>(stream_);
-  DRIVER_ERROR_CHECK(cuLaunchKernel(func, gridDimX, gridDimY, gridDimZ,
-                                    blockDimX, blockDimY, blockDimZ, 0,
-                                    custream_, NULL, config));
-
-  DRIVER_ERROR_CHECK(cuStreamSynchronize(stream_));
-  TEST_PRINT_DEBUG(c, N, float, "%f", stream_, "after array c");
+  DRIVER_ERROR_CHECK(cuLaunchKernel(func, gridDimX, 1, 1, THREADS_PER_BLOCK, 1,
+                                    1, 0, custream_, nullptr, config));
 }
+
+// //
+// https://github.com/nv-legate/legate.pandas/blob/branch-22.01/src/udf/eval_udf_gpu.cc
+// /*static*/ void RunPTXTask::gpu_variant(legate::TaskContext context) {
+//   cudaStream_t stream_ = context.get_task_stream();
+//   std::string kernel_name = context.scalar(0).value<std::string>();
+//   CUcontext ctx;
+//   cuStreamGetCtx(stream_, &ctx);
+
+//   FunctionKey key = {ctx, kernel_name};
+//   assert(cufunction_ptr.has_value() && "[RunPTXTask] hashmap has no data.");
+//   FunctionMap &fmap = cufunction_ptr.get();
+
+//   auto it = fmap.find(key);
+
+//   if (it == fmap.end()) {
+//     // for DEBUG output
+//     std::cerr << "[RunPTXTask] Could not find key: " << key_to_string(key)
+//               << std::endl;
+//     for (const auto &[k, v] : fmap) {
+//       std::cerr << "[RunPTXTask] Map key: " << key_to_string(k) << std::endl;
+//     }
+//     assert(0 && "[RunPTXTask] key is not found in hashmap");
+//   }
+//   CUfunction func = it->second;  // second arg is function ptr.
+
+//   uint32_t padded_bytes = 16;
+//   uint32_t N = context.scalar(1).value<uint32_t>();
+
+//   void *a = (void *)context.input(0).data().read_accessor<float, 1>().ptr(
+//       Realm::Point<1>(0));
+//   void *b = (void *)context.input(1).data().read_accessor<float, 1>().ptr(
+//       Realm::Point<1>(0));
+//   void *c = (void *)context.output(0).data().write_accessor<float, 1>().ptr(
+//       Realm::Point<1>(0));
+
+//   uint32_t THREADS_PER_BLOCK = 256;
+
+//   const uint32_t gridDimX = (N + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
+//   const uint32_t gridDimY = 1;
+//   const uint32_t gridDimZ = 1;
+
+//   const uint32_t blockDimX = THREADS_PER_BLOCK;
+//   const uint32_t blockDimY = 1;
+//   const uint32_t blockDimZ = 1;
+
+//   struct CuDeviceArray {
+//     void *ptr;         // device pointer to data
+//     int64_t maxsize;   // total allocated size in bytes
+//     int64_t length;    // length of the 1D array (number of elements)
+//     int64_t reserved;  // reserved or padding field, set to 0
+//   };
+
+//   size_t buffer_size =
+//       padded_bytes + (3) * sizeof(CuDeviceArray) + context.scalar(1).size();
+
+//   std::vector<char> arg_buffer(buffer_size);
+//   char *raw_arg_buffer = arg_buffer.data();
+
+//   auto p = raw_arg_buffer;
+
+//   p += padded_bytes;
+
+//   CuDeviceArray a_desc = {a, N * sizeof(float), N, 0};
+//   CuDeviceArray b_desc = {b, N * sizeof(float), N, 0};
+//   CuDeviceArray c_desc = {c, N * sizeof(float), N, 0};
+
+//   memcpy(p, &a_desc, sizeof(CuDeviceArray));
+//   p += sizeof(CuDeviceArray);
+//   memcpy(p, &b_desc, sizeof(CuDeviceArray));
+//   p += sizeof(CuDeviceArray);
+//   memcpy(p, &c_desc, sizeof(CuDeviceArray));
+//   p += sizeof(CuDeviceArray);
+
+//   memcpy(p, &N, sizeof(uint32_t));
+
+//   void *config[] = {
+//       CU_LAUNCH_PARAM_BUFFER_POINTER,
+//       static_cast<void *>(raw_arg_buffer),
+//       CU_LAUNCH_PARAM_BUFFER_SIZE,
+//       &buffer_size,
+//       CU_LAUNCH_PARAM_END,
+//   };
+
+//   TEST_PRINT_DEBUG(a, N, float, "%f", stream_, "array a");
+//   TEST_PRINT_DEBUG(b, N, float, "%f", stream_, "array b");
+//   TEST_PRINT_DEBUG(c, N, float, "%f", stream_, "array c");
+
+//   fprintf(stderr, "N is  %u\n", N);
+//   fprintf(stderr, "running function :%p\n", func);
+
+//   CUstream custream_ = reinterpret_cast<CUstream>(stream_);
+//   DRIVER_ERROR_CHECK(cuLaunchKernel(func, gridDimX, gridDimY, gridDimZ,
+//                                     blockDimX, blockDimY, blockDimZ, 0,
+//                                     custream_, NULL, config));
+
+//   DRIVER_ERROR_CHECK(cuStreamSynchronize(stream_));
+//   TEST_PRINT_DEBUG(c, N, float, "%f", stream_, "after array c");
+// }
 
 // https://github.com/nv-legate/legate.pandas/blob/branch-22.01/src/udf/load_ptx.cc
 /*static*/ void LoadPTXTask::gpu_variant(legate::TaskContext context) {
@@ -317,30 +385,72 @@ legate::Library get_lib() {
   return runtime->get_library();
 }
 
-cupynumeric::NDArray new_task(std::string kernel_name,
-                              cupynumeric::NDArray rhs1,
-                              cupynumeric::NDArray rhs2,
-                              cupynumeric::NDArray output, uint32_t N) {
+// cupynumeric::NDArray new_task(std::string kernel_name,
+//                               cupynumeric::NDArray rhs1,
+//                               cupynumeric::NDArray rhs2,
+//                               cupynumeric::NDArray output, uint32_t N) {
+//   auto runtime = legate::Runtime::get_runtime();
+//   auto library = get_lib();
+//   auto task =
+//       runtime->create_task(library, legate::LocalTaskID{ufi::RUN_PTX_TASK});
+
+//   auto &out_shape = output.shape();
+//   auto rhs1_temp = rhs1.get_store();
+//   auto rhs2_temp = rhs2.get_store();
+
+//   auto p_lhs = task.add_output(output.get_store());
+//   auto p_rhs1 = task.add_input(broadcast(out_shape, rhs1_temp));
+//   auto p_rhs2 = task.add_input(broadcast(out_shape, rhs2_temp));
+
+//   task.add_scalar_arg(legate::Scalar(kernel_name));
+//   task.add_scalar_arg(legate::Scalar(N));
+//   task.add_constraint(legate::align(p_lhs, p_rhs1));
+//   task.add_constraint(legate::align(p_rhs1, p_rhs2));
+
+//   runtime->submit(std::move(task));
+//   return output;
+// }
+
+void new_task(std::string kernel_name,
+              std::vector<std::shared_ptr<cupynumeric::NDArray>> &inputs,
+              std::vector<std::shared_ptr<cupynumeric::NDArray>> &outputs,
+              std::vector<legate::Scalar> &scalars) {
   auto runtime = legate::Runtime::get_runtime();
   auto library = get_lib();
   auto task =
       runtime->create_task(library, legate::LocalTaskID{ufi::RUN_PTX_TASK});
 
-  auto &out_shape = output.shape();
-  auto rhs1_temp = rhs1.get_store();
-  auto rhs2_temp = rhs2.get_store();
+  // Use first output shape as reference
+  const auto &out_shape = outputs.front()->shape();
 
-  auto p_lhs = task.add_output(output.get_store());
-  auto p_rhs1 = task.add_input(broadcast(out_shape, rhs1_temp));
-  auto p_rhs2 = task.add_input(broadcast(out_shape, rhs2_temp));
+  std::vector<legate::Variable> input_vars;
+  std::vector<legate::Variable> output_vars;
 
+  for (const auto &out_ptr : outputs) {
+    cupynumeric::NDArray &out = *out_ptr;
+    auto store = out.get_store();
+    auto p = task.add_output(store);
+    output_vars.push_back(p);
+  }
+
+  for (const auto &in_ptr : inputs) {
+    cupynumeric::NDArray &in = *in_ptr;
+    auto store = in.get_store();
+    auto p = task.add_input(broadcast(out_shape, store));
+    input_vars.push_back(p);
+  }
+
+  // Add kernel name and scalar args
   task.add_scalar_arg(legate::Scalar(kernel_name));
-  task.add_scalar_arg(legate::Scalar(N));
-  task.add_constraint(legate::align(p_lhs, p_rhs1));
-  task.add_constraint(legate::align(p_rhs1, p_rhs2));
+  for (const auto &scalar : scalars) task.add_scalar_arg(scalar);
 
+  // Add alignment constraints
+  for (auto &out : output_vars) {
+    for (auto &in : input_vars) {
+      task.add_constraint(legate::align(out, in));
+    }
+  }
   runtime->submit(std::move(task));
-  return output;
 }
 
 void ptx_task(std::string ptx, std::string kernel_name) {

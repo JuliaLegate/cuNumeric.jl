@@ -141,6 +141,14 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   mod.method("_add", &cupynumeric::add);
   mod.method("_multiply", &cupynumeric::multiply);
   mod.method("_random_ndarray", &cupynumeric::random);
-  // uses NDArray so needs to be after
+
+  mod.add_type<std::vector<std::shared_ptr<cupynumeric::NDArray>>>(
+         "VectorNDArray")
+      .method("push_back",
+              [](std::vector<std::shared_ptr<cupynumeric::NDArray>>& v,
+                 const cupynumeric::NDArray& x) {
+                v.push_back(std::make_shared<cupynumeric::NDArray>(x));
+              });
+
   wrap_cuda_methods(mod);
 }
