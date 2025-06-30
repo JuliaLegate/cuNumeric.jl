@@ -1,18 +1,6 @@
 using CUDA
 using Random
 
-function __extract_kernel_name(ptx)
-    for line in eachline(IOBuffer(ptx))
-        if occursin(".entry", line)
-            m = match(r"\.entry\s+([a-zA-Z0-9_]+)", line)
-            if m !== nothing
-                return String(m.captures[1])
-            end
-        end
-    end
-    return nothing
-end
-
 function __get_types_from_dummy(args...)
     types = Any[]
     for arg in args
@@ -54,7 +42,7 @@ function __tuple_set(args...)
 end
 
 struct CUDATask
-    func::Legate.LogicalStore
+    func::String
     argtypes::NTuple{N,Type} where {N}
 end
 
@@ -70,10 +58,11 @@ macro cuda_task(call_expr)
         CUDA.@device_code_ptx io=_buf CUDA.@cuda launch=false $fname((_dummy...))
 
         local _ptx = String(take!(_buf))
-        local _func = cuNumeric.ptx_task(_ptx)
+        local _func_name = cuNumeric.extract_kernel_name(_ptx)
+        local _func = cuNumeric.ptx_task(_ptx, _func_name)
         local _types = cuNumeric.__get_types_from_dummy(_dummy)
 
-        cuNumeric.CUDATask(_func, _types)
+        cuNumeric.CUDATask(_func_name, _types)
     end)
 end
 

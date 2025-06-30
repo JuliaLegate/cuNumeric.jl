@@ -27,6 +27,8 @@
 #include "legion.h"
 #include "ufi.h"
 
+#define KERNEL_NAME_BUFFER_SIZE 100
+
 #define ERROR_CHECK(x)                                                 \
   {                                                                    \
     cudaError_t status = x;                                            \
@@ -63,16 +65,66 @@
 
 namespace ufi {
 using namespace Legion;
-static legate::ProcLocalStorage<uint64_t> cufunction_ptr{};
+
+using FunctionKey = std::pair<CUcontext, std::string>;
+
+struct FunctionKeyHash {
+  std::size_t operator()(const FunctionKey &k) const {
+    return std::hash<CUcontext>()(k.first) ^
+           (std::hash<std::string>()(k.second) << 1);
+  }
+};
+
+struct FunctionKeyEqual {
+  bool operator()(const FunctionKey &lhs, const FunctionKey &rhs) const {
+    return lhs.first == rhs.first && lhs.second == rhs.second;
+  }
+};
+
+std::string context_to_string(CUcontext ctx) {
+  std::ostringstream oss;
+  oss << ctx;  // prints pointer value
+  return oss.str();
+}
+
+std::string key_to_string(const FunctionKey &key) {
+  return "CUcontext: " + context_to_string(key.first) + ", kernel: \"" +
+         key.second + "\"";
+}
+
+using FunctionMap = std::unordered_map<FunctionKey, CUfunction, FunctionKeyHash,
+                                       FunctionKeyEqual>;
+
+static legate::ProcLocalStorage<FunctionMap> cufunction_ptr{};
+
+// static legate::ProcLocalStorage<uint64_t> cufunction_ptr{};
 
 // https://github.com/nv-legate/legate.pandas/blob/branch-22.01/src/udf/eval_udf_gpu.cc
 /*static*/ void RunPTXTask::gpu_variant(legate::TaskContext context) {
   cudaStream_t stream_ = context.get_task_stream();
+  std::string kernel_name = context.scalar(0).value<std::string>();
+  CUcontext ctx;
+  cuStreamGetCtx(stream_, &ctx);
 
-  CUfunction func = reinterpret_cast<CUfunction>(cufunction_ptr.get());
+  FunctionKey key = {ctx, kernel_name};
+  assert(cufunction_ptr.has_value() && "[RunPTXTask] hashmap has no data.");
+  FunctionMap &fmap = cufunction_ptr.get();
+
+  auto it = fmap.find(key);
+
+  if (it == fmap.end()) {
+    // for DEBUG output
+    std::cerr << "[RunPTXTask] Could not find key: " << key_to_string(key)
+              << std::endl;
+    for (const auto &[k, v] : fmap) {
+      std::cerr << "[RunPTXTask] Map key: " << key_to_string(k) << std::endl;
+    }
+    assert(0 && "[RunPTXTask] key is not found in hashmap");
+  }
+  CUfunction func = it->second;  // second arg is function ptr.
 
   uint32_t padded_bytes = 16;
-  uint32_t N = context.scalar(0).value<uint32_t>();
+  uint32_t N = context.scalar(1).value<uint32_t>();
 
   void *a = (void *)context.input(0).data().read_accessor<float, 1>().ptr(
       Realm::Point<1>(0));
@@ -99,7 +151,7 @@ static legate::ProcLocalStorage<uint64_t> cufunction_ptr{};
   };
 
   size_t buffer_size =
-      padded_bytes + (3) * sizeof(CuDeviceArray) + context.scalar(0).size();
+      padded_bytes + (3) * sizeof(CuDeviceArray) + context.scalar(1).size();
 
   std::vector<char> arg_buffer(buffer_size);
   char *raw_arg_buffer = arg_buffer.data();
@@ -157,11 +209,29 @@ static legate::ProcLocalStorage<uint64_t> cufunction_ptr{};
 // https://github.com/nv-legate/legate.pandas/blob/branch-22.01/src/udf/load_ptx.cc
 /*static*/ void LoadPTXTask::gpu_variant(legate::TaskContext context) {
   std::string ptx = context.scalar(0).value<std::string>();
+  std::string kernel_name = context.scalar(1).value<std::string>();
+
+  cudaStream_t stream_ = context.get_task_stream();
+  CUcontext ctx;
+  cuStreamGetCtx(stream_, &ctx);
+
+  FunctionKey key = std::make_pair(ctx, kernel_name);
+
+  FunctionMap &fmap = [&]() -> FunctionMap & {
+    if (cufunction_ptr.has_value()) {
+      return cufunction_ptr.get();
+    } else {
+      cufunction_ptr.emplace(FunctionMap{});
+      return cufunction_ptr.get();
+    }
+  }();
+
+  auto it = fmap.find(key);
+  if (!(it == fmap.end())) {
+    return;
+  }  // we have this exact kernel already compiled.
 
   std::cerr << ptx << std::endl;
-
-  // auto output   = context.output(0);
-  // auto output_acc = output.data().write_accessor<uint64_t, 1>();
 
   const unsigned num_options = 4;
   const size_t buffer_size = 16384;
@@ -211,20 +281,12 @@ static legate::ProcLocalStorage<uint64_t> cufunction_ptr{};
     }
   }
 
-  std::cmatch line_match;
-  // there should be a built in find name of ufi function - pat
-  bool match = std::regex_search(ptx.c_str(), line_match,
-                                 std::regex(".visible .entry [_a-zA-Z0-9$]+"));
-
-  const auto &matched_line = line_match.begin()->str();
-  auto fun_name =
-      matched_line.substr(matched_line.rfind(" ") + 1, matched_line.size());
-
   CUfunction hfunc;
-  result = cuModuleGetFunction(&hfunc, module, fun_name.c_str());
+  result = cuModuleGetFunction(&hfunc, module, kernel_name.c_str());
   assert(result == CUDA_SUCCESS);
 
-  cufunction_ptr.emplace(reinterpret_cast<uint64_t>(hfunc));
+  fmap[key] = hfunc;
+
   fprintf(stderr, "placed function :%p\n", hfunc);
 }
 }  // namespace ufi
@@ -255,14 +317,14 @@ legate::Library get_lib() {
   return runtime->get_library();
 }
 
-cupynumeric::NDArray new_task(cupynumeric::NDArray rhs1,
+cupynumeric::NDArray new_task(std::string kernel_name,
+                              cupynumeric::NDArray rhs1,
                               cupynumeric::NDArray rhs2,
                               cupynumeric::NDArray output, uint32_t N) {
   auto runtime = legate::Runtime::get_runtime();
   auto library = get_lib();
   auto task =
       runtime->create_task(library, legate::LocalTaskID{ufi::RUN_PTX_TASK});
-  // task.add_input(cufunc); // first input is the cufunction pointer
 
   auto &out_shape = output.shape();
   auto rhs1_temp = rhs1.get_store();
@@ -272,6 +334,7 @@ cupynumeric::NDArray new_task(cupynumeric::NDArray rhs1,
   auto p_rhs1 = task.add_input(broadcast(out_shape, rhs1_temp));
   auto p_rhs2 = task.add_input(broadcast(out_shape, rhs2_temp));
 
+  task.add_scalar_arg(legate::Scalar(kernel_name));
   task.add_scalar_arg(legate::Scalar(N));
   task.add_constraint(legate::align(p_lhs, p_rhs1));
   task.add_constraint(legate::align(p_rhs1, p_rhs2));
@@ -280,18 +343,15 @@ cupynumeric::NDArray new_task(cupynumeric::NDArray rhs1,
   return output;
 }
 
-legate::LogicalStore ptx_task(std::string ptx) {
+void ptx_task(std::string ptx, std::string kernel_name) {
   auto runtime = legate::Runtime::get_runtime();
   auto library = get_lib();
   auto task =
       runtime->create_task(library, legate::LocalTaskID{ufi::LOAD_PTX_TASK});
   task.add_scalar_arg(legate::Scalar(ptx));
-
-  auto scalar_store = runtime->create_store({1}, legate::uint64(), false);
-  task.add_output(scalar_store);
+  task.add_scalar_arg(legate::Scalar(kernel_name));
 
   runtime->submit(std::move(task));
-  return scalar_store;
 }
 
 void register_tasks() {
@@ -305,10 +365,23 @@ void gpu_sync() {
   ERROR_CHECK(cudaDeviceSynchronize());
 }
 
+std::string extract_kernel_name(std::string ptx) {
+  std::cmatch line_match;
+  // there should be a built in find name of ufi function - pat
+  bool match = std::regex_search(ptx.c_str(), line_match,
+                                 std::regex(".visible .entry [_a-zA-Z0-9$]+"));
+
+  const auto &matched_line = line_match.begin()->str();
+  auto fun_name =
+      matched_line.substr(matched_line.rfind(" ") + 1, matched_line.size());
+  return fun_name;
+}
+
 void wrap_cuda_methods(jlcxx::Module &mod) {
   mod.method("register_tasks", &register_tasks);
   mod.method("get_library", &get_lib);
   mod.method("new_task", &new_task);
   mod.method("ptx_task", &ptx_task);
   mod.method("gpu_sync", &gpu_sync);
+  mod.method("extract_kernel_name", &extract_kernel_name);
 }
