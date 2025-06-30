@@ -27,7 +27,7 @@
 #include "legion.h"
 #include "ufi.h"
 
-#define KERNEL_NAME_BUFFER_SIZE 100
+// #define CUDA_DEBUG 1
 
 #define ERROR_CHECK(x)                                                 \
   {                                                                    \
@@ -81,6 +81,12 @@ struct FunctionKeyEqual {
   }
 };
 
+using FunctionMap = std::unordered_map<FunctionKey, CUfunction, FunctionKeyHash,
+                                       FunctionKeyEqual>;
+
+static legate::ProcLocalStorage<FunctionMap> cufunction_ptr{};
+
+#ifdef CUDA_DEBUG
 std::string context_to_string(CUcontext ctx) {
   std::ostringstream oss;
   oss << ctx;  // prints pointer value
@@ -91,16 +97,15 @@ std::string key_to_string(const FunctionKey &key) {
   return "CUcontext: " + context_to_string(key.first) + ", kernel: \"" +
          key.second + "\"";
 }
-
-using FunctionMap = std::unordered_map<FunctionKey, CUfunction, FunctionKeyHash,
-                                       FunctionKeyEqual>;
-
-static legate::ProcLocalStorage<FunctionMap> cufunction_ptr{};
+#endif
 
 // https://github.com/nv-legate/legate.pandas/blob/branch-22.01/src/udf/eval_udf_gpu.cc
 /*static*/ void RunPTXTask::gpu_variant(legate::TaskContext context) {
   cudaStream_t stream_ = context.get_task_stream();
   std::string kernel_name = context.scalar(0).value<std::string>();
+  std::uint32_t threads = context.scalar(1).value<std::uint32_t>();
+  std::uint32_t blocks = context.scalar(2).value<std::uint32_t>();
+
   CUcontext ctx;
   cuStreamGetCtx(stream_, &ctx);
 
@@ -109,6 +114,19 @@ static legate::ProcLocalStorage<FunctionMap> cufunction_ptr{};
   FunctionMap &fmap = cufunction_ptr.get();
 
   auto it = fmap.find(key);
+
+#ifdef CUDA_DEBUG
+  if (it == fmap.end()) {
+    // for DEBUG output
+    std::cerr << "[RunPTXTask] Could not find key: " << key_to_string(key)
+              << std::endl;
+    for (const auto &[k, v] : fmap) {
+      std::cerr << "[RunPTXTask] Map key: " << key_to_string(k) << std::endl;
+    }
+    assert(0 && "[RunPTXTask] key is not found in hashmap");
+  }
+#endif
+
   assert(it != fmap.end());
   CUfunction func = it->second;
 
@@ -127,11 +145,11 @@ static legate::ProcLocalStorage<FunctionMap> cufunction_ptr{};
 
   const std::size_t padded_bytes = 16;
 
-  // compute total size: all device arrays + all scalars (skip scalar 0 which is
-  // kernel name)
+  // compute total size: all device arrays + all scalars
+  // skip scalar 0-2 (kernel_name, threads, blocks)
   std::size_t buffer_size =
       padded_bytes + (num_inputs + num_outputs) * sizeof(CuDeviceArray);
-  for (std::size_t i = 1; i < num_scalars; ++i)
+  for (std::size_t i = 3; i < num_scalars; ++i)
     buffer_size += context.scalar(i).size();
 
   std::vector<char> arg_buffer(buffer_size);
@@ -152,7 +170,7 @@ static legate::ProcLocalStorage<FunctionMap> cufunction_ptr{};
   for (std::size_t i = 0; i < num_outputs; ++i)
     write_device_array(context.output(i));
 
-  for (std::size_t i = 1; i < num_scalars; ++i) {
+  for (std::size_t i = 3; i < num_scalars; ++i) {
     const auto &scalar = context.scalar(i);
     memcpy(p, scalar.ptr(), scalar.size());
     p += scalar.size();
@@ -166,113 +184,15 @@ static legate::ProcLocalStorage<FunctionMap> cufunction_ptr{};
       CU_LAUNCH_PARAM_END,
   };
 
-  const uint32_t N = context.scalar(1).value<uint32_t>();
-  const uint32_t THREADS_PER_BLOCK = 256;
-  const uint32_t gridDimX = (N + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-
   CUstream custream_ = reinterpret_cast<CUstream>(stream_);
-  DRIVER_ERROR_CHECK(cuLaunchKernel(func, gridDimX, 1, 1, THREADS_PER_BLOCK, 1,
-                                    1, 0, custream_, nullptr, config));
+  DRIVER_ERROR_CHECK(cuLaunchKernel(func, blocks, 1, 1, threads, 1, 1, 0,
+                                    custream_, nullptr, config));
+
+  // DRIVER_ERROR_CHECK(cuStreamSynchronize(stream_));
+  // TEST_PRINT_DEBUG(a, N, float, "%f", stream_, "array a");
+  // TEST_PRINT_DEBUG(b, N, float, "%f", stream_, "array b");
+  // TEST_PRINT_DEBUG(c, N, float, "%f", stream_, "array c");
 }
-
-// //
-// https://github.com/nv-legate/legate.pandas/blob/branch-22.01/src/udf/eval_udf_gpu.cc
-// /*static*/ void RunPTXTask::gpu_variant(legate::TaskContext context) {
-//   cudaStream_t stream_ = context.get_task_stream();
-//   std::string kernel_name = context.scalar(0).value<std::string>();
-//   CUcontext ctx;
-//   cuStreamGetCtx(stream_, &ctx);
-
-//   FunctionKey key = {ctx, kernel_name};
-//   assert(cufunction_ptr.has_value() && "[RunPTXTask] hashmap has no data.");
-//   FunctionMap &fmap = cufunction_ptr.get();
-
-//   auto it = fmap.find(key);
-
-//   if (it == fmap.end()) {
-//     // for DEBUG output
-//     std::cerr << "[RunPTXTask] Could not find key: " << key_to_string(key)
-//               << std::endl;
-//     for (const auto &[k, v] : fmap) {
-//       std::cerr << "[RunPTXTask] Map key: " << key_to_string(k) << std::endl;
-//     }
-//     assert(0 && "[RunPTXTask] key is not found in hashmap");
-//   }
-//   CUfunction func = it->second;  // second arg is function ptr.
-
-//   uint32_t padded_bytes = 16;
-//   uint32_t N = context.scalar(1).value<uint32_t>();
-
-//   void *a = (void *)context.input(0).data().read_accessor<float, 1>().ptr(
-//       Realm::Point<1>(0));
-//   void *b = (void *)context.input(1).data().read_accessor<float, 1>().ptr(
-//       Realm::Point<1>(0));
-//   void *c = (void *)context.output(0).data().write_accessor<float, 1>().ptr(
-//       Realm::Point<1>(0));
-
-//   uint32_t THREADS_PER_BLOCK = 256;
-
-//   const uint32_t gridDimX = (N + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK;
-//   const uint32_t gridDimY = 1;
-//   const uint32_t gridDimZ = 1;
-
-//   const uint32_t blockDimX = THREADS_PER_BLOCK;
-//   const uint32_t blockDimY = 1;
-//   const uint32_t blockDimZ = 1;
-
-//   struct CuDeviceArray {
-//     void *ptr;         // device pointer to data
-//     int64_t maxsize;   // total allocated size in bytes
-//     int64_t length;    // length of the 1D array (number of elements)
-//     int64_t reserved;  // reserved or padding field, set to 0
-//   };
-
-//   size_t buffer_size =
-//       padded_bytes + (3) * sizeof(CuDeviceArray) + context.scalar(1).size();
-
-//   std::vector<char> arg_buffer(buffer_size);
-//   char *raw_arg_buffer = arg_buffer.data();
-
-//   auto p = raw_arg_buffer;
-
-//   p += padded_bytes;
-
-//   CuDeviceArray a_desc = {a, N * sizeof(float), N, 0};
-//   CuDeviceArray b_desc = {b, N * sizeof(float), N, 0};
-//   CuDeviceArray c_desc = {c, N * sizeof(float), N, 0};
-
-//   memcpy(p, &a_desc, sizeof(CuDeviceArray));
-//   p += sizeof(CuDeviceArray);
-//   memcpy(p, &b_desc, sizeof(CuDeviceArray));
-//   p += sizeof(CuDeviceArray);
-//   memcpy(p, &c_desc, sizeof(CuDeviceArray));
-//   p += sizeof(CuDeviceArray);
-
-//   memcpy(p, &N, sizeof(uint32_t));
-
-//   void *config[] = {
-//       CU_LAUNCH_PARAM_BUFFER_POINTER,
-//       static_cast<void *>(raw_arg_buffer),
-//       CU_LAUNCH_PARAM_BUFFER_SIZE,
-//       &buffer_size,
-//       CU_LAUNCH_PARAM_END,
-//   };
-
-//   TEST_PRINT_DEBUG(a, N, float, "%f", stream_, "array a");
-//   TEST_PRINT_DEBUG(b, N, float, "%f", stream_, "array b");
-//   TEST_PRINT_DEBUG(c, N, float, "%f", stream_, "array c");
-
-//   fprintf(stderr, "N is  %u\n", N);
-//   fprintf(stderr, "running function :%p\n", func);
-
-//   CUstream custream_ = reinterpret_cast<CUstream>(stream_);
-//   DRIVER_ERROR_CHECK(cuLaunchKernel(func, gridDimX, gridDimY, gridDimZ,
-//                                     blockDimX, blockDimY, blockDimZ, 0,
-//                                     custream_, NULL, config));
-
-//   DRIVER_ERROR_CHECK(cuStreamSynchronize(stream_));
-//   TEST_PRINT_DEBUG(c, N, float, "%f", stream_, "after array c");
-// }
 
 // https://github.com/nv-legate/legate.pandas/blob/branch-22.01/src/udf/load_ptx.cc
 /*static*/ void LoadPTXTask::gpu_variant(legate::TaskContext context) {
@@ -298,8 +218,9 @@ static legate::ProcLocalStorage<FunctionMap> cufunction_ptr{};
   if (!(it == fmap.end())) {
     return;
   }  // we have this exact kernel already compiled.
-
+#ifdef CUDA_DEBUG
   std::cerr << ptx << std::endl;
+#endif
 
   const unsigned num_options = 4;
   const size_t buffer_size = 16384;
@@ -355,7 +276,9 @@ static legate::ProcLocalStorage<FunctionMap> cufunction_ptr{};
 
   fmap[key] = hfunc;
 
+#ifdef CUDA_DEBUG
   fprintf(stderr, "placed function :%p\n", hfunc);
+#endif
 }
 }  // namespace ufi
 
@@ -385,33 +308,7 @@ legate::Library get_lib() {
   return runtime->get_library();
 }
 
-// cupynumeric::NDArray new_task(std::string kernel_name,
-//                               cupynumeric::NDArray rhs1,
-//                               cupynumeric::NDArray rhs2,
-//                               cupynumeric::NDArray output, uint32_t N) {
-//   auto runtime = legate::Runtime::get_runtime();
-//   auto library = get_lib();
-//   auto task =
-//       runtime->create_task(library, legate::LocalTaskID{ufi::RUN_PTX_TASK});
-
-//   auto &out_shape = output.shape();
-//   auto rhs1_temp = rhs1.get_store();
-//   auto rhs2_temp = rhs2.get_store();
-
-//   auto p_lhs = task.add_output(output.get_store());
-//   auto p_rhs1 = task.add_input(broadcast(out_shape, rhs1_temp));
-//   auto p_rhs2 = task.add_input(broadcast(out_shape, rhs2_temp));
-
-//   task.add_scalar_arg(legate::Scalar(kernel_name));
-//   task.add_scalar_arg(legate::Scalar(N));
-//   task.add_constraint(legate::align(p_lhs, p_rhs1));
-//   task.add_constraint(legate::align(p_rhs1, p_rhs2));
-
-//   runtime->submit(std::move(task));
-//   return output;
-// }
-
-void new_task(std::string kernel_name,
+void new_task(std::string kernel_name, uint32_t blocks, uint32_t threads,
               std::vector<std::shared_ptr<cupynumeric::NDArray>> &inputs,
               std::vector<std::shared_ptr<cupynumeric::NDArray>> &outputs,
               std::vector<legate::Scalar> &scalars) {
@@ -441,9 +338,13 @@ void new_task(std::string kernel_name,
   }
 
   // Add kernel name and scalar args
-  task.add_scalar_arg(legate::Scalar(kernel_name));
-  for (const auto &scalar : scalars) task.add_scalar_arg(scalar);
+  task.add_scalar_arg(legate::Scalar(kernel_name));  // 0
+  task.add_scalar_arg(legate::Scalar(blocks));       // 1
+  task.add_scalar_arg(legate::Scalar(threads));      // 2
 
+  for (const auto &scalar : scalars) task.add_scalar_arg(scalar);  // 3+
+
+  /* TODO actually support the constraint system */
   // Add alignment constraints
   for (auto &out : output_vars) {
     for (auto &in : input_vars) {

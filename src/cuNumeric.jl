@@ -48,7 +48,7 @@ function preload_libs()
         joinpath(TBLIS_ROOT, "lib", "libtblis.so.0"),
     ]
     for lib in libs
-        @info "Preloading $lib"
+        # @info "Preloading $lib"
         Libdl.dlopen(lib, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
     end
 end

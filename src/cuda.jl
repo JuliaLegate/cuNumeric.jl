@@ -46,6 +46,35 @@ struct CUDATask
     argtypes::NTuple{N,Type} where {N}
 end
 
+function launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
+    outputs::Tuple{Vararg{cuNumeric.NDArray}}, scalars::Tuple{Vararg{Any}}; blocks, threads)
+    input_vec = cuNumeric.VectorNDArray()
+    for arr in inputs
+        cuNumeric.push_back(input_vec, arr)
+    end
+    output_vec = cuNumeric.VectorNDArray()
+    for arr in outputs
+        cuNumeric.push_back(output_vec, arr)
+    end
+    scalar_vec = Legate.VectorScalar()
+    for s in scalars
+        Legate.push_back(scalar_vec, Legate.Scalar(s))
+    end
+
+    cuNumeric.new_task(
+        kernel.func, UInt32(blocks), UInt32(threads), input_vec, output_vec, scalar_vec
+    )
+end
+
+function launch(kernel::CUDATask, inputs, outputs, scalars; blocks, threads)
+    launch(kernel,
+        isa(inputs, Tuple) ? inputs : (inputs,),
+        isa(outputs, Tuple) ? outputs : (outputs,),
+        isa(scalars, Tuple) ? scalars : (scalars,);
+        blocks, threads,
+    )
+end
+
 macro cuda_task(call_expr)
     fname = call_expr.args[1]
     fargs = call_expr.args[2:end]
@@ -54,7 +83,6 @@ macro cuda_task(call_expr)
         local _buf = IOBuffer()
         local _dummy = $cuNumeric.__dummy_args_for_ptx($(fargs...))
         # Create the PTX in runtime with actual values
-        println(_dummy)
         CUDA.@device_code_ptx io=_buf CUDA.@cuda launch=false $fname((_dummy...))
 
         local _ptx = String(take!(_buf))
@@ -66,30 +94,39 @@ macro cuda_task(call_expr)
     end)
 end
 
-macro launch(ex...)
-    @assert length(ex) == 4 "Usage: @launch task=taskname blocks=blocks threads=threads kernel(args...)"
+macro launch(args...)
+    allowed_keys = Set([:task, :blocks, :threads, :inputs, :outputs, :scalars])
+    kwargs = Dict{Symbol,Any}()
 
-    task = ex[1].args[2]
-    blocks = ex[2].args[2]
-    threads = ex[3].args[2]
-    call = ex[end]
+    for ex in args
+        if !(ex isa Expr && ex.head == :(=))
+            error("All arguments must be keyword assignments, e.g. task=..., threads=...")
+        end
+        key = ex.args[1]
+        val = ex.args[2]
 
-    funcname = call.args[1]    # kernel_add
-    kernel_args = call.args[2:end]
+        if !(key in allowed_keys)
+            error("@launch macro received unexpected keyword: $(key)")
+        end
+
+        kwargs[key] = val
+    end
+
+    if !haskey(kwargs, :task)
+        error("@launch macro requires 'task=...' to be provided.")
+    end
+    task = kwargs[:task]
+    blocks = get(kwargs, :blocks, :(1))
+    threads = get(kwargs, :threads, :(256))
+    inputs = get(kwargs, :inputs, :(()))
+    outputs = get(kwargs, :outputs, :(()))
+    scalars = get(kwargs, :scalars, :(()))
 
     esc(
         quote
-            local _task = $task
-
-            CUDA.cudacall(
-                _task.func,
-                cuNumeric.__tuple_set(CUDA.KernelState, _task.argtypes...),
-                _kernel_state,
-                $(kernel_args...);
-                threads=threads,
-                blocks=blocks,
+            cuNumeric.launch(
+                $task, $inputs, $outputs, $scalars; blocks=($blocks), threads=($threads)
             )
-            CUDA.synchronize()
         end,
     )
 end
