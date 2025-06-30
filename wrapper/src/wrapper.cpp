@@ -30,14 +30,11 @@
 #include "legate.h"
 #include "legion.h"
 
-<<<<<<< HEAD
 // cpp wrapper headers
-=======
->>>>>>> main
 #include "types.h"
 #include "ufi.h"
 
-    struct WrapCppOptional {
+struct WrapCppOptional {
   template <typename TypeWrapperT>
   void operator()(TypeWrapperT&& wrapped) {
     typedef typename TypeWrapperT::type WrappedT;
@@ -63,10 +60,6 @@ cupynumeric::NDArray get_slice(cupynumeric::NDArray arr,
   assert(0 && "you should not enter here\n");
 }
 
-<<<<<<< HEAD
-=======
-
->>>>>>> main
 JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   wrap_unary_ops(mod);
   wrap_binary_ops(mod);
@@ -89,11 +82,7 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
                                      std::integral_constant<int_t, 2>,
                                      std::integral_constant<int_t, 3>>;
 
-<<<<<<< HEAD
   mod.method("initialize_cunumeric", &cupynumeric::initialize);
-=======
-  mod.method("initialize_cunumeric", &cupynumeric::initialize); 
->>>>>>> main
 
   auto ndarry_type = mod.add_type<cupynumeric::NDArray>("NDArray")
                          .constructor<const cupynumeric::NDArray&>();
@@ -152,7 +141,6 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   mod.method("_add", &cupynumeric::add);
   mod.method("_multiply", &cupynumeric::multiply);
   mod.method("_random_ndarray", &cupynumeric::random);
-<<<<<<< HEAD
 
   mod.add_type<std::vector<std::shared_ptr<cupynumeric::NDArray>>>(
          "VectorNDArray")
@@ -163,6 +151,4 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
               });
 
   wrap_cuda_methods(mod);
-=======
->>>>>>> main
 }
