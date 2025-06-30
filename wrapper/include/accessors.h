@@ -16,7 +16,7 @@
  * Author(s): David Krasowska <krasow@u.northwestern.edu>
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
  */
- 
+
 #pragma once
 
 #include <iostream>
@@ -24,8 +24,8 @@
 #include <vector>
 
 #include "cupynumeric.h"
-#include "legion.h"
 #include "jlcxx/jlcxx.hpp"
+#include "legion.h"
 
 using coord_t = long long;
 
@@ -36,7 +36,6 @@ using coord_t = long long;
 // with a given set of template parameters. Then you need a class to wrap the
 // template instantiation. This should overload the call, operator(), which is
 // passed as a functor to apply_combiation.....what a mess
-
 
 template <typename T, int n_dims>
 class NDArrayAccessor {

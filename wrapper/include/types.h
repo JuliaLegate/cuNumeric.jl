@@ -24,8 +24,8 @@
 // Unary op codes
 void wrap_unary_ops(jlcxx::Module&);
 
-//Unary reduction op codes
+// Unary reduction op codes
 void wrap_unary_reds(jlcxx::Module&);
 
-//Binary op codes
+// Binary op codes
 void wrap_binary_ops(jlcxx::Module&);

@@ -23,26 +23,26 @@
 #include "legate.h"
 
 namespace ufi {
-    enum TaskIDs {
-    LOAD_PTX_TASK = 143432,
-    RUN_PTX_TASK = 143433,
-    };
+enum TaskIDs {
+  LOAD_PTX_TASK = 143432,
+  RUN_PTX_TASK = 143433,
+};
 
-    class LoadPTXTask : public legate::LegateTask<LoadPTXTask> {
-    public:
-    static inline const auto TASK_CONFIG =
-        legate::TaskConfig{legate::LocalTaskID{ufi::LOAD_PTX_TASK}};
+class LoadPTXTask : public legate::LegateTask<LoadPTXTask> {
+ public:
+  static inline const auto TASK_CONFIG =
+      legate::TaskConfig{legate::LocalTaskID{ufi::LOAD_PTX_TASK}};
 
-    static void gpu_variant(legate::TaskContext context);
-    };
+  static void gpu_variant(legate::TaskContext context);
+};
 
-    class RunPTXTask : public legate::LegateTask<RunPTXTask> {
-    public:
-    static inline const auto TASK_CONFIG =
-        legate::TaskConfig{legate::LocalTaskID{ufi::RUN_PTX_TASK}};
+class RunPTXTask : public legate::LegateTask<RunPTXTask> {
+ public:
+  static inline const auto TASK_CONFIG =
+      legate::TaskConfig{legate::LocalTaskID{ufi::RUN_PTX_TASK}};
 
-    static void gpu_variant(legate::TaskContext context);
-    };
+  static void gpu_variant(legate::TaskContext context);
+};
 
-}
+}  // namespace ufi
 void wrap_cuda_methods(jlcxx::Module& mod);

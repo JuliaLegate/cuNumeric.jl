@@ -1,5 +1,6 @@
 #include <cuda.h>
 #include <legate.h>
+
 #include <iostream>
 #include <vector>
 
@@ -38,14 +39,17 @@ void init_cuda_module() {
 }
 
 void my_gpu_task_launcher(const Legion::Task* task,
-                          const std::vector<Legion::PhysicalRegion> &regions,
+                          const std::vector<Legion::PhysicalRegion>& regions,
                           Legion::Context ctx, Legion::Runtime* runtime) {
   init_cuda_module();
 
   // Extract device pointers from regions (assuming 3 input/output arrays)
-  CUdeviceptr a_ptr = reinterpret_cast<CUdeviceptr>(regions[0].get_field_accessor(FID_VAL, LEGION_READ_ONLY).ptr(0));
-  CUdeviceptr b_ptr = reinterpret_cast<CUdeviceptr>(regions[1].get_field_accessor(FID_VAL, LEGION_READ_ONLY).ptr(0));
-  CUdeviceptr c_ptr = reinterpret_cast<CUdeviceptr>(regions[2].get_field_accessor(FID_VAL, LEGION_WRITE_ONLY).ptr(0));
+  CUdeviceptr a_ptr = reinterpret_cast<CUdeviceptr>(
+      regions[0].get_field_accessor(FID_VAL, LEGION_READ_ONLY).ptr(0));
+  CUdeviceptr b_ptr = reinterpret_cast<CUdeviceptr>(
+      regions[1].get_field_accessor(FID_VAL, LEGION_READ_ONLY).ptr(0));
+  CUdeviceptr c_ptr = reinterpret_cast<CUdeviceptr>(
+      regions[2].get_field_accessor(FID_VAL, LEGION_WRITE_ONLY).ptr(0));
 
   // TODO: figure out data size, e.g. from task->index_domain or other metadata
   int N = 1024;  // You should replace this with real data size
@@ -54,13 +58,10 @@ void my_gpu_task_launcher(const Legion::Task* task,
   int blocks = (N + threads - 1) / threads;
 
   // Kernel args for cuLaunchKernel
-  void* args[] = { &a_ptr, &b_ptr, &c_ptr };
+  void* args[] = {&a_ptr, &b_ptr, &c_ptr};
 
-  CUresult res = cuLaunchKernel(cuFunction,
-                               blocks, 1, 1,
-                               threads, 1, 1,
-                               0, nullptr,
-                               args, nullptr);
+  CUresult res = cuLaunchKernel(cuFunction, blocks, 1, 1, threads, 1, 1, 0,
+                                nullptr, args, nullptr);
   if (res != CUDA_SUCCESS) {
     std::cerr << "CUDA kernel launch failed!" << std::endl;
     exit(1);

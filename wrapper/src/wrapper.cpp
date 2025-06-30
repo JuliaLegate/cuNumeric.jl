@@ -25,7 +25,6 @@
 #include "accessors.h"
 #include "cupynumeric.h"
 #include "cupynumeric/operators.h"
-
 #include "jlcxx/jlcxx.hpp"
 #include "jlcxx/stl.hpp"
 #include "legate.h"
@@ -61,7 +60,6 @@ cupynumeric::NDArray get_slice(cupynumeric::NDArray arr,
   assert(0 && "you should not enter here\n");
 }
 
-
 JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   wrap_unary_ops(mod);
   wrap_binary_ops(mod);
@@ -84,9 +82,7 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
                                      std::integral_constant<int_t, 2>,
                                      std::integral_constant<int_t, 3>>;
 
-  mod.method(
-      "initialize_cunumeric",
-      &cupynumeric::initialize); 
+  mod.method("initialize_cunumeric", &cupynumeric::initialize);
 
   auto ndarry_type = mod.add_type<cupynumeric::NDArray>("NDArray")
                          .constructor<const cupynumeric::NDArray&>();
