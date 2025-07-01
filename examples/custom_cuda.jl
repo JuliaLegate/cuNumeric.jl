@@ -19,13 +19,6 @@ a = cuNumeric.full(N, 1.0f0)
 b = cuNumeric.full(N, 2.0f0)
 c = cuNumeric.ones(Float32, N)
 
-a_cpu = a[:]
-println("a: ", a_cpu[1])
-b_cpu = b[:]
-println("b: ", b_cpu[1])
-c_cpu = c[:]
-println("c: ", c_cpu[1])
-
 task = cuNumeric.@cuda_task kernel_add(a, b, c, UInt32(1))
 
 cuNumeric.@launch task=task threads=threads blocks=blocks inputs=(a, b) outputs=c scalars=UInt32(N)
