@@ -1,11 +1,12 @@
 name = "cuNumeric"
 uuid = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
-version = "25.05.00"
+version = "25.5.0"
 
 [deps]
 CUTENSOR_jll = "35b6c64b-1ee1-5834-92a3-3f624899209a"
 CxxWrap = "1f15a43c-97ca-5a2a-ae31-89f07a497df4"
 HDF5_jll = "0234f1f7-429e-5d53-9886-15a909be8d59"
+JuliaFormatter = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
 Legate = "1238f2cf-6593-4d60-9aca-2f5364e49909"
 Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
