@@ -59,7 +59,7 @@ lib = "libcupynumericwrapper.so"
 libpath = joinpath(@__DIR__, "../", "wrapper", "build", lib)
 @wrapmodule(() -> libpath)
 
-include("capi.jl")
+include("capi.jl") # must go first
 include("util.jl")
 include("ndarray.jl")
 include("unary.jl")

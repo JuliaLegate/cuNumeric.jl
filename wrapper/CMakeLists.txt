@@ -90,6 +90,7 @@ target_link_libraries(cwrapper
 
 target_include_directories(cwrapper PRIVATE 
                include
+               ${CUPYNUMERIC_PATH}/include
                ${LEGATE_PATH}/include/legate
                ${LEGATE_PATH}/include/legate/deps
                ${CUDAToolkit_INCLUDE_DIRS}

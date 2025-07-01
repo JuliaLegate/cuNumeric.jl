@@ -64,8 +64,8 @@ function daxpy_advanced()
     @test ones_array == ones_array_cpu
 
     # create two random arrays
-    cuNumeric.random(x, seed)
-    cuNumeric.random(y, seed)
+    cuNumeric.nda_random(x, seed)
+    cuNumeric.nda_random(y, seed)
 
     # create a reference of NDArray
     x_ref = x

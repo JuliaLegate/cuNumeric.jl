@@ -57,9 +57,8 @@ for (base_func, op_code) in unary_op_map_no_args
     @eval begin
         function $(Symbol(base_func))(input::NDArray)
             out = cuNumeric.zeros(eltype(input), Base.size(input)) # not sure this is ok for performance
-            empty = Legate.VectorScalar() # not sure this is ok for performanc
-            unary_op(out, $(op_code), input, empty)
-            return out
+            # empty = Legate.VectorScalar() # not sure this is ok for performanc
+            return nda_unary_op(out, $(op_code), input)
         end
     end
 end
@@ -117,8 +116,7 @@ for (base_func, op_code) in unary_reduction_map
         function $(Symbol(base_func))(input::NDArray)
             #* WILL BREAK NOT ALL REDUCTIONS HAVE SAME TYPE AS INPUT
             out = cuNumeric.zeros(eltype(input), 1) # not sure this is ok for performance
-            unary_reduction(out, $(op_code), input)
-            return out
+            return nda_unary_reduction(out, $(op_code), input)
         end
     end
 end
