@@ -347,8 +347,8 @@ end
 function Base.Broadcast.broadcasted(
     ::typeof(-), val::Union{Float32,Float64,Int64,Int32}, rhs::NDArray
 )
-    # throw(ErrorException("element wise [val - NDArray] is not supported yet"))
-    lhs = full(Base.size(rhs), val)
+    arr_type = eltype(rhs) # match the arr type
+    lhs = full(Base.size(rhs), arr_type(val))
     return -(lhs, rhs)
 end
 
@@ -361,7 +361,6 @@ function Base.:*(val::Union{Float32,Float64,Int64,Int32}, arr::NDArray)
 end
 
 function Base.:*(arr::NDArray, val::Union{Float32,Float64,Int64,Int32})
-    # return throw(ErrorException("[NDArray * val] is not supported. Please use [NDArray .* val]"))
     return *(val, arr)
 end
 

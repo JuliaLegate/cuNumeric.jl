@@ -169,13 +169,14 @@ function nda_add(rhs1::NDArray, rhs2::NDArray, out::NDArray)
 end
 
 function nda_multiply_scalar(rhs1::NDArray, value::T) where {T}
-    type = Legate.to_legate_type(T)
-    val = Ref(value)
+    # type = Legate.to_legate_type(T)
+    # val = Ref(value)
 
-    # scalar to have the same type as array?
-    # arr_type = eltype(rhs1)
-    # val = Ref(arr_type(value)) 
-    # type = Legate.to_legate_type(arr_type)
+    # scalar to have the same type as array? 
+    # this adds overhead, but allows for different types 
+    arr_type = eltype(rhs1)
+    val = Ref(arr_type(value))
+    type = Legate.to_legate_type(arr_type)
 
     ptr = ccall((:nda_multiply_scalar, libnda),
         NDArray_t, (NDArray_t, Legate.LegateTypeAllocated, Ptr{Cvoid}),
@@ -184,13 +185,14 @@ function nda_multiply_scalar(rhs1::NDArray, value::T) where {T}
 end
 
 function nda_add_scalar(rhs1::NDArray, value::T) where {T}
-    type = Legate.to_legate_type(T)
-    val = Ref(value)
+    # type = Legate.to_legate_type(T)
+    # val = Ref(value)
 
-    # scalar to have the same type as array?
-    # arr_type = eltype(rhs1)
-    # val = Ref(arr_type(value))
-    # type = Legate.to_legate_type(arr_type)
+    # scalar to have the same type as array? 
+    # this adds overhead, but allows for different types 
+    arr_type = eltype(rhs1)
+    val = Ref(arr_type(value))
+    type = Legate.to_legate_type(arr_type)
 
     ptr = ccall((:nda_add_scalar, libnda),
         NDArray_t, (NDArray_t, Legate.LegateTypeAllocated, Ptr{Cvoid}),
