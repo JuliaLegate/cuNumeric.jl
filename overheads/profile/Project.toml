@@ -1,4 +1,0 @@
-[deps]
-CppGcTest = "bcc6a9e7-b4a1-4f8c-9b36-6af732e5eb88"
-CxxWrap = "1f15a43c-97ca-5a2a-ae31-89f07a497df4"
-libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
