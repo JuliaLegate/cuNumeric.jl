@@ -67,7 +67,7 @@ function nda_random_array(shape::Vector{UInt64})
 end
 
 function nda_get_slice(arr::NDArray, slices::Vector{Slice})
-    ptr = ccall((:cn_get_slice, libnda),
+    ptr = ccall((:nda_get_slice, libnda),
         NDArray_t, (NDArray_t, Ptr{Slice}, Cint),
         arr.ptr, pointer(slices), length(slices))
     return NDArray(ptr)
@@ -103,7 +103,6 @@ end
 
 function nda_astype(arr::NDArray, t::Type{T}) where {T}
     type = Legate.to_legate_type(t)
-
     ptr = ccall((:nda_astype, libnda),
         NDArray_t,
         (NDArray_t, Legate.LegateTypeAllocated),

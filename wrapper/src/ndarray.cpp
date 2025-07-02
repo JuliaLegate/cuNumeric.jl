@@ -17,14 +17,6 @@ using cupynumeric::zeros;
 
 using legate::Scalar;
 
-// namespace cupynumeric {
-//   NDArray unary_op(CuPyNumericUnaryOpCode op_code, NDArray input,
-//                   const std::vector<legate::Scalar>& extra_args = {});
-//   NDArray binary_op(CuPyNumericBinaryOpCode op_code, NDArray rhs1, NDArray
-//   rhs2, std::optional<NDArray> out); NDArray
-//   unary_reduction(CuPyNumericUnaryRedCode op_code, NDArray input);
-// };
-
 struct CN_NDArray {
   NDArray obj;
 };
@@ -197,8 +189,8 @@ NDArray get_slice(NDArray arr, std::vector<legate::Slice> slices) {
   assert(0 && "you should not enter here\n");
 }
 
-CN_NDArray* cn_get_slice(CN_NDArray* arr, const CN_Slice* slices,
-                         int32_t ndim) {
+CN_NDArray* nda_get_slice(CN_NDArray* arr, const CN_Slice* slices,
+                          int32_t ndim) {
   std::vector<legate::Slice> slice_vec;
   slice_vec.reserve(ndim);
   for (int i = 0; i < ndim; ++i) {
