@@ -19,7 +19,7 @@
 
 module cuNumeric
 
-using Legate 
+using Legate
 using CxxWrap
 using Pkg
 using Libdl
@@ -31,13 +31,13 @@ using Random
 import Random: rand, rand!
 
 import Base: abs, angle, acos, acosh, asin, asinh, atan, atanh, cbrt,
-             ceil, clamp, conj, cos, cosh, cosh, deg2rad, exp, exp2, expm1,
-             floor, frexp, imag, isfinite, isinf, isnan, log, log10, 
-             log1p, log2, !, modf, -, rad2deg, sign, signbit, sin,
-             sinh, sqrt, tan, tanh, trunc, +, *, atan, &, |, ⊻, copysign,
-             /, ==, ^, div, gcd, > , >=, hypot, isapprox, lcm, ldexp, <<,
-             < , <=, !=, >>, all, any, argmax, argmin, maximum, minimum,
-             prod, sum
+    ceil, clamp, conj, cos, cosh, cosh, deg2rad, exp, exp2, expm1,
+    floor, frexp, imag, isfinite, isinf, isnan, log, log10,
+    log1p, log2, !, modf, -, rad2deg, sign, signbit, sin,
+    sinh, sqrt, tan, tanh, trunc, +, *, atan, &, |, ⊻, copysign,
+    /, ==, ^, div, gcd, >, >=, hypot, isapprox, lcm, ldexp, <<,
+    <, <=, !=, >>, all, any, argmax, argmin, maximum, minimum,
+    prod, sum
 
 function preload_libs()
     cache_build_meta = joinpath(@__DIR__, "../", "deps", "deps.jl")
@@ -49,11 +49,11 @@ function preload_libs()
         joinpath(TBLIS_ROOT, "lib", "libtblis.so.0"),
     ]
     for lib in libs
-        @info "Preloading $lib"
+        # @info "Preloading $lib"
         Libdl.dlopen(lib, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
     end
 end
-            
+
 preload_libs()
 lib = "libcupynumericwrapper.so"
 libpath = joinpath(@__DIR__, "../", "wrapper", "build", lib)
@@ -69,23 +69,22 @@ include("binary.jl")
 mutable struct ArgcArgv
     argv
     argc::Cint
-  
-    function ArgcArgv(args::Vector{String})
-      argv = Base.cconvert(CxxPtr{CxxPtr{CxxChar}}, args)
-      argc = length(args)
-      return new(argv, argc)
-    end
-  end
-  
-getargv(a::ArgcArgv) = Base.unsafe_convert(CxxPtr{CxxPtr{CxxChar}}, a.argv)
 
+    function ArgcArgv(args::Vector{String})
+        argv = Base.cconvert(CxxPtr{CxxPtr{CxxChar}}, args)
+        argc = length(args)
+        return new(argv, argc)
+    end
+end
+
+getargv(a::ArgcArgv) = Base.unsafe_convert(CxxPtr{CxxPtr{CxxChar}}, a.argv)
 
 function my_on_exit()
     @info "Cleaning Up cuNuermic"
 end
 
 function cupynumeric_setup(AA::ArgcArgv)
-   
+
     # Capture stdout from start_legate to 
     # see the hardware configuration
 
@@ -96,14 +95,14 @@ function cupynumeric_setup(AA::ArgcArgv)
     #println(ENV["LEGATE_AUTO_CONFIG"])
     #@info "LEGATE_AUTO_CONFIG: $(ENV["LEGATE_AUTO_CONFIG"])"
     #println(Base.get_bool_env("LEGATE_AUTO_CONFIG"))
-  
+
     # cuNumeric.start_legate()
     #pipe = Pipe()
     #started = Base.Event()
     #writer = Threads.@spawn redirect_stdout(pipe) do
-        #notify(started)
-        #cuNumeric.start_legate()
-        #close(Base.pipe_writer(pipe))
+    #notify(started)
+    #cuNumeric.start_legate()
+    #close(Base.pipe_writer(pipe))
     #end
 
     #wait(started)
@@ -120,7 +119,6 @@ function cupynumeric_setup(AA::ArgcArgv)
 
     return cuNumeric_config_str
 end
-
 
 global cuNumeric_config_str::String = ""
 
