@@ -8,5 +8,4 @@ b = 2.0
 
 arr2 = α*arr + b
 
-arr2[:] # disp array
-
+print(arr2[:]) # disp array
