@@ -56,65 +56,65 @@ function elementwise()
     arrA_cpu = arrA_cpu .- 13.74
     @test arrA == arrA_cpu
 
-    # result = arrA .- arrB
-    # result_cpu = arrA_cpu .- arrB_cpu
-    # @test result == result_cpu
+    result = arrA .- arrB
+    result_cpu = arrA_cpu .- arrB_cpu
+    @test result == result_cpu
 
-    # result = arrA - arrB
-    # result_cpu = arrA_cpu - arrB_cpu
-    # @test result == result_cpu
+    result = arrA - arrB
+    result_cpu = arrA_cpu - arrB_cpu
+    @test result == result_cpu
 
-    # arrA =  332.59 .+ arrA
-    # arrA_cpu = 332.59 .+ arrA_cpu
+    arrA = 332.59 .+ arrA
+    arrA_cpu = 332.59 .+ arrA_cpu
+    @test arrA == arrA_cpu
+
+    arrA = arrA .+ 332.59
+    arrA_cpu = arrA_cpu .+ 332.59
+    @test arrA == arrA_cpu
+
+    result = arrA .+ arrB
+    result_cpu = arrA_cpu .+ arrB_cpu
+    @test result == result_cpu
+
+    result = arrA + arrB
+    result_cpu = arrA_cpu + arrB_cpu
+    @test result == result_cpu
+
+    # # not supported yet
+    # arrA = 1.3 ./ arrA 
+    # arrA_cpu =  1.3 ./ arrA_cpu
     # @test arrA == arrA_cpu
 
-    # arrA = arrA .+ 332.59
-    # arrA_cpu = arrA_cpu .+ 332.59
+    # don't understand why this is failing
+    # arrA = arrA ./ 1.3
+    # arrA_cpu = arrA_cpu ./ 1.3
     # @test arrA == arrA_cpu
 
-    # result = arrA .+ arrB
-    # result_cpu = arrA_cpu .+ arrB_cpu
-    # @test result == result_cpu
+    result = arrA ./ arrB
+    result_cpu = arrA_cpu ./ arrB_cpu
+    @test result == result_cpu
 
-    # result = arrA + arrB
-    # result_cpu = arrA_cpu + arrB_cpu
-    # @test result == result_cpu
+    arrA = 32.32 * arrA
+    arrA_cpu = 32.32 * arrA_cpu
+    @test arrA == arrA_cpu
 
-    # # # not supported yet
-    # # arrA = 1.3 ./ arrA 
-    # # arrA_cpu =  1.3 ./ arrA_cpu
-    # # @test arrA == arrA_cpu
+    arrA = arrA .* 32.32
+    arrA_cpu = arrA_cpu .* 32.32
+    @test arrA == arrA_cpu
 
-    # # don't understand why this is failing
-    # # arrA = arrA ./ 1.3
-    # # arrA_cpu = arrA_cpu ./ 1.3
-    # # @test arrA == arrA_cpu
+    # currently our A * B impl is element wise
+    result = arrA * arrB
+    result_cpu = arrA_cpu .* arrB_cpu
+    @test result == result_cpu
 
-    # result = arrA ./ arrB
-    # result_cpu = arrA_cpu ./ arrB_cpu
-    # @test result == result_cpu
+    result = arrA .* arrB
+    result_cpu = arrA_cpu .* arrB_cpu
+    @test result == result_cpu
 
-    # arrA =  32.32 * arrA
-    # arrA_cpu = 32.32 * arrA_cpu
-    # @test arrA == arrA_cpu
-
-    # arrA = arrA .* 32.32
-    # arrA_cpu = arrA_cpu .* 32.32
-    # @test arrA == arrA_cpu
-
-    # # currently our A * B impl is element wise
-    # result = arrA * arrB
-    # result_cpu = arrA_cpu .* arrB_cpu
-    # @test result == result_cpu
-
-    # result = arrA .* arrB
-    # result_cpu = arrA_cpu .* arrB_cpu
-    # @test result == result_cpu
-
-    # operator(arrA, arrB)
-    # operator(arrA_cpu, arrB_cpu)
-    # @test arrA == arrA_cpu
-    # @test arrB == arrB_cpu
+    operator(arrA, arrB)
+    operator(arrA_cpu, arrB_cpu)
+    @test arrA == arrA_cpu
+    @test arrB == arrB_cpu
 end
 
 function operator(u, v)

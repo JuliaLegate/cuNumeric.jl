@@ -95,77 +95,77 @@ function slice_array(slices::Vararg{Tuple{Union{Int,Nothing},Union{Int,Nothing}}
     v = Vector{cuNumeric.Slice}(undef, N)
     for i in 1:N
         start, stop = slices[i]
-        v[i] = make_slice(start, stop)
+        v[i] = slice(start, stop)
     end
     return v
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::Int64)
-    s = nda_get_slice(lhs, slice_array(slice(0, Base.size(lhs, 1)), slice(j-1, j)))
+    s = nda_get_slice(lhs, slice_array((0, Base.size(lhs, 1)), (j-1, j)))
     nda_assign(s, rhs);
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Int64, j::Colon)
-    s = nda_get_slice(lhs, slice_array(slice(i-1, i)))
+    s = nda_get_slice(lhs, slice_array((i-1, i)))
     nda_assign(s, rhs);
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::Colon)
-    s = nda_get_slice(lhs, slice_array(slice(first(i) - 1, last(i)), slice(0, Base.size(lhs, 2))))
+    s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (0, Base.size(lhs, 2))))
     nda_assign(s, rhs)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::UnitRange)
-    s = nda_get_slice(lhs, slice_array(slice(0, Base.size(lhs, 1)), slice(first(j) - 1, last(j))))
+    s = nda_get_slice(lhs, slice_array((0, Base.size(lhs, 1)), (first(j) - 1, last(j))))
     nda_assign(s, rhs)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::Int64)
-    s = nda_get_slice(lhs, slice_array(slice(first(i) - 1, last(i)), slice(j-1, j)))
+    s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (j-1, j)))
     nda_assign(s, rhs)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Int64, j::UnitRange)
-    s = nda_get_slice(lhs, slice_array(slice(i-1, i), slice(first(j) - 1, last(j))))
+    s = nda_get_slice(lhs, slice_array((i-1, i), (first(j) - 1, last(j))))
     nda_assign(s, rhs)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::UnitRange)
-    s = nda_get_slice(lhs, slice_array(slice(first(i) - 1, last(i)), slice(first(j) - 1, last(j))))
+    s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (first(j) - 1, last(j))))
     nda_assign(s, rhs)
 end
 
 function Base.getindex(arr::NDArray, i::Colon, j::Int64)
-    return nda_get_slice(arr, slice_array(slice(0, Base.size(arr, 1)), slice(j-1, j)))
+    return nda_get_slice(arr, slice_array((0, Base.size(arr, 1)), (j-1, j)))
 end
 
 function Base.getindex(arr::NDArray, i::Int64, j::Colon)
-    return nda_get_slice(arr, slice_array(slice(i-1, i)))
+    return nda_get_slice(arr, slice_array((i-1, i)))
 end
 
 function Base.getindex(arr::NDArray, i::UnitRange, j::Colon)
     return nda_get_slice(
-        arr, slice_array(slice(first(i) - 1, last(i)), slice(0, Base.size(arr, 2)))
+        arr, slice_array((first(i) - 1, last(i)), (0, Base.size(arr, 2)))
     )
 end
 
 function Base.getindex(arr::NDArray, i::Colon, j::UnitRange)
     return nda_get_slice(
-        arr, slice_array(slice(0, Base.size(arr, 1)), slice(first(j) - 1, last(j)))
+        arr, slice_array((0, Base.size(arr, 1)), (first(j) - 1, last(j)))
     )
 end
 
 function Base.getindex(arr::NDArray, i::UnitRange, j::Int64)
-    return nda_get_slice(arr, slice_array(slice(first(i) - 1, last(i)), slice(j-1, j)))
+    return nda_get_slice(arr, slice_array((first(i) - 1, last(i)), (j-1, j)))
 end
 
 function Base.getindex(arr::NDArray, i::Int64, j::UnitRange)
-    return nda_get_slice(arr, slice_array(slice(i-1, i), slice(first(j) - 1, last(j))))
+    return nda_get_slice(arr, slice_array((i-1, i), (first(j) - 1, last(j))))
 end
 
 function Base.getindex(arr::NDArray, i::UnitRange, j::UnitRange)
     return nda_get_slice(
-        arr, slice_array(slice(first(i) - 1, last(i)), slice(first(j) - 1, last(j)))
+        arr, slice_array((first(i) - 1, last(i)), (first(j) - 1, last(j)))
     )
 end
 
