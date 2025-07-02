@@ -57,7 +57,7 @@ fi
 TAG="v$VERSION"
 REPO_URL="https://github.com/nv-legate/cupynumeric"
 TAG_URL="$REPO_URL/releases/tag/$TAG"
-CLONE_DIR="cupynumeric-$VERSION"
+CLONE_DIR="$CUNUMERIC_ROOT_DIR/deps/cupynumeric-$VERSION"
 
 # echo "Checking if tag $TAG exists on GitHub..."
 
@@ -72,8 +72,7 @@ if [ -d "$CLONE_DIR" ]; then
     echo "Directory '$CLONE_DIR' already exists. Skipping clone."
 else
     # git clone --branch "$TAG" --depth 1 "$REPO_URL.git" "$CLONE_DIR"
-    # forcing main to happen as that is 25.05
-    git clone --branch "main" --depth 1 "$REPO_URL.git" "$CLONE_DIR"
+    git clone --branch "branch-25.05" --depth 1 "$REPO_URL.git" "$CLONE_DIR"
     echo "Cloned cuNumeric $VERSION into $CLONE_DIR"
 fi
 
@@ -83,7 +82,7 @@ export CXXFLAGS="-I$LAPACKE_INSTALL_DIR/include"
 export LDFLAGS="-L$LAPACKE_INSTALL_DIR/lib"
 
 BUILD_DIR=$CUNUMERIC_ROOT_DIR/deps/cupynumeric-build
-cmake -S $CUNUMERIC_ROOT_DIR/deps/$CLONE_DIR -B $BUILD_DIR \
+cmake -S $CLONE_DIR -B $BUILD_DIR \
     -D legate_ROOT=$LEGATE_ROOT_DIR \
     -D NCCL_ROOT=$NCCL_ROOT_DIR \
     -D cutensor_ROOT=$CUTENSOR_ROOT_DIR \

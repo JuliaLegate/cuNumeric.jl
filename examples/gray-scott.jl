@@ -69,16 +69,16 @@ end
 function gray_scott()
     # anim = Animation()
 
-    N = 4000
+    N = 1000
     dims = (N, N)
 
     FT = Float64
     args = Params()
 
-    n_steps = 1000 # number of steps to take
+    n_steps = 100 # number of steps to take
     frame_interval = 200 # steps to take between making plots
 
-    garbage_interval = 5
+    garbage_interval = 20
 
     u = cuNumeric.ones(dims)
     v = cuNumeric.zeros(dims)
