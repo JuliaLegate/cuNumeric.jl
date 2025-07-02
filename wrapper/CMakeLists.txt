@@ -75,3 +75,33 @@ target_include_directories(cupynumericwrapper PRIVATE
 
 install(TARGETS cupynumericwrapper 
           DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/cmake-install")
+
+
+# C- API
+add_library(cwrapper SHARED
+    src/ndarray.cpp
+)
+
+
+set_target_properties(cwrapper PROPERTIES
+BUILD_WITH_INSTALL_RPATH TRUE
+INSTALL_RPATH "${HDF5_PATH}/lib;${LEGATE_PATH}/lib;${CUPYNUMERIC_PATH}/lib"
+)
+
+# both can be private I think
+target_link_libraries(cwrapper 
+           PRIVATE cupynumeric::cupynumeric
+           PRIVATE legate::legate
+         )
+
+
+target_include_directories(cwrapper PRIVATE 
+               include
+               ${CUPYNUMERIC_PATH}/include
+               ${LEGATE_PATH}/include/legate
+               ${LEGATE_PATH}/include/legate/deps
+               ${CUDAToolkit_INCLUDE_DIRS}
+           )
+
+install(TARGETS cwrapper 
+DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/cmake-install")

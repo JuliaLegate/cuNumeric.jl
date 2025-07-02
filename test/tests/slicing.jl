@@ -77,35 +77,33 @@ function step(u, v, u_new, v_new, args::Params)
         (
             -u[2:(end - 1), 2:(end - 1)] .*
             (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
-        ) + args.f*(1 .- u[2:(end - 1), 2:(end - 1)])
+        ) +
+        args.f*(1 .- u[2:(end - 1), 2:(end - 1)])
     )
     F_v = (
         (
             u[2:(end - 1), 2:(end - 1)] .*
             (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
-        ) - (args.f+args.k)*v[2:(end - 1), 2:(end - 1)]
+        ) -
+        (args.f+args.k)*v[2:(end - 1), 2:(end - 1)]
     )
     # 2-D Laplacian of f using array slicing, excluding boundaries
     # For an N x N array f, f_lap is the Nend x Nend array in the "middle"
     u_lap = (
-        (
-            u[3:end, 2:(end - 1)] - 2*u[2:(end - 1), 2:(end - 1)] +
-            u[1:(end - 2), 2:(end - 1)]
-        ) ./ args.dx^2 +
-        (
-            u[2:(end - 1), 3:end] - 2*u[2:(end - 1), 2:(end - 1)] +
-            u[2:(end - 1), 1:(end - 2)]
-        ) ./ args.dx^2
+        (u[3:end, 2:(end - 1)] - 2*u[2:(end - 1), 2:(end - 1)]
+         +
+         u[1:(end - 2), 2:(end - 1)]) ./ args.dx^2
+        +
+        (u[2:(end - 1), 3:end] - 2*u[2:(end - 1), 2:(end - 1)]
+         +
+         u[2:(end - 1), 1:(end - 2)]) ./ args.dx^2
     )
     v_lap = (
-        (
-            v[3:end, 2:(end - 1)] - 2*v[2:(end - 1), 2:(end - 1)] +
-            v[1:(end - 2), 2:(end - 1)]
-        ) ./ args.dx^2 +
-        (
-            v[2:(end - 1), 3:end] - 2*v[2:(end - 1), 2:(end - 1)] +
-            v[2:(end - 1), 1:(end - 2)]
-        ) ./ args.dx^2
+        (v[3:end, 2:(end - 1)] - 2*v[2:(end - 1), 2:(end - 1)] + v[1:(end - 2), 2:(end - 1)]) ./
+        args.dx^2
+        +
+        (v[2:(end - 1), 3:end] - 2*v[2:(end - 1), 2:(end - 1)] + v[2:(end - 1), 1:(end - 2)]) ./
+        args.dx^2
     )
 
     # Forward-Euler time step for all points except the boundaries

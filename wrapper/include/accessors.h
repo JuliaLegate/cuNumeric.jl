@@ -37,29 +37,32 @@ using coord_t = long long;
 // template instantiation. This should overload the call, operator(), which is
 // passed as a functor to apply_combiation.....what a mess
 
+struct CN_NDArray {
+  cupynumeric::NDArray obj;
+};
+
 template <typename T, int n_dims>
 class NDArrayAccessor {
  public:
   NDArrayAccessor() {}
   ~NDArrayAccessor() {}
   // static
-  T read(cupynumeric::NDArray arr, const std::vector<uint64_t>& dims) {
+  T read(void* arr, const std::vector<uint64_t>& dims) {
     auto p = Realm::Point<n_dims>(0);
     for (int i = 0; i < n_dims; ++i) {
       p[i] = dims[i];
     }
-    auto acc = arr.get_read_accessor<T, n_dims>();
+    auto acc = ((CN_NDArray*)arr)->obj.get_read_accessor<T, n_dims>();
     return acc.read(p);
   }
 
   // static
-  void write(cupynumeric::NDArray arr, const std::vector<uint64_t>& dims,
-             T val) {
+  void write(void* arr, const std::vector<uint64_t>& dims, T val) {
     auto p = Realm::Point<n_dims>(0);
     for (int i = 0; i < n_dims; ++i) {
       p[i] = dims[i];
     }
-    auto acc = arr.get_write_accessor<T, n_dims>();
+    auto acc = ((CN_NDArray*)arr)->obj.get_write_accessor<T, n_dims>();
     acc.write(p, val);  // DOES THIS HAVE A RETURN??
   }
 };

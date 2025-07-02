@@ -40,7 +40,8 @@ import Base: abs, angle, acos, acosh, asin, asinh, atan, atanh, cbrt,
     prod, sum
 
 function preload_libs()
-    include(joinpath(@__DIR__, "../", "deps/deps.jl"))
+    cache_build_meta = joinpath(@__DIR__, "../", "deps", "deps.jl")
+    include(cache_build_meta)
     libs = [
         joinpath(CUTENSOR_ROOT, "lib", "libcutensor.so.2"),
         joinpath(HDF5_ROOT, "lib", "libhdf5.so.310"),
@@ -58,6 +59,7 @@ lib = "libcupynumericwrapper.so"
 libpath = joinpath(@__DIR__, "../", "wrapper", "build", lib)
 @wrapmodule(() -> libpath)
 
+include("capi.jl") # must go first
 include("util.jl")
 include("ndarray.jl")
 include("unary.jl")
@@ -94,6 +96,7 @@ function cupynumeric_setup(AA::ArgcArgv)
     #println(ENV["LEGATE_AUTO_CONFIG"])
     #@info "LEGATE_AUTO_CONFIG: $(ENV["LEGATE_AUTO_CONFIG"])"
     #println(Base.get_bool_env("LEGATE_AUTO_CONFIG"))
+
     # cuNumeric.start_legate()
     #pipe = Pipe()
     #started = Base.Event()
