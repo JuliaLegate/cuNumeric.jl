@@ -4,7 +4,7 @@ export OPENBLAS_NUM_THREADS=1
 export OMP_NUM_THREADS=1
 
 FREQ=99
-for script in cxx-ndarray.jl; do
+for script in ndarray.jl; do
   base=$(basename $script .jl)
 
   echo "Profiling $script ..."
