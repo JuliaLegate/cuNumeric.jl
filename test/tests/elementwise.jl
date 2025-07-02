@@ -126,13 +126,13 @@ function operator(u, v)
     k=0.06;
 
     # calculate F_u and F_v functions
-    F_u = (-u*(v * v)) + f*(1 .- u)
+    F_u = (-u*(v * v)) + f*(1.0 .- u)
     F_v = (u*(v * v)) - (f+k)*v
 
     # 2-D Laplacian of f using array slicing, excluding boundaries
     # For an N x N array f, f_lap is the Nend x Nend array in the "middle"
-    u_lap = (u - 2*u + u) ./ dx^2 + (u - 2*u + u) ./ dx^2
-    v_lap = (v - 2*v + v) ./ dx^2 + (v - 2*v + v) ./ dx^2
+    u_lap = (u - 2.0*u + u) ./ dx^2 + (u - 2.0*u + u) ./ dx^2
+    v_lap = (v - 2.0*v + v) ./ dx^2 + (v - 2.0*v + v) ./ dx^2
 
     # Forward-Euler time step for all points except the boundaries
     u = ((c_u * u_lap) + F_u) * dt + u
