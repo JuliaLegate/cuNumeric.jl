@@ -21,116 +21,115 @@
     - [./ .- .+ .*] operators are tested
 =#
 
-function elementwise() 
-seed = 10
-N = 100
-dims = (N, N)
+function elementwise()
+    seed = 10
+    N = 100
+    dims = (N, N)
 
-arrA = cuNumeric.ones(dims)
-arrA_cpu = ones(dims)
-@test arrA == arrA_cpu
+    arrA = cuNumeric.ones(dims)
+    arrA_cpu = ones(dims)
+    @test arrA == arrA_cpu
 
-arrB = cuNumeric.ones(dims)
-arrB_cpu = ones(dims)
-@test arrB == arrB_cpu
+    arrB = cuNumeric.ones(dims)
+    arrB_cpu = ones(dims)
+    @test arrB == arrB_cpu
 
-cuNumeric.random(arrA, seed)
-cuNumeric.random(arrB, seed)
+    cuNumeric.random(arrA, seed)
+    cuNumeric.random(arrB, seed)
 
-arrA_cpu = arrA[:, :]
-arrB_cpu = arrB[:, :]
+    arrA_cpu = arrA[:, :]
+    arrB_cpu = arrB[:, :]
 
-@test arrA == arrA_cpu
-@test arrB == arrB_cpu
+    @test arrA == arrA_cpu
+    @test arrB == arrB_cpu
 
-result = cuNumeric.zeros(dims)
-result_cpu = zeros(dims)
-@test result == result_cpu
+    result = cuNumeric.zeros(dims)
+    result_cpu = zeros(dims)
+    @test result == result_cpu
 
+    # where the real testing starts
+    arrA = 13.74 .- arrA
+    arrA_cpu = 13.74 .- arrA_cpu
+    @test arrA == arrA_cpu
 
-# where the real testing starts
-arrA =  13.74 .- arrA
-arrA_cpu = 13.74 .- arrA_cpu
-@test arrA == arrA_cpu
+    arrA = arrA .- 13.74
+    arrA_cpu = arrA_cpu .- 13.74
+    @test arrA == arrA_cpu
 
-arrA = arrA .- 13.74
-arrA_cpu = arrA_cpu .- 13.74
-@test arrA == arrA_cpu
+    result = arrA .- arrB
+    result_cpu = arrA_cpu .- arrB_cpu
+    @test result == result_cpu
 
-result = arrA .- arrB
-result_cpu = arrA_cpu .- arrB_cpu
-@test result == result_cpu
+    result = arrA - arrB
+    result_cpu = arrA_cpu - arrB_cpu
+    @test result == result_cpu
 
-result = arrA - arrB
-result_cpu = arrA_cpu - arrB_cpu
-@test result == result_cpu
+    arrA = 332.59 .+ arrA
+    arrA_cpu = 332.59 .+ arrA_cpu
+    @test arrA == arrA_cpu
 
+    arrA = arrA .+ 332.59
+    arrA_cpu = arrA_cpu .+ 332.59
+    @test arrA == arrA_cpu
 
-arrA =  332.59 .+ arrA
-arrA_cpu = 332.59 .+ arrA_cpu
-@test arrA == arrA_cpu
+    result = arrA .+ arrB
+    result_cpu = arrA_cpu .+ arrB_cpu
+    @test result == result_cpu
 
-arrA = arrA .+ 332.59
-arrA_cpu = arrA_cpu .+ 332.59
-@test arrA == arrA_cpu
+    result = arrA + arrB
+    result_cpu = arrA_cpu + arrB_cpu
+    @test result == result_cpu
 
-result = arrA .+ arrB
-result_cpu = arrA_cpu .+ arrB_cpu
-@test result == result_cpu
+    # # not supported yet
+    # arrA = 1.3 ./ arrA 
+    # arrA_cpu =  1.3 ./ arrA_cpu
+    # @test arrA == arrA_cpu
 
-result = arrA + arrB
-result_cpu = arrA_cpu + arrB_cpu
-@test result == result_cpu
+    # don't understand why this is failing
+    # arrA = arrA ./ 1.3
+    # arrA_cpu = arrA_cpu ./ 1.3
+    # @test arrA == arrA_cpu
 
+    result = arrA ./ arrB
+    result_cpu = arrA_cpu ./ arrB_cpu
+    @test result == result_cpu
 
-# # not supported yet
-# arrA = 1.3 ./ arrA 
-# arrA_cpu =  1.3 ./ arrA_cpu
-# @test arrA == arrA_cpu
+    arrA = 32.32 * arrA
+    arrA_cpu = 32.32 * arrA_cpu
+    @test arrA == arrA_cpu
 
-# don't understand why this is failing
-# arrA = arrA ./ 1.3
-# arrA_cpu = arrA_cpu ./ 1.3
-# @test arrA == arrA_cpu
+    arrA = arrA .* 32.32
+    arrA_cpu = arrA_cpu .* 32.32
+    @test arrA == arrA_cpu
 
+    # currently our A * B impl is element wise
+    result = arrA * arrB
+    result_cpu = arrA_cpu .* arrB_cpu
+    @test result == result_cpu
 
-result = arrA ./ arrB
-result_cpu = arrA_cpu ./ arrB_cpu
-@test result == result_cpu
+    result = arrA .* arrB
+    result_cpu = arrA_cpu .* arrB_cpu
+    @test result == result_cpu
 
-
-arrA =  32.32 * arrA
-arrA_cpu = 32.32 * arrA_cpu
-@test arrA == arrA_cpu
-
-arrA = arrA .* 32.32
-arrA_cpu = arrA_cpu .* 32.32
-@test arrA == arrA_cpu
-
-# currently our A * B impl is element wise
-result = arrA * arrB
-result_cpu = arrA_cpu .* arrB_cpu
-@test result == result_cpu
-
-result = arrA .* arrB
-result_cpu = arrA_cpu .* arrB_cpu
-@test result == result_cpu
-
-operator(arrA, arrB)
-operator(arrA_cpu, arrB_cpu)
-@test arrA == arrA_cpu
-@test arrB == arrB_cpu
+    operator(arrA, arrB)
+    operator(arrA_cpu, arrB_cpu)
+    @test arrA == arrA_cpu
+    @test arrB == arrB_cpu
 end
 
-
 function operator(u, v)
-    dx=0.1; dt = dx/5; c_u=1.0; c_v=0.3; f=0.03; k=0.06;
+    dx=0.1;
+    dt = dx/5;
+    c_u=1.0;
+    c_v=0.3;
+    f=0.03;
+    k=0.06;
 
-    #calculate F_u and F_v functions
+    # calculate F_u and F_v functions
     F_u = (-u*(v * v)) + f*(1 .- u)
     F_v = (u*(v * v)) - (f+k)*v
-    
-    # # 2-D Laplacian of f using array slicing, excluding boundaries
+
+    # 2-D Laplacian of f using array slicing, excluding boundaries
     # For an N x N array f, f_lap is the Nend x Nend array in the "middle"
     u_lap = (u - 2*u + u) ./ dx^2 + (u - 2*u + u) ./ dx^2
     v_lap = (v - 2*v + v) ./ dx^2 + (v - 2*v + v) ./ dx^2

@@ -1,6 +1,5 @@
 export NDArray
 
-
 #= Copyright 2025 Northwestern University, 
  *                   Carnegie Mellon University University
  *
@@ -22,28 +21,26 @@ export NDArray
 
 Base.Broadcast.broadcastable(v::NDArray) = v
 
-#probably some way to enforce this only gets passed int types
-to_cpp_dims(dims::Dims{N}, int_type::Type = UInt64) where N = StdVector(int_type.([d for d in dims]))
-to_cpp_dims_int(dims::Dims{N}, int_type::Type = Int64) where N = StdVector(int_type.([d for d in dims]))
-to_cpp_dims_int(d::Int64, int_type::Type = Int64) = StdVector(int_type.([d]))
-
 #julia is 1 indexed vs c is 0 indexed. added the -1 
-to_cpp_index(idx::Dims{N}, int_type::Type = UInt64) where N = StdVector(int_type.([e - 1 for e in idx]))
-to_cpp_index(d::Int64, int_type::Type = UInt64) = StdVector(int_type.([d - 1]))
+function to_cpp_index(idx::Dims{N}, int_type::Type=UInt64) where {N}
+    StdVector(int_type.([e - 1 for e in idx]))
+end
+to_cpp_index(d::Int64, int_type::Type=UInt64) = StdVector(int_type.([d - 1]))
 
-Base.eltype(arr::NDArray) = Legate.code_type_map[Int(Legate.code(type(arr)))]
+Base.eltype(arr::NDArray) = Legate.code_type_map[nda_array_type_code(arr)]
 LegateType(T::Type) = Legate.to_legate_type(T)
+
+as_type(arr::NDArray, t::Type{T}) where {T} = nda_astype(arr, t)
 
 #### ARRAY/INDEXING INTERFACE ####
 # https://docs.julialang.org/en/v1/manual/interfaces/#Indexing
-
-Base.ndims(arr::NDArray) = Int(cuNumeric.dim(arr))
-Base.size(arr::NDArray) = Tuple(Int.(cuNumeric.shape(arr)))
+dim(arr::NDArray) = Int(cuNumeric.nda_array_dim(arr))
+Base.ndims(arr::NDArray) = Int(cuNumeric.nda_array_dim(arr))
+Base.size(arr::NDArray) = Tuple(Int.(cuNumeric.nda_array_shape(arr)))
 Base.size(arr::NDArray, dim::Int) = Base.size(arr)[dim]
 
-
 Base.firstindex(arr::NDArray, dim::Int) = 1
-Base.lastindex(arr::NDArray, dim::Int) = Base.size(arr,dim)
+Base.lastindex(arr::NDArray, dim::Int) = Base.size(arr, dim)
 
 Base.IndexStyle(::NDArray) = IndexCartesian()
 
@@ -59,19 +56,16 @@ function Base.show(io::IO, ::MIME"text/plain", arr::NDArray)
     print(io, "NDArray of $(T)s, Dim: $(dim)")
 end
 
-
-function Base.getindex(arr::NDArray, idxs::Vararg{Int, N}) where N
+function Base.getindex(arr::NDArray, idxs::Vararg{Int,N}) where {N}
     T = eltype(arr)
     acc = NDArrayAccessor{T,N}()
-    return read(acc, arr, to_cpp_index(idxs))
+    return read(acc, arr.ptr, to_cpp_index(idxs))
 end
 
-
-function Base.setindex!(arr::NDArray, value::T, idxs::Vararg{Int, N}) where {T <: Number, N}
+function Base.setindex!(arr::NDArray, value::T, idxs::Vararg{Int,N}) where {T<:Number,N}
     acc = NDArrayAccessor{T,N}()
-    write(acc, arr, to_cpp_index(idxs), value)
+    write(acc, arr.ptr, to_cpp_index(idxs), value)
 end
-
 
 #### ARRAY INDEXING WITH SLICES ####
 #=
@@ -88,94 +82,98 @@ end
 * _stop]` must form a valid (possibly empty) interval.
 =#
 
+function slice(start::Union{Nothing,Integer}, stop::Union{Nothing,Integer})
+    cuNumeric.Slice(
+        isnothing(start) ? 0 : 1,
+        isnothing(start) ? 0 : Int64(start),
+        isnothing(stop) ? 0 : 1,
+        isnothing(stop) ? 0 : Int64(stop),
+    )
+end
 
-# to_cpp_init_slice(slices::Vararg{Legate.Slice, N}) where N = LegateSlices(collect(slices))
-function to_cpp_init_slice(slices::Vararg{Legate.Slice, N}) where N 
-    v = Legate.VectorSlice()
-    for s in slices 
-        Legate.push(v, s)
+function slice_array(slices::Vararg{Tuple{Union{Int,Nothing},Union{Int,Nothing}},N}) where {N}
+    v = Vector{cuNumeric.Slice}(undef, N)
+    for i in 1:N
+        start, stop = slices[i]
+        v[i] = slice(start, stop)
     end
     return v
 end
 
-function slice(start::Int, stop::Int)
-    return Legate.Slice(Legate.StdOptional{Int64}(start), Legate.StdOptional{Int64}(stop))
-end
-
-
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::Int64)
-    s = get_slice(lhs, to_cpp_init_slice(slice(0, Base.size(lhs, 1)), slice(j-1, j)))
-    assign(s, rhs);
+    s = nda_get_slice(lhs, slice_array((0, Base.size(lhs, 1)), (j-1, j)))
+    nda_assign(s, rhs);
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Int64, j::Colon)
-    s = get_slice(lhs, to_cpp_init_slice(slice(i-1, i)))
-    assign(s, rhs);
+    s = nda_get_slice(lhs, slice_array((i-1, i)))
+    nda_assign(s, rhs);
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::Colon)
-    s = get_slice(lhs, to_cpp_init_slice(slice(first(i) - 1, last(i)), slice(0, Base.size(lhs, 2))))
-    assign(s, rhs)
+    s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (0, Base.size(lhs, 2))))
+    nda_assign(s, rhs)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::UnitRange)
-    s = get_slice(lhs, to_cpp_init_slice(slice(0, Base.size(lhs, 1)), slice(first(j) - 1, last(j))))
-    assign(s, rhs)
+    s = nda_get_slice(lhs, slice_array((0, Base.size(lhs, 1)), (first(j) - 1, last(j))))
+    nda_assign(s, rhs)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::Int64)
-    s = get_slice(lhs, to_cpp_init_slice(slice(first(i) - 1, last(i)), slice(j-1, j)))
-    assign(s, rhs)
+    s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (j-1, j)))
+    nda_assign(s, rhs)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Int64, j::UnitRange)
-    s = get_slice(lhs, to_cpp_init_slice(slice(i-1, i), slice(first(j) - 1, last(j))))
-    assign(s, rhs)
+    s = nda_get_slice(lhs, slice_array((i-1, i), (first(j) - 1, last(j))))
+    nda_assign(s, rhs)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::UnitRange)
-    s = get_slice(lhs, to_cpp_init_slice(slice(first(i) - 1, last(i)), slice(first(j) - 1, last(j))))
-    assign(s, rhs)
+    s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (first(j) - 1, last(j))))
+    nda_assign(s, rhs)
 end
 
 function Base.getindex(arr::NDArray, i::Colon, j::Int64)
-    return get_slice(arr, to_cpp_init_slice(slice(0, Base.size(arr, 1)), slice(j-1, j)))
+    return nda_get_slice(arr, slice_array((0, Base.size(arr, 1)), (j-1, j)))
 end
 
-function Base.getindex(arr::NDArray,  i::Int64, j::Colon)
-    return get_slice(arr, to_cpp_init_slice(slice(i-1, i)))
+function Base.getindex(arr::NDArray, i::Int64, j::Colon)
+    return nda_get_slice(arr, slice_array((i-1, i)))
 end
 
 function Base.getindex(arr::NDArray, i::UnitRange, j::Colon)
-    return get_slice(arr, to_cpp_init_slice(slice(first(i) - 1, last(i)), slice(0, Base.size(arr, 2))))
+    return nda_get_slice(
+        arr, slice_array((first(i) - 1, last(i)), (0, Base.size(arr, 2)))
+    )
 end
 
-function Base.getindex(arr::NDArray,  i::Colon, j::UnitRange)
-    return get_slice(arr, to_cpp_init_slice(slice(0, Base.size(arr, 1)), slice(first(j) - 1, last(j))))
+function Base.getindex(arr::NDArray, i::Colon, j::UnitRange)
+    return nda_get_slice(
+        arr, slice_array((0, Base.size(arr, 1)), (first(j) - 1, last(j)))
+    )
 end
 
 function Base.getindex(arr::NDArray, i::UnitRange, j::Int64)
-    return get_slice(arr, to_cpp_init_slice(slice(first(i) - 1, last(i)), slice(j-1, j)))
+    return nda_get_slice(arr, slice_array((first(i) - 1, last(i)), (j-1, j)))
 end
 
-function Base.getindex(arr::NDArray,  i::Int64, j::UnitRange)
-    return get_slice(arr, to_cpp_init_slice(slice(i-1, i), slice(first(j) - 1, last(j))))
+function Base.getindex(arr::NDArray, i::Int64, j::UnitRange)
+    return nda_get_slice(arr, slice_array((i-1, i), (first(j) - 1, last(j))))
 end
 
 function Base.getindex(arr::NDArray, i::UnitRange, j::UnitRange)
-    return get_slice(arr, to_cpp_init_slice(slice(first(i) - 1, last(i)), slice(first(j) - 1, last(j))))
+    return nda_get_slice(
+        arr, slice_array((first(i) - 1, last(i)), (first(j) - 1, last(j)))
+    )
 end
-
-
-# function Base.getindex(ranges::Vararg{UnitRange{Int}, N}) where N
-#     return Tuple(slice(first(r), last(r)) for r in ranges)
-# end
 
 # USED TO CONVERT NDArray to Julia Array
 # Long term probably be a named function since we allocate
 # whole new array in here. Not exactly what I expect form []
-function Base.getindex(arr::NDArray, c::Vararg{Colon, N}) where N
-    arr_dims = Int.(cuNumeric.shape(arr))
+function Base.getindex(arr::NDArray, c::Vararg{Colon,N}) where {N}
+    arr_dims = Int.(cuNumeric.nda_array_shape(arr))
     T = eltype(arr)
     julia_array = Base.zeros(T, arr_dims...)
 
@@ -188,27 +186,25 @@ end
 
 # This should also probably be a named function
 # We can just define a specialization for Base.fill(::NDArray)
-function Base.setindex!(arr::NDArray, val::Union{Float32, Float64}, c::Vararg{Colon, N}) where N
-    fill(arr, Legate.Scalar(val))
+function Base.setindex!(arr::NDArray, val::Union{Float32,Float64}, c::Vararg{Colon,N}) where {N}
+    nda_fill_array(arr, val)
 end
 
-function Base.setindex!(arr::NDArray, val::Union{Float32, Float64}, i::Colon, j::Int64)
-    s = get_slice(arr, to_cpp_init_slice(slice(0, Base.size(arr, 1)), slice(j-1, j)))
-    fill(s, Legate.Scalar(val))
+function Base.setindex!(arr::NDArray, val::Union{Float32,Float64}, i::Colon, j::Int64)
+    s = nda_get_slice(arr, to_cpp_init_slice(slice(0, Base.size(arr, 1)), slice(j-1, j)))
+    nda_fill_array(s, val)
 end
 
-function Base.setindex!(arr::NDArray, val::Union{Float32, Float64}, i::Int64, j::Colon)
-    s = get_slice(arr, to_cpp_init_slice(slice(i-1, i)))
-    fill(s, Legate.Scalar(val))
+function Base.setindex!(arr::NDArray, val::Union{Float32,Float64}, i::Int64, j::Colon)
+    s = nda_get_slice(arr, to_cpp_init_slice(slice(i-1, i)))
+    nda_fill_array(s, val)
 end
 #### INITIALIZATION ####
 
-
-function full(dims::Dims{N}, val::Union{Float32, Float64, Int64, Int32}) where N
-    dims_uint64 = to_cpp_dims(dims)
-    return _full(dims_uint64, Legate.Scalar(val))
+function full(dims::Dims{N}, val::T) where {T,N}
+    shape = UInt64.(collect(dims))
+    return nda_full_array(shape, val)
 end
-
 
 #* is this type piracy?
 """
@@ -231,25 +227,21 @@ NDArray of Int32s, Dim: [2, 3]
 ```
 """
 function zeros(::Type{T}, dims::Dims{N}) where {N,T}
-    LT = Legate.to_legate_type(T)
-    opt = Legate.StdOptional{Legate.LegateType}(LT)
-    dims_uint64 = to_cpp_dims(dims)
-    return _zeros(dims_uint64, opt)
+    shape = UInt64.(collect(dims))
+    return nda_zeros_array(shape; type=T)
 end
 
-function zeros(::Type{T}, dims::Int...) where T
+function zeros(::Type{T}, dims::Int...) where {T}
     return zeros(T, dims)
 end
 
-function zeros(dims::Dims{N}) where N
+function zeros(dims::Dims{N}) where {N}
     return zeros(Float64, dims)
 end
 
 function zeros(dims::Int...)
     return zeros(Float64, dims)
 end
-
-
 
 """
     cuNumeric.ones([T=Float64,] dims::Int...)
@@ -270,15 +262,15 @@ julia> cuNumeric.ones(Int32,(2,3))
 NDArray of Int32s, Dim: [2, 3]
 ```
 """
-function ones(::Type{T}, dims::Dims) where T
+function ones(::Type{T}, dims::Dims) where {T}
     return full(dims, T(1))
 end
 
-function ones(::Type{T}, dims::Int...) where T
+function ones(::Type{T}, dims::Int...) where {T}
     return ones(T, dims)
 end
 
-function ones(dims::Dims{N}) where N
+function ones(dims::Dims{N}) where {N}
     return ones(Float64, dims)
 end
 
@@ -286,15 +278,13 @@ function ones(dims::Int...)
     return ones(Float64, dims)
 end
 
-
 """
     rand!(arr::NDArray)
 
 Fills `arr` with Float64s uniformly at random
 """
 # This integer is unused but should represent, uniform, normal etc
-Random.rand!(arr::NDArray) = cuNumeric.random(arr, 0)
-
+Random.rand!(arr::NDArray) = cuNumeric.nda_random(arr, 0)
 
 """
     rand(NDArray, dims::Dims)
@@ -302,100 +292,111 @@ Random.rand!(arr::NDArray) = cuNumeric.random(arr, 0)
 
 Create a new NDArray of size `dims`, filled with Float64s uniformly at random
 """
-Random.rand(::Type{NDArray}, dims::Dims) = cuNumeric._random_ndarray(to_cpp_dims(dims))
+Random.rand(::Type{NDArray}, dims::Dims) = cuNumeric.nda_random_array(UInt64.(collect(dims)))
 Random.rand(::Type{NDArray}, dims::Int...) = cuNumeric.rand(NDArray, dims)
 
-random(::Type{T}, dims::Dims) where T  = cuNumeric._random_ndarray(to_cpp_dims(dims))
-random(dims::Dims, e::Type{T}) where T  = cuNumeric.rand(e, dims)
-
-
+random(::Type{T}, dims::Dims) where {T} = cuNumeric.nda_random_array(UInt64.(collect(dims)))
+random(dims::Dims, e::Type{T}) where {T} = cuNumeric.rand(e, dims)
+random(arr::NDArray, code::Int64) = cuNumeric.nda_random(arr, code)
 #### OPERATIONS ####
 
-function reshape(arr::NDArray, i::Dims{N}) where N
-    i_int64 = to_cpp_dims_int(i)
-    return _reshape(arr, i_int64)
+function reshape(arr::NDArray, i::Dims{N}) where {N}
+    return nda_reshape_array(arr, UInt64.(collect(i)))
 end
 
 function reshape(arr::NDArray, i::Int64)
-    i_int64 = to_cpp_dims_int(i)
-    return _reshape(arr, i_int64)
+    return nda_reshape_array(arr, UInt64.([i]))
 end
 
-function Base.:+(arr::NDArray, val::Union{Float32, Float64, Int64, Int32})
-    return add_scalar(arr, Legate.Scalar(val))
+function Base.:+(arr::NDArray, val::Union{Float32,Float64,Int64,Int32})
+    return nda_add_scalar(arr, val)
 end
-function Base.:+(val::Union{Float32, Float64, Int64, Int32}, arr::NDArray)
+function Base.:+(val::Union{Float32,Float64,Int64,Int32}, arr::NDArray)
     return +(arr, val)
 end
 
-function Base.Broadcast.broadcasted(::typeof(+), arr::NDArray, val::Union{Float32, Float64, Int64, Int32}) 
+function Base.Broadcast.broadcasted(
+    ::typeof(+), arr::NDArray, val::Union{Float32,Float64,Int64,Int32}
+)
     return +(arr, val)
 end
 
-function Base.Broadcast.broadcasted(::typeof(+), val::Union{Float32, Float64, Int64, Int32}, arr::NDArray) 
+function Base.Broadcast.broadcasted(
+    ::typeof(+), val::Union{Float32,Float64,Int64,Int32}, arr::NDArray
+)
     return +(arr, val)
 end
 
-function Base.Broadcast.broadcasted(::typeof(+), lhs::NDArray, rhs::NDArray) 
+function Base.Broadcast.broadcasted(::typeof(+), lhs::NDArray, rhs::NDArray)
     return +(lhs, rhs)
 end
 
-function Base.:-(val::Union{Float32, Float64, Int64, Int32}, arr::NDArray)
-    return multiply_scalar(arr, Legate.Scalar(-val))
+function Base.:-(val::Union{Float32,Float64,Int64,Int32}, arr::NDArray)
+    return nda_multiply_scalar(arr, -val)
 end
 
-function Base.:-(arr::NDArray, val::Union{Float32, Float64, Int64, Int32})
+function Base.:-(arr::NDArray, val::Union{Float32,Float64,Int64,Int32})
     return +(arr, (-1*val))
 end
 
-function Base.Broadcast.broadcasted(::typeof(-), arr::NDArray, val::Union{Float32, Float64, Int64, Int32}) 
+function Base.Broadcast.broadcasted(
+    ::typeof(-), arr::NDArray, val::Union{Float32,Float64,Int64,Int32}
+)
     return -(arr, val)
 end
-function Base.Broadcast.broadcasted(::typeof(-), val::Union{Float32, Float64, Int64, Int32}, rhs::NDArray) 
-    # throw(ErrorException("element wise [val - NDArray] is not supported yet"))
-    lhs = full(Base.size(rhs), val)
+function Base.Broadcast.broadcasted(
+    ::typeof(-), val::Union{Float32,Float64,Int64,Int32}, rhs::NDArray
+)
+    arr_type = eltype(rhs) # match the arr type
+    lhs = full(Base.size(rhs), arr_type(val))
     return -(lhs, rhs)
 end
 
-function Base.Broadcast.broadcasted(::typeof(-), lhs::NDArray, rhs::NDArray) 
+function Base.Broadcast.broadcasted(::typeof(-), lhs::NDArray, rhs::NDArray)
     return -(lhs, rhs)
 end
 
-function Base.:*(val::Union{Float32, Float64, Int64, Int32}, arr::NDArray)
-    return multiply_scalar(arr, Legate.Scalar(val))
+function Base.:*(val::Union{Float32,Float64,Int64,Int32}, arr::NDArray)
+    return nda_multiply_scalar(arr, val)
 end
 
-function Base.:*( arr::NDArray, val::Union{Float32, Float64, Int64, Int32})
-    # return throw(ErrorException("[NDArray * val] is not supported. Please use [NDArray .* val]"))
+function Base.:*(arr::NDArray, val::Union{Float32,Float64,Int64,Int32})
     return *(val, arr)
 end
 
-
-function Base.Broadcast.broadcasted(::typeof(*), arr::NDArray, val::Union{Float32, Float64, Int64, Int32}) 
+function Base.Broadcast.broadcasted(
+    ::typeof(*), arr::NDArray, val::Union{Float32,Float64,Int64,Int32}
+)
     return *(val, arr)
 end
 
-function Base.Broadcast.broadcasted(::typeof(*), val::Union{Float32, Float64, Int64, Int32}, arr::NDArray) 
+function Base.Broadcast.broadcasted(
+    ::typeof(*), val::Union{Float32,Float64,Int64,Int32}, arr::NDArray
+)
     return *(val, arr)
 end
 
-function Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray, rhs::NDArray) 
+function Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray, rhs::NDArray)
     return *(lhs, rhs)
 end
 
-function Base.:/(arr::NDArray, val::Union{Float32, Float64, Int64, Int32})
+function Base.:/(arr::NDArray, val::Union{Float32,Float64,Int64,Int32})
     throw(ErrorException("[/] is not supported yet"))
 end
 
-function Base.Broadcast.broadcasted(::typeof(/), arr::NDArray, val::Union{Float32, Float64, Int64, Int32}) 
-    return multiply_scalar(arr, Legate.Scalar(Float64(1 / val)))
+function Base.Broadcast.broadcasted(
+    ::typeof(/), arr::NDArray, val::Union{Float32,Float64,Int64,Int32}
+)
+    return nda_multiply_scalar(arr, Float64(1 / val))
 end
 
-function Base.Broadcast.broadcasted(::typeof(/), val::Union{Float32, Float64, Int64, Int32}, arr::NDArray) 
+function Base.Broadcast.broadcasted(
+    ::typeof(/), val::Union{Float32,Float64,Int64,Int32}, arr::NDArray
+)
     return throw(ErrorException("element wise [val ./ NDArray] is not supported yet"))
 end
 
-function Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray, rhs::NDArray) 
+function Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray, rhs::NDArray)
     return /(lhs, rhs)
 end
 
@@ -403,19 +404,22 @@ end
 #* to maintain some semblence native Julia array syntax
 # See https://docs.julialang.org/en/v1/manual/interfaces/#extending-in-place-broadcast-2
 function add!(out::NDArray, arr1::NDArray, arr2::NDArray)
-    _add(arr1, arr2, out)
-    return out
+    return nda_add(arr1, arr2, out)
 end
 
 function multiply!(out::NDArray, arr1::NDArray, arr2::NDArray)
-    _multiply(arr1, arr2, out)
-    return out
+    return nda_multiply(arr1, arr2, out)
 end
 
-function LinearAlgebra.mul!(out::NDArray, A::NDArray, B::NDArray)
-    _dot_three_arg(out, A, B)
-    return out
+function LinearAlgebra.mul!(out::NDArray, arr1::NDArray, arr2::NDArray)
+    return nda_three_dot_arg(arr1, arr2, out)
 end
+
+function Base.copy(arr::NDArray)
+    return nda_copy(arr)
+end
+
+assign(arr::NDArray, other::NDArray) = nda_assign(arr, other)
 
 #* replace with array_equal?
 # arr1 == arr2
@@ -428,7 +432,7 @@ function Base.:(==)(arr1::NDArray, arr2::NDArray)
         return false
     end
 
-    if(ndims(arr1) > 3)
+    if (ndims(arr1) > 3)
         @warn "Accessors do not support dimension > 3 yet"
         return false
     end
@@ -460,7 +464,6 @@ function Base.:(==)(arr::NDArray, julia_array::Array)
     # successful completion
     return true
 end
-
 
 # julia_array == arr
 function Base.:(==)(julia_array::Array, arr::NDArray)
