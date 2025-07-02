@@ -45,7 +45,7 @@ function daxpy_advanced()
     # cunumeric arrays
     x = cuNumeric.zeros(dims)
     y = cuNumeric.zeros(dims)
-    
+
     @test cuNumeric.dim(x) == 2
     @test cuNumeric.dim(y) == 2
 
@@ -56,7 +56,7 @@ function daxpy_advanced()
 
     # test fill with scalar of all elements of the NDArray
     x[:, :] = 4.23
-    
+
     @test x == fill(4.23, dims)
 
     ones_array = cuNumeric.ones(dims)
@@ -64,8 +64,8 @@ function daxpy_advanced()
     @test ones_array == ones_array_cpu
 
     # create two random arrays
-    cuNumeric.nda_random(x, seed)
-    cuNumeric.nda_random(y, seed)
+    cuNumeric.random(x, seed)
+    cuNumeric.random(y, seed)
 
     # create a reference of NDArray
     x_ref = x
@@ -92,7 +92,6 @@ function daxpy_advanced()
     @test x_assign == x
     @test y_assign == y
 
-
     # set all the elements of each NDArray to the CPU 2D array equivalent
     x_cpu = x[:, :]
     y_cpu = y[:, :]
@@ -110,7 +109,6 @@ function daxpy_advanced()
     y_cpu_1D = y_1d[:]
     @test x_cpu_1D == x_1d
     @test y_cpu_1D == y_1d
-
 
     result = α * x + y
 

@@ -40,8 +40,8 @@ CN_NDArray* nda_reshape_array(CN_NDArray* arr, int32_t dim,
 CN_NDArray* nda_astype(CN_NDArray* arr, CN_Type type);
 void nda_fill_array(CN_NDArray* arr, CN_Type type, const void* value);
 
-CN_NDArray* nda_multiply(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out);
-CN_NDArray* nda_add(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out);
+void nda_multiply(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out);
+void nda_add(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out);
 CN_NDArray* nda_multiply_scalar(CN_NDArray* rhs1, CN_Type type,
                                 const void* value);
 CN_NDArray* nda_add_scalar(CN_NDArray* rhs1, CN_Type type, const void* value);

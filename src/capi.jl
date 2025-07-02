@@ -104,7 +104,7 @@ end
 function nda_astype(arr::NDArray, t::Type{T}) where {T}
     type = Legate.to_legate_type(t)
 
-    ptr = ccall((:nda_full_array, libnda),
+    ptr = ccall((:nda_astype, libnda),
         NDArray_t,
         (NDArray_t, Legate.LegateTypeAllocated),
         arr.ptr, type)
@@ -136,35 +136,35 @@ end
 # operations 
 function nda_binary_op(out::NDArray, op_code::BinaryOpCode, rhs1::NDArray, rhs2::NDArray)
     ccall((:nda_binary_op, libnda),
-        NDArray_t, (NDArray_t, BinaryOpCode, NDArray_t, NDArray_t),
+        Cvoid, (NDArray_t, BinaryOpCode, NDArray_t, NDArray_t),
         out.ptr, op_code, rhs1.ptr, rhs2.ptr)
     return out
 end
 
 function nda_unary_op(out::NDArray, op_code::UnaryOpCode, input::NDArray)
     ccall((:nda_unary_op, libnda),
-        NDArray_t, (NDArray_t, UnaryOpCode, NDArray_t),
+        Cvoid, (NDArray_t, UnaryOpCode, NDArray_t),
         out.ptr, op_code, input.ptr)
     return out
 end
 
 function nda_unary_reduction(out::NDArray, op_code::UnaryRedCode, input::NDArray)
     ccall((:nda_unary_reduction, libnda),
-        NDArray_t, (NDArray_t, UnaryRedCode, NDArray_t),
+        Cvoid, (NDArray_t, UnaryRedCode, NDArray_t),
         out.ptr, op_code, input.ptr)
     return out
 end
 
 function nda_multiply(rhs1::NDArray, rhs2::NDArray, out::NDArray)
     ccall((:nda_multiply, libnda),
-        NDArray_t, (NDArray_t, NDArray_t, NDArray_t),
+        Cvoid, (NDArray_t, NDArray_t, NDArray_t),
         rhs1.ptr, rhs2.ptr, out.ptr)
     return out
 end
 
 function nda_add(rhs1::NDArray, rhs2::NDArray, out::NDArray)
     ccall((:nda_add, libnda),
-        NDArray_t, (NDArray_t, NDArray_t, NDArray_t),
+        Cvoid, (NDArray_t, NDArray_t, NDArray_t),
         rhs1.ptr, rhs2.ptr, out.ptr)
     return out
 end

@@ -30,6 +30,8 @@ to_cpp_index(d::Int64, int_type::Type=UInt64) = StdVector(int_type.([d - 1]))
 Base.eltype(arr::NDArray) = Legate.code_type_map[nda_array_type_code(arr)]
 LegateType(T::Type) = Legate.to_legate_type(T)
 
+as_type(arr::NDArray, t::Type{T}) where {T} = nda_astype(arr, t)
+
 #### ARRAY/INDEXING INTERFACE ####
 # https://docs.julialang.org/en/v1/manual/interfaces/#Indexing
 dim(arr::NDArray) = Int(cuNumeric.nda_array_dim(arr))
@@ -295,7 +297,7 @@ Random.rand(::Type{NDArray}, dims::Int...) = cuNumeric.rand(NDArray, dims)
 
 random(::Type{T}, dims::Dims) where {T} = cuNumeric.nda_random_array(UInt64.(collect(dims)))
 random(dims::Dims, e::Type{T}) where {T} = cuNumeric.rand(e, dims)
-
+random(arr::NDArray, code::Int64) = cuNumeric.nda_random(arr, code)
 #### OPERATIONS ####
 
 function reshape(arr::NDArray, i::Dims{N}) where {N}

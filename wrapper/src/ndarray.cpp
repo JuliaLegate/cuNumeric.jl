@@ -107,20 +107,18 @@ void nda_fill_array(CN_NDArray* arr, CN_Type type, const void* value) {
   arr->obj.fill(s);
 }
 
-CN_NDArray* nda_multiply(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out) {
-  NDArray result = cupynumeric::multiply(rhs1->obj, rhs2->obj, out->obj);
-  return new CN_NDArray{NDArray(std::move(result))};
+void nda_multiply(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out) {
+  cupynumeric::multiply(rhs1->obj, rhs2->obj, out->obj);
 }
 
-CN_NDArray* nda_add(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out) {
-  NDArray result = cupynumeric::add(rhs1->obj, rhs2->obj, out->obj);
-  return new CN_NDArray{NDArray(std::move(result))};
+void nda_add(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out) {
+  cupynumeric::add(rhs1->obj, rhs2->obj, out->obj);
 }
 
 CN_NDArray* nda_multiply_scalar(CN_NDArray* rhs1, CN_Type type,
                                 const void* value) {
   Scalar s(type.obj, value, true);
-  NDArray result = rhs1->obj + s;
+  NDArray result = rhs1->obj * s;
   return new CN_NDArray{NDArray(std::move(result))};
 }
 
@@ -179,7 +177,7 @@ void nda_unary_op(CN_NDArray* out, CuPyNumericUnaryOpCode op_code,
 
 void nda_unary_reduction(CN_NDArray* out, CuPyNumericUnaryRedCode op_code,
                          CN_NDArray* input) {
-  out->obj.unary_op(op_code, input->obj);
+  out->obj.unary_reduction(op_code, input->obj);
 }
 
 NDArray get_slice(NDArray arr, std::vector<legate::Slice> slices) {

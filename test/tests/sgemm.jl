@@ -21,11 +21,10 @@
     - Test a matrix matrix multiply
 =#
 function sgemm(max_diff)
-
     N = 100
     FT = Float32
 
-    dims = (N,N)
+    dims = (N, N)
 
     # Base julia arrays
     A_cpu = rand(FT, dims);
@@ -48,8 +47,8 @@ function sgemm(max_diff)
     # initialize the NDArray
     C_cpu = A_cpu .* B_cpu
 
-    A = cuNumeric.as_type(A, cuNumeric.LegateType(FT))
-    B = cuNumeric.as_type(B, cuNumeric.LegateType(FT))
+    A = cuNumeric.as_type(A, FT)
+    B = cuNumeric.as_type(B, FT)
     C = cuNumeric.zeros(FT, N, N)
 
     C = A * B
