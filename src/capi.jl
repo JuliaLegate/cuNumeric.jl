@@ -173,7 +173,7 @@ function nda_multiply_scalar(rhs1::NDArray, value::T) where {T}
     type = Legate.to_legate_type(T)
     val = Ref(value)
 
-    ptr = ccall((:nda_multiply, libnda),
+    ptr = ccall((:nda_multiply_scalar, libnda),
         NDArray_t, (NDArray_t, Legate.LegateTypeAllocated, Ptr{Cvoid}),
         rhs1.ptr, type, val)
     return NDArray(ptr)
@@ -183,7 +183,7 @@ function nda_add_scalar(rhs1::NDArray, value::T) where {T}
     type = Legate.to_legate_type(T)
     val = Ref(value)
 
-    ptr = ccall((:nda_add, libnda),
+    ptr = ccall((:nda_add_scalar, libnda),
         NDArray_t, (NDArray_t, Legate.LegateTypeAllocated, Ptr{Cvoid}),
         rhs1.ptr, type, val)
     return NDArray(ptr)
