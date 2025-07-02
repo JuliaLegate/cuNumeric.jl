@@ -172,6 +172,11 @@ function nda_multiply_scalar(rhs1::NDArray, value::T) where {T}
     type = Legate.to_legate_type(T)
     val = Ref(value)
 
+    # scalar to have the same type as array?
+    # arr_type = eltype(rhs1)
+    # val = Ref(arr_type(value)) 
+    # type = Legate.to_legate_type(arr_type)
+
     ptr = ccall((:nda_multiply_scalar, libnda),
         NDArray_t, (NDArray_t, Legate.LegateTypeAllocated, Ptr{Cvoid}),
         rhs1.ptr, type, val)
@@ -181,6 +186,11 @@ end
 function nda_add_scalar(rhs1::NDArray, value::T) where {T}
     type = Legate.to_legate_type(T)
     val = Ref(value)
+
+    # scalar to have the same type as array?
+    # arr_type = eltype(rhs1)
+    # val = Ref(arr_type(value))
+    # type = Legate.to_legate_type(arr_type)
 
     ptr = ccall((:nda_add_scalar, libnda),
         NDArray_t, (NDArray_t, Legate.LegateTypeAllocated, Ptr{Cvoid}),

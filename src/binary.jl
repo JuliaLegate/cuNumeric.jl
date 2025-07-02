@@ -42,8 +42,7 @@ for (base_func, op_code) in binary_op_map
     @eval begin
         function $(Symbol(base_func))(rhs1::NDArray, rhs2::NDArray)
             #* what happens if rhs1 and rhs2 have different types but are compatible?
-            FT = cuNumeric.eltype(rhs1)
-            out = cuNumeric.zeros(FT, Base.size(rhs1)) # not sure this is ok for performance
+            out = cuNumeric.zeros(cuNumeric.eltype(rhs1), Base.size(rhs1)) # not sure this is ok for performance
             return nda_binary_op(out, $(op_code), rhs1, rhs2)
         end
     end
