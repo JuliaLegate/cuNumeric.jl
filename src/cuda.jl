@@ -50,11 +50,11 @@ function launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
     outputs::Tuple{Vararg{cuNumeric.NDArray}}, scalars::Tuple{Vararg{Any}}; blocks, threads)
     input_vec = cuNumeric.VectorNDArray()
     for arr in inputs
-        cuNumeric.push_back(input_vec, arr)
+        cuNumeric.push_back(input_vec, CxxRef{cuNumeric.CN_NDArray}(arr.ptr))
     end
     output_vec = cuNumeric.VectorNDArray()
     for arr in outputs
-        cuNumeric.push_back(output_vec, arr)
+        cuNumeric.push_back(output_vec, CxxRef{cuNumeric.CN_NDArray}(arr.ptr))
     end
     scalar_vec = Legate.VectorScalar()
     for s in scalars

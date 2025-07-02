@@ -27,6 +27,10 @@
 #include "legion.h"
 #include "ufi.h"
 
+struct CN_NDArray {
+  cupynumeric::NDArray obj;
+};
+
 // #define CUDA_DEBUG 1
 
 #define ERROR_CHECK(x)                                                 \
@@ -65,7 +69,8 @@
 
 namespace ufi {
 using namespace Legion;
-
+// TODO CUcontext key hashing is redundant. ProcLocalStorage is local to the
+// cuContext. I didn't know that when designing this hashing method.
 using FunctionKey = std::pair<CUcontext, std::string>;
 
 struct FunctionKeyHash {
@@ -154,7 +159,11 @@ std::string key_to_string(const FunctionKey &key) {
 
   std::vector<char> arg_buffer(buffer_size);
   char *p = arg_buffer.data() + padded_bytes;
-
+  /* TODO sizeof(float) needs fixing. we are hardcoding expecting floats atm
+     TODO support multiple GPUs properly. Getting the first Point<1>(0) does not
+     work. This will be illegal memory on other GPUs. To solve: grab shape lower
+     bound and pass this to the pointer.
+  */
   auto write_device_array = [&](const legate::PhysicalArray &rf) {
     void *dev_ptr = const_cast<void *>(static_cast<const void *>(
         rf.data().read_accessor<float, 1>().ptr(Realm::Point<1>(0))));
@@ -309,8 +318,8 @@ legate::Library get_lib() {
 }
 
 void new_task(std::string kernel_name, uint32_t blocks, uint32_t threads,
-              std::vector<std::shared_ptr<cupynumeric::NDArray>> &inputs,
-              std::vector<std::shared_ptr<cupynumeric::NDArray>> &outputs,
+              std::vector<std::shared_ptr<CN_NDArray>> &inputs,
+              std::vector<std::shared_ptr<CN_NDArray>> &outputs,
               std::vector<legate::Scalar> &scalars) {
   auto runtime = legate::Runtime::get_runtime();
   auto library = get_lib();
@@ -318,20 +327,20 @@ void new_task(std::string kernel_name, uint32_t blocks, uint32_t threads,
       runtime->create_task(library, legate::LocalTaskID{ufi::RUN_PTX_TASK});
 
   // Use first output shape as reference
-  const auto &out_shape = outputs.front()->shape();
+  const auto &out_shape = outputs.front()->obj.shape();
 
   std::vector<legate::Variable> input_vars;
   std::vector<legate::Variable> output_vars;
 
   for (const auto &out_ptr : outputs) {
-    cupynumeric::NDArray &out = *out_ptr;
+    cupynumeric::NDArray &out = out_ptr->obj;
     auto store = out.get_store();
     auto p = task.add_output(store);
     output_vars.push_back(p);
   }
 
   for (const auto &in_ptr : inputs) {
-    cupynumeric::NDArray &in = *in_ptr;
+    cupynumeric::NDArray &in = in_ptr->obj;
     auto store = in.get_store();
     auto p = task.add_input(broadcast(out_shape, store));
     input_vars.push_back(p);
@@ -345,6 +354,11 @@ void new_task(std::string kernel_name, uint32_t blocks, uint32_t threads,
   for (const auto &scalar : scalars) task.add_scalar_arg(scalar);  // 3+
 
   /* TODO actually support the constraint system */
+  /* TODO allignment contrainsts are transitive.
+     we can allign all the inputs and then alligns all the outputs
+     then allign one input with one output
+     This reduces the need for a cartesian product.
+  */
   // Add alignment constraints
   for (auto &out : output_vars) {
     for (auto &in : input_vars) {

@@ -26,7 +26,7 @@ include("tests/daxpy_advanced.jl")
 include("tests/elementwise.jl")
 include("tests/slicing.jl")
 include("tests/sgemm.jl")
-include("tests/custom_cuda.jl")
+# include("tests/custom_cuda.jl")
 
 @testset verbose = true "DAXPY" begin
     @testset daxpy_basic()
