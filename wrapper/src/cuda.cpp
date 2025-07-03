@@ -111,6 +111,11 @@ struct CuDeviceArray {
   int64_t reserved;
 };
 
+enum class AccessMode {
+  READ,
+  WRITE,
+};
+
 /* TODO::  check if std::enable_if is reducing the template expansion */
 #define CUDA_DEVICE_ARRAY_ARG(MODE, ACCESSOR_CALL)                             \
   template <                                                                   \
@@ -132,8 +137,58 @@ struct CuDeviceArray {
     p += sizeof(CuDeviceArray);                                                \
   }
 
-CUDA_DEVICE_ARRAY_ARG(read, read_accessor)
-CUDA_DEVICE_ARRAY_ARG(write, write_accessor)
+CUDA_DEVICE_ARRAY_ARG(read, read_accessor);    // cuda_device_array_arg_read
+CUDA_DEVICE_ARRAY_ARG(write, write_accessor);  // cuda_device_array_arg_write
+
+/* TODO find a better way to do this.
+   Due to the templating for the accessor<T, DIM>, we cannot dispatch
+   dynamically without some sort of lookup. We are using a switch case
+   indirection. Probably can do some tricks with MACRO expansion
+*/
+template <typename T, int D>
+void dispatch_access(AccessMode mode, char *&p,
+                     const legate::PhysicalArray &arr) {
+  if (mode == AccessMode::READ)
+    cuda_device_array_arg_read<T, D>(p, arr);
+  else
+    cuda_device_array_arg_write<T, D>(p, arr);
+}
+template <typename T>
+void dispatch_dim(AccessMode mode, int dim, char *&p,
+                  const legate::PhysicalArray &arr) {
+  switch (dim) {
+    case 1:
+      dispatch_access<T, 1>(mode, p, arr);
+      break;
+    case 2:
+      dispatch_access<T, 2>(mode, p, arr);
+      break;
+    case 3:
+      dispatch_access<T, 3>(mode, p, arr);
+      break;
+    default:
+      throw std::runtime_error("Unsupported dimension");
+  }
+}
+void dispatch_type(AccessMode mode, legate::Type::Code code, int dim, char *&p,
+                   const legate::PhysicalArray &arr) {
+  switch (code) {
+    case legate::Type::Code::FLOAT32:
+      dispatch_dim<float>(mode, dim, p, arr);
+      break;
+    case legate::Type::Code::FLOAT64:
+      dispatch_dim<double>(mode, dim, p, arr);
+      break;
+    case legate::Type::Code::INT32:
+      dispatch_dim<int32_t>(mode, dim, p, arr);
+      break;
+    case legate::Type::Code::INT64:
+      dispatch_dim<int64_t>(mode, dim, p, arr);
+      break;
+    default:
+      throw std::runtime_error("Unsupported element type");
+  }
+}
 
 // https://github.com/nv-legate/legate.pandas/blob/branch-22.01/src/udf/eval_udf_gpu.cc
 /*static*/ void RunPTXTask::gpu_variant(legate::TaskContext context) {
@@ -184,11 +239,20 @@ CUDA_DEVICE_ARRAY_ARG(write, write_accessor)
   std::vector<char> arg_buffer(buffer_size);
   char *p = arg_buffer.data() + padded_bytes;
   /* TODO  we are hardcoding expecting floats atm */
-  for (std::size_t i = 0; i < num_inputs; ++i)
-    cuda_device_array_arg_read<float, 1>(p, context.input(i));
-  for (std::size_t i = 0; i < num_outputs; ++i)
-    cuda_device_array_arg_write<float, 1>(p, context.output(i));
-
+  for (std::size_t i = 0; i < num_inputs; ++i) {
+    auto ps = context.input(i);
+    auto code = ps.type().code();
+    auto dim = ps.dim();
+    // cuda_device_array_arg_read<float, 1>(p, ps);
+    dispatch_type(ufi::AccessMode::READ, code, dim, p, ps);
+  }
+  for (std::size_t i = 0; i < num_outputs; ++i) {
+    auto ps = context.output(i);
+    auto code = ps.type().code();
+    auto dim = ps.dim();
+    // cuda_device_array_arg_write<float, 1>(p, ps);
+    dispatch_type(ufi::AccessMode::WRITE, code, dim, p, ps);
+  }
   for (std::size_t i = 3; i < num_scalars; ++i) {
     const auto &scalar = context.scalar(i);
     memcpy(p, scalar.ptr(), scalar.size());
