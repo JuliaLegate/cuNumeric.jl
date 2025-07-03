@@ -49,10 +49,6 @@ cd cuNumeric.jl
 julia -e 'using Pkg; Pkg.activate(".") Pkg.resolve(); Pkg.build()'
 ```
 
-<<<<<<< HEAD
-
-
-=======
 #### 2a. Known build issue (unregistered packages)
 Legate.jl and Legate_jll are both unregistered. You may need to "hack"  if you run into build issues. We hope this issue goes away once we have these packages registered.
 ```julia
@@ -62,7 +58,7 @@ Legate.jl and Legate_jll are both unregistered. You may need to "hack"  if you r
 ] add https://github.com/JuliaLegate/Legate.jl # will fail to precompile
 ] build # builds Legate.jl and cuNumeric.jl
 ```
->>>>>>> main
+
 #### 2b. Use preinstalled version of [cuPyNumeric](https://github.com/nv-legate/cupynumeric)
 We support using a custom install version of cuPyNumeric. See https://docs.nvidia.com/cupynumeric/latest/installation.html for details about different install configurations, or building cuPyNumeric from source.
 ```bash
