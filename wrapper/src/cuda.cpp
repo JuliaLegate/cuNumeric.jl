@@ -104,6 +104,37 @@ std::string key_to_string(const FunctionKey &key) {
 }
 #endif
 
+struct CuDeviceArray {
+  void *ptr;
+  int64_t maxsize;
+  int64_t length;
+  int64_t reserved;
+};
+
+/* TODO::  check if std::enable_if is reducing the template expansion */
+#define CUDA_DEVICE_ARRAY_ARG(MODE, ACCESSOR_CALL)                             \
+  template <                                                                   \
+      typename T, int D,                                                       \
+      typename std::enable_if<(D >= 1 && D <= REALM_MAX_DIM), int>::type = 0>  \
+  void cuda_device_array_arg_##MODE(char *&p,                                  \
+                                    const legate::PhysicalArray &rf) {         \
+    auto shp = rf.shape<D>();                                                  \
+    auto acc = rf.data().ACCESSOR_CALL<T, D>();                                \
+    void *dev_ptr = const_cast<void *>(/*.lo to ensure multiple GPU support*/  \
+                                       static_cast<const void *>(              \
+                                           acc.ptr(Realm::Point<D>(shp.lo)))); \
+                                                                               \
+    CuDeviceArray desc = {                                                     \
+        dev_ptr, static_cast<int64_t>(shp.volume()) * (int64_t)sizeof(T),      \
+        static_cast<int64_t>(shp.volume()), 0};                                \
+                                                                               \
+    memcpy(p, &desc, sizeof(CuDeviceArray));                                   \
+    p += sizeof(CuDeviceArray);                                                \
+  }
+
+CUDA_DEVICE_ARRAY_ARG(read, read_accessor)
+CUDA_DEVICE_ARRAY_ARG(write, write_accessor)
+
 // https://github.com/nv-legate/legate.pandas/blob/branch-22.01/src/udf/eval_udf_gpu.cc
 /*static*/ void RunPTXTask::gpu_variant(legate::TaskContext context) {
   cudaStream_t stream_ = context.get_task_stream();
@@ -141,13 +172,6 @@ std::string key_to_string(const FunctionKey &key) {
   const std::size_t num_reductions =
       context.num_reductions();  // unused for now
 
-  struct CuDeviceArray {
-    void *ptr;
-    int64_t maxsize;
-    int64_t length;
-    int64_t reserved;
-  };
-
   const std::size_t padded_bytes = 16;
 
   // compute total size: all device arrays + all scalars
@@ -159,25 +183,11 @@ std::string key_to_string(const FunctionKey &key) {
 
   std::vector<char> arg_buffer(buffer_size);
   char *p = arg_buffer.data() + padded_bytes;
-  /* TODO sizeof(float) needs fixing. we are hardcoding expecting floats atm
-     TODO support multiple GPUs properly. Getting the first Point<1>(0) does not
-     work. This will be illegal memory on other GPUs. To solve: grab shape lower
-     bound and pass this to the pointer.
-  */
-  auto write_device_array = [&](const legate::PhysicalArray &rf) {
-    void *dev_ptr = const_cast<void *>(static_cast<const void *>(
-        rf.data().read_accessor<float, 1>().ptr(Realm::Point<1>(0))));
-    CuDeviceArray desc = {dev_ptr,
-                          (int64_t)(rf.shape<1>().volume()) * sizeof(float),
-                          (int64_t)rf.shape<1>().volume(), 0};
-    memcpy(p, &desc, sizeof(CuDeviceArray));
-    p += sizeof(CuDeviceArray);
-  };
-
+  /* TODO  we are hardcoding expecting floats atm */
   for (std::size_t i = 0; i < num_inputs; ++i)
-    write_device_array(context.input(i));
+    cuda_device_array_arg_read<float, 1>(p, context.input(i));
   for (std::size_t i = 0; i < num_outputs; ++i)
-    write_device_array(context.output(i));
+    cuda_device_array_arg_write<float, 1>(p, context.output(i));
 
   for (std::size_t i = 3; i < num_scalars; ++i) {
     const auto &scalar = context.scalar(i);
@@ -312,6 +322,22 @@ legate::LogicalStore broadcast(const std::vector<uint64_t> &shape,
   return result;
 }
 
+/* allignment contrainsts are transitive.
+    we can allign all the inputs and then alligns all the outputs
+    then allign one input with one output
+    This reduces the need for a cartesian product.
+*/
+void add_transitive_alignment(legate::AutoTask &task,
+                              const std::vector<legate::Variable> &inputs,
+                              const std::vector<legate::Variable> &outputs) {
+  for (size_t i = 1; i < inputs.size(); ++i)
+    task.add_constraint(legate::align(inputs[i], inputs[0]));
+  for (size_t i = 1; i < outputs.size(); ++i)
+    task.add_constraint(legate::align(outputs[i], outputs[0]));
+  if (!inputs.empty() && !outputs.empty())
+    task.add_constraint(legate::align(outputs[0], inputs[0]));
+}
+
 legate::Library get_lib() {
   auto runtime = cupynumeric::CuPyNumericRuntime::get_runtime();
   return runtime->get_library();
@@ -354,17 +380,9 @@ void new_task(std::string kernel_name, uint32_t blocks, uint32_t threads,
   for (const auto &scalar : scalars) task.add_scalar_arg(scalar);  // 3+
 
   /* TODO actually support the constraint system */
-  /* TODO allignment contrainsts are transitive.
-     we can allign all the inputs and then alligns all the outputs
-     then allign one input with one output
-     This reduces the need for a cartesian product.
-  */
   // Add alignment constraints
-  for (auto &out : output_vars) {
-    for (auto &in : input_vars) {
-      task.add_constraint(legate::align(out, in));
-    }
-  }
+  add_transitive_alignment(task, input_vars, output_vars);
+
   runtime->submit(std::move(task));
 }
 
