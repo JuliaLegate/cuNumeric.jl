@@ -94,3 +94,4 @@ cp $BUILD_DIR/cupynumeric-config*.cmake $INSTALL_DIR/lib/cmake/cupynumeric/
 cp $BUILD_DIR/cupynumeric-targets.cmake $INSTALL_DIR/lib/cmake/cupynumeric/
 cp $BUILD_DIR/cupynumeric-dependencies.cmake $INSTALL_DIR/lib/cmake/cupynumeric/
 cp $BUILD_DIR/Findtblis.cmake $INSTALL_DIR/lib/cmake/cupynumeric/
+cp $BUILD_DIR/_deps/tblis-build/lib/*  $INSTALL_DIR/lib/
