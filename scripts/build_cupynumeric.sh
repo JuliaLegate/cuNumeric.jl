@@ -57,11 +57,7 @@ fi
 TAG="v$VERSION"
 REPO_URL="https://github.com/nv-legate/cupynumeric"
 TAG_URL="$REPO_URL/releases/tag/$TAG"
-<<<<<<< HEAD
-CLONE_DIR="cupynumeric-$VERSION"
-=======
 CLONE_DIR="$CUNUMERIC_ROOT_DIR/deps/cupynumeric-$VERSION"
->>>>>>> main
 
 # echo "Checking if tag $TAG exists on GitHub..."
 
@@ -76,12 +72,7 @@ if [ -d "$CLONE_DIR" ]; then
     echo "Directory '$CLONE_DIR' already exists. Skipping clone."
 else
     # git clone --branch "$TAG" --depth 1 "$REPO_URL.git" "$CLONE_DIR"
-<<<<<<< HEAD
-    # forcing main to happen as that is 25.05
-    git clone --branch "main" --depth 1 "$REPO_URL.git" "$CLONE_DIR"
-=======
     git clone --branch "branch-25.05" --depth 1 "$REPO_URL.git" "$CLONE_DIR"
->>>>>>> main
     echo "Cloned cuNumeric $VERSION into $CLONE_DIR"
 fi
 
