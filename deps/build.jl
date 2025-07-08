@@ -16,6 +16,7 @@
  * Author(s): David Krasowska <krasow@u.northwestern.edu>
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
+__precompile__(false)
 
 using Pkg
 import Base: notnothing
