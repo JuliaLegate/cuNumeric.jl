@@ -4,7 +4,6 @@ version = "25.5.0"
 
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
-CUDA_Runtime_jll = "76a88914-d11a-5bdc-97e0-2f5a05c973a2"
 CUTENSOR_jll = "35b6c64b-1ee1-5834-92a3-3f624899209a"
 CxxWrap = "1f15a43c-97ca-5a2a-ae31-89f07a497df4"
 HDF5_jll = "0234f1f7-429e-5d53-9886-15a909be8d59"
