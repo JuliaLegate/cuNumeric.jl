@@ -82,10 +82,10 @@ export CXXFLAGS="-I$LAPACKE_INSTALL_DIR/include"
 export LDFLAGS="-L$LAPACKE_INSTALL_DIR/lib"
 
 BUILD_DIR=$CUNUMERIC_ROOT_DIR/deps/cupynumeric-build
-cmake -S $CUNUMERIC_ROOT_DIR/deps/$CLONE_DIR -B $BUILD_DIR \
+cmake -S $CLONE_DIR -B $BUILD_DIR \
     -D legate_ROOT=$LEGATE_ROOT_DIR \
     -D NCCL_ROOT=$NCCL_ROOT_DIR \
-    -D cutensor_ROOT=$CUTENSOR_ROOT_DIR \
+    -D cutensor_ROOT=$CUTENSOR_ROOT_DIR 
  
 cmake --build $BUILD_DIR  --parallel $NTHREADS --verbose
 cmake --install $BUILD_DIR --prefix $INSTALL_DIR
