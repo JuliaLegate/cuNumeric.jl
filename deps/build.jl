@@ -113,8 +113,8 @@ function install_cupynumeric(repo_root, version_to_install)
     end
 
     legate_loc = Legate.get_install_liblegate()
-    nccl_loc = NCCL_jll.artifact_dir
-    cutensor_loc = CUTENSOR_jll.artifact_dir
+    nccl_loc = NCCL_jll.NCCL_jll.artifact_dir
+    cutensor_loc = CUTENSOR_jll.CUTENSOR_jll.artifact_dir
     build_cupynumeric = joinpath(repo_root, "scripts/build_cupynumeric.sh")
     nthreads = Threads.nthreads()
     run_sh(
@@ -173,9 +173,9 @@ function build()
 
     # create libcupynumericwrapper.so
     legate_loc = Legate.get_install_liblegate()
-    hdf5_loc = HDF5_jll.artifact_dir
-    nccl_loc = NCCL_jll.artifact_dir
-    cutensor_loc = CUTENSOR_jll.artifact_dir
+    hdf5_loc = HDF5_jll.HDF5_jll.artifact_dir
+    nccl_loc = NCCL_jll.NCCL_jll.artifact_dir
+    cutensor_loc = CUTENSOR_jll.CUTENSOR_jll.artifact_dir
     build_cpp_wrapper(pkg_root, cupynumeric_dir, legate_loc, hdf5_loc)
 
     open(joinpath(deps_dir, "deps.jl"), "w") do io
