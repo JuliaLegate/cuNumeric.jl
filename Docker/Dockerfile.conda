@@ -74,15 +74,11 @@ RUN conda init bash && \
     conda activate myenv
 
 # Install Legate.jl and cuNumeric.jl
-RUN ls $(julia --project=@. -e 'using MPICH_jll; print(joinpath(MPICH_jll.artifact_dir, "lib"))')
-
-RUN echo "hope"
-RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-output -n myenv julia --project=. -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")'
-RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-output -n myenv julia --project=. -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "cuda-jl-tasking")'
-RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-output -n myenv julia --project=. -e 'using Pkg; Pkg.test("cuNumeric")'
+RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-output -n myenv julia --project=$HOME -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")'
+RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-output -n myenv julia --project=$HOME -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "cuda-jl-tasking")'
+RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-output -n myenv julia --project=$HOME -e 'using Pkg; Pkg.test("cuNumeric")'
 
 RUN rm -rf /var/lib/apt/lists/*
 
-RUN echo "DONE"
-
+ENTRYPOINT source /etc/profile.d/custom_ld_library_path.sh && exec /bin/bash
 WORKDIR $HOME
