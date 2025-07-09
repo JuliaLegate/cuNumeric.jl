@@ -36,7 +36,7 @@ RUN julia --project=@. -e 'using Pkg; Pkg.add("MPICH_jll"); Pkg.add("OpenSSL_jll
 
 RUN MPICH_LIB=$(julia --project=@. -e 'using MPICH_jll; print(joinpath(MPICH_jll.artifact_dir, "lib"))') && \
     OPENSSL_LIB=$(julia --project=@. -e 'using OpenSSL_jll; print(joinpath(OpenSSL_jll.artifact_dir, "lib"))') && \
-    echo "export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/:/usr/local/cuda/lib64/:$HOME/.local/lib:$MPICH_LIB:$OPENSSL_LIB:\$LD_LIBRARY_PATH" > /etc/profile.d/custom_ld_library_path.sh
+    echo "export LD_LIBRARY_PATH=$HOME/.local/lib:$MPICH_LIB:$OPENSSL_LIB:/usr/lib/x86_64-linux-gnu/:/usr/local/cuda/lib64/:\$LD_LIBRARY_PATH" > /etc/profile.d/custom_ld_library_path.sh
 
 RUN chmod +x /etc/profile.d/custom_ld_library_path.sh
 RUN cat /etc/profile.d/custom_ld_library_path.sh
