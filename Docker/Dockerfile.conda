@@ -81,5 +81,7 @@ RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-ou
 
 RUN rm -rf /var/lib/apt/lists/*
 
+ENV LEGATE_AUTO_CONFIG=1 
+
 ENTRYPOINT source /etc/profile.d/custom_ld_library_path.sh && exec /bin/bash
 WORKDIR $HOME
