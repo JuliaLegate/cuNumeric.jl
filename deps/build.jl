@@ -16,8 +16,6 @@
  * Author(s): David Krasowska <krasow@u.northwestern.edu>
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
-__precompile__(false)
-
 using Pkg
 import Base: notnothing
 
@@ -27,6 +25,7 @@ using Legate
 using HDF5_jll
 using NCCL_jll
 using CUTENSOR_jll
+using OpenSSL_jll
 
 const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.05.00"]
 const LATEST_CUPYNUMERIC_VERSION = SUPPORTED_CUPYNUMERIC_VERSIONS[end]
@@ -113,9 +112,24 @@ function install_cupynumeric(repo_root, version_to_install)
         mkdir(build_dir)
     end
 
-    legate_loc = Legate.get_install_liblegate()
-    nccl_loc = NCCL_jll.NCCL_jll.artifact_dir
-    cutensor_loc = CUTENSOR_jll.CUTENSOR_jll.artifact_dir
+    legate_loc = joinpath(Legate.get_install_liblegate(), "..") # new gives /lib
+
+    nccl_loc = if NCCL_jll.is_available()
+        joinpath(NCCL_jll.artifact_dir, "lib")
+    elseif haskey(ENV, "JULIA_NCCL_PATH")
+        get(ENV, "JULIA_NCCL_PATH", "0")
+    else
+        error("NCCL not found via JLL or JULIA_NCCL_PATH.")
+    end
+
+    cutensor_loc = if CUTENSOR_jll.is_available()
+        joinpath(CUTENSOR_jll.artifact_dir, "lib")
+    elseif haskey(ENV, "JULIA_CUTENSORL_PATH")
+        get(ENV, "JULIA_CUTENSORL_PATH", "0")
+    else
+        error("CUTENSOR not found via JLL or JULIA_CUTENSORL_PATH.")
+    end
+
     build_cupynumeric = joinpath(repo_root, "scripts/build_cupynumeric.sh")
     nthreads = Threads.nthreads()
     run_sh(
@@ -170,13 +184,35 @@ function build()
             install_cupynumeric(pkg_root, LATEST_CUPYNUMERIC_VERSION)
         end
     end
-    tblis_root = cupynumeric_dir # currently all cases holds true
+    tblis_root = joinpath(cupynumeric_dir, "lib") # currently all cases holds true
 
     # create libcupynumericwrapper.so
     legate_loc = Legate.get_install_liblegate()
-    hdf5_loc = HDF5_jll.HDF5_jll.artifact_dir
-    nccl_loc = NCCL_jll.NCCL_jll.artifact_dir
-    cutensor_loc = CUTENSOR_jll.CUTENSOR_jll.artifact_dir
+
+    hdf5_loc = if HDF5_jll.is_available()
+        joinpath(HDF5_jll.artifact_dir, "lib")
+    elseif haskey(ENV, "JULIA_HDF5_PATH")
+        get(ENV, "JULIA_HDF5_PATH", "0")
+    else
+        error("HDF5 not found via JLL or JULIA_HDF5_PATH.")
+    end
+
+    nccl_loc = if NCCL_jll.is_available()
+        joinpath(NCCL_jll.artifact_dir, "lib")
+    elseif haskey(ENV, "JULIA_NCCL_PATH")
+        get(ENV, "JULIA_NCCL_PATH", "0")
+    else
+        error("NCCL not found via JLL or JULIA_NCCL_PATH.")
+    end
+
+    cutensor_loc = if CUTENSOR_jll.is_available()
+        joinpath(CUTENSOR_jll.artifact_dir, "lib")
+    elseif haskey(ENV, "JULIA_CUTENSORL_PATH")
+        get(ENV, "JULIA_CUTENSORL_PATH", "0")
+    else
+        error("CUTENSOR not found via JLL or JULIA_CUTENSORL_PATH.")
+    end
+
     build_cpp_wrapper(pkg_root, cupynumeric_dir, legate_loc, hdf5_loc)
 
     open(joinpath(deps_dir, "deps.jl"), "w") do io
