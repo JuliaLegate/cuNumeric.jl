@@ -48,8 +48,17 @@ RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86
     dpkg -i cuda-keyring_1.1-1_all.deb && \
     apt-get update
 
+RUN wget https://developer.download.nvidia.com/compute/cutensor/2.2.0/local_installers/cutensor-local-repo-ubuntu2204-2.2.0_1.0-1_amd64.deb && \
+    dpkg -i cutensor-local-repo-ubuntu2204-2.2.0_1.0-1_amd64.deb && \
+    cp /var/cutensor-local-repo-ubuntu2204-2.2.0/cutensor-*-keyring.gpg /usr/share/keyrings/ && \
+    apt-get update && \
+    apt-get -y install libcutensor2 libcutensor-dev libcutensor-doc
+
 # /usr/lib/x86_64-linux-gnu/libnccl.so
 ENV JULIA_NCCL_PATH="/usr/lib/x86_64-linux-gnu/"
+# /usr/lib/x86_64-linux-gnu/libcutensor.so
+ENV JULIA_CUTENSOR_PATH="/usr/lib/x86_64-linux-gnu/"
+
 
 # TODO, We want to use our JLLs and Julia setup. 
 # install legate / cupynumeric
@@ -72,6 +81,7 @@ RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-ou
 RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-output -n myenv julia --project=. -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "cuda-jl-tasking")'
 RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-output -n myenv julia --project=. -e 'using Pkg; Pkg.test("cuNumeric")'
 
+RUN rm -rf /var/lib/apt/lists/*
 
 RUN echo "DONE"
 
