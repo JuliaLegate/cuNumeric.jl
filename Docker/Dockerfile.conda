@@ -70,7 +70,7 @@ RUN mkdir -p ~/miniconda3 && \
 
 RUN conda init bash && \
     source ~/.bashrc && \
-    conda create -n myenv -c conda-forge -c legate/label/rc cupynumeric=25.05.00.rc3 -y && \
+    CONDA_OVERRIDE_CUDA="12.4" conda create -n myenv -c conda-forge -c legate/label/rc cupynumeric=25.05.00.rc3 -y && \
     conda activate myenv
 
 # Install Legate.jl and cuNumeric.jl
