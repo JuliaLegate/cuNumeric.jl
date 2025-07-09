@@ -24,35 +24,6 @@ if [[ ! -d "$INSTALL_DIR" ]]; then
     exit 1
 fi
 
-LAPACKE_INSTALL_DIR=$CUNUMERIC_ROOT_DIR/lapacke
-if [ -d "$LAPACKE_INSTALL_DIR" ]; then
-    echo "Directory '$LAPACKE_INSTALL_DIR' already exists. Skipping LAPACKE build."
-else
-    LAPACKE_VERSION=3.12.1
-    LAPACKE_BUILD_DIR=$CUNUMERIC_ROOT_DIR/deps/lapacke_build
-
-    mkdir -p $LAPACKE_INSTALL_DIR
-    mkdir -p $LAPACKE_BUILD_DIR
-    cd $LAPACKE_BUILD_DIR
-
-    # Download LAPACK source (LAPACKe is part of it)
-    curl -L -O https://github.com/Reference-LAPACK/lapack/archive/refs/tags/v${LAPACKE_VERSION}.tar.gz
-    tar -xzf v${LAPACKE_VERSION}.tar.gz
-    cd lapack-${LAPACKE_VERSION}
-
-    # Build only LAPACKe
-    mkdir build && cd build
-    cmake .. \
-    -DCMAKE_C_COMPILER=clang \
-    -DCMAKE_INSTALL_PREFIX=$LAPACKE_INSTALL_DIR \
-    -DBUILD_SHARED_LIBS=ON \
-    -DLAPACKE=ON \
-    -DBUILD_TESTING=OFF
-
-    make -j $NTHREADS
-    make install
-    cd $CUNUMERIC_ROOT_DIR
-fi
 
 TAG="v$VERSION"
 REPO_URL="https://github.com/nv-legate/cupynumeric"
@@ -78,14 +49,11 @@ fi
 
 echo $LEGATE_ROOT_DIR
 
-export CXXFLAGS="-I$LAPACKE_INSTALL_DIR/include" 
-export LDFLAGS="-L$LAPACKE_INSTALL_DIR/lib"
-
 BUILD_DIR=$CUNUMERIC_ROOT_DIR/deps/cupynumeric-build
 cmake -S $CLONE_DIR -B $BUILD_DIR \
     -D legate_ROOT=$LEGATE_ROOT_DIR \
     -D NCCL_ROOT=$NCCL_ROOT_DIR \
-    -D cutensor_ROOT=$CUTENSOR_ROOT_DIR \
+    -D cutensor_ROOT=$CUTENSOR_ROOT_DIR 
  
 cmake --build $BUILD_DIR  --parallel $NTHREADS --verbose
 cmake --install $BUILD_DIR --prefix $INSTALL_DIR
@@ -94,3 +62,4 @@ cp $BUILD_DIR/cupynumeric-config*.cmake $INSTALL_DIR/lib/cmake/cupynumeric/
 cp $BUILD_DIR/cupynumeric-targets.cmake $INSTALL_DIR/lib/cmake/cupynumeric/
 cp $BUILD_DIR/cupynumeric-dependencies.cmake $INSTALL_DIR/lib/cmake/cupynumeric/
 cp $BUILD_DIR/Findtblis.cmake $INSTALL_DIR/lib/cmake/cupynumeric/
+cp $BUILD_DIR/_deps/tblis-build/lib/*  $INSTALL_DIR/lib/

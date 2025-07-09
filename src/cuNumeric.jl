@@ -43,10 +43,10 @@ function preload_libs()
     cache_build_meta = joinpath(@__DIR__, "../", "deps", "deps.jl")
     include(cache_build_meta)
     libs = [
-        joinpath(CUTENSOR_ROOT, "lib", "libcutensor.so.2"),
-        joinpath(HDF5_ROOT, "lib", "libhdf5.so.310"),
-        joinpath(NCCL_ROOT, "lib", "libnccl.so.2"),
-        joinpath(TBLIS_ROOT, "lib", "libtblis.so.0"),
+        joinpath(CUTENSOR_ROOT, "libcutensor.so.2"),
+        joinpath(HDF5_ROOT, "libhdf5.so.310"),
+        joinpath(NCCL_ROOT, "libnccl.so.2"),
+        joinpath(TBLIS_ROOT, "libtblis.so.0"),
     ]
     for lib in libs
         # @info "Preloading $lib"
@@ -64,6 +64,7 @@ include("util.jl")
 include("ndarray.jl")
 include("unary.jl")
 include("binary.jl")
+include("cuda.jl")
 
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147
 mutable struct ArgcArgv
@@ -116,6 +117,8 @@ function cupynumeric_setup(AA::ArgcArgv)
     Base.atexit(my_on_exit)
 
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
+
+    cuNumeric.register_tasks(); # in cuda.cpp wrapper interface
 
     return cuNumeric_config_str
 end

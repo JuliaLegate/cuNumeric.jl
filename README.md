@@ -57,6 +57,7 @@ Legate.jl is unregistered. You may need to "hack" if you run into build issues. 
 ] add https://github.com/JuliaLegate/Legate.jl
 ] build # builds cuNumeric.jl
 ```
+
 #### 2b. Use preinstalled version of [cuPyNumeric](https://github.com/nv-legate/cupynumeric)
 We support using a custom install version of cuPyNumeric. See https://docs.nvidia.com/cupynumeric/latest/installation.html for details about different install configurations, or building cuPyNumeric from source.
 ```bash

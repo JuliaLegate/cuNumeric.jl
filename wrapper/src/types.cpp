@@ -18,11 +18,12 @@
  */
 
 #include "types.h"
+
 #include "cupynumeric.h"
 
-
-void wrap_unary_ops(jlcxx::Module& mod){
-  mod.add_bits<CuPyNumericUnaryOpCode>("UnaryOpCode", jlcxx::julia_type("CppEnum"));
+void wrap_unary_ops(jlcxx::Module& mod) {
+  mod.add_bits<CuPyNumericUnaryOpCode>("UnaryOpCode",
+                                       jlcxx::julia_type("CppEnum"));
   mod.set_const("ABSOLUTE", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_ABSOLUTE);
   mod.set_const("ANGLE", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_ANGLE);
   mod.set_const("ARCCOS", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_ARCCOS);
@@ -54,13 +55,15 @@ void wrap_unary_ops(jlcxx::Module& mod){
   mod.set_const("LOG10", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_LOG10);
   mod.set_const("LOG1P", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_LOG1P);
   mod.set_const("LOG2", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_LOG2);
-  mod.set_const("LOGICAL_NOT", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_LOGICAL_NOT);
+  mod.set_const("LOGICAL_NOT",
+                CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_LOGICAL_NOT);
   mod.set_const("MODF", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_MODF);
   mod.set_const("NEGATIVE", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_NEGATIVE);
   mod.set_const("POSITIVE", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_POSITIVE);
   mod.set_const("RAD2DEG", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_RAD2DEG);
   mod.set_const("REAL", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_REAL);
-  mod.set_const("RECIPROCAL", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_RECIPROCAL);
+  mod.set_const("RECIPROCAL",
+                CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_RECIPROCAL);
   mod.set_const("RINT", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_RINT);
   mod.set_const("ROUND", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_ROUND);
   mod.set_const("SIGN", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_SIGN);
@@ -72,66 +75,90 @@ void wrap_unary_ops(jlcxx::Module& mod){
   mod.set_const("TAN", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_TAN);
   mod.set_const("TANH", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_TANH);
   mod.set_const("TRUNC", CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_TRUNC);
-
 }
 
-void wrap_unary_reds(jlcxx::Module& mod){
-  mod.add_bits<CuPyNumericUnaryRedCode>("UnaryRedCode", jlcxx::julia_type("CppEnum"));
+void wrap_unary_reds(jlcxx::Module& mod) {
+  mod.add_bits<CuPyNumericUnaryRedCode>("UnaryRedCode",
+                                        jlcxx::julia_type("CppEnum"));
   mod.set_const("ALL", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_ALL);
   mod.set_const("ANY", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_ANY);
   mod.set_const("ARGMAX", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_ARGMAX);
   mod.set_const("ARGMIN", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_ARGMIN);
   mod.set_const("CONTAINS", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_CONTAINS);
-  mod.set_const("COUNT_NONZERO", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_COUNT_NONZERO);
+  mod.set_const("COUNT_NONZERO",
+                CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_COUNT_NONZERO);
   mod.set_const("MAX", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_MAX);
   mod.set_const("MIN", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_MIN);
-  mod.set_const("NANARGMAX", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_NANARGMAX);
-  mod.set_const("NANARGMIN", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_NANARGMIN);
+  mod.set_const("NANARGMAX",
+                CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_NANARGMAX);
+  mod.set_const("NANARGMIN",
+                CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_NANARGMIN);
   mod.set_const("NANMAX", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_NANMAX);
   mod.set_const("NANMIN", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_NANMIN);
   mod.set_const("NANPROD", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_NANPROD);
   mod.set_const("NANSUM", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_NANSUM);
   mod.set_const("PROD", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_PROD);
   mod.set_const("SUM", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_SUM);
-  mod.set_const("SUM_SQUARES", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_SUM_SQUARES);
+  mod.set_const("SUM_SQUARES",
+                CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_SUM_SQUARES);
   mod.set_const("VARIANCE", CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_VARIANCE);
 }
 
-void wrap_binary_ops(jlcxx::Module& mod){
-  mod.add_bits<CuPyNumericBinaryOpCode>("BinaryOpCode", jlcxx::julia_type("CppEnum"));
+void wrap_binary_ops(jlcxx::Module& mod) {
+  mod.add_bits<CuPyNumericBinaryOpCode>("BinaryOpCode",
+                                        jlcxx::julia_type("CppEnum"));
   mod.set_const("ADD", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_ADD);
   mod.set_const("ARCTAN2", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_ARCTAN2);
-  mod.set_const("BITWISE_AND", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_BITWISE_AND);
-  mod.set_const("BITWISE_OR", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_BITWISE_OR);
-  mod.set_const("BITWISE_XOR", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_BITWISE_XOR);
-  mod.set_const("COPYSIGN", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_COPYSIGN);
+  mod.set_const("BITWISE_AND",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_BITWISE_AND);
+  mod.set_const("BITWISE_OR",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_BITWISE_OR);
+  mod.set_const("BITWISE_XOR",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_BITWISE_XOR);
+  mod.set_const("COPYSIGN",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_COPYSIGN);
   mod.set_const("DIVIDE", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_DIVIDE);
   mod.set_const("EQUAL", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_EQUAL);
-  mod.set_const("FLOAT_POWER", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_FLOAT_POWER);
-  mod.set_const("FLOOR_DIVIDE", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_FLOOR_DIVIDE);
+  mod.set_const("FLOAT_POWER",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_FLOAT_POWER);
+  mod.set_const("FLOOR_DIVIDE",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_FLOOR_DIVIDE);
   mod.set_const("FMOD", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_FMOD);
   mod.set_const("GCD", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_GCD);
   mod.set_const("GREATER", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_GREATER);
-  mod.set_const("GREATER_EQUAL", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_GREATER_EQUAL);
+  mod.set_const("GREATER_EQUAL",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_GREATER_EQUAL);
   mod.set_const("HYPOT", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_HYPOT);
   mod.set_const("ISCLOSE", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_ISCLOSE);
   mod.set_const("LCM", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LCM);
   mod.set_const("LDEXP", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LDEXP);
-  mod.set_const("LEFT_SHIFT", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LEFT_SHIFT);
+  mod.set_const("LEFT_SHIFT",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LEFT_SHIFT);
   mod.set_const("LESS", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LESS);
-  mod.set_const("LESS_EQUAL", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LESS_EQUAL);
-  mod.set_const("LOGADDEXP", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LOGADDEXP);
-  mod.set_const("LOGADDEXP2", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LOGADDEXP2);
-  mod.set_const("LOGICAL_AND", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LOGICAL_AND);
-  mod.set_const("LOGICAL_OR", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LOGICAL_OR);
-  mod.set_const("LOGICAL_XOR", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LOGICAL_XOR);
+  mod.set_const("LESS_EQUAL",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LESS_EQUAL);
+  mod.set_const("LOGADDEXP",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LOGADDEXP);
+  mod.set_const("LOGADDEXP2",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LOGADDEXP2);
+  mod.set_const("LOGICAL_AND",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LOGICAL_AND);
+  mod.set_const("LOGICAL_OR",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LOGICAL_OR);
+  mod.set_const("LOGICAL_XOR",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_LOGICAL_XOR);
   mod.set_const("MAXIMUM", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_MAXIMUM);
   mod.set_const("MINIMUM", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_MINIMUM);
   mod.set_const("MOD", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_MOD);
-  mod.set_const("MULTIPLY", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_MULTIPLY);
-  mod.set_const("NEXTAFTER", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_NEXTAFTER);
-  mod.set_const("NOT_EQUAL", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_NOT_EQUAL);
+  mod.set_const("MULTIPLY",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_MULTIPLY);
+  mod.set_const("NEXTAFTER",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_NEXTAFTER);
+  mod.set_const("NOT_EQUAL",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_NOT_EQUAL);
   mod.set_const("POWER", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_POWER);
-  mod.set_const("RIGHT_SHIFT", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_RIGHT_SHIFT);
-  mod.set_const("SUBTRACT", CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_SUBTRACT);
+  mod.set_const("RIGHT_SHIFT",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_RIGHT_SHIFT);
+  mod.set_const("SUBTRACT",
+                CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_SUBTRACT);
 }

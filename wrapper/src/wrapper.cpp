@@ -30,6 +30,7 @@
 #include "legate.h"
 #include "legion.h"
 #include "types.h"
+#include "ufi.h"
 
 struct WrapCppOptional {
   template <typename TypeWrapperT>
@@ -70,4 +71,12 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   ndarray_accessor
       .apply_combination<ApplyNDArrayAccessor, all_types, allowed_dims>(
           WrapNDArrayAccessor());
+
+  mod.add_type<std::vector<std::shared_ptr<CN_NDArray>>>("VectorNDArray")
+      .method("push_back", [](std::vector<std::shared_ptr<CN_NDArray>>& v,
+                              const CN_NDArray& x) {
+        v.push_back(std::make_shared<CN_NDArray>(x));
+      });
+
+  wrap_cuda_methods(mod);
 }
