@@ -20,7 +20,7 @@ makedocs(
 )
 
 deploydocs(
-    repo="github.com/ejmeitz/cuNumeric.jl.git",
+    repo="github.com/JuliaLegate/cuNumeric.jl.git",
     push_preview = true,
     devbranch = "main",
 )
