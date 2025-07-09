@@ -207,10 +207,10 @@ function build()
 
     cutensor_loc = if CUTENSOR_jll.is_available()
         joinpath(CUTENSOR_jll.artifact_dir, "lib")
-    elseif haskey(ENV, "JULIA_CUTENSORL_PATH")
-        get(ENV, "JULIA_CUTENSORL_PATH", "0")
+    elseif haskey(ENV, "JULIA_CUTENSOR_PATH")
+        get(ENV, "JULIA_CUTENSOR_PATH", "0")
     else
-        error("CUTENSOR not found via JLL or JULIA_CUTENSORL_PATH.")
+        error("CUTENSOR not found via JLL or JULIA_CUTENSOR_PATH.")
     end
 
     build_cpp_wrapper(pkg_root, cupynumeric_dir, legate_loc, hdf5_loc)

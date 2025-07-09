@@ -1,4 +1,5 @@
 FROM nvidia/cuda:12.4.0-devel-ubuntu22.04
+SHELL ["/bin/bash", "-c"]
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV HOME=/home/user
@@ -36,6 +37,7 @@ RUN julia --project=@. -e 'using Pkg; Pkg.add("MPICH_jll"); Pkg.add("OpenSSL_jll
 ENV LD_LIBRARY_PATH="$(julia --project=@. -e 'using MPICH_jll; print(MPICH_jll.artifact_dir)')/lib:$LD_LIBRARY_PATH"
 ENV LD_LIBRARY_PATH="$(julia --project=@. -e 'using OpenSSL_jll; print(OpenSSL_jll.artifact_dir)')/lib:$LD_LIBRARY_PATH"
 
+# install NCCL
 RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
     dpkg -i cuda-keyring_1.1-1_all.deb && \
     apt-get update

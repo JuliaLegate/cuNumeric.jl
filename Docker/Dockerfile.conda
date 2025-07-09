@@ -1,0 +1,78 @@
+FROM nvidia/cuda:12.4.0-devel-ubuntu22.04
+SHELL ["/bin/bash", "-c"]
+ENV PATH="/home/user/miniconda3/bin/:$PATH"
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV HOME=/home/user
+ENV JULIA_NUM_THREADS=auto
+ENV CUNUMERIC_LEGATE_CONDA_INSTALL=1
+ENV LEGATE_DEVELOP_MODE=1
+
+RUN apt-get update && apt-get install -y \
+    wget curl git clang libhwloc15 build-essential \
+    libssl-dev software-properties-common \
+    ca-certificates python3-pip libhwloc-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+    # Install Julia
+RUN curl -fsSL https://install.julialang.org | bash -s -- --default-channel 1.10 --yes
+
+# Install CMake to ~/.local
+RUN mkdir -p $HOME/.local && \
+    cd $HOME && \
+    wget https://github.com/Kitware/CMake/releases/download/v3.30.7/cmake-3.30.7-linux-x86_64.sh --no-check-certificate && \
+    sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=$HOME/.local
+ENV PATH="$HOME/.juliaup/bin:$HOME/.local/bin:$PATH"
+
+# Install libaec from source
+RUN cd $HOME && \
+    git clone https://gitlab.dkrz.de/k202009/libaec.git && \
+    mkdir libaec/build && \
+    cmake -S $HOME/libaec -B $HOME/libaec/build -DCMAKE_INSTALL_PREFIX=$HOME/.local && \
+    cd libaec/build && make -j4 && make install
+
+# Install Julia packages and extract artifact paths
+RUN julia --project=@. -e 'using Pkg; Pkg.add("MPICH_jll"); Pkg.add("OpenSSL_jll")'
+
+RUN MPICH_LIB=$(julia --project=@. -e 'using MPICH_jll; print(joinpath(MPICH_jll.artifact_dir, "lib"))') && \
+    OPENSSL_LIB=$(julia --project=@. -e 'using OpenSSL_jll; print(joinpath(OpenSSL_jll.artifact_dir, "lib"))') && \
+    echo "export LD_LIBRARY_PATH=$HOME/.local/lib:$MPICH_LIB:$OPENSSL_LIB:\$LD_LIBRARY_PATH" > /etc/profile.d/custom_ld_library_path.sh
+
+RUN chmod +x /etc/profile.d/custom_ld_library_path.sh
+RUN cat /etc/profile.d/custom_ld_library_path.sh
+
+# there is something going on with the JLLs (NCCL and legate_jll)
+
+# install NCCL
+RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
+    dpkg -i cuda-keyring_1.1-1_all.deb && \
+    apt-get update
+
+# /usr/lib/x86_64-linux-gnu/libnccl.so
+ENV JULIA_NCCL_PATH="/usr/lib/x86_64-linux-gnu/"
+
+# TODO, We want to use our JLLs and Julia setup. 
+# install legate / cupynumeric
+RUN mkdir -p ~/miniconda3 && \
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh --no-check-certificate && \
+    bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3 && \
+    rm ~/miniconda3/miniconda.sh && \
+    source ~/miniconda3/bin/activate
+
+RUN conda init bash && \
+    source ~/.bashrc && \
+    conda create -n myenv -c conda-forge -c legate/label/rc cupynumeric=25.05.00.rc3 -y && \
+    conda activate myenv
+
+# Install Legate.jl and cuNumeric.jl
+RUN ls $(julia --project=@. -e 'using MPICH_jll; print(joinpath(MPICH_jll.artifact_dir, "lib"))')
+
+RUN echo "hope"
+RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-output -n myenv julia --project=. -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")'
+RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-output -n myenv julia --project=. -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "cuda-jl-tasking")'
+RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-output -n myenv julia --project=. -e 'using Pkg; Pkg.test("cuNumeric")'
+
+
+RUN echo "DONE"
+
+WORKDIR $HOME
