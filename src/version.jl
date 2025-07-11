@@ -38,9 +38,9 @@ function version_config_setup()
     libmpi = Legate.get_install_libmpi()
     libhdf5 = Legate.get_install_libhdf5()
 
-    cutensor_root = CUTENSOR_ROOT
-    cupynumeric_root = CUPYNUMERIC_ROOT
-    tblis_root = TBLIS_ROOT
+    cutensor_root = CUTENSOR_LIB
+    cupynumeric_root = CUPYNUMERIC_LIB
+    tblis_root = TBLIS_LIB
 
     str = """
     ───────────────────────────────────────────────

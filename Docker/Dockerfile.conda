@@ -33,11 +33,7 @@ RUN cd $HOME && \
     cd libaec/build && make -j4 && make install
 
 # Install Julia packages and extract artifact paths
-RUN julia --project=@. -e 'using Pkg; Pkg.add("MPICH_jll"); Pkg.add("OpenSSL_jll")'
-
-RUN MPICH_LIB=$(julia --project=@. -e 'using MPICH_jll; print(joinpath(MPICH_jll.artifact_dir, "lib"))') && \
-    OPENSSL_LIB=$(julia --project=@. -e 'using OpenSSL_jll; print(joinpath(OpenSSL_jll.artifact_dir, "lib"))') && \
-    echo "export LD_LIBRARY_PATH=$HOME/.local/lib:$MPICH_LIB:$OPENSSL_LIB:/usr/lib/x86_64-linux-gnu:/usr/local/cuda-12.4/compat:\$LD_LIBRARY_PATH" > /etc/profile.d/custom_ld_library_path.sh
+RUN  echo "export LD_LIBRARY_PATH=$HOME/.local/lib:/usr/lib/x86_64-linux-gnu:/usr/local/cuda-12.4/compat:\$LD_LIBRARY_PATH" > /etc/profile.d/custom_ld_library_path.sh
 
 RUN chmod +x /etc/profile.d/custom_ld_library_path.sh
 RUN cat /etc/profile.d/custom_ld_library_path.sh
@@ -47,7 +43,8 @@ RUN cat /etc/profile.d/custom_ld_library_path.sh
 # install NCCL
 RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
     dpkg -i cuda-keyring_1.1-1_all.deb && \
-    apt-get update
+    apt-get update && \
+    apt -y --allow-change-held-packages install libnccl2 libnccl-dev
 
 RUN wget https://developer.download.nvidia.com/compute/cutensor/2.2.0/local_installers/cutensor-local-repo-ubuntu2204-2.2.0_1.0-1_amd64.deb && \
     dpkg -i cutensor-local-repo-ubuntu2204-2.2.0_1.0-1_amd64.deb && \
@@ -59,7 +56,6 @@ RUN wget https://developer.download.nvidia.com/compute/cutensor/2.2.0/local_inst
 ENV JULIA_NCCL_PATH="/usr/lib/x86_64-linux-gnu/"
 # /usr/lib/x86_64-linux-gnu/libcutensor.so
 ENV JULIA_CUTENSOR_PATH="/usr/lib/x86_64-linux-gnu/"
-
 
 # TODO, We want to use our JLLs and Julia setup. 
 # install legate / cupynumeric
@@ -77,9 +73,11 @@ RUN conda init bash && \
 # Install Legate.jl and cuNumeric.jl
 RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-output -n myenv julia --project=$HOME -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")'
 RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-output -n myenv julia --project=$HOME -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "cuda-jl-tasking")'
-RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-output -n myenv julia --project=$HOME -e 'using Pkg; Pkg.test("cuNumeric")'
+RUN source /etc/profile.d/custom_ld_library_path.sh && conda run --no-capture-output -n myenv julia --project=$HOME -e 'using Pkg; Pkg.resolve()'
 
-RUN rm -rf /var/lib/apt/lists/*
+RUN rm -f cuda-keyring_1.1-1_all.deb && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 ENV LEGATE_AUTO_CONFIG=1 
 

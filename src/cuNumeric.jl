@@ -45,8 +45,8 @@ function preload_libs()
     cache_build_meta = joinpath(@__DIR__, "../", "deps", "deps.jl")
     include(cache_build_meta)
     libs = [
-        joinpath(CUTENSOR_ROOT, "libcutensor"),
-        joinpath(TBLIS_ROOT, "libtblis"),
+        joinpath(CUTENSOR_LIB, "libcutensor"),
+        joinpath(TBLIS_LIB, "libtblis"),
     ]
     for lib in libs
         Libdl.dlopen(lib, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)

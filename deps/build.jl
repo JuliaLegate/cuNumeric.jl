@@ -121,13 +121,13 @@ function install_cupynumeric(repo_root, version_to_install)
 
     legate_root = joinpath(Legate.get_install_liblegate(), "..") # new gives /lib
 
-    nccl_lib = Legate.get_install_libnccl()
-    cutensor_lib = get_library_root(CUTENSOR_jll, "JULIA_CUTENSOR_PATH")
+    nccl_root = joinpath(Legate.get_install_libnccl(), "..")
+    cutensor_root = joinpath(get_library_root(CUTENSOR_jll, "JULIA_CUTENSOR_PATH"), "..")
 
     build_cupynumeric = joinpath(repo_root, "scripts/build_cupynumeric.sh")
     nthreads = Threads.nthreads()
     run_sh(
-        `bash $build_cupynumeric $repo_root $legate_root $nccl_lib $cutensor_lib $build_dir $version_to_install $nthreads`,
+        `bash $build_cupynumeric $repo_root $legate_root $nccl_root $cutensor_root $build_dir $version_to_install $nthreads`,
         "cupynumeric",
     )
 end
@@ -194,13 +194,13 @@ function build()
     build_cpp_wrapper(pkg_root, cupynumeric_root, legate_root, hdf5_lib)
 
     open(joinpath(deps_dir, "deps.jl"), "w") do io
-        println(io, "const LEGATE_ROOT = \"$(legate_lib)\"")
-        println(io, "const CUPYNUMERIC_ROOT = \"$(cupynumeric_lib)\"")
-        println(io, "const TBLIS_ROOT = \"$(tblis_lib)\"")
-        println(io, "const HDF5_ROOT = \"$(hdf5_lib)\"")
-        println(io, "const NCCL_ROOT = \"$(nccl_lib)\"")
-        println(io, "const CUTENSOR_ROOT = \"$(cutensor_lib)\"")
-        println(io, "const MPI_ROOT = \"$(mpi_lib)\"")
+        println(io, "const LEGATE_LIB = \"$(legate_lib)\"")
+        println(io, "const CUPYNUMERIC_LIB = \"$(cupynumeric_lib)\"")
+        println(io, "const TBLIS_LIB = \"$(tblis_lib)\"")
+        println(io, "const HDF5_LIB = \"$(hdf5_lib)\"")
+        println(io, "const NCCL_LIB = \"$(nccl_lib)\"")
+        println(io, "const CUTENSOR_LIB = \"$(cutensor_lib)\"")
+        println(io, "const MPI_LIB = \"$(mpi_lib)\"")
     end
 end
 
