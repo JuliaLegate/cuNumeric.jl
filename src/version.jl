@@ -38,9 +38,9 @@ function version_config_setup()
     libmpi = Legate.get_install_libmpi()
     libhdf5 = Legate.get_install_libhdf5()
 
-    cutensor_root = CUTENSOR_LIB
-    cupynumeric_root = CUPYNUMERIC_LIB
-    tblis_root = TBLIS_LIB
+    libcutensor = CUTENSOR_LIB
+    libcupynumeric = CUPYNUMERIC_LIB
+    libtblis = TBLIS_LIB
 
     str = """
     ───────────────────────────────────────────────
@@ -57,9 +57,9 @@ function version_config_setup()
 
     Library Paths:
       Legate:         $liblegate
-      cuPyNumeric:    $cupynumeric_root
-      TBLIS:          $tblis_root
-      CUTENSOR:       $cutensor_root
+      cuPyNumeric:    $libcupynumeric
+      TBLIS:          $libtblis
+      CUTENSOR:       $libcutensor
       NCCL:           $libnccl
       MPI:            $libmpi
       HDF5:           $libhdf5
