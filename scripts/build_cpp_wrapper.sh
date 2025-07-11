@@ -40,7 +40,7 @@ if [[ ! -d "$BUILD_DIR" ]]; then
     echo "Error: '$BUILD_DIR' is not a valid directory."
     exit 1
 fi
-
+echo $LEGATE_ROOT_DIR
 LEGION_CMAKE_DIR=$LEGATE_ROOT_DIR/share/Legion/cmake
 cmake -S $CUNUMERIC_ROOT_DIR/wrapper -B $BUILD_DIR \
     -D CMAKE_PREFIX_PATH="$CUPYNUMERIC_ROOT_DIR;$LEGION_CMAKE_DIR;$LEGATE_ROOT_DIR;" \

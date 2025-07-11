@@ -34,8 +34,6 @@ const LATEST_CUPYNUMERIC_VERSION = SUPPORTED_CUPYNUMERIC_VERSIONS[end]
 function run_sh(cmd::Cmd, filename::String)
     println(cmd)
 
-    println(cmd)
-
     build_log = joinpath(@__DIR__, "build.log")
     err_log = joinpath(@__DIR__, "$(filename).err")
 
@@ -51,7 +49,17 @@ function run_sh(cmd::Cmd, filename::String)
     end
 end
 
-function build_cpp_wrapper(repo_root, cupynumeric_loc, legate_loc, hdf5_loc)
+function get_library_root(jll_module, env_var::String)
+    if haskey(ENV, env_var)
+        return get(ENV, env_var, "0")
+    elseif jll_module.is_available()
+        return joinpath(jll_module.artifact_dir, "lib")
+    else
+        error("$env_var not found via environment or JLL.")
+    end
+end
+
+function build_cpp_wrapper(repo_root, cupynumeric_loc, legate_loc, hdf5_lib)
     @info "libcupynumericwrapper: Building C++ Wrapper Library"
     build_dir = joinpath(repo_root, "wrapper", "build")
     if !isdir(build_dir)
@@ -65,23 +73,23 @@ function build_cpp_wrapper(repo_root, cupynumeric_loc, legate_loc, hdf5_loc)
     build_cpp_wrapper = joinpath(repo_root, "scripts/build_cpp_wrapper.sh")
     nthreads = Threads.nthreads()
     run_sh(
-        `bash $build_cpp_wrapper $cupynumeric_loc $legate_loc $hdf5_loc $repo_root $build_dir $nthreads`,
+        `bash $build_cpp_wrapper $cupynumeric_loc $legate_loc $hdf5_lib $repo_root $build_dir $nthreads`,
         "cpp_wrapper",
     )
 end
 
-function is_cupynumeric_installed(cupynumeric_dir::String; throw_errors::Bool=false)
-    include_dir = joinpath(cupynumeric_dir, "include")
+function is_cupynumeric_installed(cupynumeric_root::String; throw_errors::Bool=false)
+    include_dir = joinpath(cupynumeric_root, "include")
     if !isdir(joinpath(include_dir, "cupynumeric"))
         throw_errors &&
-            @error "cuNumeric.jl: Cannot find include/cupynumeric in $(cupynumeric_dir)"
+            @error "cuNumeric.jl: Cannot find include/cupynumeric in $(cupynumeric_root)"
         return false
     end
     return true
 end
 
-function parse_cupynumeric_version(cupynumeric_dir)
-    version_file = joinpath(cupynumeric_dir, "include", "cupynumeric", "version_config.hpp")
+function parse_cupynumeric_version(cupynumeric_root)
+    version_file = joinpath(cupynumeric_root, "include", "cupynumeric", "version_config.hpp")
 
     version = nothing
     open(version_file, "r") do f
@@ -111,28 +119,15 @@ function install_cupynumeric(repo_root, version_to_install)
         mkdir(build_dir)
     end
 
-    legate_loc = joinpath(Legate.get_install_liblegate(), "..") # new gives /lib
+    legate_root = joinpath(Legate.get_install_liblegate(), "..") # new gives /lib
 
-    nccl_loc = if NCCL_jll.is_available()
-        joinpath(NCCL_jll.artifact_dir, "lib")
-    elseif haskey(ENV, "JULIA_NCCL_PATH")
-        get(ENV, "JULIA_NCCL_PATH", "0")
-    else
-        error("NCCL not found via JLL or JULIA_NCCL_PATH.")
-    end
-
-    cutensor_loc = if CUTENSOR_jll.is_available()
-        joinpath(CUTENSOR_jll.artifact_dir, "lib")
-    elseif haskey(ENV, "JULIA_CUTENSORL_PATH")
-        get(ENV, "JULIA_CUTENSORL_PATH", "0")
-    else
-        error("CUTENSOR not found via JLL or JULIA_CUTENSORL_PATH.")
-    end
+    nccl_lib = Legate.get_install_libnccl()
+    cutensor_lib = get_library_root(CUTENSOR_jll, "JULIA_CUTENSOR_PATH")
 
     build_cupynumeric = joinpath(repo_root, "scripts/build_cupynumeric.sh")
     nthreads = Threads.nthreads()
     run_sh(
-        `bash $build_cupynumeric $repo_root $legate_loc $nccl_loc $cutensor_loc $build_dir $version_to_install $nthreads`,
+        `bash $build_cupynumeric $repo_root $legate_root $nccl_lib $cutensor_lib $build_dir $version_to_install $nthreads`,
         "cupynumeric",
     )
 end
@@ -140,18 +135,18 @@ end
 function check_prefix_install(env_var, env_loc)
     if get(ENV, env_var, "0") == "1"
         @info "cuNumeric.jl: Using $(env_var) mode"
-        cupynumeric_dir = get(ENV, env_loc, nothing)
-        cupynumeric_installed = is_cupynumeric_installed(cupynumeric_dir)
+        cupynumeric_root = get(ENV, env_loc, nothing)
+        cupynumeric_installed = is_cupynumeric_installed(cupynumeric_root)
         if !cupynumeric_installed
-            error("cuNumeric.jl: Build halted: cupynumeric not found in $cupynumeric_dir")
+            error("cuNumeric.jl: Build halted: cupynumeric not found in $cupynumeric_root")
         end
-        installed_version = parse_cupynumeric_version(cupynumeric_dir)
+        installed_version = parse_cupynumeric_version(cupynumeric_root)
         if installed_version ∉ SUPPORTED_CUPYNUMERIC_VERSIONS
             error(
-                "cuNumeric.jl: Build halted: $(cupynumeric_dir) detected unsupported version $(installed_version)"
+                "cuNumeric.jl: Build halted: $(cupynumeric_root) detected unsupported version $(installed_version)"
             )
         end
-        @info "cuNumeric.jl: Found a valid install in: $(cupynumeric_dir)"
+        @info "cuNumeric.jl: Found a valid install in: $(cupynumeric_root)"
         return true
     end
     return false
@@ -164,15 +159,15 @@ function build()
     @info "cuNumeric.jl: Parsed Package Dir as: $(pkg_root)"
     # custom install 
     if check_prefix_install("CUNUMERIC_CUSTOM_INSTALL", "CUNUMERIC_CUSTOM_INSTALL_LOCATION")
-        cupynumeric_dir = get(ENV, "CUNUMERIC_CUSTOM_INSTALL_LOCATION", nothing)
+        cupynumeric_root = get(ENV, "CUNUMERIC_CUSTOM_INSTALL_LOCATION", nothing)
         # conda install 
     elseif check_prefix_install("CUNUMERIC_LEGATE_CONDA_INSTALL", "CONDA_PREFIX")
-        cupynumeric_dir = get(ENV, "CONDA_PREFIX", nothing)
+        cupynumeric_root = get(ENV, "CONDA_PREFIX", nothing)
     else # default install 
-        cupynumeric_dir = abspath(joinpath(@__DIR__, "../libcupynumeric"))
-        cupynumeric_installed = is_cupynumeric_installed(cupynumeric_dir)
+        cupynumeric_root = abspath(joinpath(@__DIR__, "../libcupynumeric"))
+        cupynumeric_installed = is_cupynumeric_installed(cupynumeric_root)
         if cupynumeric_installed
-            installed_version = parse_cupynumeric_version(cupynumeric_dir)
+            installed_version = parse_cupynumeric_version(cupynumeric_root)
             if installed_version ∉ SUPPORTED_CUPYNUMERIC_VERSIONS
                 @warn "cuNumeric.jl: Detected unsupported version of cupynumeric installed: $(installed_version). Installing newest version."
                 install_cupynumeric(pkg_root, LATEST_CUPYNUMERIC_VERSION)
@@ -183,44 +178,29 @@ function build()
             install_cupynumeric(pkg_root, LATEST_CUPYNUMERIC_VERSION)
         end
     end
-    tblis_root = joinpath(cupynumeric_dir, "lib") # currently all cases holds true
+
+    legate_lib = Legate.get_install_liblegate()
+    legate_root = joinpath(legate_lib, "..")
+
+    cupynumeric_lib = joinpath(cupynumeric_root, "lib")
+    tblis_lib = joinpath(cupynumeric_root, "lib") # currently all cases holds true
+
+    hdf5_lib = Legate.get_install_libhdf5()
+    mpi_lib = Legate.get_install_libmpi()
+    nccl_lib = Legate.get_install_libnccl()
+    cutensor_lib = get_library_root(CUTENSOR_jll, "JULIA_CUTENSOR_PATH")
 
     # create libcupynumericwrapper.so
-    legate_loc = Legate.get_install_liblegate()
-
-    hdf5_loc = if HDF5_jll.is_available()
-        joinpath(HDF5_jll.artifact_dir, "lib")
-    elseif haskey(ENV, "JULIA_HDF5_PATH")
-        get(ENV, "JULIA_HDF5_PATH", "0")
-    else
-        error("HDF5 not found via JLL or JULIA_HDF5_PATH.")
-    end
-
-    nccl_loc = if NCCL_jll.is_available()
-        joinpath(NCCL_jll.artifact_dir, "lib")
-    elseif haskey(ENV, "JULIA_NCCL_PATH")
-        get(ENV, "JULIA_NCCL_PATH", "0")
-    else
-        error("NCCL not found via JLL or JULIA_NCCL_PATH.")
-    end
-
-    cutensor_loc = if CUTENSOR_jll.is_available()
-        joinpath(CUTENSOR_jll.artifact_dir, "lib")
-    elseif haskey(ENV, "JULIA_CUTENSOR_PATH")
-        get(ENV, "JULIA_CUTENSOR_PATH", "0")
-    else
-        error("CUTENSOR not found via JLL or JULIA_CUTENSOR_PATH.")
-    end
-
-    build_cpp_wrapper(pkg_root, cupynumeric_dir, legate_loc, hdf5_loc)
+    build_cpp_wrapper(pkg_root, cupynumeric_root, legate_root, hdf5_lib)
 
     open(joinpath(deps_dir, "deps.jl"), "w") do io
-        println(io, "const LEGATE_ROOT = \"$(legate_loc)\"")
-        println(io, "const CUPYNUMERIC_ROOT = \"$(cupynumeric_dir)\"")
-        println(io, "const HDF5_ROOT = \"$(hdf5_loc)\"")
-        println(io, "const NCCL_ROOT = \"$(nccl_loc)\"")
-        println(io, "const CUTENSOR_ROOT = \"$(cutensor_loc)\"")
-        println(io, "const TBLIS_ROOT = \"$(tblis_root)\"")
+        println(io, "const LEGATE_ROOT = \"$(legate_lib)\"")
+        println(io, "const CUPYNUMERIC_ROOT = \"$(cupynumeric_lib)\"")
+        println(io, "const TBLIS_ROOT = \"$(tblis_lib)\"")
+        println(io, "const HDF5_ROOT = \"$(hdf5_lib)\"")
+        println(io, "const NCCL_ROOT = \"$(nccl_lib)\"")
+        println(io, "const CUTENSOR_ROOT = \"$(cutensor_lib)\"")
+        println(io, "const MPI_ROOT = \"$(mpi_lib)\"")
     end
 end
 

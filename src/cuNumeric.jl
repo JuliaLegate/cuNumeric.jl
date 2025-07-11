@@ -24,6 +24,7 @@ using Legate
 using CxxWrap
 using Pkg
 using Libdl
+using TOML
 
 using LinearAlgebra
 import LinearAlgebra: mul!
@@ -38,19 +39,16 @@ import Base: abs, angle, acos, acosh, asin, asinh, atan, atanh, cbrt,
     sinh, sqrt, tan, tanh, trunc, +, *, atan, &, |, ⊻, copysign,
     /, ==, ^, div, gcd, >, >=, hypot, isapprox, lcm, ldexp, <<,
     <, <=, !=, >>, all, any, argmax, argmin, maximum, minimum,
-    prod, sum
+    prod, sum, read
 
 function preload_libs()
     cache_build_meta = joinpath(@__DIR__, "../", "deps", "deps.jl")
     include(cache_build_meta)
     libs = [
         joinpath(CUTENSOR_ROOT, "libcutensor"),
-        # joinpath(HDF5_ROOT, "libhdf5"),
-        # joinpath(NCCL_ROOT, "libnccl"),
         joinpath(TBLIS_ROOT, "libtblis"),
     ]
     for lib in libs
-        # @info "Preloading $lib"
         Libdl.dlopen(lib, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
     end
 end
@@ -60,7 +58,9 @@ lib = "libcupynumericwrapper.so"
 libpath = joinpath(@__DIR__, "../", "wrapper", "build", lib)
 @wrapmodule(() -> libpath)
 
-include("capi.jl") # must go first
+include("version.jl") # version_config_setup
+
+include("capi.jl") # c-array interface should go first
 include("util.jl")
 include("ndarray.jl")
 include("unary.jl")
@@ -85,37 +85,26 @@ function my_on_exit()
     @info "Cleaning Up cuNuermic"
 end
 
+global cuNumeric_config_str::String = ""
+
 function cupynumeric_setup(AA::ArgcArgv)
-    cuNumeric_config_str = ""
-
     @info "Started cuNuermic"
-
     Base.atexit(my_on_exit)
 
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
-
     cuNumeric.register_tasks(); # in cuda.cpp wrapper interface
-
-    return cuNumeric_config_str
 end
 
-global cuNumeric_config_str::String = ""
-
 function versioninfo()
-    msg = """
-        CuNumeric Configuration: $(cuNumeric_config_str)
-    """
-    println(msg)
+    println(cuNumeric_config_str)
 end
 
 # Runtime initilization
-# Called once in lifetime of code
 function __init__()
     preload_libs()
-
     @initcxx
-    # Legate ignores these arguments...
     AA = ArgcArgv([Base.julia_cmd()[1]])
-    global cuNumeric_config = cupynumeric_setup(AA)
+    global cuNumeric_config_str = version_config_setup()
+    cupynumeric_setup(AA)
 end
 end
