@@ -17,15 +17,14 @@
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 using Pkg
-import Base: notnothing
-
-using Preferences
-
-using Legate
+using OpenSSL_jll
 using HDF5_jll
 using NCCL_jll
 using CUTENSOR_jll
-using OpenSSL_jll
+using Preferences
+using Legate
+
+import Base: notnothing
 
 const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.05.00"]
 const LATEST_CUPYNUMERIC_VERSION = SUPPORTED_CUPYNUMERIC_VERSIONS[end]

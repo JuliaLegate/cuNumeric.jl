@@ -19,6 +19,7 @@
 
 module cuNumeric
 
+using CUDA
 using Legate
 using CxxWrap
 using Pkg
@@ -43,10 +44,10 @@ function preload_libs()
     cache_build_meta = joinpath(@__DIR__, "../", "deps", "deps.jl")
     include(cache_build_meta)
     libs = [
-        joinpath(CUTENSOR_ROOT, "libcutensor.so.2"),
-        joinpath(HDF5_ROOT, "libhdf5.so.310"),
-        joinpath(NCCL_ROOT, "libnccl.so.2"),
-        joinpath(TBLIS_ROOT, "libtblis.so.0"),
+        joinpath(CUTENSOR_ROOT, "libcutensor"),
+        # joinpath(HDF5_ROOT, "libhdf5"),
+        # joinpath(NCCL_ROOT, "libnccl"),
+        joinpath(TBLIS_ROOT, "libtblis"),
     ]
     for lib in libs
         # @info "Preloading $lib"
@@ -85,31 +86,6 @@ function my_on_exit()
 end
 
 function cupynumeric_setup(AA::ArgcArgv)
-
-    # Capture stdout from start_legate to 
-    # see the hardware configuration
-
-    # TODO CATCH STDERR
-    # run(`bash -c "export LEGATE_AUTO_CONFIG=0"`)
-    # run(`bash -c "export LEGATE_SHOW_CONFIG=1"`)
-    # run(`bash -c "export LEGATE_CONFIG=\"--logging 2\""`)
-    #println(ENV["LEGATE_AUTO_CONFIG"])
-    #@info "LEGATE_AUTO_CONFIG: $(ENV["LEGATE_AUTO_CONFIG"])"
-    #println(Base.get_bool_env("LEGATE_AUTO_CONFIG"))
-
-    # cuNumeric.start_legate()
-    #pipe = Pipe()
-    #started = Base.Event()
-    #writer = Threads.@spawn redirect_stdout(pipe) do
-    #notify(started)
-    #cuNumeric.start_legate()
-    #close(Base.pipe_writer(pipe))
-    #end
-
-    #wait(started)
-    #legate_config_str = Base.read(pipe, String)
-    #wait(writer) 
-    #print(legate_config_str)
     cuNumeric_config_str = ""
 
     @info "Started cuNuermic"
