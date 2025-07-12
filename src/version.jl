@@ -16,7 +16,7 @@ function get_cxx_version(libpath::AbstractString)
 end
 
 function read_githash()
-    githash_path = joinpath(@__DIR__, "..", ".githash")
+    githash_path = joinpath(@__DIR__, "../", ".githash")
     return isfile(githash_path) ? readchomp(githash_path) : "unknown"
 end
 
