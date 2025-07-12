@@ -15,6 +15,11 @@ function get_cxx_version(libpath::AbstractString)
     end
 end
 
+function read_githash()
+    githash_path = joinpath(@__DIR__, "..", ".githash")
+    return isfile(githash_path) ? readchomp(githash_path) : "unknown"
+end
+
 function version_config_setup()
     project_file = joinpath(@__DIR__, "../", "Project.toml")
     project = TOML.parsefile(project_file)
@@ -26,12 +31,7 @@ function version_config_setup()
 
     julia_ver = VERSION
     hostname = gethostname()
-
-    git_hash = try
-        readchomp(`git -C $(dirname(project_file)) rev-parse HEAD`)
-    catch
-        "unknown"
-    end
+    git_hash = read_githash()
 
     liblegate = Legate.get_install_liblegate()
     libnccl = Legate.get_install_libnccl()
