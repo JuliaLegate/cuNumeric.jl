@@ -33,6 +33,10 @@ struct CN_NDArray {
 
 // #define CUDA_DEBUG 1
 
+#define ARG_OFFSET 7
+#define BLOCK_START 1
+#define THREAD_START 4
+
 #define ERROR_CHECK(x)                                                 \
   {                                                                    \
     cudaError_t status = x;                                            \
@@ -194,8 +198,14 @@ void dispatch_type(AccessMode mode, legate::Type::Code code, int dim, char *&p,
 /*static*/ void RunPTXTask::gpu_variant(legate::TaskContext context) {
   cudaStream_t stream_ = context.get_task_stream();
   std::string kernel_name = context.scalar(0).value<std::string>();
-  std::uint32_t threads = context.scalar(1).value<std::uint32_t>();
-  std::uint32_t blocks = context.scalar(2).value<std::uint32_t>();
+
+  std::uint32_t bx = context.scalar(BLOCK_START + 0).value<std::uint32_t>();
+  std::uint32_t by = context.scalar(BLOCK_START + 1).value<std::uint32_t>();
+  std::uint32_t bz = context.scalar(BLOCK_START + 2).value<std::uint32_t>();
+
+  std::uint32_t tx = context.scalar(THREAD_START + 0).value<std::uint32_t>();
+  std::uint32_t ty = context.scalar(THREAD_START + 1).value<std::uint32_t>();
+  std::uint32_t tz = context.scalar(THREAD_START + 2).value<std::uint32_t>();
 
   CUcontext ctx;
   cuStreamGetCtx(stream_, &ctx);
@@ -233,7 +243,7 @@ void dispatch_type(AccessMode mode, legate::Type::Code code, int dim, char *&p,
   // skip scalar 0-2 (kernel_name, threads, blocks)
   std::size_t buffer_size =
       padded_bytes + (num_inputs + num_outputs) * sizeof(CuDeviceArray);
-  for (std::size_t i = 3; i < num_scalars; ++i)
+  for (std::size_t i = ARG_OFFSET; i < num_scalars; ++i)
     buffer_size += context.scalar(i).size();
 
   std::vector<char> arg_buffer(buffer_size);
@@ -253,7 +263,7 @@ void dispatch_type(AccessMode mode, legate::Type::Code code, int dim, char *&p,
     // cuda_device_array_arg_write<float, 1>(p, ps);
     dispatch_type(ufi::AccessMode::WRITE, code, dim, p, ps);
   }
-  for (std::size_t i = 3; i < num_scalars; ++i) {
+  for (std::size_t i = ARG_OFFSET; i < num_scalars; ++i) {
     const auto &scalar = context.scalar(i);
     memcpy(p, scalar.ptr(), scalar.size());
     p += scalar.size();
@@ -268,8 +278,9 @@ void dispatch_type(AccessMode mode, legate::Type::Code code, int dim, char *&p,
   };
 
   CUstream custream_ = reinterpret_cast<CUstream>(stream_);
-  DRIVER_ERROR_CHECK(cuLaunchKernel(func, blocks, 1, 1, threads, 1, 1, 0,
-                                    custream_, nullptr, config));
+
+  DRIVER_ERROR_CHECK(cuLaunchKernel(func, bx, by, bz, tx, ty, tz, 0, custream_,
+                                    nullptr, config));
 
   // DRIVER_ERROR_CHECK(cuStreamSynchronize(stream_));
   // TEST_PRINT_DEBUG(a, N, float, "%f", stream_, "array a");
@@ -391,9 +402,9 @@ legate::LogicalStore broadcast(const std::vector<uint64_t> &shape,
     then allign one input with one output
     This reduces the need for a cartesian product.
 */
-void add_transitive_alignment(legate::AutoTask &task,
-                              const std::vector<legate::Variable> &inputs,
-                              const std::vector<legate::Variable> &outputs) {
+inline void add_transitive_alignment(
+    legate::AutoTask &task, const std::vector<legate::Variable> &inputs,
+    const std::vector<legate::Variable> &outputs) {
   for (size_t i = 1; i < inputs.size(); ++i)
     task.add_constraint(legate::align(inputs[i], inputs[0]));
   for (size_t i = 1; i < outputs.size(); ++i)
@@ -407,7 +418,19 @@ legate::Library get_lib() {
   return runtime->get_library();
 }
 
-void new_task(std::string kernel_name, uint32_t blocks, uint32_t threads,
+inline void add_xyz_scalars(legate::AutoTask &task,
+                            const std::vector<uint32_t> &v) {
+  uint32_t xyz[3] = {1, 1, 1};
+  const size_t n = std::min<size_t>(3, v.size());
+  for (size_t i = 0; i < n; ++i) xyz[i] = v[i];
+
+  task.add_scalar_arg(legate::Scalar(xyz[0]));
+  task.add_scalar_arg(legate::Scalar(xyz[1]));
+  task.add_scalar_arg(legate::Scalar(xyz[2]));
+}
+
+void new_task(std::string kernel_name, std::vector<uint32_t> &blocks,
+              std::vector<uint32_t> &threads,
               std::vector<std::shared_ptr<CN_NDArray>> &inputs,
               std::vector<std::shared_ptr<CN_NDArray>> &outputs,
               std::vector<legate::Scalar> &scalars) {
@@ -438,10 +461,11 @@ void new_task(std::string kernel_name, uint32_t blocks, uint32_t threads,
 
   // Add kernel name and scalar args
   task.add_scalar_arg(legate::Scalar(kernel_name));  // 0
-  task.add_scalar_arg(legate::Scalar(blocks));       // 1
-  task.add_scalar_arg(legate::Scalar(threads));      // 2
+  add_xyz_scalars(task, blocks);                     // bx,by,bz 1,2,3
+  add_xyz_scalars(task, threads);                    // tx,ty,tz 4,5,6
 
-  for (const auto &scalar : scalars) task.add_scalar_arg(scalar);  // 3+
+  for (const auto &scalar : scalars)
+    task.add_scalar_arg(scalar);  // 7+ -> ARG_OFFSET
 
   /* TODO actually support the constraint system */
   // Add alignment constraints

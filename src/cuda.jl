@@ -41,12 +41,20 @@ function __tuple_set(args...)
     return tuple(t...)
 end
 
+function __to_stdvec_u32(v)
+    sv = CxxWrap.StdVector{UInt32}()
+    for x in v
+        push!(sv, UInt32(x))
+    end
+    return sv
+end
+
 struct CUDATask
     func::String
     argtypes::NTuple{N,Type} where {N}
 end
 
-function launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
+function Launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
     outputs::Tuple{Vararg{cuNumeric.NDArray}}, scalars::Tuple{Vararg{Any}}; blocks, threads)
     input_vec = cuNumeric.VectorNDArray()
     for arr in inputs
@@ -62,16 +70,18 @@ function launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
     end
 
     cuNumeric.new_task(
-        kernel.func, UInt32(blocks), UInt32(threads), input_vec, output_vec, scalar_vec
+        kernel.func, __to_stdvec_u32(blocks), __to_stdvec_u32(threads), input_vec, output_vec,
+        scalar_vec
     )
 end
 
 function launch(kernel::CUDATask, inputs, outputs, scalars; blocks, threads)
-    launch(kernel,
+    Launch(kernel,
         isa(inputs, Tuple) ? inputs : (inputs,),
         isa(outputs, Tuple) ? outputs : (outputs,),
         isa(scalars, Tuple) ? scalars : (scalars,);
-        blocks, threads,
+        blocks=isa(blocks, Tuple) ? blocks : (blocks,),
+        threads=isa(threads, Tuple) ? threads : (threads,),
     )
 end
 
@@ -116,8 +126,8 @@ macro launch(args...)
         error("@launch macro requires 'task=...' to be provided.")
     end
     task = kwargs[:task]
-    blocks = get(kwargs, :blocks, :(1))
-    threads = get(kwargs, :threads, :(256))
+    blocks = get(kwargs, :blocks, :((1)))
+    threads = get(kwargs, :threads, :((256)))
     inputs = get(kwargs, :inputs, :(()))
     outputs = get(kwargs, :outputs, :(()))
     scalars = get(kwargs, :scalars, :(()))
