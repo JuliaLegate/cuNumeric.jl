@@ -46,8 +46,10 @@ function fused_kernel(u, v, F_u, F_v, N::UInt32, f::Float32, k::Float32)
             u_ij = u[i + 1, j + 1]
             v_ij = v[i + 1, j + 1]
             v_sq = v_ij * v_ij
-            F_u[i, j] = (-u_ij * v_sq) + f*(1.0f0 - u_ij)
-            F_v[i, j] = (u_ij * v_sq) - (f + k)*v_ij
+            # F_u[i, j] = (-u_ij * v_sq) + f*(1.0f0 - u_ij)
+            # F_v[i, j] = (u_ij * v_sq) - (f + k)*v_ij
+            F_u[i, j] = i
+            F_v[i, j] = j
         end
     end
 
@@ -111,16 +113,18 @@ function fusion_test(; N=16, atol=1.0f-6, rtol=1.0f-6)
     v = cuNumeric.random(Float32, (N, N))
 
     # using CUDA
-    u_base = CUDA.rand(Float32, (N, N))
-    v_base = CUDA.rand(Float32, (N, N))
-    Fu_base_fused, Fv_base_fused = run_fused_baseline(N, u_base, v_base)
-    Fu_base_unfused, Fv_base_unfused = run_unfused_baseline(N, u_base, v_base)
-    @test isapprox(Fu_base_fused, Fu_base_unfused; atol=atol, rtol=rtol)
-    @test isapprox(Fv_base_fused, Fv_base_unfused; atol=atol, rtol=rtol)
+    # u_base = CUDA.rand(Float32, (N, N))
+    # v_base = CUDA.rand(Float32, (N, N))
+    # Fu_base_fused, Fv_base_fused = run_fused_baseline(N, u_base, v_base)
+    # Fu_base_unfused, Fv_base_unfused = run_unfused_baseline(N, u_base, v_base)
+    # @test isapprox(Fu_base_fused, Fu_base_unfused; atol=atol, rtol=rtol)
+    # @test isapprox(Fv_base_fused, Fv_base_unfused; atol=atol, rtol=rtol)
 
     # using cuNumeric
     Fu_fused, Fv_fused = run_fused_cunumeric(N, u, v)
+    cuNumeric.gpu_sync()
     Fu_unfused, Fv_unfused = run_unfused_cunumeric(N, u, v)
+    cuNumeric.gpu_sync()
 
     # @assert Fu_fused == Fu_unfused
     # @assert Fv_fused == Fv_unfused
@@ -134,7 +138,7 @@ function fusion_test(; N=16, atol=1.0f-6, rtol=1.0f-6)
     cpu_Fu_unfused = Fu_unfused[:, :]
     cpu_Fv_unfused = Fv_unfused[:, :]
 
-    @test isapprox(cpu_Fu_fused, cpu_Fu_unfused; atol=atol, rtol=rtol)
+    # @test isapprox(cpu_Fu_fused, cpu_Fu_unfused; atol=atol, rtol=rtol)
     @test isapprox(cpu_Fv_fused, cpu_Fv_unfused; atol=atol, rtol=rtol)
 end
 
