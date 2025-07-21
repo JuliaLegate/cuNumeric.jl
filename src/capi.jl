@@ -18,31 +18,34 @@ const NDArray_t = Ptr{Cvoid}
 nda_destroy_array(arr::NDArray_t) = ccall((:nda_destroy_array, libnda),
     Cvoid, (NDArray_t,), arr)
 
-mutable struct NDArray
-    ptr::NDArray_t
-    function NDArray(ptr)
-        handle = new(ptr)
-        finalizer(handle) do h
-            cuNumeric.nda_destroy_array(h.ptr)
-        end
-        return handle
-    end
-end
+nda_nbytes(arr::NDArray_t) = ccall((:nda_nbytes, libnda),
+    Int64, (NDArray_t,), arr)
 
 # mutable struct NDArray
 #     ptr::NDArray_t
-#     nbytes::Int
-#     function NDArray(ptr::NDArray_t)
-#         nbytes = cuNumeric.nda_nbytes(ptr)  # this isn't a real func yet
-#         cuNumeric.register_alloc!(nbytes)
-#         handle = new(ptr, nbytes)
+#     function NDArray(ptr)
+#         handle = new(ptr)
 #         finalizer(handle) do h
 #             cuNumeric.nda_destroy_array(h.ptr)
-#             cuNumeric.register_free!(h.nbytes)
 #         end
 #         return handle
 #     end
 # end
+
+mutable struct NDArray
+    ptr::NDArray_t
+    nbytes::Int64
+    function NDArray(ptr::NDArray_t)
+        nbytes = cuNumeric.nda_nbytes(ptr)
+        cuNumeric.register_alloc!(nbytes)
+        handle = new(ptr, nbytes)
+        finalizer(handle) do h
+            cuNumeric.nda_destroy_array(h.ptr)
+            cuNumeric.register_free!(h.nbytes)
+        end
+        return handle
+    end
+end
 
 # construction 
 function nda_zeros_array(shape::Vector{UInt64}; type::Union{Nothing,Type{T}}=nothing) where {T}

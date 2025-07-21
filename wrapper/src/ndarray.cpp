@@ -8,6 +8,8 @@
 #include "legate.h"
 #include "ndarray_c_api.h"
 
+#define GB (1ULL << 30)
+
 extern "C" {
 
 using cupynumeric::full;
@@ -59,6 +61,8 @@ legate::Type code_to_type(legate::Type::Code code) {
       throw std::runtime_error("Unknown type code");
   }
 }
+
+uint64_t nda_query_device_memory() { return 8 * GB; }
 
 CN_NDArray* nda_zeros_array(int32_t dim, const uint64_t* shape, CN_Type type) {
   std::vector<uint64_t> shp(shape, shape + dim);
@@ -150,6 +154,10 @@ int32_t nda_array_type_code(const CN_NDArray* arr) {
 
 CN_Type* nda_array_type(const CN_NDArray* arr) {
   return new CN_Type{arr->obj.type()};
+}
+
+uint64_t nda_nbytes(CN_NDArray* arr) {
+  return (uint64_t)nda_array_type(arr)->obj.size() * nda_array_size(arr);
 }
 
 void nda_array_shape(const CN_NDArray* arr, uint64_t* out_shape) {

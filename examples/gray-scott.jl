@@ -82,8 +82,6 @@ function gray_scott()
     n_steps = 100 # number of steps to take
     frame_interval = 200 # steps to take between making plots
 
-    garbage_interval = 20
-
     u = cuNumeric.ones(dims)
     v = cuNumeric.zeros(dims)
     u_new = cuNumeric.zeros(dims)
@@ -99,18 +97,13 @@ function gray_scott()
         u, u_new = u_new, u
         v, v_new = v_new, v
 
-        if n % garbage_interval == 0
-            GC.gc()
-        end
-
-        # if n%frame_interval == 0
+        # if n%frame_interval == 0g
         #     u_cpu = u[:, :]
         #     heatmap(u_cpu, clims=(0, 1))
         #     frame(anim)
         # end
     end
     # gif(anim, "gray-scott.gif", fps=10)
-
 end
 
 gray_scott()

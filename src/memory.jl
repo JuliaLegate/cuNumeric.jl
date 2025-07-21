@@ -1,18 +1,22 @@
 using Base.Threads: Atomic, atomic_add!, atomic_sub!, atomic_xchg!
 
-# get_device_mem(dev::Integer=0) = (free=CUDA.memory_status(dev)... )  
+lib = "libcwrapper.so"
+libnda = joinpath(@__DIR__, "../", "wrapper", "build", lib)
 
-const current_bytes = Atomic{Int}(0)   # live, accounted allocations
-const pending_bytes = Atomic{Int}(0)   # predicted upcoming need
-const total_bytes = Ref{Int}(0)      # cached device total
+query_device_memory() = ccall((:nda_query_device_memory, libnda),
+    Int64, ())
+
+const current_bytes = Atomic{Int64}(0)   # live, accounted allocations
+# const pending_bytes = Atomic{Int}(0)   # predicted upcoming need
+const total_bytes = Ref{Int64}(0)      # cached device total
 const soft_frac = Ref{Float64}(0.80)
 const hard_frac = Ref{Float64}(0.90)
+const AUTO_GC_ENABLE = Ref{Bool}(false)
 
-# Refresh total (call at init or when device changes)
-function refresh_total!(dev::Integer=0)
-    _, tot = get_device_mem(dev)
-    total_bytes[] = tot
-    return tot
+function init_gc!()
+    total_bytes[] = query_device_memory()
+    AUTO_GC_ENABLE[] = true
+    @info "cuNumeric.jl has been initialized with automatic GC heuristics. Good Luck!"
 end
 
 soft_limit() = Int(round(soft_frac[] * total_bytes[]))
@@ -20,7 +24,10 @@ hard_limit() = Int(round(hard_frac[] * total_bytes[]))
 
 function register_alloc!(nbytes::Integer)
     atomic_add!(current_bytes, nbytes)
-    maybe_collect(:alloc, nbytes)
+    gc_flag = AUTO_GC_ENABLE[]
+    if gc_flag == true
+        maybe_collect()
+    end
     return nothing
 end
 
@@ -30,20 +37,23 @@ function register_free!(nbytes::Integer)
 end
 
 """
-    maybe_collect(reason, newbytes)
+    maybe_collect()
 
 Soft: `GC.gc(false)` (non-full); Hard: `GC.gc(true)`
 """
-function maybe_collect(reason::Symbol, newbytes::Integer=0)
-    cur = current_bytes[]
-    pend = pending_bytes[]
-    tot = cur + pend
+function maybe_collect()
+    # cur = current_bytes[]
+    # pend = pending_bytes[]
+    # tot = cur + pend
+
+    tot = current_bytes[]
     if tot > hard_limit()
         # Aggressive
+        print("hard")
         GC.gc(true)
-        trim_gpu_pools!()
     elseif tot > soft_limit()
         # Gentle
+        print("soft")
         GC.gc(false)
     end
     return nothing

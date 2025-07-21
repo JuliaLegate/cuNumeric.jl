@@ -88,12 +88,13 @@ end
 
 global cuNumeric_config_str::String = ""
 
-function cupynumeric_setup(AA::ArgcArgv)
+function cunumeric_setup(AA::ArgcArgv)
     @info "Started cuNuermic"
     Base.atexit(my_on_exit)
 
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
     cuNumeric.register_tasks(); # in cuda.cpp wrapper interface
+    cuNumeric.init_gc!() # setup memory.jl 
 end
 
 function versioninfo()
@@ -106,6 +107,6 @@ function __init__()
     @initcxx
     AA = ArgcArgv([Base.julia_cmd()[1]])
     global cuNumeric_config_str = version_config_setup()
-    cupynumeric_setup(AA)
+    cunumeric_setup(AA)
 end
 end
