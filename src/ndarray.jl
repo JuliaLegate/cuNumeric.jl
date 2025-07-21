@@ -206,6 +206,11 @@ function full(dims::Dims{N}, val::T) where {T,N}
     return nda_full_array(shape, val)
 end
 
+function full(dim::Int, val::T) where {T}
+    shape = UInt64[dim]
+    return nda_full_array(shape, val)
+end
+
 #* is this type piracy?
 """
     cuNumeric.zeros([T=Float64,] dims::Int...)

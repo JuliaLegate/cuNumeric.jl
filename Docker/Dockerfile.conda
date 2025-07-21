@@ -10,7 +10,7 @@ ENV LEGATE_DEVELOP_MODE=1
 ENV LEGATE_AUTO_CONFIG=0
 
 RUN apt-get update && apt-get install -y \
-    wget curl git clang libhwloc15 build-essential \
+    wget curl git clang libhwloc15 build-essential vim \
     libssl-dev software-properties-common \
     ca-certificates python3-pip libhwloc-dev && \
     rm -rf /var/lib/apt/lists/*
