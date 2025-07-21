@@ -31,7 +31,7 @@ struct CN_NDArray {
   cupynumeric::NDArray obj;
 };
 
-// #define CUDA_DEBUG 1
+#define CUDA_DEBUG 1
 
 #define BLOCK_START 1
 #define THREAD_START 4

@@ -60,7 +60,8 @@ libpath = joinpath(@__DIR__, "../", "wrapper", "build", lib)
 
 include("version.jl") # version_config_setup
 
-include("capi.jl") # c-array interface should go first
+include("memory.jl") # memory gc before c-array 
+include("capi.jl") # c-array interface prior to ndarray
 include("util.jl")
 include("ndarray.jl")
 include("unary.jl")

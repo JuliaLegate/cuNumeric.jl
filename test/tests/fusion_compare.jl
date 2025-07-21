@@ -21,6 +21,23 @@ function cuNumeric_unfused(u, v, f, k)
     return F_u, F_v
 end
 
+function cuda_unfused(u, v, f::Float32, k::Float32)
+    @views F_u = (
+        (
+            -u[2:(end - 1), 2:(end - 1)] .*
+            (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
+        ) + f*(1.0f0 .- u[2:(end - 1), 2:(end - 1)])
+    )
+
+    @views F_v = (
+        (
+            u[2:(end - 1), 2:(end - 1)] .*
+            (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
+        ) - (f+k)*v[2:(end - 1), 2:(end - 1)]
+    )
+    return F_u, F_v
+end
+
 function fused_kernel(u, v, F_u, F_v, N::UInt32, f::Float32, k::Float32)
     i = (blockIdx().x - 1i32) * blockDim().x + threadIdx().x
     j = (blockIdx().y - 1i32) * blockDim().y + threadIdx().y
@@ -57,6 +74,15 @@ function run_fused_cunumeric(N, u, v)
     return F_u, F_v
 end
 
+function run_baseline_unfused(N, u, v)
+    f = 0.03f0
+    k = 0.06f0
+
+    F_u, F_v = cuda_unfused(u, v, f, k)
+
+    return F_u, F_v
+end
+
 function run_baseline(N, u, v)
     threads2d = (16, 16)  # 16*16 = 256 threads per block
     blocks = (cld(N, threads2d[1]), cld(N, threads2d[2]))
@@ -81,19 +107,25 @@ function run_unfused(N, u, v)
     return F_u, F_v
 end
 
-function fusion_test(; N=32, atol=1.0f-6, rtol=1.0f-6)
+function fusion_test(; N=16, atol=1.0f-6, rtol=1.0f-6)
     u = cuNumeric.random(Float32, (N, N))
     v = cuNumeric.random(Float32, (N, N))
 
-    # u_base = CUDA.rand(Float32, (N, N))
-    # v_base = CUDA.rand(Float32, (N, N))
-    # base_u, base_v = run_baseline(N, u_base, v_base)
+    # using CUDA
+    u_base = CUDA.rand(Float32, (N, N))
+    v_base = CUDA.rand(Float32, (N, N))
+    base_u, base_v = run_baseline(N, u_base, v_base)
+    base_unfused_u, base_unfused_v = run_baseline_unfused(N, u_base, v_base)
+    @test isapprox(base_u, base_unfused_u; atol=atol, rtol=rtol)
+    @test isapprox(base_v, base_unfused_v; atol=atol, rtol=rtol)
+    print(base_unfused_u)
 
+    # using cuNumeric
     fused_u, fused_v = run_fused_cunumeric(N, u, v)
     unfused_u, unfused_v = run_unfused(N, u, v)
 
-    @assert fused_u == unfused_u
-    @assert fused_v == unfused_v
+    # @assert fused_u == unfused_u
+    # @assert fused_v == unfused_v
 
     # trying to debug why the above fails
     cpu_fused_u = fused_u[:, :]

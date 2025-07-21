@@ -29,6 +29,21 @@ mutable struct NDArray
     end
 end
 
+# mutable struct NDArray
+#     ptr::NDArray_t
+#     nbytes::Int
+#     function NDArray(ptr::NDArray_t)
+#         nbytes = cuNumeric.nda_nbytes(ptr)  # this isn't a real func yet
+#         cuNumeric.register_alloc!(nbytes)
+#         handle = new(ptr, nbytes)
+#         finalizer(handle) do h
+#             cuNumeric.nda_destroy_array(h.ptr)
+#             cuNumeric.register_free!(h.nbytes)
+#         end
+#         return handle
+#     end
+# end
+
 # construction 
 function nda_zeros_array(shape::Vector{UInt64}; type::Union{Nothing,Type{T}}=nothing) where {T}
     dim = Int32(length(shape))
