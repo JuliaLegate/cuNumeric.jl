@@ -3,7 +3,7 @@ using CUDA
 import CUDA: i32
 using Test
 
-function cuNumeric_unfused(u, v, f, k)
+function unfused_cunumeric(u, v, f, k)
     F_u = (
         (
             -u[2:(end - 1), 2:(end - 1)] .*
@@ -21,7 +21,7 @@ function cuNumeric_unfused(u, v, f, k)
     return F_u, F_v
 end
 
-function cuda_unfused(u, v, f::Float32, k::Float32)
+function unfused_cuda(u, v, f::Float32, k::Float32)
     @views F_u = (
         (
             -u[2:(end - 1), 2:(end - 1)] .*
@@ -73,16 +73,7 @@ function run_fused_cunumeric(N, u, v)
     return F_u, F_v
 end
 
-function run_baseline_unfused(N, u, v)
-    f = 0.03f0
-    k = 0.06f0
-
-    F_u, F_v = cuda_unfused(u, v, f, k)
-
-    return F_u, F_v
-end
-
-function run_baseline(N, u, v)
+function run_fused_baseline(N, u, v)
     threads2d = (16, 16)  # 16*16 = 256 threads per block
     blocks = (cld(N, threads2d[1]), cld(N, threads2d[2]))
 
@@ -97,11 +88,20 @@ function run_baseline(N, u, v)
     return F_u, F_v
 end
 
-function run_unfused(N, u, v)
+function run_unfused_cunumeric(N, u, v)
     f = 0.03f0
     k = 0.06f0
 
-    F_u, F_v = cuNumeric_unfused(u, v, f, k)
+    F_u, F_v = unfused_cunumeric(u, v, f, k)
+
+    return F_u, F_v
+end
+
+function run_unfused_baseline(N, u, v)
+    f = 0.03f0
+    k = 0.06f0
+
+    F_u, F_v = unfused_cuda(u, v, f, k)
 
     return F_u, F_v
 end
@@ -113,14 +113,14 @@ function fusion_test(; N=16, atol=1.0f-6, rtol=1.0f-6)
     # using CUDA
     u_base = CUDA.rand(Float32, (N, N))
     v_base = CUDA.rand(Float32, (N, N))
-    Fu_base_fused, Fv_base_fused = run_baseline(N, u_base, v_base)
-    Fu_base_unfused, Fv_base_unfused = run_baseline_unfused(N, u_base, v_base)
+    Fu_base_fused, Fv_base_fused = run_fused_baseline(N, u_base, v_base)
+    Fu_base_unfused, Fv_base_unfused = run_unfused_baseline(N, u_base, v_base)
     @test isapprox(Fu_base_fused, Fu_base_unfused; atol=atol, rtol=rtol)
     @test isapprox(Fv_base_fused, Fv_base_unfused; atol=atol, rtol=rtol)
 
     # using cuNumeric
     Fu_fused, Fv_fused = run_fused_cunumeric(N, u, v)
-    Fu_unfused, Fv_unfused = run_unfused(N, u, v)
+    Fu_unfused, Fv_unfused = run_unfused_cunumeric(N, u, v)
 
     # @assert Fu_fused == Fu_unfused
     # @assert Fv_fused == Fv_unfused
@@ -128,6 +128,8 @@ function fusion_test(; N=16, atol=1.0f-6, rtol=1.0f-6)
     # trying to debug why the above fails
     cpu_Fu_fused = Fu_fused[:, :]
     cpu_Fv_fused = Fv_fused[:, :]
+
+    print(cpu_Fu_fused)
 
     cpu_Fu_unfused = Fu_unfused[:, :]
     cpu_Fv_unfused = Fv_unfused[:, :]
