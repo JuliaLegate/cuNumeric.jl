@@ -72,10 +72,8 @@ end
 
 function gray_scott()
     # anim = Animation()
-
-    N = 1000
+    N = 2000
     dims = (N, N)
-
     FT = Float64
     args = Params()
 
