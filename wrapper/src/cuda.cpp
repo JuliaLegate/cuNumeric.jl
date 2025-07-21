@@ -33,9 +33,9 @@ struct CN_NDArray {
 
 // #define CUDA_DEBUG 1
 
-#define ARG_OFFSET 7
 #define BLOCK_START 1
 #define THREAD_START 4
+#define ARG_OFFSET 7
 
 #define ERROR_CHECK(x)                                                 \
   {                                                                    \
@@ -197,15 +197,21 @@ void dispatch_type(AccessMode mode, legate::Type::Code code, int dim, char *&p,
 // https://github.com/nv-legate/legate.pandas/blob/branch-22.01/src/udf/eval_udf_gpu.cc
 /*static*/ void RunPTXTask::gpu_variant(legate::TaskContext context) {
   cudaStream_t stream_ = context.get_task_stream();
-  std::string kernel_name = context.scalar(0).value<std::string>();
+  std::string kernel_name = context.scalar(0).value<std::string>();  // 0
 
-  std::uint32_t bx = context.scalar(BLOCK_START + 0).value<std::uint32_t>();
-  std::uint32_t by = context.scalar(BLOCK_START + 1).value<std::uint32_t>();
-  std::uint32_t bz = context.scalar(BLOCK_START + 2).value<std::uint32_t>();
+  std::uint32_t bx =
+      context.scalar(BLOCK_START + 0).value<std::uint32_t>();  // 1
+  std::uint32_t by =
+      context.scalar(BLOCK_START + 1).value<std::uint32_t>();  // 2
+  std::uint32_t bz =
+      context.scalar(BLOCK_START + 2).value<std::uint32_t>();  // 3
 
-  std::uint32_t tx = context.scalar(THREAD_START + 0).value<std::uint32_t>();
-  std::uint32_t ty = context.scalar(THREAD_START + 1).value<std::uint32_t>();
-  std::uint32_t tz = context.scalar(THREAD_START + 2).value<std::uint32_t>();
+  std::uint32_t tx =
+      context.scalar(THREAD_START + 0).value<std::uint32_t>();  // 4
+  std::uint32_t ty =
+      context.scalar(THREAD_START + 1).value<std::uint32_t>();  // 5
+  std::uint32_t tz =
+      context.scalar(THREAD_START + 2).value<std::uint32_t>();  // 6
 
   CUcontext ctx;
   cuStreamGetCtx(stream_, &ctx);
@@ -248,19 +254,16 @@ void dispatch_type(AccessMode mode, legate::Type::Code code, int dim, char *&p,
 
   std::vector<char> arg_buffer(buffer_size);
   char *p = arg_buffer.data() + padded_bytes;
-  /* TODO  we are hardcoding expecting floats atm */
   for (std::size_t i = 0; i < num_inputs; ++i) {
     auto ps = context.input(i);
     auto code = ps.type().code();
     auto dim = ps.dim();
-    // cuda_device_array_arg_read<float, 1>(p, ps);
     dispatch_type(ufi::AccessMode::READ, code, dim, p, ps);
   }
   for (std::size_t i = 0; i < num_outputs; ++i) {
     auto ps = context.output(i);
     auto code = ps.type().code();
     auto dim = ps.dim();
-    // cuda_device_array_arg_write<float, 1>(p, ps);
     dispatch_type(ufi::AccessMode::WRITE, code, dim, p, ps);
   }
   for (std::size_t i = ARG_OFFSET; i < num_scalars; ++i) {

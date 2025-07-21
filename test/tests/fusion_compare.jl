@@ -38,7 +38,7 @@ function fused_kernel(u, v, F_u, F_v, N::UInt32, f::Float32, k::Float32)
     return nothing
 end
 
-function run_fused(N, u, v)
+function run_fused_cunumeric(N, u, v)
     threads2d = (16, 16)  # 16*16 = 256 threads per block
     blocks = (cld(N, threads2d[1]), cld(N, threads2d[2]))
 
@@ -57,6 +57,21 @@ function run_fused(N, u, v)
     return F_u, F_v
 end
 
+function run_baseline(N, u, v)
+    threads2d = (16, 16)  # 16*16 = 256 threads per block
+    blocks = (cld(N, threads2d[1]), cld(N, threads2d[2]))
+
+    F_u = CUDA.zeros(Float32, (N-2, N-2))
+    F_v = CUDA.zeros(Float32, (N-2, N-2))
+
+    f = 0.03f0
+    k = 0.06f0
+
+    @cuda threads=threads2d blocks=blocks fused_kernel(u, v, F_u, F_v, UInt32(N), f, k)
+
+    return F_u, F_v
+end
+
 function run_unfused(N, u, v)
     f = 0.03f0
     k = 0.06f0
@@ -66,15 +81,19 @@ function run_unfused(N, u, v)
     return F_u, F_v
 end
 
-function fusion_test(; N=128, atol=1.0f-6, rtol=1.0f-6)
+function fusion_test(; N=32, atol=1.0f-6, rtol=1.0f-6)
     u = cuNumeric.random(Float32, (N, N))
     v = cuNumeric.random(Float32, (N, N))
 
-    fused_u, fused_v = run_fused(N, u, v)
+    # u_base = CUDA.rand(Float32, (N, N))
+    # v_base = CUDA.rand(Float32, (N, N))
+    # base_u, base_v = run_baseline(N, u_base, v_base)
+
+    fused_u, fused_v = run_fused_cunumeric(N, u, v)
     unfused_u, unfused_v = run_unfused(N, u, v)
 
-    # @assert fused_u == unfused_u
-    # @assert fused_v == unfused_v
+    @assert fused_u == unfused_u
+    @assert fused_v == unfused_v
 
     # trying to debug why the above fails
     cpu_fused_u = fused_u[:, :]
