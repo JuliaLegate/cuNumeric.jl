@@ -41,14 +41,14 @@ end
 function fused_kernel(u, v, F_u, F_v, N::UInt32, f::Float32, k::Float32)
     i = (blockIdx().x - 1i32) * blockDim().x + threadIdx().x
     j = (blockIdx().y - 1i32) * blockDim().y + threadIdx().y
-
-    if i <= N - 1 && j <= N - 1 # index from 2 --> end - 1
+    if i <= N-2 && j <= N-2
+        # if i <= N - 1 && j <= N - 1 # index from 2 --> end - 1
         @inbounds begin
             u_ij = u[i + 1, j + 1]
             v_ij = v[i + 1, j + 1]
             v_sq = v_ij * v_ij
-            F_u[i, j] = -u_ij + v_sq + f*(1.0f0 - u_ij)
-            F_v[i, j] = u_ij + v_sq - (f + k)*v_ij
+            F_u[i, j] = (-u_ij * v_sq) + f*(1.0f0 - u_ij)
+            F_v[i, j] = (u_ij * v_sq) - (f + k)*v_ij
         end
     end
 
