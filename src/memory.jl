@@ -49,11 +49,9 @@ function maybe_collect()
     tot = current_bytes[]
     if tot > hard_limit()
         # Aggressive
-        print("hard")
         GC.gc(true)
     elseif tot > soft_limit()
         # Gentle
-        print("soft")
         GC.gc(false)
     end
     return nothing
