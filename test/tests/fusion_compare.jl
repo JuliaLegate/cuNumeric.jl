@@ -42,7 +42,6 @@ function fused_kernel(u, v, F_u, F_v, N::UInt32, f::Float32, k::Float32)
     i = (blockIdx().x - 1i32) * blockDim().x + threadIdx().x
     j = (blockIdx().y - 1i32) * blockDim().y + threadIdx().y
     if i <= N-2 && j <= N-2
-        # if i <= N - 1 && j <= N - 1 # index from 2 --> end - 1
         @inbounds begin
             u_ij = u[i + 1, j + 1]
             v_ij = v[i + 1, j + 1]
@@ -114,28 +113,27 @@ function fusion_test(; N=16, atol=1.0f-6, rtol=1.0f-6)
     # using CUDA
     u_base = CUDA.rand(Float32, (N, N))
     v_base = CUDA.rand(Float32, (N, N))
-    base_u, base_v = run_baseline(N, u_base, v_base)
-    base_unfused_u, base_unfused_v = run_baseline_unfused(N, u_base, v_base)
-    @test isapprox(base_u, base_unfused_u; atol=atol, rtol=rtol)
-    @test isapprox(base_v, base_unfused_v; atol=atol, rtol=rtol)
-    print(base_unfused_u)
+    Fu_base_fused, Fv_base_fused = run_baseline(N, u_base, v_base)
+    Fu_base_unfused, Fv_base_unfused = run_baseline_unfused(N, u_base, v_base)
+    @test isapprox(Fu_base_fused, Fu_base_unfused; atol=atol, rtol=rtol)
+    @test isapprox(Fv_base_fused, Fv_base_unfused; atol=atol, rtol=rtol)
 
     # using cuNumeric
-    fused_u, fused_v = run_fused_cunumeric(N, u, v)
-    unfused_u, unfused_v = run_unfused(N, u, v)
+    Fu_fused, Fv_fused = run_fused_cunumeric(N, u, v)
+    Fu_unfused, Fv_unfused = run_unfused(N, u, v)
 
-    # @assert fused_u == unfused_u
-    # @assert fused_v == unfused_v
+    # @assert Fu_fused == Fu_unfused
+    # @assert Fv_fused == Fv_unfused
 
     # trying to debug why the above fails
-    cpu_fused_u = fused_u[:, :]
-    cpu_fused_v = fused_v[:, :]
+    cpu_Fu_fused = Fu_fused[:, :]
+    cpu_Fv_fused = Fv_fused[:, :]
 
-    cpu_unfused_u = unfused_u[:, :]
-    cpu_unfused_v = unfused_v[:, :]
+    cpu_Fu_unfused = Fu_unfused[:, :]
+    cpu_Fv_unfused = Fv_unfused[:, :]
 
-    @test isapprox(cpu_fused_u, cpu_unfused_u; atol=atol, rtol=rtol)
-    @test isapprox(cpu_fused_v, cpu_unfused_v; atol=atol, rtol=rtol)
+    @test isapprox(cpu_Fu_fused, cpu_Fu_unfused; atol=atol, rtol=rtol)
+    @test isapprox(cpu_Fv_fused, cpu_Fv_unfused; atol=atol, rtol=rtol)
 end
 
 fusion_test()
