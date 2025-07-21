@@ -16,7 +16,11 @@ const AUTO_GC_ENABLE = Ref{Bool}(false)
 function init_gc!()
     total_bytes[] = query_device_memory()
     AUTO_GC_ENABLE[] = true
-    @info "cuNumeric.jl has been initialized with automatic GC heuristics. Good Luck!"
+end
+
+function disable_gc!()
+    AUTO_GC_ENABLE[] = false
+    @info "You have disabled our GC heuristics. Good Luck!"
 end
 
 soft_limit() = Int(round(soft_frac[] * total_bytes[]))

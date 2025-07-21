@@ -1,6 +1,11 @@
 #include "cupynumeric/ndarray.h"
 
+#include <atomic>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 #include "cupynumeric.h"
@@ -8,7 +13,52 @@
 #include "legate.h"
 #include "ndarray_c_api.h"
 
-#define GB (1ULL << 30)
+constexpr uint64_t KiB = 1024ull;
+constexpr uint64_t MiB = KiB * 1024ull;
+constexpr uint64_t GiB = MiB * 1024ull;
+
+// Find "--key=" and parse the decimal that follows. Returns default_val if not
+// found / bad.
+static uint64_t parse_flag_mb(std::string_view cfg, std::string_view key,
+                              uint64_t default_val) {
+  // pattern to look for: "--key="
+  std::string pattern = "--";
+  pattern += key;
+  pattern += '=';
+
+  size_t pos = cfg.find(pattern);
+  if (pos == std::string_view::npos) return default_val;
+
+  pos += pattern.size();
+  size_t end = cfg.find_first_of(" \t", pos);
+  std::string_view numstr = cfg.substr(
+      pos, end == std::string_view::npos ? cfg.size() - pos : end - pos);
+  if (numstr.empty()) return default_val;
+
+  uint64_t v = 0;
+  for (char c : numstr) {
+    if (c < '0' || c > '9') return default_val;  // reject non-digit
+    v = v * 10 + uint64_t(c - '0');
+  }
+  return v;  // still in MB
+}
+
+static uint64_t compute_total_fb_bytes_from_env() {
+  const char* env = std::getenv("LEGATE_CONFIG");
+  if (!env) return 0;
+
+  std::string_view cfg(env);
+
+  // Legate convention: numeric values are MB
+  uint64_t fbmem_mb = parse_flag_mb(cfg, "fbmem", 0);  // per GPU
+  uint64_t gpus = parse_flag_mb(cfg, "gpus", 1);       // total # GPUs requested
+
+  if (fbmem_mb == 0) return 0;
+
+  // aggregate across GPUs (change if you want per‑GPU instead)
+  uint64_t total = fbmem_mb * gpus * MiB;
+  return total;
+}
 
 extern "C" {
 
@@ -62,7 +112,11 @@ legate::Type code_to_type(legate::Type::Code code) {
   }
 }
 
-uint64_t nda_query_device_memory() { return 8 * GB; }
+uint64_t nda_query_device_memory() {
+  uint64_t total = compute_total_fb_bytes_from_env();
+  if (total == 0) total = 8ull * GiB;
+  return total;
+}
 
 CN_NDArray* nda_zeros_array(int32_t dim, const uint64_t* shape, CN_Type type) {
   std::vector<uint64_t> shp(shape, shape + dim);

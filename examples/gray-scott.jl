@@ -79,7 +79,7 @@ function gray_scott()
     FT = Float64
     args = Params()
 
-    n_steps = 100 # number of steps to take
+    n_steps = 1000 # number of steps to take
     frame_interval = 200 # steps to take between making plots
 
     u = cuNumeric.ones(dims)
