@@ -15,7 +15,7 @@ const AUTO_GC_ENABLE = Ref{Bool}(false)
 
 function init_gc!()
     total_bytes[] = query_device_memory()
-    @info "[cuNumeric GC] $(total_bytes[]) framebuffer available"
+    # @info "[cuNumeric GC] $(total_bytes[]) framebuffer available"
     AUTO_GC_ENABLE[] = true
 end
 

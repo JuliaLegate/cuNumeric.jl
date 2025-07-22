@@ -41,6 +41,7 @@ Base.size(arr::NDArray, dim::Int) = Base.size(arr)[dim]
 
 Base.firstindex(arr::NDArray, dim::Int) = 1
 Base.lastindex(arr::NDArray, dim::Int) = Base.size(arr, dim)
+Base.lastindex(arr::NDArray) = Base.size(arr, 1)
 
 Base.IndexStyle(::NDArray) = IndexCartesian()
 
@@ -166,6 +167,12 @@ end
 function Base.getindex(arr::NDArray, i::UnitRange, j::UnitRange)
     return nda_get_slice(
         arr, slice_array((first(i) - 1, last(i)), (first(j) - 1, last(j)))
+    )
+end
+
+function Base.getindex(arr::NDArray, i::UnitRange)
+    return nda_get_slice(
+        arr, slice_array((first(i) - 1, last(i)))
     )
 end
 
@@ -301,6 +308,7 @@ Random.rand(::Type{NDArray}, dims::Dims) = cuNumeric.nda_random_array(UInt64.(co
 Random.rand(::Type{NDArray}, dims::Int...) = cuNumeric.rand(NDArray, dims)
 
 random(::Type{T}, dims::Dims) where {T} = cuNumeric.nda_random_array(UInt64.(collect(dims)))
+random(::Type{T}, dim::Int64) where {T} = cuNumeric.random(T, (dim,))
 random(dims::Dims, e::Type{T}) where {T} = cuNumeric.rand(e, dims)
 random(arr::NDArray, code::Int64) = cuNumeric.nda_random(arr, code)
 #### OPERATIONS ####
@@ -485,6 +493,10 @@ function Base.isapprox(arr::NDArray, julia_array::AbstractArray; atol=0, rtol=0)
     return compare(julia_array, arr, atol)
 end
 
+function Base.isapprox(arr::NDArray, arr2::NDArray; atol=0, rtol=0)
+    return compare(arr, arr2, atol)
+end
+
 #* ADD ISAPPROX FOR TWO NDARRAYS AFTER BINARY OPS DONE
 function compare(julia_array::AbstractArray, arr::NDArray, max_diff)
     if (Base.size(arr) != Base.size(julia_array))
@@ -509,4 +521,21 @@ end
 
 function compare(arr::NDArray, julia_array::AbstractArray, max_diff)
     return compare(julia_array, arr, max_diff)
+end
+
+function compare(arr::NDArray, arr2::NDArray, max_diff)
+    if (Base.size(arr) != Base.size(arr2))
+        @warn "NDArray LHS has size $(Base.size(arr)) and NDArray RHS has size $(Base.size(arr2))!\n"
+        return false
+    end
+
+    dims = Base.size(arr)
+    for CI in CartesianIndices(dims)
+        if abs(arr2[Tuple(CI)...] - arr[Tuple(CI)...]) > max_diff
+            return false
+        end
+    end
+
+    # successful completion
+    return true
 end

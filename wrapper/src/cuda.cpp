@@ -31,7 +31,7 @@ struct CN_NDArray {
   cupynumeric::NDArray obj;
 };
 
-#define CUDA_DEBUG 1
+// #define CUDA_DEBUG 1
 
 #define BLOCK_START 1
 #define THREAD_START 4
@@ -282,7 +282,7 @@ void dispatch_type(AccessMode mode, legate::Type::Code code, int dim, char *&p,
 
   CUstream custream_ = reinterpret_cast<CUstream>(stream_);
 
-  DRIVER_ERROR_CHECK(cuLaunchKernel(func, bx, by, bz, tx, ty, tz, 0, custream_,
+  DRIVER_ERROR_CHECK(cuLaunchKernel(func, tx, ty, tz, bx, by, bz, 0, custream_,
                                     nullptr, config));
 
   // DRIVER_ERROR_CHECK(cuStreamSynchronize(stream_));
