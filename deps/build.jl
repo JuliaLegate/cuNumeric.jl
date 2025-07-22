@@ -183,7 +183,11 @@ function build()
     legate_root = joinpath(legate_lib, "..")
 
     cupynumeric_lib = joinpath(cupynumeric_root, "lib")
-    tblis_lib = joinpath(cupynumeric_root, "lib") # currently all cases holds true
+    if haskey(ENV, "JULIA_TBLIS_PATH")
+        tblis_lib = get(ENV, "JULIA_TBLIS_PATH", "0")
+    else
+        tblis_lib = joinpath(cupynumeric_root, "lib")
+    end
 
     hdf5_lib = Legate.get_install_libhdf5()
     mpi_lib = Legate.get_install_libmpi()
