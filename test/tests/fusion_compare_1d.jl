@@ -40,7 +40,7 @@ end
 
 function fused_kernel(u, v, F_u, F_v, N::UInt32, f::Float32, k::Float32)
     i = (blockIdx().x - 1i32) * blockDim().x + threadIdx().x
-    if i <= (N*N-2)
+    if i <= (N-2)
         @inbounds begin
             u_ij = u[i + 1]
             v_ij = v[i + 1]
@@ -54,11 +54,11 @@ function fused_kernel(u, v, F_u, F_v, N::UInt32, f::Float32, k::Float32)
 end
 
 function run_fused_cunumeric(N, u, v)
-    threads = N*N
-    blocks = cld(N*N, threads)
+    threads = 1024
+    blocks = cld(N, threads)
 
-    F_u = cuNumeric.zeros(Float32, (N*N-2))
-    F_v = cuNumeric.zeros(Float32, (N*N-2))
+    F_u = cuNumeric.zeros(Float32, (N-2))
+    F_v = cuNumeric.zeros(Float32, (N-2))
 
     f = 0.03f0
     k = 0.06f0
@@ -73,11 +73,11 @@ function run_fused_cunumeric(N, u, v)
 end
 
 function run_fused_baseline(N, u, v)
-    threads = N*N
-    blocks = cld(N*N, threads)
+    threads = 1024
+    blocks = cld(N, threads)
 
-    F_u = CUDA.zeros(Float32, (N*N-2))
-    F_v = CUDA.zeros(Float32, (N*N-2))
+    F_u = CUDA.zeros(Float32, (N-2))
+    F_v = CUDA.zeros(Float32, (N-2))
 
     f = 0.03f0
     k = 0.06f0
@@ -105,13 +105,13 @@ function run_unfused_baseline(N, u, v)
     return F_u, F_v
 end
 
-function fusion_test(; N=16, atol=1.0f-6, rtol=1.0f-6)
-    u = cuNumeric.random(Float32, N*N)
-    v = cuNumeric.random(Float32, N*N)
+function fusion_test(; N=1024*1024, atol=1.0f-6, rtol=1.0f-6)
+    u = cuNumeric.as_type(cuNumeric.rand(NDArray, N), Float32)
+    v = cuNumeric.as_type(cuNumeric.rand(NDArray, N), Float32)
 
     # using CUDA
-    u_base = CUDA.rand(Float32, N*N)
-    v_base = CUDA.rand(Float32, N*N)
+    u_base = CUDA.rand(Float32, N)
+    v_base = CUDA.rand(Float32, N)
     Fu_base_fused, Fv_base_fused = run_fused_baseline(N, u_base, v_base)
     Fu_base_unfused, Fv_base_unfused = run_unfused_baseline(N, u_base, v_base)
     @test isapprox(Fu_base_fused, Fu_base_unfused; atol=atol, rtol=rtol)
@@ -119,10 +119,7 @@ function fusion_test(; N=16, atol=1.0f-6, rtol=1.0f-6)
 
     # using cuNumeric
     Fu_fused, Fv_fused = run_fused_cunumeric(N, u, v)
-    cuNumeric.gpu_sync()
     Fu_unfused, Fv_unfused = run_unfused_cunumeric(N, u, v)
-    cuNumeric.gpu_sync()
-
     @test isapprox(Fu_fused, Fu_unfused; atol=atol, rtol=rtol)
     @test isapprox(Fv_fused, Fv_unfused; atol=atol, rtol=rtol)
 end
