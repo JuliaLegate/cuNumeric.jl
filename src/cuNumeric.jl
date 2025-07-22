@@ -19,10 +19,12 @@
 
 module cuNumeric
 
+using CUDA
 using Legate
 using CxxWrap
 using Pkg
 using Libdl
+using TOML
 
 using LinearAlgebra
 import LinearAlgebra: mul!
@@ -37,19 +39,16 @@ import Base: abs, angle, acos, acosh, asin, asinh, atan, atanh, cbrt,
     sinh, sqrt, tan, tanh, trunc, +, *, atan, &, |, ⊻, copysign,
     /, ==, ^, div, gcd, >, >=, hypot, isapprox, lcm, ldexp, <<,
     <, <=, !=, >>, all, any, argmax, argmin, maximum, minimum,
-    prod, sum
+    prod, sum, read
 
 function preload_libs()
     cache_build_meta = joinpath(@__DIR__, "../", "deps", "deps.jl")
     include(cache_build_meta)
     libs = [
-        joinpath(CUTENSOR_ROOT, "lib", "libcutensor.so.2"),
-        joinpath(HDF5_ROOT, "lib", "libhdf5.so.310"),
-        joinpath(NCCL_ROOT, "lib", "libnccl.so.2"),
-        joinpath(TBLIS_ROOT, "lib", "libtblis.so.0"),
+        joinpath(CUTENSOR_LIB, "libcutensor.so"),
+        joinpath(TBLIS_LIB, "libtblis.so"),
     ]
     for lib in libs
-        # @info "Preloading $lib"
         Libdl.dlopen(lib, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
     end
 end
@@ -59,11 +58,15 @@ lib = "libcupynumericwrapper.so"
 libpath = joinpath(@__DIR__, "../", "wrapper", "build", lib)
 @wrapmodule(() -> libpath)
 
-include("capi.jl") # must go first
+include("version.jl") # version_config_setup
+
+include("memory.jl") # memory gc before c-array 
+include("capi.jl") # c-array interface prior to ndarray
 include("util.jl")
 include("ndarray.jl")
 include("unary.jl")
 include("binary.jl")
+include("cuda.jl")
 
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147
 mutable struct ArgcArgv
@@ -83,60 +86,27 @@ function my_on_exit()
     @info "Cleaning Up cuNuermic"
 end
 
-function cupynumeric_setup(AA::ArgcArgv)
+global cuNumeric_config_str::String = ""
 
-    # Capture stdout from start_legate to 
-    # see the hardware configuration
-
-    # TODO CATCH STDERR
-    # run(`bash -c "export LEGATE_AUTO_CONFIG=0"`)
-    # run(`bash -c "export LEGATE_SHOW_CONFIG=1"`)
-    # run(`bash -c "export LEGATE_CONFIG=\"--logging 2\""`)
-    #println(ENV["LEGATE_AUTO_CONFIG"])
-    #@info "LEGATE_AUTO_CONFIG: $(ENV["LEGATE_AUTO_CONFIG"])"
-    #println(Base.get_bool_env("LEGATE_AUTO_CONFIG"))
-
-    # cuNumeric.start_legate()
-    #pipe = Pipe()
-    #started = Base.Event()
-    #writer = Threads.@spawn redirect_stdout(pipe) do
-    #notify(started)
-    #cuNumeric.start_legate()
-    #close(Base.pipe_writer(pipe))
-    #end
-
-    #wait(started)
-    #legate_config_str = Base.read(pipe, String)
-    #wait(writer) 
-    #print(legate_config_str)
-    cuNumeric_config_str = ""
-
+function cunumeric_setup(AA::ArgcArgv)
     @info "Started cuNuermic"
-
     Base.atexit(my_on_exit)
 
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
-
-    return cuNumeric_config_str
+    cuNumeric.register_tasks(); # in cuda.cpp wrapper interface
+    cuNumeric.init_gc!() # setup memory.jl 
 end
 
-global cuNumeric_config_str::String = ""
-
 function versioninfo()
-    msg = """
-        CuNumeric Configuration: $(cuNumeric_config_str)
-    """
-    println(msg)
+    println(cuNumeric_config_str)
 end
 
 # Runtime initilization
-# Called once in lifetime of code
 function __init__()
     preload_libs()
-
     @initcxx
-    # Legate ignores these arguments...
     AA = ArgcArgv([Base.julia_cmd()[1]])
-    global cuNumeric_config = cupynumeric_setup(AA)
+    global cuNumeric_config_str = version_config_setup()
+    cunumeric_setup(AA)
 end
 end

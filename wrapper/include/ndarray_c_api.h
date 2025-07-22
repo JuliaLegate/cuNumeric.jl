@@ -21,6 +21,8 @@ typedef struct CN_NDArray CN_NDArray;
 typedef struct CN_Type CN_Type;
 typedef struct CN_Scalar CN_Scalar;
 
+uint64_t nda_query_device_memory();
+
 // zeros(shape, type?)
 //   dim        : number of dimensions
 //   shape      : pointer to array[length=dim]
@@ -58,6 +60,7 @@ uint64_t nda_array_size(const CN_NDArray* arr);
 int32_t nda_array_type_code(const CN_NDArray* arr);
 CN_Type* nda_array_type(const CN_NDArray* arr);
 void nda_array_shape(const CN_NDArray* arr, uint64_t* out_shape);
+uint64_t nda_nbytes(CN_NDArray* arr);
 
 void nda_binary_op(CN_NDArray* out, CuPyNumericBinaryOpCode op_code,
                    const CN_NDArray* rhs1, const CN_NDArray* rhs2);

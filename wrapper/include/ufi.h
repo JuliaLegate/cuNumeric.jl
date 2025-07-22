@@ -20,12 +20,29 @@
 #pragma once
 
 #include "jlcxx/jlcxx.hpp"
+#include "legate.h"
 
-// Unary op codes
-void wrap_unary_ops(jlcxx::Module&);
+namespace ufi {
+enum TaskIDs {
+  LOAD_PTX_TASK = 143432,
+  RUN_PTX_TASK = 143433,
+};
 
-// Unary reduction op codes
-void wrap_unary_reds(jlcxx::Module&);
+class LoadPTXTask : public legate::LegateTask<LoadPTXTask> {
+ public:
+  static inline const auto TASK_CONFIG =
+      legate::TaskConfig{legate::LocalTaskID{ufi::LOAD_PTX_TASK}};
 
-// Binary op codes
-void wrap_binary_ops(jlcxx::Module&);
+  static void gpu_variant(legate::TaskContext context);
+};
+
+class RunPTXTask : public legate::LegateTask<RunPTXTask> {
+ public:
+  static inline const auto TASK_CONFIG =
+      legate::TaskConfig{legate::LocalTaskID{ufi::RUN_PTX_TASK}};
+
+  static void gpu_variant(legate::TaskContext context);
+};
+
+}  // namespace ufi
+void wrap_cuda_methods(jlcxx::Module& mod);

@@ -29,18 +29,33 @@ jobs:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v2
-          
+      - name: Install CUDA and NCCL
+        run: |
+          wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb --no-check-certificate
+          sudo dpkg -i cuda-keyring_1.1-1_all.deb
+          sudo apt-get update
+          sudo apt-get -y install cuda-toolkit-12-4
+          wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
+          sudo dpkg -i cuda-keyring_1.1-1_all.deb && \
+          sudo apt-get update
+      - name: Pre-setup
+        run: |
+            julia --project=@. -e 'using Pkg; Pkg.add("MPICH_jll"); Pkg.add("OpenSSL_jll")'
       - name: Install Dependencies
+        env: 
+          LD_LIBRARY_PATH: "$(julia --project=@. -e 'using OpenSSL_jll; print(OpenSSL_jll.artifact_dir)')/lib:$(julia --project=@. -e 'using MPICH_jll; print(MPICH_jll.artifact_dir)')/lib:$LD_LIBRARY_PATH"
+          JULIA_NUM_THREADS: auto
+          LEGATE_DEVELOP_MODE: 1
+          JULIA_NCCL_PATH: "/usr/lib/x86_64-linux-gnu/"
+          PATH: /usr/local/cuda/bin/:$PATH
         run: |
           julia -t 2 -e '
           using Pkg;
           Pkg.activate(".");
           Pkg.rm("Legate");  # Critical step
-          Pkg.add(url="https://github.com/ejmeitz/legate_jll.jl");
           Pkg.add(url="https://github.com/JuliaLegate/Legate.jl", rev="main");
           Pkg.build(verbose = true);
-          '
-
+          ' 
       - name: Run Tests
         env: 
           LEGATE_AUTO_CONFIG: 0

@@ -1,8 +1,9 @@
 name = "cuNumeric"
 uuid = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
-version = "25.05.00"
+version = "25.5.0"
 
 [deps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CUTENSOR_jll = "35b6c64b-1ee1-5834-92a3-3f624899209a"
 CxxWrap = "1f15a43c-97ca-5a2a-ae31-89f07a497df4"
 HDF5_jll = "0234f1f7-429e-5d53-9886-15a909be8d59"
@@ -10,10 +11,13 @@ JuliaFormatter = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
 Legate = "1238f2cf-6593-4d60-9aca-2f5364e49909"
 Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MPICH_jll = "7cb0a576-ebde-5e09-9194-50597f1243b4"
 NCCL_jll = "4d6d38e4-5b87-5e63-912a-873ff2d649b7"
+OpenSSL_jll = "458c3c95-2e84-50aa-8efc-19380b2a3a95"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Preferences = "21216c6a-2e73-6563-6e65-726566657250"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
 libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
 
 [compat]

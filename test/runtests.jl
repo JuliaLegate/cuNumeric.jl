@@ -26,6 +26,7 @@ include("tests/daxpy_advanced.jl")
 include("tests/elementwise.jl")
 include("tests/slicing.jl")
 include("tests/sgemm.jl")
+# include("tests/custom_cuda.jl")
 
 @testset verbose = true "DAXPY" begin
     @testset daxpy_basic()
@@ -123,3 +124,8 @@ end
     max_diff = Float64(1e-4)
     @testset slicing(max_diff)
 end
+
+# @testset verbose = true "CUDA Tests" begin
+#     max_diff = Float32(1e-4)
+#     @testset binaryop(max_diff)
+# end
