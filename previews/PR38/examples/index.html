@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Examples · cuNumeric.jl</title><meta name="title" content="Examples · cuNumeric.jl"/><meta property="og:title" content="Examples · cuNumeric.jl"/><meta property="twitter:title" content="Examples · cuNumeric.jl"/><meta name="description" content="Documentation for cuNumeric.jl."/><meta property="og:description" content="Documentation for cuNumeric.jl."/><meta property="twitter:description" content="Documentation for cuNumeric.jl."/><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../search_index.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">cuNumeric.jl</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../">Home</a></li><li><a class="tocitem" href="../install/">Build Options</a></li><li class="is-active"><a class="tocitem" href>Examples</a><ul class="internal"><li><a class="tocitem" href="#DAXPY"><span>DAXPY</span></a></li><li><a class="tocitem" href="#Monte-Carlo-Integration"><span>Monte-Carlo Integration</span></a></li><li><a class="tocitem" href="#Gray-Scott-Reaction-Diffusion"><span>Gray Scott Reaction Diffusion</span></a></li></ul></li><li><a class="tocitem" href="../perf/">Performance Tips</a></li><li><a class="tocitem" href="../usage/">Back End Details</a></li><li><a class="tocitem" href="../benchmark/">Benchmarking</a></li><li><a class="tocitem" href="../api/">Public API</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li class="is-active"><a href>Examples</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Examples</a></li></ul></nav><div class="docs-right"><a class="docs-navbar-link" href="https://github.com/JuliaLegate/cuNumeric.jl" title="View the repository on GitHub"><span class="docs-icon fa-brands"></span><span class="docs-label is-hidden-touch">GitHub</span></a><a class="docs-navbar-link" href="https://github.com/JuliaLegate/cuNumeric.jl/blob/main/docs/src/examples.md" title="Edit source on GitHub"><span class="docs-icon fa-solid"></span></a><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Examples"><a class="docs-heading-anchor" href="#Examples">Examples</a><a id="Examples-1"></a><a class="docs-heading-anchor-permalink" href="#Examples" title="Permalink"></a></h1><h2 id="DAXPY"><a class="docs-heading-anchor" href="#DAXPY">DAXPY</a><a id="DAXPY-1"></a><a class="docs-heading-anchor-permalink" href="#DAXPY" title="Permalink"></a></h2><pre><code class="language-julia hljs"># found in examples/daxpy.jl
+using cuNumeric
+
+arr = cuNumeric.rand(NDArray, 20)
+
+α = 1.32
+b = 2.0
+
+arr2 = α*arr + b
+
+arr2[:] # disp array</code></pre><h2 id="Monte-Carlo-Integration"><a class="docs-heading-anchor" href="#Monte-Carlo-Integration">Monte-Carlo Integration</a><a id="Monte-Carlo-Integration-1"></a><a class="docs-heading-anchor-permalink" href="#Monte-Carlo-Integration" title="Permalink"></a></h2><p>Most integrals can be estimated with a basic Monte-Carlo estimator:</p><p class="math-container">\[\hat{I}_N = \frac{\Omega}{N}\sum_{i=1}^Nf(x_i)\]</p><p>where <code>N</code> is the number of samples, <span>$\Omega$</span> is the volume of the domain and <span>$x_i$</span> are sampled indpendently and uniformly at random from the domain. This estimator is guranteed to converge (subject to some minor constraints) at a rate independent of the dimension and is embaressingly parallel to compute!</p><p>In the example below, we estimate the integral:</p><p class="math-container">\[I = \int_{-\infty}^{\infty}e^{-x^2}.\]</p><p>Since we cannot uniformly sample form negative to positive infinity, we truncate the domain between -5 and 5. This is ok since the integrand exponentially decays and we won&#39;t be off by much in the end.</p><pre><code class="language-julia hljs"># found in examples/integrate.jl
+using cuNumeric
+
+integrand = (x) -&gt; exp(-square(x))
+
+N = 1_000_000
+
+x_max = 5.0
+domain = [-x_max, x_max]
+Ω = domain[2] - domain[1]
+
+samples = Ω*cuNumeric.rand(NDArray, N) - x_max 
+estimate = (Ω/N) * sum(integrand(samples))
+
+println(&quot;Monte-Carlo Estimate: $(estimate[1])&quot;)
+println(&quot;Analytical: $(sqrt(pi))&quot;)</code></pre><h2 id="Gray-Scott-Reaction-Diffusion"><a class="docs-heading-anchor" href="#Gray-Scott-Reaction-Diffusion">Gray Scott Reaction Diffusion</a><a id="Gray-Scott-Reaction-Diffusion-1"></a><a class="docs-heading-anchor-permalink" href="#Gray-Scott-Reaction-Diffusion" title="Permalink"></a></h2><pre><code class="language-julia hljs"># found in examples/gray-scott.jl
+using cuNumeric
+using Plots
+
+struct Params
+    dx::Float64
+    dt::Float64
+    c_u::Float64
+    c_v::Float64
+    f::Float64
+    k::Float64
+
+    function Params(dx=1, c_u=1.0, c_v=0.3, f=0.03, k=0.06)
+        new(dx, dx/5, c_u, c_v, f, k)
+    end
+end
+
+function step(u, v, u_new, v_new, args::Params)
+    # calculate F_u and F_v functions
+    # currently we don&#39;t have NDArray^x working yet. 
+    F_u = ((-u[2:end-1, 2:end-1].*(v[2:end-1, 2:end-1] .* v[2:end-1, 2:end-1])) +
+            args.f*(1 .- u[2:end-1, 2:end-1]))
+    F_v = ((u[2:end-1, 2:end-1].*(v[2:end-1, 2:end-1] .* v[2:end-1, 2:end-1])) -
+            (args.f+args.k)*v[2:end-1, 2:end-1])
+    # 2-D Laplacian of f using array slicing, excluding boundaries
+    # For an N x N array f, f_lap is the Nend x Nend array in the &quot;middle&quot;
+    u_lap = ((u[3:end, 2:end-1] - 2*u[2:end-1, 2:end-1] + u[1:end-2, 2:end-1]) ./ args.dx^2 
+           + (u[2:end-1, 3:end] - 2*u[2:end-1, 2:end-1] + u[2:end-1, 1:end-2]) ./ args.dx^2)
+    v_lap = ((v[3:end, 2:end-1] - 2*v[2:end-1, 2:end-1] + v[1:end-2, 2:end-1]) ./ args.dx^2 
+           + (v[2:end-1, 3:end] - 2*v[2:end-1, 2:end-1] + v[2:end-1, 1:end-2]) ./ args.dx^2)
+
+    # Forward-Euler time step for all points except the boundaries
+    u_new[2:end-1, 2:end-1] = ((args.c_u * u_lap) + F_u) * args.dt + u[2:end-1, 2:end-1]
+    v_new[2:end-1, 2:end-1] = ((args.c_v * v_lap) + F_v) * args.dt + v[2:end-1, 2:end-1]
+
+    # Apply periodic boundary conditions
+    u_new[:,1] = u[:,end-1]
+    u_new[:,end] = u[:,2]
+    u_new[1,:] = u[end-1,:]
+    u_new[end,:] = u[2,:]
+    v_new[:,1] = v[:,end-1]
+    v_new[:,end] = v[:,2]
+    v_new[1,:] = v[end-1,:]
+    v_new[end,:] = v[2,:]
+end
+
+function gray_scott()
+    anim = Animation()
+
+    N = 100
+    dims = (N, N)
+
+    FT = Float64
+    args = Params()
+
+    n_steps = 2000 # number of steps to take
+    frame_interval = 200 # steps to take between making plots
+
+    u = cuNumeric.ones(dims)
+    v = cuNumeric.zeros(dims)
+    u_new = cuNumeric.zeros(dims)
+    v_new = cuNumeric.zeros(dims)
+
+    u[1:15,1:15] = cuNumeric.random(FT, (15,15))
+    v[1:15,1:15] = cuNumeric.random(FT, (15,15))
+
+    for n in 1:n_steps
+        step(u, v, u_new, v_new, args)
+        # update u and v 
+        # this doesn&#39;t copy, this switching references 
+        u, u_new = u_new, u
+        v, v_new = v_new, v
+
+        if n%frame_interval == 0
+            u_cpu = u[:, :]
+            heatmap(u_cpu, clims=(0, 1))
+            frame(anim)
+        end
+    end
+    gif(anim, &quot;gray-scott.gif&quot;, fps=10)
+
+end
+
+gray_scott()</code></pre><p><img src="../gray-scott.gif" alt="Simulation Output"/></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../install/">« Build Options</a><a class="docs-footer-nextpage" href="../perf/">Performance Tips »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.14.1 on <span class="colophon-date" title="Tuesday 22 July 2025 21:41">Tuesday 22 July 2025</span>. Using Julia version 1.11.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
