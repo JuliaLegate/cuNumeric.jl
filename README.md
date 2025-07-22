@@ -50,13 +50,12 @@ julia -e 'using Pkg; Pkg.activate(".") Pkg.resolve(); Pkg.build()'
 ```
 
 #### 2a. Known build issue (unregistered packages)
-Legate.jl and Legate_jll are both unregistered. You may need to "hack"  if you run into build issues. We hope this issue goes away once we have these packages registered.
+Legate.jl is unregistered. You may need to "hack" if you run into build issues. We hope this issue goes away once we have the package is registered.
 ```julia
 ] activate .
 ] rm Legate
-] add https://github.com/ejmeitz/legate_jll.jl/
-] add https://github.com/JuliaLegate/Legate.jl # will fail to precompile
-] build # builds Legate.jl and cuNumeric.jl
+] add https://github.com/JuliaLegate/Legate.jl
+] build # builds cuNumeric.jl
 ```
 
 #### 2b. Use preinstalled version of [cuPyNumeric](https://github.com/nv-legate/cupynumeric)
@@ -114,5 +113,5 @@ For technical questions, please either contact
 `krasow(at)u.northwestern.edu` OR
 `emeitz(at)andrew.cmu.edu`
 
-If the issue is building the package, please include the `build.log` and `.err` files found in `cuNumeric.jl/pkg/deps/` 
+If the issue is building the package, please include the `build.log` and `.err` files found in `cuNumeric.jl/deps/` 
 
