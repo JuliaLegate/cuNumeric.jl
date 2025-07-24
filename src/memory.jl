@@ -1,3 +1,4 @@
+export @cunumeric
 using Base.Threads: Atomic, atomic_add!, atomic_sub!, atomic_xchg!
 
 lib = "libcwrapper.so"
@@ -60,4 +61,60 @@ function maybe_collect()
         GC.gc(false)
     end
     return nothing
+end
+
+macro cunumeric(block)
+    esc(process_ndarray_scope(block))
+end
+
+function process_ndarray_scope(block)
+    assigned_vars = Symbol[]
+
+    stmts = block isa Expr && block.head == :block ? block.args : [block]
+
+    body = Any[]
+
+    for stmt in stmts
+        find_ndarray_assignments(stmt, assigned_vars)
+        push!(body, stmt)
+    end
+
+    # For each assigned NDArray variable v, force destruction:
+    cleanup_calls = []
+    for v in reverse(assigned_vars)
+        push!(cleanup_calls, :(cuNumeric.nda_destroy_array($(v).ptr)))
+        push!(cleanup_calls, :(cuNumeric.register_free!($(v).nbytes)))
+    end
+    push!(cleanup_calls, :(cuNumeric.maybe_collect()))
+
+    return quote
+        try
+            $(Expr(:block, body...))
+        finally
+            $(Expr(:block, cleanup_calls...))
+        end
+    end
+end
+
+function is_ndarray_constructor(expr)
+    return expr isa Expr && expr.head == :call && expr.args[1] == :NDArray
+end
+
+function find_ndarray_assignments(expr, assigned::Vector{Symbol})
+    if !(expr isa Expr)
+        return nothing
+    end
+
+    # Detect direct assignments like `x = NDArray(...)`
+    if expr.head == :(=)
+        lhs, rhs = expr.args
+        if lhs isa Symbol && is_ndarray_constructor(rhs)
+            push!(assigned, lhs)
+        end
+    end
+
+    # Recurse into all subexpressions
+    for arg in expr.args
+        find_ndarray_assignments(arg, assigned)
+    end
 end
