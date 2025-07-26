@@ -71,7 +71,7 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
 
     cuNumeric.new_task(
         kernel.func, __to_stdvec_u32(blocks), __to_stdvec_u32(threads), input_vec, output_vec,
-        scalar_vec
+        scalar_vec,
     )
 end
 
@@ -93,9 +93,13 @@ macro cuda_task(call_expr)
         local _buf = IOBuffer()
         local _dummy = $cuNumeric.__dummy_args_for_ptx($(fargs...))
         # Create the PTX in runtime with actual values
-        CUDA.@device_code_ptx io=_buf CUDA.@cuda launch=false $fname((_dummy...))
+        # old PTX generation
+        # CUDA.@device_code_ptx io=_buf CUDA.@cuda launch=false $fname((_dummy...))
+        # Tim reccomends the following:
 
-        local _ptx = String(take!(_buf))
+        CUDA.code_ptx
+
+        local _ptx = String(take!(a_buf))
         local _func_name = cuNumeric.extract_kernel_name(_ptx)
         local _func = cuNumeric.ptx_task(_ptx, _func_name)
         local _types = cuNumeric.__get_types_from_dummy(_dummy)
