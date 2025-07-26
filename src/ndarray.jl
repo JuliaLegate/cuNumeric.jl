@@ -27,7 +27,7 @@ function to_cpp_index(idx::Dims{N}, int_type::Type=UInt64) where {N}
 end
 to_cpp_index(d::Int64, int_type::Type=UInt64) = StdVector(int_type.([d - 1]))
 
-Base.eltype(arr::NDArray) = Legate.code_type_map[nda_array_type_code(arr)]
+Base.eltype(arr::NDArray{T}) where {T} = T
 LegateType(T::Type) = Legate.to_legate_type(T)
 
 as_type(arr::NDArray, t::Type{T}) where {T} = nda_astype(arr, t)
@@ -35,7 +35,7 @@ as_type(arr::NDArray, t::Type{T}) where {T} = nda_astype(arr, t)
 #### ARRAY/INDEXING INTERFACE ####
 # https://docs.julialang.org/en/v1/manual/interfaces/#Indexing
 dim(arr::NDArray) = Int(cuNumeric.nda_array_dim(arr))
-Base.ndims(arr::NDArray) = Int(cuNumeric.nda_array_dim(arr))
+Base.ndims(arr::NDArray{T,N}) where {T,N} = N
 Base.size(arr::NDArray) = Tuple(Int.(cuNumeric.nda_array_shape(arr)))
 Base.size(arr::NDArray, dim::Int) = Base.size(arr)[dim]
 
