@@ -1,6 +1,8 @@
 using CUDA
 using Random
 
+const KERNEL_OFFSET = sizeof(CUDA.KernelState)
+
 function __get_types_from_dummy(args...)
     types = Any[]
     for arg in args
