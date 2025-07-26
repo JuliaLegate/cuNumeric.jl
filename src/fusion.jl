@@ -1,4 +1,4 @@
-const FUSED_KERNEL_CACHE = Dict{UInt64, String}()
+const FUSED_KERNEL_CACHE = Dict{UInt64, String}() # xor(hash(f_name), hash(list of types)) => PTX
 const FUSE_KWARGS = [:blocks, :threads]
 
 # For testing purpsoes
@@ -31,6 +31,7 @@ end
 ## to compile/fuse with CUDA.jl and launch 
 ## as a CUDA kernel through Legate. 
 # e.g. @fuse y = to_fuse(x, y), will break for splats and funcs with names args.
+# assumes 1D as well
 macro fuse(ex...)
 
     call = ex[end]
@@ -47,8 +48,6 @@ macro fuse(ex...)
     Meta.isexpr(func, :call) || throw(ArgumentError("fuse macro only supports assignments to unbroadcasted function calls"))
     f_name, f_args... = func.args
 
-    AST_hash = hash(func)
-
     @gensym ptx ptx_f_name task _hash converted_types args_tuple
 
     code = quote
@@ -56,7 +55,7 @@ macro fuse(ex...)
         $args_tuple = ($(f_args...),)
         println($args_tuple)
         $converted_types = to_cuda_type.($args_tuple)
-        $_hash = xor($AST_hash, hash($converted_types))
+        $_hash = xor(hash($f_name), hash($converted_types))
         
         if haskey(FUSED_KERNEL_CACHE, $_hash)
             println("Re-using fused kernel from cache")
