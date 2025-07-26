@@ -33,7 +33,7 @@ ARG PACKAGE_SPEC_CUDA=CUDA
 ARG PACKAGE_SPEC_CUNUMERIC=CUNUMERIC
 
 
-LABEL org.opencontainers.image.authors="David Krasowska <krasow@u.northwestern.edu>, Ethan Meitz <ejmeitz@andrew.cmu.edu>" \
+LABEL org.opencontainers.image.authors="David Krasowska <krasow@u.northwestern.edu>, Ethan Meitz <emeitz@andrew.cmu.edu>" \
       org.opencontainers.image.description="A cuNumeric.jl container with CUDA ${CUDA_VERSION}, Julia ${JULIA_VERSION}, and cuNumeric ${CUNUMERIC_VERSION}" \
       org.opencontainers.image.title="cuNumeric.jl" \
     #   org.opencontainers.image.url="https://juliagpu.org/cuda/" \
