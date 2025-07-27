@@ -59,15 +59,13 @@ macro fuse(ex...)
         
         if haskey(FUSED_KERNEL_CACHE, $_hash)
             println("Re-using fused kernel from cache")
-            $ptx = FUSED_KERNEL_CACHE[$_hash]
         else
             println("Compiling kernel to PTX")
-            $ptx = ptx_as_string($f_name, $converted_types)
-            FUSED_KERNEL_CACHE[$_hash] = $ptx
+            FUSED_KERNEL_CACHE[$_hash] = ptx_as_string($f_name, $converted_types)
         end
 
-        $ptx_f_name = cuNumeric.extract_kernel_name($ptx)
-        cuNumeric.ptx_task($ptx, $ptx_f_name)
+        $ptx_f_name = cuNumeric.extract_kernel_name(FUSED_KERNEL_CACHE[$_hash])
+        cuNumeric.ptx_task(FUSED_KERNEL_CACHE[$_hash], $ptx_f_name)
         $task = cuNumeric.CUDATask($ptx_f_name, $converted_types)
 
         cuNumeric.launch(
