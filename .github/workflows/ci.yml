@@ -32,11 +32,10 @@ jobs:
       - uses: julia-actions/cache@v2
       - name: Install CMAKE
         run: |
-          mkdir -p /usr/local && \
-          cd $WORKSPACE && \
+          mkdir -p $HOME/.local && \
           wget https://github.com/Kitware/CMake/releases/download/v3.30.7/cmake-3.30.7-linux-x86_64.sh --no-check-certificate && \
-          sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=/usr/local
-          echo "export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/cuda-12.4/lib64:\$LD_LIBRARY_PATH" > /etc/.env
+          sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=$HOME/.local
+          echo "export LD_LIBRARY_PATH=$HOME/.local/lib:$HOME/.local/cuda-12.4/lib64:\$LD_LIBRARY_PATH" > $HOME/.env
       - name: Install CUDA
         run: |
           wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb --no-check-certificate
@@ -45,7 +44,7 @@ jobs:
           sudo apt-get -y install cuda-toolkit-12-4
       - name: CUDA.jl for ${{ matrix.cuda }}
         run: |
-          julia -e '#= make bundled depot non-writable (JuliaLang/Pkg.jl#4120) =# \
+          sudo julia -e '#= make bundled depot non-writable (JuliaLang/Pkg.jl#4120) =# \
                     bundled_depot = last(DEPOT_PATH); \
                     run(`find $bundled_depot/compiled -type f -writable -exec chmod -w \{\} \;`); \
                     #= configure the preference =# \
@@ -79,18 +78,18 @@ jobs:
           julia -e 'using Pkg; Pkg.add("Libdl");'
       - name: Get Paths
         run: |
-          julia -e 'using NCCL_jll; println(joinpath(NCCL_jll.artifact_dir, "lib"))' > /usr/local/NCCL_PATH.txt
-          JULIA_NCCL_PATH=$(cat /usr/local/NCCL_PATH.txt) && \
-            echo "export JULIA_NCCL_PATH=$JULIA_NCCL_PATH" >> /etc/.env
-          julia -e 'using CUTENSOR_jll; println(joinpath(CUTENSOR_jll.artifact_dir, "lib"))' > /usr/local/CUTENSOR_PATH.txt
-          JULIA_CUTENSOR_PATH=$(cat /usr/local/CUTENSOR_PATH.txt) && \
-            echo "export JULIA_CUTENSOR_PATH=$JULIA_CUTENSOR_PATH" >> /etc/.env
+          julia -e 'using NCCL_jll; println(joinpath(NCCL_jll.artifact_dir, "lib"))' > $HOME/.local/NCCL_PATH.txt
+          JULIA_NCCL_PATH=$(cat $HOME/.local/NCCL_PATH.txt) && \
+            echo "export JULIA_NCCL_PATH=$JULIA_NCCL_PATH" >> $HOME/.env
+          julia -e 'using CUTENSOR_jll; println(joinpath(CUTENSOR_jll.artifact_dir, "lib"))' > $HOME/.local/CUTENSOR_PATH.txt
+          JULIA_CUTENSOR_PATH=$(cat $HOME/.local/CUTENSOR_PATH.txt) && \
+            echo "export JULIA_CUTENSOR_PATH=$JULIA_CUTENSOR_PATH" >> $HOME/.env
           julia -e 'using Libdl; using CUDA_Driver_jll; \
               Libdl.dlopen(joinpath(CUDA_Driver_jll.artifact_dir, "lib", "libcuda.so"), Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW); \
               using legate_jll; \
-              println(joinpath(legate_jll.artifact_dir))' > /usr/local/LEGATE_PATH.txt
-          LEGATE_CUSTOM_INSTALL_LOCATION=$(cat /usr/local/LEGATE_PATH.txt) && \
-            echo "export LEGATE_CUSTOM_INSTALL_LOCATION=$LEGATE_CUSTOM_INSTALL_LOCATION" >> /etc/.env
+              println(joinpath(legate_jll.artifact_dir))' > $HOME/.local/LEGATE_PATH.txt
+          LEGATE_CUSTOM_INSTALL_LOCATION=$(cat $HOME/.local/LEGATE_PATH.txt) && \
+            echo "export LEGATE_CUSTOM_INSTALL_LOCATION=$LEGATE_CUSTOM_INSTALL_LOCATION" >> $HOME/.env
       - name: Install Dependencies
         env: 
           JULIA_NUM_THREADS: auto
@@ -98,7 +97,7 @@ jobs:
           LEGATE_DEVELOP_MODE: 1
           PATH: /usr/local/cuda/bin/:$PATH
         run: |
-          source /etc/.env && julia -t 2 -e '
+          source $HOME/.env && julia -t 2 -e '
           using Pkg;
           Pkg.activate(".");
           Pkg.rm("Legate");
