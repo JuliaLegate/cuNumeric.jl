@@ -19,6 +19,7 @@ jobs:
           - ubuntu-22.04
         arch:
           - x64
+        cuda: [12.4]
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
@@ -29,30 +30,78 @@ jobs:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v2
-      - name: Install CUDA and NCCL
+      - name: Install CMAKE
+        run: |
+          mkdir -p /usr/local && \
+          cd $WORKSPACE && \
+          wget https://github.com/Kitware/CMake/releases/download/v3.30.7/cmake-3.30.7-linux-x86_64.sh --no-check-certificate && \
+          sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=/usr/local
+          echo "export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/cuda-12.4/lib64:\$LD_LIBRARY_PATH" > /etc/.env
+      - name: Install CUDA
         run: |
           wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb --no-check-certificate
           sudo dpkg -i cuda-keyring_1.1-1_all.deb
           sudo apt-get update
           sudo apt-get -y install cuda-toolkit-12-4
-          wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
-          sudo dpkg -i cuda-keyring_1.1-1_all.deb && \
-          sudo apt-get update
-      - name: Pre-setup
+      - name: CUDA.jl for ${{ matrix.cuda }}
         run: |
-            julia --project=@. -e 'using Pkg; Pkg.add("MPICH_jll"); Pkg.add("OpenSSL_jll")'
+          julia -e '#= make bundled depot non-writable (JuliaLang/Pkg.jl#4120) =# \
+                    bundled_depot = last(DEPOT_PATH); \
+                    run(`find $bundled_depot/compiled -type f -writable -exec chmod -w \{\} \;`); \
+                    #= configure the preference =# \
+                    env = "/usr/local/share/julia/environments/v$(VERSION.major).$(VERSION.minor)"; \
+                    mkpath(env); \
+                    write("$env/LocalPreferences.toml", \
+                          "[CUDA_Runtime_jll]\nversion = \"'${{ matrix.cuda }}'\""); \
+                    \
+                    #= install the JLL =# \
+                    using Pkg; \
+                    Pkg.add("CUDA_Runtime_jll"); \
+                    #= revert bundled depot changes =# \
+                    run(`find $bundled_depot/compiled -type f -writable -exec chmod +w \{\} \;`)' && \
+          #= demote the JLL to an [extras] dep =# \
+          find /usr/local/share/julia/environments -name Project.toml -exec sed -i 's/deps/extras/' {} + && \
+          #= remove nondeterminisms =# \
+          cd /usr/local/share/julia && \
+          rm -rf compiled registries scratchspaces logs && \
+          find -exec touch -h -d "@0" {} + && \
+          touch -h -d "@0" /usr/local/share
+
+          # install CUDA.jl itself
+          RUN julia -e 'using Pkg; pkg"add '${PACKAGE_SPEC_CUDA}'"; \
+                        using CUDA; CUDA.precompile_runtime()'
+      - name: PreInstall
+        run: |
+          julia -e 'using Pkg; Pkg.add("CUTENSOR_jll")'
+          julia -e 'using Pkg; Pkg.add("NCCL_jll")'
+          julia -e 'using Pkg; Pkg.add("legate_jll");'
+          julia -e 'using Pkg; Pkg.add("CUDA_Driver_jll");'
+          julia -e 'using Pkg; Pkg.add("Libdl");'
+      - name: Get Paths
+        run: |
+          julia -e 'using NCCL_jll; println(joinpath(NCCL_jll.artifact_dir, "lib"))' > /usr/local/NCCL_PATH.txt
+          JULIA_NCCL_PATH=$(cat /usr/local/NCCL_PATH.txt) && \
+            echo "export JULIA_NCCL_PATH=$JULIA_NCCL_PATH" >> /etc/.env
+          julia -e 'using CUTENSOR_jll; println(joinpath(CUTENSOR_jll.artifact_dir, "lib"))' > /usr/local/CUTENSOR_PATH.txt
+          JULIA_CUTENSOR_PATH=$(cat /usr/local/CUTENSOR_PATH.txt) && \
+            echo "export JULIA_CUTENSOR_PATH=$JULIA_CUTENSOR_PATH" >> /etc/.env
+          julia -e 'using Libdl; using CUDA_Driver_jll; \
+              Libdl.dlopen(joinpath(CUDA_Driver_jll.artifact_dir, "lib", "libcuda.so"), Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW); \
+              using legate_jll; \
+              println(joinpath(legate_jll.artifact_dir))' > /usr/local/LEGATE_PATH.txt
+          LEGATE_CUSTOM_INSTALL_LOCATION=$(cat /usr/local/LEGATE_PATH.txt) && \
+            echo "export LEGATE_CUSTOM_INSTALL_LOCATION=$LEGATE_CUSTOM_INSTALL_LOCATION" >> /etc/.env
       - name: Install Dependencies
         env: 
-          LD_LIBRARY_PATH: "$(julia --project=@. -e 'using OpenSSL_jll; print(OpenSSL_jll.artifact_dir)')/lib:$(julia --project=@. -e 'using MPICH_jll; print(MPICH_jll.artifact_dir)')/lib:$LD_LIBRARY_PATH"
           JULIA_NUM_THREADS: auto
+          LEGATE_CUSTOM_INSTALL: 1
           LEGATE_DEVELOP_MODE: 1
-          JULIA_NCCL_PATH: "/usr/lib/x86_64-linux-gnu/"
           PATH: /usr/local/cuda/bin/:$PATH
         run: |
-          julia -t 2 -e '
+          source /etc/.env && julia -t 2 -e '
           using Pkg;
           Pkg.activate(".");
-          Pkg.rm("Legate");  # Critical step
+          Pkg.rm("Legate");
           Pkg.add(url="https://github.com/JuliaLegate/Legate.jl", rev="main");
           Pkg.build(verbose = true);
           ' 
