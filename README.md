@@ -1,9 +1,12 @@
 # cuNumeric.jl
 
 [![Documentation dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://julialegate.github.io/cuNumeric.jl/dev/)
-[![Build status](https://ci.appveyor.com/api/projects/status/973jtue9itgvvlc7?svg=true)](https://ci.appveyor.com/project/ejmeitz/cunumeric-jl)
-[![codecov](https://codecov.io/github/ejmeitz/cuNumeric.jl/branch/main/graph/badge.svg)](https://app.codecov.io/github/ejmeitz/cuNumeric.jl)
+[![Build status](https://ci.appveyor.com/api/projects/status/973jtue9itgvvlc7?svg=true)](https://ci.appveyor.com/project/JuliaLegate/cunumeric-jl)
+[![codecov](https://codecov.io/github/julialegate/cuNumeric.jl/branch/main/graph/badge.svg)](https://app.codecov.io/github/JuliaLegate/cuNumeric.jl)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+
+> [!WARNING]  
+> Leagte.jl and cuNumeric.jl are under active development at the moment. This is a pre-release API and is subject to change. Stability is not guaranteed until the first official release. We are actively working to improve the build experience to be more seamless and Julia-friendly. In parallel, we're developing a comprehensive testing framework to ensure reliability and robustness. Our public beta launch is targeted for Fall 2025.
 
 The cuNumeric.jl package wraps the [cuPyNumeric](https://github.com/nv-legate/cupynumeric) C++ API from NVIDIA to bring simple distributed computing on GPUs and CPUs to Julia! We provide a simple array abstraction, the `NDArray`, which supports most of the operations you would expect from a normal Julia array.
 
@@ -39,7 +42,7 @@ cuNumeric.jl is not on the general registry yet. To add cuNumeric.jl to your env
 using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "main")
 ```
 
-The `rev` option can be main or any tagged version.  By default, this will use [legate_jll](https://github.com/ejmeitz/legate_jll.jl) and build cuPyNumeric from source. In [2b](#2b-use-preinstalled-version-of-cupynumeric) and [2c](#2c-use-a-conda-environment-to-install-cunumericjl), we show different installation methods. Ensure that the enviroment variables are correctly set for custom builds.
+The `rev` option can be main or any tagged version.  By default, this will use [legate_jll](https://github.com/JuliaBinaryWrappers/legate_jll.jl/) and build cuPyNumeric from source. In [2b](#2b-use-preinstalled-version-of-cupynumeric) and [2c](#2c-use-a-conda-environment-to-install-cunumericjl), we show different installation methods. Ensure that the enviroment variables are correctly set for custom builds.
 
 
 To contribute to cuNumeric.jl, we recommend cloning the repository and manually triggering the build process with `Pkg.build` or adding it to one of your existing environments with `Pkg.develop`.
@@ -91,8 +94,7 @@ Run this command in the Julia environment where cuNumeric.jl is installed.
 using Pkg; Pkg.test("cuNumeric")
 ```
 
-With everything working, its the perfect time to checkout some of our [examples](https://ejmeitz.github.io/cuNumeric.jl/dev/examples/)!
-
+With everything working, its the perfect time to checkout some of our [examples](https://julialegate.github.io/cuNumeric.jl/dev/examples/)!
 
 
 ## TO-DO List of Missing Important Features
@@ -106,7 +108,6 @@ With everything working, its the perfect time to checkout some of our [examples]
 - Normal random numbers (not possible in current C++ API)
 - Add Aqua.jl to CI to ensure we didn't pirate any types
 - Fix CodeCov reports
-- Fix cuNumeric.jl error in CI (requires unreleased CuPyNumeric)
 
 ## Contact
 For technical questions, please either contact 
