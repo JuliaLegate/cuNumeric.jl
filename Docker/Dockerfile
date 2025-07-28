@@ -7,6 +7,7 @@ FROM nvidia/cuda:${CUDA_VERSION}.0-devel-ubuntu${UBUNTU_VERSION}
 # once we are fully dependent on jlls, we can do the following
 ARG JULIA_VERSION=1.10
 # FROM julia:${JULIA_VERSION}
+ARG REF=main
 
 # using bash
 SHELL ["/bin/bash", "-c"] 
@@ -54,14 +55,14 @@ RUN mkdir -p /usr/local && \
     sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=/usr/local
 
 # requires Julia install due to not using an official Julia container
-RUN curl -fsSL https://install.julialang.org | bash -s -- --default-channel 1.10 --yes \
+RUN curl -fsSL https://install.julialang.org | bash -s -- --default-channel ${JULIA_VERSION} --yes \
     --path /usr/local/.juliaup
 
 ENV JULIA_DEPOT_PATH=/usr/local/share/julia:
 
-ENV PATH="/usr/local/cuda-12.4/bin:/usr/local/.juliaup/bin:/usr/local/bin:$PATH"
+ENV PATH="/usr/local/cuda-${CUDA_VERSION}/bin:/usr/local/.juliaup/bin:/usr/local/bin:$PATH"
 # Install Julia packages and extract artifact paths
-RUN echo "export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/cuda-12.4/lib64:\$LD_LIBRARY_PATH" > /etc/profile.d/custom_ld_library_path.sh
+RUN echo "export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/cuda-${CUDA_VERSION}/lib64:\$LD_LIBRARY_PATH" > /etc/profile.d/custom_ld_library_path.sh
 
 RUN chmod +x /etc/profile.d/custom_ld_library_path.sh
 RUN cat /etc/profile.d/custom_ld_library_path.sh
@@ -135,7 +136,7 @@ RUN LEGATE_CUSTOM_INSTALL_LOCATION=$(cat /usr/local/LEGATE_PATH.txt) && \
 RUN echo "Install Legate and cuNumeric.jl"
 # Install Legate.jl and cuNumeric.jl
 RUN source /etc/.env && julia -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "fixing-build")'
-RUN source /etc/.env && julia -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "main")'
+RUN source /etc/.env && julia -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${REF}")'
 RUN source /etc/.env && julia -e 'using Pkg; Pkg.resolve()'
 
 RUN #= remove useless stuff =# \

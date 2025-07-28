@@ -108,6 +108,7 @@ jobs:
             JULIA_VERSION=${{ matrix.julia }}
             CUDA_VERSION=${{ matrix.cuda }}
             JULIA_CPU_TARGET=${{ steps.cpu_target.outputs.target }}
+            REF=${{ steps.pkg.outputs.ref }}
       - name: Run tests in built image
         run: |
             docker run --rm -it --name=tester -v $PWD:/workspace ${{ steps.meta.outputs.tags }} > docker.log 2>&1 &
