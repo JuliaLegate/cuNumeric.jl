@@ -38,12 +38,6 @@ jobs:
       - name: Check out the repo
         uses: actions/checkout@v4
 
-      - name: Check out the package
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref || github.ref_name }}
-          path: package
-
       - name: Get package spec
         id: pkg
         run: |
@@ -58,7 +52,7 @@ jobs:
             echo "name=dev" >> $GITHUB_OUTPUT
           fi
 
-          VERSION=$(grep "^version = " package/Project.toml | cut -d'"' -f2)
+          VERSION=$(grep "^version = " Project.toml | cut -d'"' -f2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Get CUDA major version
