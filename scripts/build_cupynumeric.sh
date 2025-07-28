@@ -30,20 +30,19 @@ REPO_URL="https://github.com/nv-legate/cupynumeric"
 TAG_URL="$REPO_URL/releases/tag/$TAG"
 CLONE_DIR="$CUNUMERIC_ROOT_DIR/deps/cupynumeric-$VERSION"
 
-# echo "Checking if tag $TAG exists on GitHub..."
+echo "Checking if tag $TAG exists on GitHub..."
 
-# if curl --silent --head --fail "$TAG_URL" > /dev/null; then
-#     echo "Tag $TAG exists. Cloning..."
-# else
-#     echo "Error: Tag $TAG does not exist at $TAG_URL"
-#     exit 1
-# fi
+if curl --silent --head --fail "$TAG_URL" > /dev/null; then
+    echo "Tag $TAG exists. Cloning..."
+else
+    echo "Error: Tag $TAG does not exist at $TAG_URL"
+    exit 1
+fi
 
 if [ -d "$CLONE_DIR" ]; then
     echo "Directory '$CLONE_DIR' already exists. Skipping clone."
 else
-    # git clone --branch "$TAG" --depth 1 "$REPO_URL.git" "$CLONE_DIR"
-    git clone --branch "branch-25.05" --depth 1 "$REPO_URL.git" "$CLONE_DIR"
+    git clone --branch "$TAG" --depth 1 "$REPO_URL.git" "$CLONE_DIR"
     echo "Cloned cuNumeric $VERSION into $CLONE_DIR"
 fi
 

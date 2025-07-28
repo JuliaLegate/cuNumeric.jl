@@ -17,16 +17,12 @@
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 using Pkg
-using OpenSSL_jll
-using HDF5_jll
-using NCCL_jll
-using CUTENSOR_jll
 using Preferences
+
 using Legate
+using CUTENSOR_jll
 
-import Base: notnothing
-
-const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.05.00"]
+const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.07.00"]
 const LATEST_CUPYNUMERIC_VERSION = SUPPORTED_CUPYNUMERIC_VERSIONS[end]
 
 # Automatically pipes errors to new file
@@ -88,9 +84,7 @@ function is_cupynumeric_installed(cupynumeric_root::String; throw_errors::Bool=f
     return true
 end
 
-function parse_cupynumeric_version(cupynumeric_root)
-    version_file = joinpath(cupynumeric_root, "include", "cupynumeric", "version_config.hpp")
-
+function get_version(version_file)
     version = nothing
     open(version_file, "r") do f
         data = readlines(f)
@@ -99,12 +93,26 @@ function parse_cupynumeric_version(cupynumeric_root)
         patch = lpad(split(data[end])[end], 2, '0')
         version = "$(major).$(minor).$(patch)"
     end
-
     if isnothing(version)
-        error("cuNumeric.jl: Failed to parse version from conda environment")
+        error("cuNumeric.jl: Failed to parse version for $(version_file)")
     end
-
     return version
+end
+
+function get_legate_version(legate_dir)
+    version_file = joinpath(legate_dir, "include", "legate/legate", "version.h")
+    return get_version(version_file)
+end
+
+function get_cupynumeric_version(cupynumeric_root)
+    version_file = joinpath(cupynumeric_root, "include", "cupynumeric", "version_config.hpp")
+    return get_version(version_file)
+end
+
+function legate_valid(legate_root::String, version_to_install)
+    # todo check if legate_root matches the version that we are installing.
+    version_legate = get_legate_version(legate_root)
+    return version_legate == version_to_install # return true if equal
 end
 
 function install_cupynumeric(repo_root, version_to_install)
@@ -120,6 +128,9 @@ function install_cupynumeric(repo_root, version_to_install)
     end
 
     legate_root = joinpath(Legate.get_install_liblegate(), "..") # new gives /lib
+    if (!legate_valid(legate_root, version_to_install))
+        @error "Your Legate install does not match our package requirements for version $(version_to_install)"
+    end
 
     nccl_root = joinpath(Legate.get_install_libnccl(), "..")
     cutensor_root = joinpath(get_library_root(CUTENSOR_jll, "JULIA_CUTENSOR_PATH"), "..")
@@ -140,7 +151,7 @@ function check_prefix_install(env_var, env_loc)
         if !cupynumeric_installed
             error("cuNumeric.jl: Build halted: cupynumeric not found in $cupynumeric_root")
         end
-        installed_version = parse_cupynumeric_version(cupynumeric_root)
+        installed_version = get_cupynumeric_version(cupynumeric_root)
         if installed_version ∉ SUPPORTED_CUPYNUMERIC_VERSIONS
             error(
                 "cuNumeric.jl: Build halted: $(cupynumeric_root) detected unsupported version $(installed_version)"
@@ -167,7 +178,7 @@ function build()
         cupynumeric_root = abspath(joinpath(@__DIR__, "../libcupynumeric"))
         cupynumeric_installed = is_cupynumeric_installed(cupynumeric_root)
         if cupynumeric_installed
-            installed_version = parse_cupynumeric_version(cupynumeric_root)
+            installed_version = get_cupynumeric_version(cupynumeric_root)
             if installed_version ∉ SUPPORTED_CUPYNUMERIC_VERSIONS
                 @warn "cuNumeric.jl: Detected unsupported version of cupynumeric installed: $(installed_version). Installing newest version."
                 install_cupynumeric(pkg_root, LATEST_CUPYNUMERIC_VERSION)

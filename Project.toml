@@ -1,6 +1,6 @@
 name = "cuNumeric"
 uuid = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
-version = "25.5.0"
+version = "25.7.0"
 
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
@@ -23,3 +23,4 @@ libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
 [compat]
 CxxWrap = "0.17"
 julia = "1.10"
+Legate = "25.07.0"
