@@ -1,10 +1,9 @@
 # we need nvcc as we are compiling during the build of this docker container
 # CUDA_Runtime_jll does not contain nvcc 
 ARG CUDA_VERSION=12.4
-ARG CUDA_TAG=12-4
 ARG UBUNTU_VERSION=22.04
 
-FROM nvidia/cuda:${CUDA_TAG}-devel-ubuntu${UBUNTU_VERSION}
+FROM nvidia/cuda:${CUDA_VERSION}.0-devel-ubuntu${UBUNTU_VERSION}
 # once we are fully dependent on jlls, we can do the following
 ARG JULIA_VERSION=1.10
 # FROM julia:${JULIA_VERSION}
