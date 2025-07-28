@@ -8,7 +8,7 @@ FROM nvidia/cuda:${CUDA_VERSION}.0-devel-ubuntu${UBUNTU_VERSION}
 ARG JULIA_VERSION=1.10
 # FROM julia:${JULIA_VERSION}
 ARG REF=main
-
+ENV REF=${REF}
 # using bash
 SHELL ["/bin/bash", "-c"] 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -136,7 +136,7 @@ RUN LEGATE_CUSTOM_INSTALL_LOCATION=$(cat /usr/local/LEGATE_PATH.txt) && \
 RUN echo "Install Legate and cuNumeric.jl"
 # Install Legate.jl and cuNumeric.jl
 RUN source /etc/.env && julia -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "fixing-build")'
-RUN source /etc/.env && julia -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${REF}")'
+RUN source /etc/.env && julia -e "using Pkg; Pkg.add(url = \"https://github.com/JuliaLegate/cuNumeric.jl\", rev = \"$REF\")"
 RUN source /etc/.env && julia -e 'using Pkg; Pkg.resolve()'
 
 RUN #= remove useless stuff =# \
