@@ -1,6 +1,8 @@
 export @cunumeric
 using Base.Threads: Atomic, atomic_add!, atomic_sub!, atomic_xchg!
 
+prior_block = nothing
+
 lib = "libcwrapper.so"
 libnda = joinpath(@__DIR__, "../", "wrapper", "build", lib)
 
@@ -67,11 +69,22 @@ macro cunumeric(block)
     esc(process_ndarray_scope(block))
 end
 
-function process_ndarray_scope(block)
-    assigned_vars = Symbol[]
+const ndarray_scope_cache = Dict{UInt64,Expr}()
 
+function process_ndarray_scope(block)
+    # Normalize block to list of statements
     stmts = block isa Expr && block.head == :block ? block.args : [block]
 
+    # Hash the content structurally (avoiding pointer identity)
+    h = hash(stmts)
+
+    # Return cached result if present
+    if haskey(ndarray_scope_cache, h)
+        return ndarray_scope_cache[h]
+    end
+
+    # Otherwise, process and cache
+    assigned_vars = Symbol[]
     body = Any[]
 
     for stmt in stmts
@@ -79,21 +92,23 @@ function process_ndarray_scope(block)
         push!(body, stmt)
     end
 
-    # For each assigned NDArray variable v, force destruction:
-    cleanup_calls = []
+    cleanup_calls = Expr[]
     for v in reverse(assigned_vars)
         push!(cleanup_calls, :(cuNumeric.nda_destroy_array($(v).ptr)))
         push!(cleanup_calls, :(cuNumeric.register_free!($(v).nbytes)))
     end
     push!(cleanup_calls, :(cuNumeric.maybe_collect()))
 
-    return quote
+    result = quote
         try
             $(Expr(:block, body...))
         finally
             $(Expr(:block, cleanup_calls...))
         end
     end
+
+    ndarray_scope_cache[h] = result
+    return result
 end
 
 function is_ndarray_constructor(expr)
