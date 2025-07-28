@@ -107,6 +107,7 @@ jobs:
           build-args: |
             JULIA_VERSION=${{ matrix.julia }}
             CUDA_VERSION=${{ matrix.cuda }}
+            CUDA_TAG=${${{ matrix.cuda }}//./-} 
             JULIA_CPU_TARGET=${{ steps.cpu_target.outputs.target }}
       - name: Run tests in built image
         run: |
