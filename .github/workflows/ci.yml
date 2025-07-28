@@ -50,9 +50,7 @@ jobs:
                     #= configure the preference =# \
                     env = "/usr/local/share/julia/environments/v$(VERSION.major).$(VERSION.minor)"; \
                     mkpath(env); \
-                    write("$env/LocalPreferences.toml", \
-                          "[CUDA_Runtime_jll]\nversion = \"'${{ matrix.cuda }}'\""); \
-                    \
+                    write("$env/LocalPreferences.toml", "[CUDA_Runtime_jll]\nversion = \"'${{ matrix.cuda }}'\""); \
                     #= install the JLL =# \
                     using Pkg; \
                     Pkg.add("CUDA_Runtime_jll"); \

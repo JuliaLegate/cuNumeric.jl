@@ -1,0 +1,3 @@
+FROM ghcr.io/julialegate/cunumeric.jl:latest
+ENV LEGATE_AUTO_CONFIG=0 
+RUN source /etc/.env && julia --project=. -e 'using Pkg; using cuNumeric; Pkg.test("cuNumeric")'

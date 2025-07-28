@@ -8,7 +8,6 @@ ARG JULIA_VERSION=1.10
 # using bash
 SHELL ["/bin/bash", "-c"] 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV DEPOT_USER=/depot
 
 # develop mode enables us to build wrappers from source. it installs libcxx wrap into deps of Legate.jl
 # this will enable both Legate.jl and/or cuNumeric.jl to build its wrapper from source within this container
@@ -149,27 +148,27 @@ RUN #= remove useless stuff =# \
 # default to `$HOME/.julia`. this is for compatibility with `docker run --user`, in which
 # case there might not be a (writable) home directory.
 
-RUN mkdir -m 0777 $DEPOT_USER
+RUN mkdir -m 0777 /depot
 # we add the user environment from a start-up script
 # so that the user can mount `/depot` for persistency
 COPY <<EOF /usr/local/share/julia/config/startup.jl
-if !isdir("$(DEPOT_USER)/environments/v$(VERSION.major).$(VERSION.minor)")
+if !isdir("/deopt/environments/v$(VERSION.major).$(VERSION.minor)")
     if isinteractive() && Base.JLOptions().quiet == 0
         println("""Welcome to this cuNumeric.jl container!
 
                    Since this is the first time you're running this container,
-                   we'll set up a user depot for you at `$(DEPOT_USER)`. For persistency,
+                   we'll set up a user depot for you at `/depot`. For persistency,
                    you can mount a volume at this location.
 
                    The cuNumeric.jl package is pre-installed, and ready to be imported.
                    Remember that you need to invoke Docker with e.g. `--gpus=all`
                    to access the GPU.""")
     end
-    mkpath("$(DEPOT_USER)/environments")
+    mkpath("/deopt/environments")
     cp("/usr/local/share/julia/environments/v$(VERSION.major).$(VERSION.minor)",
-       "$(DEPOT_USER)/environments/v$(VERSION.major).$(VERSION.minor)")
+       "/deopt/environments/v$(VERSION.major).$(VERSION.minor)")
 end
-pushfirst!(DEPOT_PATH, "$(DEPOT_USER)")
+pushfirst!(DEPOT_PATH, "/deopt")
 EOF
 
 RUN apt-get clean && \
