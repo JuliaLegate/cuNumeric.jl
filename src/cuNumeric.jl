@@ -93,8 +93,12 @@ function cunumeric_setup(AA::ArgcArgv)
     Base.atexit(my_on_exit)
 
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
-    cuNumeric.register_tasks(); # in cuda.cpp wrapper interface
-    cuNumeric.init_gc!() # setup memory.jl 
+    # in /src/cuda.jl to notify /wrapper/src/cuda.cpp about CUDA.jl kernel state size
+    cuNumeric.set_kernel_state_size();
+    # in /wrapper/src/cuda.cpp
+    cuNumeric.register_tasks();
+    # setup /src/memory.jl 
+    cuNumeric.init_gc!()
 end
 
 function versioninfo()

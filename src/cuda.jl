@@ -1,23 +1,14 @@
 using CUDA
 using Random
 
-function __get_types_from_dummy(args...)
-    types = Any[]
-    for arg in args
-        push!(types, typeof(CUDA.cudaconvert(arg)))
-    end
-    return tuple(types...)
+const KERNEL_OFFSET = sizeof(CUDA.KernelState)
+
+# cuNumeric.jl init will call this
+function set_kernel_state_size()
+    cuNumeric.register_kernel_state_size(UInt64(KERNEL_OFFSET))
 end
 
-function __dummy_args_for_ptx(args...)
-    converted = Any[]
-    for arg in args
-        push!(converted, cuNumeric.__convert_arg(arg))
-    end
-    return tuple(converted...)
-end
-
-function __convert_arg(arg)
+function ndarray_to_cuda_dummy_arr(arg)
     if isa(arg, NDArray)
         T = cuNumeric.eltype(arg)
         # size = cuNumeric.size(arg)
@@ -29,16 +20,17 @@ function __convert_arg(arg)
     end
 end
 
-function __tuple_set(args...)
-    state = args[1]
-    types = args[2]
+function map_ndarray_cuda_type(arg)
+    t = cuNumeric.ndarray_to_cuda_dummy_arr(arg)
+    return typeof(CUDA.cudaconvert(t))
+end
 
-    t = Any[]
-    push!(t, state)
-    for ty in types.parameters
-        push!(t, ty)
+function map_ndarray_cuda_types(args...)
+    converted = Any[]
+    for arg in args
+        push!(converted, cuNumeric.map_ndarray_cuda_type(arg))
     end
-    return tuple(t...)
+    return tuple(converted...)
 end
 
 function __to_stdvec_u32(v)
@@ -91,19 +83,19 @@ macro cuda_task(call_expr)
 
     esc(quote
         local _buf = IOBuffer()
-        local _dummy = $cuNumeric.__dummy_args_for_ptx($(fargs...))
-        # Create the PTX in runtime with actual values
-        # old PTX generation
-        # CUDA.@device_code_ptx io=_buf CUDA.@cuda launch=false $fname((_dummy...))
-        # Tim reccomends the following:
+        local _types = $cuNumeric.map_ndarray_cuda_types($(fargs...))
+        # generate ptx using CUDA.jl 
+        CUDA.code_ptx(_buf, $fname, _types; raw=false)
 
-        CUDA.code_ptx
-
-        local _ptx = String(take!(a_buf))
+        local _ptx = String(take!(_buf))
         local _func_name = cuNumeric.extract_kernel_name(_ptx)
-        local _func = cuNumeric.ptx_task(_ptx, _func_name)
-        local _types = cuNumeric.__get_types_from_dummy(_dummy)
+        println(_ptx)
+        println(_func_name)
 
+        # issue ptx_task within legate runtime to register cufunction ptr with cucontext
+        cuNumeric.ptx_task(_ptx, _func_name)
+
+        # create a CUDAtask that stores some info for a launch config
         cuNumeric.CUDATask(_func_name, _types)
     end)
 end
