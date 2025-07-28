@@ -111,7 +111,7 @@ jobs:
             REF=${{ steps.pkg.outputs.ref }}
       - name: Run tests in built image
         run: |
-            docker run --rm -it --name=tester -v $PWD:/workspace ${{ steps.meta.outputs.tags }} > docker.log 2>&1 &
+            docker run --rm -it --name=tester -v $PWD/Docker:/workspace ${{ steps.meta.outputs.tags }} > docker.log 2>&1 &
             docker exec -i tester /workspace/test.sh
             docker stop tester
       - name: Push image if tests pass
