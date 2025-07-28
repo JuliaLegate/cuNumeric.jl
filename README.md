@@ -38,11 +38,15 @@ juliaup default 1.10
 
 ### 2. Download cuNumeric.jl
 cuNumeric.jl is not on the general registry yet. To add cuNumeric.jl to your environment run:
+```bash
+export LEGATE_DEVELOP_MODE=1 # required to build cxxwrap wrapper. 
+# Once we have cunumeric_wrapper_jll, this will be resolved.
+```
 ```julia
-export LEGATE_DEVELOP_MODE=1 # required to build cxxwrap wrapper. Once we have cunumeric_wrapper_jll, this will be resolved.
-using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main") # Legate is not registered
+# Legate is not registered
+using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")
 using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "main")
-] build
+] build # cunumeric_jll does not exist yet
 ```
 
 The `rev` option can be main or any tagged version.  By default, this will use [legate_jll](https://github.com/JuliaBinaryWrappers/legate_jll.jl/) and build cuPyNumeric from source. In [2b](#2b-use-preinstalled-version-of-cupynumeric) and [2c](#2c-use-a-conda-environment-to-install-cunumericjl), we show different installation methods. Ensure that the enviroment variables are correctly set for custom builds.
