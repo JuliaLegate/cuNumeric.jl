@@ -65,8 +65,8 @@ jobs:
           touch -h -d "@0" /usr/local/share
 
           # install CUDA.jl itself
-          RUN julia -e 'using Pkg; pkg"add '${PACKAGE_SPEC_CUDA}'"; \
-                        using CUDA; CUDA.precompile_runtime()'
+          julia -e 'using Pkg; Pkg.add("CUDA"); \
+                    using CUDA; CUDA.precompile_runtime()'
       - name: PreInstall
         run: |
           julia -e 'using Pkg; Pkg.add("CUTENSOR_jll")'
