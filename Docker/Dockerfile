@@ -135,7 +135,7 @@ RUN LEGATE_CUSTOM_INSTALL_LOCATION=$(cat /usr/local/LEGATE_PATH.txt) && \
 
 RUN echo "Install Legate and cuNumeric.jl"
 # Install Legate.jl and cuNumeric.jl
-RUN source /etc/.env && julia -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "fixing-build")'
+RUN source /etc/.env && julia -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")'
 RUN source /etc/.env && julia -e "using Pkg; Pkg.add(url = \"https://github.com/JuliaLegate/cuNumeric.jl\", rev = \"$REF\")"
 RUN source /etc/.env && julia -e 'using Pkg; Pkg.resolve()'
 
@@ -153,7 +153,7 @@ RUN mkdir -m 0777 /depot
 # we add the user environment from a start-up script
 # so that the user can mount `/depot` for persistency
 COPY <<EOF /usr/local/share/julia/config/startup.jl
-if !isdir("/deopt/environments/v$(VERSION.major).$(VERSION.minor)")
+if !isdir("/depot/environments/v$(VERSION.major).$(VERSION.minor)")
     if isinteractive() && Base.JLOptions().quiet == 0
         println("""Welcome to this cuNumeric.jl container!
 
@@ -165,11 +165,11 @@ if !isdir("/deopt/environments/v$(VERSION.major).$(VERSION.minor)")
                    Remember that you need to invoke Docker with e.g. `--gpus=all`
                    to access the GPU.""")
     end
-    mkpath("/deopt/environments")
+    mkpath("/depot/environments")
     cp("/usr/local/share/julia/environments/v$(VERSION.major).$(VERSION.minor)",
-       "/deopt/environments/v$(VERSION.major).$(VERSION.minor)")
+       "/depot/environments/v$(VERSION.major).$(VERSION.minor)")
 end
-pushfirst!(DEPOT_PATH, "/deopt")
+pushfirst!(DEPOT_PATH, "/depot")
 EOF
 
 RUN apt-get clean && \
