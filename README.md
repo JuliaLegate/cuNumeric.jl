@@ -43,6 +43,7 @@ export LEGATE_DEVELOP_MODE=1 # required to build cxxwrap wrapper.
 # Once we have cunumeric_wrapper_jll, this will be resolved.
 ```
 ```julia
+
 # Legate is not registered
 using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")
 using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "main")
