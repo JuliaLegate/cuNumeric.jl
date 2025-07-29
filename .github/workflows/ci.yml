@@ -22,7 +22,7 @@ jobs:
   push_to_registry:
     name: Container for ${{ matrix.platform }} - Julia ${{ matrix.julia }} - CUDA ${{ matrix.cuda }}
     permissions:
-      contents: write
+      contents: read
       packages: write
 
     strategy:
