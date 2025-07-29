@@ -57,7 +57,7 @@ To contribute to cuNumeric.jl, we recommend cloning the repository and manually 
 ```bash
 git clone https://github.com/JuliaLegate/cuNumeric.jl.git
 cd cuNumeric.jl
-julia -e 'using Pkg; Pkg.activate(".") Pkg.resolve(); Pkg.build()'
+julia --project=. -e 'using Pkg; Pkg.activate("."); Pkg.resolve(); Pkg.build()'
 ```
 
 #### 2b. Use preinstalled version of [cuPyNumeric](https://github.com/nv-legate/cupynumeric)
