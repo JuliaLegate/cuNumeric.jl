@@ -25,6 +25,8 @@ using CxxWrap
 using Pkg
 using Libdl
 using TOML
+import ExpressionExplorer: compute_symbols_state
+import MacroTools: postwalk
 
 using LinearAlgebra
 import LinearAlgebra: mul!
