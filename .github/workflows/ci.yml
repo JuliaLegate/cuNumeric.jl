@@ -30,9 +30,9 @@ jobs:
         julia: ["1.10", "1.11"]
         cuda: ["12.4"]
         platform: ["linux/amd64"]
-        os: ["ubuntu-24.04"]
+        os: ["ubuntu-22.04"]
 
-    runs-on: ${{ matrix.os }}
+    runs-on: [self-hosted, linux, x64]
 
     steps:
       - name: Check out the repo
