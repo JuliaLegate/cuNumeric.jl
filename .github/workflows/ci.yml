@@ -24,7 +24,8 @@ jobs:
     permissions:
       contents: read
       packages: write
-
+      attestations: write
+      id-token: write
     strategy:
       matrix:
         julia: ["1.10", "1.11"]
