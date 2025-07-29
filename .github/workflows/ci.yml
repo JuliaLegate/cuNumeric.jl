@@ -48,6 +48,9 @@ jobs:
           elif [[ "${{ github.ref_type }}" == "tag" ]]; then
             echo "ref=${{ github.ref_name }}" >> $GITHUB_OUTPUT
             echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_type }}" == "branch" ]]; then
+            echo "ref=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
           else
             echo "ref=${{ github.sha }}" >> $GITHUB_OUTPUT
             echo "name=dev" >> $GITHUB_OUTPUT
