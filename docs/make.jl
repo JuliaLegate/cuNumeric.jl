@@ -1,11 +1,10 @@
-using DocumenterVitepress
-using Documenter
+using Documenter, DocumenterVitepress
 
 makedocs(;
     sitename="cuNumeric.jl",
     authors="Ethan Meitz and David Krasowska",
     format=MarkdownVitepress(;
-        repo="github.com/JuliaLegate/cuNumeric.jl.git",
+        repo="github.com/JuliaLegate/cuNumeric.jl",
         devbranch="main",
         devurl="dev",
     ),
@@ -21,7 +20,7 @@ makedocs(;
 )
 
 DocumenterVitepress.deploydocs(;
-    repo="github.com/JuliaLegate/cuNumeric.jl.git",
+    repo="github.com/JuliaLegate/cuNumeric.jl",
     target=joinpath(@__DIR__, "build"),
     branch="gh-pages",
     devbranch="main",

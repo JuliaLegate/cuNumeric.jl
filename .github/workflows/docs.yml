@@ -2,6 +2,7 @@ name: Docs
 on:
   push:
     paths:
+      - '.github/workflows/docs.yml'
       - 'src/**'
       - 'docs/src/**'
       - 'docs/make.jl'
@@ -12,6 +13,7 @@ on:
       - main
   pull_request:
     paths:
+    - '.github/workflows/docs.yml'
     - 'src/**'
     - 'docs/src/**'
     - 'docs/make.jl'
@@ -31,10 +33,13 @@ jobs:
         with:
           version: '1'
       - uses: julia-actions/cache@v2
-      - name: Install docs dependencies
-        run: julia --project=docs/ -e 'using Pkg; Pkg.instantiate()'
-      - name: Build and deploy docs
+      - name: Instantiate docs environment
+        run: |
+          julia --color=yes --project=docs -e '
+            using Pkg
+            Pkg.instantiate()'
+      - name: Build documentation
+        run: julia --color=yes --project=docs docs/make.jl
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # If authenticating with GitHub Actions token
-          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }} # If authenticating with SSH deploy key
-        run: julia --project=docs/ docs/make.jl
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
