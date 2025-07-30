@@ -1,5 +1,4 @@
-using DocumenterVitepress
-using Documenter
+using Documenter, DocumenterVitepress
 
 makedocs(;
     sitename="cuNumeric.jl",
@@ -8,6 +7,7 @@ makedocs(;
         repo="github.com/JuliaLegate/cuNumeric.jl.git",
         devbranch="main",
         devurl="dev",
+        deploy_url="Julialegate.github.io/cuNumeric.jl/",
     ),
     pages=[
         "Home" => "index.md",
