@@ -1,5 +1,6 @@
 using Documenter, DocumenterVitepress
 
+
 makedocs(;
     sitename="cuNumeric.jl",
     authors="Ethan Meitz and David Krasowska",
