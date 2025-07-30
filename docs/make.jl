@@ -1,5 +1,5 @@
 using Documenter, DocumenterVitepress
-using cuNumeric.ndarray
+using cuNumeric
 
 makedocs(;
     sitename="cuNumeric.jl",

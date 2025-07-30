@@ -9,7 +9,8 @@ Depth = 2:2
 ```
 
 ```@autodocs
-Modules = [ndarray]
+Modules = [cuNumeric]
+Pages = ["cuNumeric.jl", "ndarry.jl", "binary.jl", "unary.jl"]
 ```
 
 ## Initializing NDArrays
