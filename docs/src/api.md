@@ -8,6 +8,10 @@ Pages = ["api.md"]
 Depth = 2:2
 ```
 
+```@autodocs
+Modules = [ndarray]
+```
+
 ## Initializing NDArrays
 
 The CuPyNumeric C++ API only supports generating Float64 random numbers. The example below shows how you can get Float32 random numbers by casting. We plan to make this easier through `Base.convert` or by getting Float32 generating added to CuPyNumeric.
