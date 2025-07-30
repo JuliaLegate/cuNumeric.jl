@@ -1,10 +1,9 @@
-const FUSED_KERNEL_CACHE = Dict{UInt64, String}() # xor(hash(f_name), hash(list of types)) => PTX
+export @fuse
+
+
+const FUSED_KERNEL_CACHE = Dict{UInt64, FusedKernelData}() # xor(hash(f_name), hash(list of types)) => PTX
 const FUSE_KWARGS = [:blocks, :threads]
 
-# For testing purpsoes
-# struct NDArray{T, N} end
-# Base.eltype(::NDArray{T}) where T = T
-# Base.ndims(::NDArray{T, N}) where {T, N} = N
 
 function ptx_as_string(f::Function, types::Tuple)
     buf = IOBuffer()
@@ -12,19 +11,13 @@ function ptx_as_string(f::Function, types::Tuple)
     return String(take!(buf))
 end
 
-# function extract_kernel_name(ptx::String)
-#     # Regex with a named capture “name”
-#     re = r"\.visible\s+\.entry\s+(?<name>[_A-Za-z0-9\$]+)"
-#     m = match(re, ptx)
-#     if m === nothing
-#         error("Could not find a `.visible .entry <name>` directive in PTX")
-#     end
-#     return m.captures[1]
-# end
-
 # function to_cuda_type(::NDArray{T,N}) where {T,N}
 #    return CuDeviceArray{T, N, 1}
 # end
+
+function to_cuda_type(T, N)
+   return CuDeviceArray{T, N, 1}
+end
 
 # Collects operators and function calls from an expression.
 # E.g. x .+ y .* z will return (.+, .*)
@@ -47,6 +40,74 @@ function collect_ops(expr::Expr)
     return Tuple(ops)
 end
 
+# @generated function maybe_fuse_kernel(
+#                      :: NTuple{NARGS, NDArray{T,DIM}},
+#         rhs_ops      :: NTuple{NOPS, Symbol},
+#         wrapper      :: Function          
+#     ) where {NARGS,T, DIM, NOPS}
+
+#     # converted_types is constructed purely from the types of the arguments
+#     # so a generated function will allow us to pre-compute most of this function
+#     # at compile time!
+#     converted_types = ntuple(_ -> CuDeviceArray{T, DIM, 1}, Val(NARGS))
+#     _hash = xor(hash(rhs_ops), hash(converted_types))
+    
+#     quote
+#         if !haskey($FUSED_KERNEL_CACHE, $_hash)
+#             println("Compiling kernel to PTX")
+#             local ptx = ptx_as_string(wrapper, $converted_types) #! DO NOT interpolate wrapper
+#             local ptx_f_name = cuNumeric.extract_kernel_name(ptx)
+#             cuNumeric.ptx_task(ptx, ptx_f_name)
+#             $FUSED_KERNEL_CACHE[$_hash] = FusedKernelData(ptx_f_name, $converted_types)
+#         end
+#         $_hash
+#     end
+# end
+
+
+@generated function maybe_fuse_kernel(rhs_args   :: R,
+                                      rhs_ops    :: NTuple{NOPS,Symbol},
+                                      wrapper    :: Function) where
+                                     {R<:Tuple, NOPS}
+
+    # 1. Inspect the static types of every argument --------------------------
+    arg_types = R.parameters                    # e.g. (NDArray{Float32,2}, NDArray{Int,1}, …)
+    println("IN HERE")
+
+    # verify the contract early – this happens once per specialisation
+    for T in arg_types
+        T <: NDArray || throw(ArgumentError("all arguments must be NDArray, got $T"))
+    end
+
+    # 2. Build the matching CuDeviceArray type for each element -------------
+    conv_type_exprs = Expr[]
+    for T in arg_types
+        elty, dim = T.parameters[1:2]           # NDArray{T,D}
+        push!(conv_type_exprs,
+              :(CuDeviceArray{$elty, $dim, 1}))
+    end
+    # an Expr(:tuple, …) is a compile‑time literal of the tuple of types
+    converted_types_expr = Expr(:tuple, conv_type_exprs...)
+
+    # 3. Prepare a constant hash for this specialisation --------------------
+    const_hash = xor(hash(rhs_ops), hash(arg_types))
+
+    # 4. Return run‑time code that does the once‑only PTX work --------------
+    quote
+        _hash = $const_hash                    # value is a literal, not recomputed
+        if !haskey($FUSED_KERNEL_CACHE, _hash)
+            println("Compiling kernel to PTX")
+            local ptx        = ptx_as_string(wrapper, $converted_types_expr)
+            local ptx_f_name = cuNumeric.extract_kernel_name(ptx)
+            # cuNumeric.ptx_task(ptx, ptx_f_name) #! UNCOMMENT LATER
+            $FUSED_KERNEL_CACHE[_hash] =
+                FusedKernelData(ptx_f_name, $converted_types_expr)
+        end
+        _hash
+    end
+end
+
+
 macro fuse(ex...)
 
     call = ex[end]
@@ -63,7 +124,6 @@ macro fuse(ex...)
     if Meta.isexpr(call, :function)
         #TODO use symbol_state.func_defs to fuse each definition
         throw(ArgumentError("@fuse before function definitions is not supported yet."))
-    #! Right now this seems to catch tuple assignments, which we do not support (x,y = ...)
     elseif Meta.isexpr(call, :(=)) || Meta.isexpr(call, :(.=)) 
         lhs, rhs = call.args
 
@@ -82,27 +142,17 @@ macro fuse(ex...)
             quote
 
                 # Create wrapper function that we can fuse
-                $(wrapper_name) = ($(rhs_symbol_state.references...)) -> $(rhs)
+                $wrapper_name = ($(rhs_symbol_state.references...)) -> $(rhs)
 
-                $args_tuple = ($(rhs_symbol_state.references...),)
-                $converted_types = to_cuda_type.($args_tuple)
-                $_hash = xor(hash($rhs_ops), hash($converted_types))
+                $_hash = $maybe_fuse_kernel(($(rhs_symbol_state.references...),), $rhs_ops, $wrapper_name)
+
+                println($FUSED_KERNEL_CACHE[$_hash])
+
+                # $task = $(cuNumeric.CUDATask)($FUSED_KERNEL_CACHE[$_hash])
                 
-                if haskey(FUSED_KERNEL_CACHE, $_hash)
-                    println("Re-using fused kernel from cache")
-                else
-                    println("Compiling kernel to PTX")
-                    FUSED_KERNEL_CACHE[$_hash] = ptx_as_string($wrapper_name, $converted_types)
-                end
-
-                $ptx_f_name = cuNumeric.extract_kernel_name(FUSED_KERNEL_CACHE[$_hash])
-                cuNumeric.ptx_task(FUSED_KERNEL_CACHE[$_hash], $ptx_f_name)
-                $task = cuNumeric.CUDATask($ptx_f_name, $converted_types)
-                println((($lhs)...,))
-                println($lhs)
-                cuNumeric.launch(
-                    $task, $args_tuple, $lhs, (); $(kwargs...)
-                )
+                # $(cuNumeric.launch)(
+                #     $task, ($(rhs_symbol_state.references...),), $lhs, (); $(kwargs...)
+                # )
             end)
     else
         throw(ArgumentError("fuse expected assignment operator `=` or `.=`, got $(call.head)"))
@@ -114,6 +164,92 @@ macro fuse(ex...)
         end
     end)
 end
+
+
+#* BE SURE TO TEST:
+# - x .+ y .*z and x .* y .+ z
+# x,y = ...
+# y = to_fuse(x)
+# z = unary.(x) .+ y
+# z = binary.(x,y) .+ z
+# macro fuse(ex...)
+
+#     call = ex[end]
+#     kwargs = map(ex[1:end-1]) do kwarg
+#         if kwarg in FUSE_KWARGS
+#             :($kwarg = $kwarg)
+#         else
+#             throw(ArgumentError("Invalid keyword argument '$kwarg', expected one of $(FUSE_KWARGS)"))
+#         end
+#     end
+
+#     code = quote end
+
+#     if Meta.isexpr(call, :function)
+#         #TODO use symbol_state.func_defs to fuse each definition
+#         throw(ArgumentError("@fuse before function definitions is not supported yet."))
+#     elseif Meta.isexpr(call, :(=)) || Meta.isexpr(call, :(.=)) 
+#         lhs, rhs = call.args
+
+#         lhs_symbol_state = compute_symbols_state(lhs)
+#         rhs_symbol_state = compute_symbols_state(rhs)
+
+#         if !isempty(intersect(lhs_symbol_state.references, rhs_symbol_state.references))
+#             throw(ArgumentError("LHS and RHS of @fuse must not share variables."))
+#         end
+
+#         rhs_ops = collect_ops(rhs)
+
+#         # This will error if all variables are not the same type
+#         # E.g. NDArrays with different dimensions or el-types
+#         rhs_args = ntuple(i -> rhs_symbol_state.references[i], length(rhs_symbol_state.references))
+
+#         @gensym wrapper_name ptx ptx_f_name task _hash converted_types args_tuple
+
+#         push!(code.args,
+#             quote
+
+#                 # Create wrapper function that we can fuse
+#                 # $(wrapper_name) = ($(rhs_symbol_state.references...)) -> $(rhs)
+
+#                 #* IF @fuse is in a loop this will be called multiple times for no reason...
+#                 function $(wrapper_name)($(rhs_symbol_state.references...))
+#                     return $(rhs)
+#                 end
+
+#                 #* IF @fuse is in a loop this will be called multiple times for no reason...
+#                 $converted_types = $to_cuda_type.(($(rhs_symbol_state.references...),))
+#                 $_hash = xor($hash($rhs_ops), $hash($converted_types))
+                
+#                 if haskey($FUSED_KERNEL_CACHE, $_hash)
+#                     println("Re-using fused kernel from cache")
+#                 else
+#                     println("Compiling kernel to PTX")
+#                     $ptx = $ptx_as_string($wrapper_name, $converted_types)
+#                     $ptx_f_name = $(cuNumeric.extract_kernel_name)($ptx)
+#                     $(cuNumeric.ptx_task)($ptx, $ptx_f_name)
+#                     $FUSED_KERNEL_CACHE[$_hash] = $FusedKernelData($ptx_f_name, string($wrapper_name), $converted_types)
+#                 end
+
+#                 println("Args: $(($(rhs_symbol_state.references...),)), Types: $($converted_types)")
+#                 println($FUSED_KERNEL_CACHE[$_hash])
+
+#                 $task = $(cuNumeric.CUDATask)($FUSED_KERNEL_CACHE[$_hash])
+                
+#                 $(cuNumeric.launch)(
+#                     $task, ($(rhs_symbol_state.references...),), $lhs, (); $(kwargs...)
+#                 )
+#             end)
+#     else
+#         throw(ArgumentError("fuse expected assignment operator `=` or `.=`, got $(call.head)"))
+#     end
+
+#     return esc(quote
+#         let
+#             $code
+#         end
+#     end)
+# end
 
 # function to_fuse(x)
 #     T = eltype(x)

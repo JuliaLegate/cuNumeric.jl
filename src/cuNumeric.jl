@@ -69,6 +69,7 @@ include("ndarray.jl")
 include("unary.jl")
 include("binary.jl")
 include("cuda.jl")
+include("fusion.jl")
 
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147
 mutable struct ArgcArgv

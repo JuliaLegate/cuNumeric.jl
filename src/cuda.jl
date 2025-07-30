@@ -51,9 +51,25 @@ function __to_stdvec_u32(v)
     return sv
 end
 
+# Data emitted by the @fuse macro
+struct FusedKernelData{S,T}
+    ptx_f_name::S
+    types::T
+end
+
+n_args(f::FusedKernelData) = length(f.types)
+
+function Base.show(io::IO, f::FusedKernelData)
+    print(io, "Fused kernel with types: $(f.types)")
+end
+
 struct CUDATask
     func::String
     argtypes::NTuple{N,Type} where {N}
+end
+
+function CUDATask(fkd::FusedKernelData)
+    return CUDATask(fkd.ptx_f_name, fkd.types)
 end
 
 function Launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
