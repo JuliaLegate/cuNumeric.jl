@@ -4,10 +4,9 @@ makedocs(;
     sitename="cuNumeric.jl",
     authors="Ethan Meitz and David Krasowska",
     format=MarkdownVitepress(;
-        repo="https://github.com/JuliaLegate/cuNumeric.jl.git",
+        repo="github.com/JuliaLegate/cuNumeric.jl",
         devbranch="main",
         devurl="dev",
-        deploy_url="Julialegate.github.io/cuNumeric.jl/",
     ),
     pages=[
         "Home" => "index.md",
@@ -21,7 +20,8 @@ makedocs(;
 )
 
 DocumenterVitepress.deploydocs(;
-    repo="github.com/JuliaLegate/cuNumeric.jl.git",
+    repo="github.com/JuliaLegate/cuNumeric.jl",
+    target=joinpath(@__DIR__, "build"),
     branch="gh-pages",
     devbranch="main",
     push_preview=true,
