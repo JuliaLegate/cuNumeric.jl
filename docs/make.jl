@@ -1,10 +1,14 @@
+using DocumenterVitepress
 using Documenter
-# using cuNumeric
 
 makedocs(;
     sitename="cuNumeric.jl",
     authors="Ethan Meitz and David Krasowska",
-    format=Documenter.HTML(; prettyurls=true),
+    format=MarkdownVitepress(;
+        repo="github.com/JuliaLegate/cuNumeric.jl.git",
+        devbranch="main",
+        devurl="dev",
+    ),
     pages=[
         "Home" => "index.md",
         "Build Options" => "install.md",
@@ -16,8 +20,10 @@ makedocs(;
     ],
 )
 
-deploydocs(
+DocumenterVitepress.deploydocs(;
     repo="github.com/JuliaLegate/cuNumeric.jl.git",
-    push_preview = true,
-    devbranch = "main",
+    target=joinpath(@__DIR__, "build"),
+    branch="gh-pages",
+    devbranch="main",
+    push_preview=true,
 )
