@@ -21,30 +21,162 @@ export NDArray
 
 Base.Broadcast.broadcastable(v::NDArray) = v
 
-#julia is 1 indexed vs c is 0 indexed. added the -1 
+@doc"""
+    to_cpp_index(idx::Dims{N}, int_type::Type=UInt64) where {N}
+
+**Internal API**
+
+Converts a Julia 1-based index tuple `idx` to a zero-based C++ style index wrapped in `StdVector` of the specified integer type.
+
+Each element of `idx` is decremented by 1 to adjust from Julia’s 1-based indexing to C++ 0-based indexing.
+"""
 function to_cpp_index(idx::Dims{N}, int_type::Type=UInt64) where {N}
     StdVector(int_type.([e - 1 for e in idx]))
 end
+
+@doc"""
+    to_cpp_index(d::Int64, int_type::Type=UInt64)
+
+**Internal API**
+
+Converts a single Julia 1-based index `d` to a zero-based C++ style index wrapped in `StdVector`.
+"""
 to_cpp_index(d::Int64, int_type::Type=UInt64) = StdVector(int_type.([d - 1]))
 
+@doc"""
+    Base.eltype(arr::NDArray)
+
+Returns the element type of the `NDArray`.
+
+**Internal API**
+
+This method uses `nda_array_type_code` internally to map to the appropriate Julia element type.
+"""
 Base.eltype(arr::NDArray) = Legate.code_type_map[nda_array_type_code(arr)]
+
+@doc"""
+    LegateType(T::Type)
+
+Converts a Julia type `T` to the corresponding Legate type.
+
+**Internal API**
+"""
 LegateType(T::Type) = Legate.to_legate_type(T)
 
+@doc"""
+    as_type(arr::NDArray, t::Type{T}) where {T}
+
+Convert the element type of `arr` to type `T`, returning a new `NDArray` with elements cast to `T`.
+
+# Arguments
+- `arr::NDArray`: Input array.
+- `t::Type{T}`: Target element type.
+
+# Returns
+A new `NDArray` with the same shape as `arr` but with elements of type `T`.
+
+# Examples
+```jldoctest
+julia> as_type(arr, Float32)
+NDArray of Float32s, Dim: [...]
+"""
 as_type(arr::NDArray, t::Type{T}) where {T} = nda_astype(arr, t)
 
 #### ARRAY/INDEXING INTERFACE ####
 # https://docs.julialang.org/en/v1/manual/interfaces/#Indexing
+@doc"""
+    dim(arr::NDArray)
+    Base.ndims(arr::NDArray)
+
+Return the number of dimensions of the `NDArray`.
+
+Both functions query the underlying cuNumeric API to get
+the dimensionality of the array.
+
+# Examples
+```jldoctest
+julia> arr = cuNumeric.rand(NDArray, 2, 3, 4);
+
+julia> dim(arr)
+3
+
+julia> ndims(arr)
+3
+```
+"""
+
 dim(arr::NDArray) = Int(cuNumeric.nda_array_dim(arr))
 Base.ndims(arr::NDArray) = Int(cuNumeric.nda_array_dim(arr))
+@doc"""
+    Base.size(arr::NDArray)
+    Base.size(arr::NDArray, dim::Int)
+
+Return the size of the given `NDArray`.
+
+- `Base.size(arr)` returns a tuple of dimensions of the array.
+- `Base.size(arr, dim)` returns the size of the array along the specified dimension `dim`.
+
+These override Base's size methods for the `NDArray` type,
+using the underlying cuNumeric API to query array shape.
+
+# Examples
+```jldoctest
+julia> arr = cuNumeric.rand(NDArray, 3, 4, 5);
+
+julia> size(arr)
+(3, 4, 5)
+
+julia> size(arr, 2)
+4
+```
+"""
 Base.size(arr::NDArray) = Tuple(Int.(cuNumeric.nda_array_shape(arr)))
 Base.size(arr::NDArray, dim::Int) = Base.size(arr)[dim]
+@doc"""
+    Base.firstindex(arr::NDArray, dim::Int)
+    Base.lastindex(arr::NDArray, dim::Int)
+    Base.lastindex(arr::NDArray)
 
+Provide the first and last valid indices along a given dimension `dim` for `NDArray`.
+
+- `firstindex` always returns 1, since Julia arrays are 1-indexed.
+- `lastindex` returns the size of the array along the specified dimension.
+- `lastindex(arr)` returns the size along the first dimension.
+
+# Examples
+```jldoctest
+julia> arr = cuNumeric.rand(NDArray, 4, 5);
+
+julia> firstindex(arr, 2)
+1
+
+julia> lastindex(arr, 2)
+5
+
+julia> lastindex(arr)
+4
+```
+"""
 Base.firstindex(arr::NDArray, dim::Int) = 1
 Base.lastindex(arr::NDArray, dim::Int) = Base.size(arr, dim)
 Base.lastindex(arr::NDArray) = Base.size(arr, 1)
 
 Base.IndexStyle(::NDArray) = IndexCartesian()
 
+@doc"""
+    Base.show(io::IO, arr::NDArray)
+    Base.show(io::IO, ::MIME"text/plain", arr::NDArray)
+
+Display a summary of the `NDArray` showing its element type and dimensions.
+
+These methods customize how `NDArray` instances appear in the REPL and in text/plain contexts.
+
+# Example
+```jldoctest
+julia> arr = cuNumeric.ones(NDArray, 2, 3)
+NDArray of Float64s, Dim: (2, 3)
+```
+"""
 function Base.show(io::IO, arr::NDArray)
     T = eltype(arr)
     dim = Base.size(arr)
@@ -57,6 +189,85 @@ function Base.show(io::IO, ::MIME"text/plain", arr::NDArray)
     print(io, "NDArray of $(T)s, Dim: $(dim)")
 end
 
+#### ARRAY INDEXING AND SLICES ####
+@doc"""
+    slice(start::Union{Nothing,Integer}, stop::Union{Nothing,Integer})
+
+**Internal API**
+
+Constructs a `cuNumeric.Slice` object representing a slice with optional start and stop indices.
+
+- If `start` or `stop` is `nothing`, the slice end is considered unbounded (`Slice::OPEN`).
+- Otherwise, the slice is defined as `[start, stop]` interval (inclusive).
+"""
+
+function slice(start::Union{Nothing,Integer}, stop::Union{Nothing,Integer})
+    cuNumeric.Slice(
+        isnothing(start) ? 0 : 1,
+        isnothing(start) ? 0 : Int64(start),
+        isnothing(stop) ? 0 : 1,
+        isnothing(stop) ? 0 : Int64(stop),
+    )
+end
+
+@doc@doc"""
+    slice_array(slices::Vararg{Tuple{Union{Int,Nothing},Union{Int,Nothing}},N}) where {N}
+
+**Internal API**
+
+Constructs a vector of `cuNumeric.Slice` objects from a variable number of `(start, stop)` tuples.
+
+Each tuple corresponds to a dimension slice, using `slice` internally.
+"""
+function slice_array(slices::Vararg{Tuple{Union{Int,Nothing},Union{Int,Nothing}},N}) where {N}
+    v = Vector{cuNumeric.Slice}(undef, N)
+    for i in 1:N
+        start, stop = slices[i]
+        v[i] = slice(start, stop)
+    end
+    return v
+end
+
+@doc"""
+    arr[i, j]
+    arr[i]
+    arr[:, j]
+    arr[i, :]
+    arr[i:j, :]
+    arr[:, k:l]
+    arr[i:j, k:l]
+    arr[:, :, ...]
+    arr[...] = val
+    arr[i, j] = rhs
+    arr[i:j, k:l] = rhs
+
+Overloads `Base.getindex` and `Base.setindex!` to support multidimensional indexing and slicing on `cuNumeric.NDArray`s.
+
+Slicing supports combinations of `Int`, `UnitRange`, and `Colon()` for selecting ranges of rows and columns. 
+The use of all colons (`arr[:]`, `arr[:, :]`, etc.) returns a new Julia `Array` containing a copy of the data.
+
+Assignment also supports:
+- Writing NDArray slices to NDArray regions
+- Broadcasting a scalar `val::Float32` or `Float64` into a slice
+
+# Examples
+```jldoctest
+julia> A = cuNumeric.full((3, 3), 1.0);
+
+julia> A[1, 2]
+1.0
+
+julia> A[1:2, 2:3] = cuNumeric.ones(2, 2);
+
+julia> A[:, 1] = 5.0;
+
+julia> Array(A)
+3x3 Matrix{Float64}:
+ 5.0  1.0  1.0
+ 5.0  1.0  1.0
+ 5.0  1.0  1.0
+ """
+##### REGULAR ARRAY INDEXING ####
 function Base.getindex(arr::NDArray, idxs::Vararg{Int,N}) where {N}
     T = eltype(arr)
     acc = NDArrayAccessor{T,N}()
@@ -68,39 +279,7 @@ function Base.setindex!(arr::NDArray, value::T, idxs::Vararg{Int,N}) where {T<:N
     write(acc, arr.ptr, to_cpp_index(idxs), value)
 end
 
-#### ARRAY INDEXING WITH SLICES ####
-#=
-* @brief Describes C++ concept of Legate Slice
-*
-* @param _start The optional begin index of the slice, or `Slice::OPEN` if the start of the
-* slice is unbounded.
-* @param _stop The optional stop index of the slice, or `Slice::OPEN` if the end of the
-* slice if unbounded.
-*
-* If provided (and not `Slice::OPEN`), `_start` must compare less than or equal to
-* `_stop`. Similarly, if provided (and not `Slice::OPEN`), `_stop` must compare greater than
-* or equal to`_start`. Put simply, unless one or both of the ends are unbounded, `[_start,
-* _stop]` must form a valid (possibly empty) interval.
-=#
-
-function slice(start::Union{Nothing,Integer}, stop::Union{Nothing,Integer})
-    cuNumeric.Slice(
-        isnothing(start) ? 0 : 1,
-        isnothing(start) ? 0 : Int64(start),
-        isnothing(stop) ? 0 : 1,
-        isnothing(stop) ? 0 : Int64(stop),
-    )
-end
-
-function slice_array(slices::Vararg{Tuple{Union{Int,Nothing},Union{Int,Nothing}},N}) where {N}
-    v = Vector{cuNumeric.Slice}(undef, N)
-    for i in 1:N
-        start, stop = slices[i]
-        v[i] = slice(start, stop)
-    end
-    return v
-end
-
+#### START OF SLICING ####
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::Int64)
     s = nda_get_slice(lhs, slice_array((0, Base.size(lhs, 1)), (j-1, j)))
     nda_assign(s, rhs);
@@ -206,8 +385,22 @@ function Base.setindex!(arr::NDArray, val::Union{Float32,Float64}, i::Int64, j::
     s = nda_get_slice(arr, to_cpp_init_slice(slice(i-1, i)))
     nda_fill_array(s, val)
 end
-#### INITIALIZATION ####
 
+#### INITIALIZATION OF NDARRAYS ####
+@doc"""
+    cuNumeric.full(dims::Tuple, val)
+    cuNumeric.full(dim::Int, val)
+
+Create an `NDArray` filled with the scalar value `val`, with the shape specified by `dims`.
+
+# Examples
+```jldoctest
+julia> cuNumeric.full((2, 3), 7.5)
+NDArray of Float64s, Dim: [2, 3]
+
+julia> cuNumeric.full(4, 0)
+NDArray of Int64s, Dim: [4]
+"""
 function full(dims::Dims{N}, val::T) where {T,N}
     shape = UInt64.(collect(dims))
     return nda_full_array(shape, val)
@@ -218,13 +411,12 @@ function full(dim::Int, val::T) where {T}
     return nda_full_array(shape, val)
 end
 
-#* is this type piracy?
-"""
+@doc"""
     cuNumeric.zeros([T=Float64,] dims::Int...)
     cuNumeric.zeros([T=Float64,] dims::Tuple)
 
 Create an NDArray with element type `T`, of all zeros with size specified by `dims`.
-This function has the same signature as `Base.zeros`, so be sure to call it as `cuNuermic.zeros`.
+This function mirrors the signature of `Base.zeros`, and defaults to `Float64` when the type is omitted.
 
 # Examples
 ```jldoctest
@@ -255,7 +447,7 @@ function zeros(dims::Int...)
     return zeros(Float64, dims)
 end
 
-"""
+@doc"""
     cuNumeric.ones([T=Float64,] dims::Int...)
     cuNumeric.ones([T=Float64,] dims::Tuple)
 
@@ -264,13 +456,13 @@ This function has the same signature as `Base.ones`, so be sure to call it as `c
 
 # Examples
 ```jldoctest
-julia> cuNumeric.ones(2,2)
+julia> cuNumeric.ones(2, 2)
 NDArray of Float64s, Dim: [2, 2]
 
 julia> cuNumeric.ones(Float32, 3)
 NDArray of Float32s, Dim: [3]
 
-julia> cuNumeric.ones(Int32,(2,3))
+julia> cuNumeric.ones(Int32, (2, 3))
 NDArray of Int32s, Dim: [2, 3]
 ```
 """
@@ -290,20 +482,31 @@ function ones(dims::Int...)
     return ones(Float64, dims)
 end
 
-"""
-    rand!(arr::NDArray)
+@doc"""
+    cuNumeric.rand!(arr::NDArray)
 
-Fills `arr` with Float64s uniformly at random
+Fills `arr` with Float64s uniformly at random.
+
+    cuNumeric.rand(NDArray, dims::Int...)
+    cuNumeric.rand(NDArray, dims::Tuple)
+
+Create a new `NDArray` of element type Float64, filled with uniform random values.
+
+This function uses the same signature as `Base.rand` with a custom backend,
+and currently supports only `Float64` with uniform distribution (`code = 0`).
+
+# Examples
+```jldoctest
+julia> cuNumeric.rand(NDArray, 2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> cuNumeric.rand(NDArray, (4, 1))
+NDArray of Float64s, Dim: [4, 1]
+
+julia> A = cuNumeric.zeros(2, 2); cuNumeric.rand!(A)
+NDArray of Float64s, Dim: [2, 2]
 """
-# This integer is unused but should represent, uniform, normal etc
 Random.rand!(arr::NDArray) = cuNumeric.nda_random(arr, 0)
-
-"""
-    rand(NDArray, dims::Dims)
-    rand(NDArray, dims::Int...)
-
-Create a new NDArray of size `dims`, filled with Float64s uniformly at random
-"""
 Random.rand(::Type{NDArray}, dims::Dims) = cuNumeric.nda_random_array(UInt64.(collect(dims)))
 Random.rand(::Type{NDArray}, dims::Int...) = cuNumeric.rand(NDArray, dims)
 
@@ -312,6 +515,20 @@ random(::Type{T}, dim::Int64) where {T} = cuNumeric.random(T, (dim,))
 random(dims::Dims, e::Type{T}) where {T} = cuNumeric.rand(e, dims)
 random(arr::NDArray, code::Int64) = cuNumeric.nda_random(arr, code)
 #### OPERATIONS ####
+@doc"""
+    reshape(arr::NDArray, dims::Dims{N}) where {N}
+    reshape(arr::NDArray, dim::Int64)
+
+Return a new `NDArray` reshaped to the specified dimensions.
+
+# Examples
+```jldoctest
+julia> reshape(arr, (3, 4))
+NDArray reshaped to 3×4
+
+julia> reshape(arr, 5)
+NDArray reshaped to length 5
+"""
 
 function reshape(arr::NDArray, i::Dims{N}) where {N}
     return nda_reshape_array(arr, UInt64.(collect(i)))
@@ -320,6 +537,28 @@ end
 function reshape(arr::NDArray, i::Int64)
     return nda_reshape_array(arr, UInt64.([i]))
 end
+
+@doc"""
+    Base.:+(arr::NDArray, val::Number)
+    Base.:+(val::Number, arr::NDArray)
+    Base.:+(lhs::NDArray, rhs::NDArray)
+
+Add a scalar `val` to every element in the `NDArray` `arr`, or perform element-wise addition between two NDArrays,
+returning a new `NDArray`.
+
+Broadcasting is supported to enable element-wise addition between `NDArray` and scalars or between two NDArrays.
+
+# Examples
+```jldoctest
+julia> arr + 3
+NDArray with each element increased by 3
+
+julia> 3 + arr
+Same as above
+
+julia> lhs + rhs
+Element-wise addition of two NDArrays
+"""
 
 function Base.:+(arr::NDArray, val::Union{Float32,Float64,Int64,Int32})
     return nda_add_scalar(arr, val)
@@ -344,6 +583,30 @@ function Base.Broadcast.broadcasted(::typeof(+), lhs::NDArray, rhs::NDArray)
     return +(lhs, rhs)
 end
 
+@doc"""
+    Base.:-(val::Number, arr::NDArray)
+    Base.:-(arr::NDArray, val::Number)
+    Base.:-(lhs::NDArray, rhs::NDArray)
+
+Perform subtraction involving an `NDArray` and a scalar or between two NDArrays. 
+
+- `val - arr` multiplies `arr` by `-val`.
+- `arr - val` subtracts scalar `val` from each element of `arr`.
+- Element-wise subtraction is supported between two NDArrays.
+
+Broadcasting is also supported for these operations.
+
+# Examples
+```jldoctest
+julia> 3 - arr
+NDArray with each element multiplied by -3
+
+julia> arr - 4
+NDArray with 4 subtracted from each element
+
+julia> lhs - rhs
+Element-wise subtraction of two NDArrays
+"""
 function Base.:-(val::Union{Float32,Float64,Int64,Int32}, arr::NDArray)
     return nda_multiply_scalar(arr, -val)
 end
@@ -369,6 +632,30 @@ function Base.Broadcast.broadcasted(::typeof(-), lhs::NDArray, rhs::NDArray)
     return -(lhs, rhs)
 end
 
+@doc"""
+    Base.:*(val::Number, arr::NDArray)
+    Base.:*(arr::NDArray, val::Number)
+    Base.Broadcast.broadcasted(::typeof(*), arr::NDArray, val::Number)
+    Base.Broadcast.broadcasted(::typeof(*), val::Number, arr::NDArray)
+    Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray, rhs::NDArray)
+
+Multiply an `NDArray` by a scalar or perform element-wise multiplication between NDArrays.
+
+- Scalar multiplication supports types: `Float32`, `Float64`, `Int32`, `Int64`.
+- Broadcasting works seamlessly with scalars and NDArrays.
+
+# Examples
+```jldoctest
+julia> 2 * arr
+NDArray with each element multiplied by 2
+
+julia> arr * 3
+NDArray with each element multiplied by 3
+
+julia> lhs .* rhs
+Element-wise multiplication of two NDArrays
+"""
+
 function Base.:*(val::Union{Float32,Float64,Int64,Int32}, arr::NDArray)
     return nda_multiply_scalar(arr, val)
 end
@@ -393,22 +680,83 @@ function Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray, rhs::NDArray)
     return *(lhs, rhs)
 end
 
+@doc"""
+    Base.:/(arr::NDArray, val::Union{Float32,Float64,Int64,Int32})
+
+Throws an error because element-wise division of an NDArray by a scalar is not supported yet.
+
+# Examples
+```jldoctest
+julia> arr = cuNumeric.ones(2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> arr / 2
+ERROR: ErrorException: [/] is not supported yet
+```
+"""
 function Base.:/(arr::NDArray, val::Union{Float32,Float64,Int64,Int32})
     throw(ErrorException("[/] is not supported yet"))
 end
 
+@doc"""
+    Base.Broadcast.broadcasted(::typeof(/), arr::NDArray, val::Union{Float32,Float64,Int64,Int32})
+
+Returns the element-wise multiplication of `arr` by the scalar reciprocal `1 / val`.
+
+# Examples
+```jldoctest
+julia> arr = cuNumeric.ones(2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> broadcast(/, arr, 2)
+NDArray of Float64s, Dim: [2, 2]  # Conceptually arr * 0.5
+```
+"""
 function Base.Broadcast.broadcasted(
     ::typeof(/), arr::NDArray, val::Union{Float32,Float64,Int64,Int32}
 )
     return nda_multiply_scalar(arr, Float64(1 / val))
 end
 
+@doc"""
+    Base.Broadcast.broadcasted(::typeof(/), val::Union{Float32,Float64,Int64,Int32}, arr::NDArray)
+
+Throws an error since element-wise division of a scalar by an NDArray is not supported yet.
+
+# Examples
+```jldoctest
+julia> arr = cuNumeric.ones(2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> 2 ./ arr
+ERROR: ErrorException: element wise [val ./ NDArray] is not supported yet
+```
+"""
 function Base.Broadcast.broadcasted(
     ::typeof(/), val::Union{Float32,Float64,Int64,Int32}, arr::NDArray
 )
     return throw(ErrorException("element wise [val ./ NDArray] is not supported yet"))
 end
 
+@doc"""
+    Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray, rhs::NDArray)
+
+Perform element-wise division of two NDArrays.
+
+# Examples
+```jldoctest
+julia> A = cuNumeric.rand(2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> B = cuNumeric.ones(2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> C = broadcast(/, A, B)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> typeof(C)
+NDArray
+"""
 function Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray, rhs::NDArray)
     return /(lhs, rhs)
 end
@@ -416,31 +764,164 @@ end
 #* Can't overload += in Julia, this should be called by .+= 
 #* to maintain some semblence native Julia array syntax
 # See https://docs.julialang.org/en/v1/manual/interfaces/#extending-in-place-broadcast-2
+
+@doc"""
+    add!(out::NDArray, arr1::NDArray, arr2::NDArray)
+
+Compute element-wise addition of `arr1` and `arr2` storing the result in `out`.
+
+This is an in-place operation and is used to support `.+=` style syntax.
+
+# Examples
+```jldoctest
+julia> a = cuNumeric.ones(2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> b = cuNumeric.ones(2, 2)
+
+julia> out = similar(a)
+
+julia> add!(out, a, b)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> out
+NDArray of Float64s, Dim: [2, 2]
+```
+"""
 function add!(out::NDArray, arr1::NDArray, arr2::NDArray)
     return nda_add(arr1, arr2, out)
 end
 
+@doc"""
+    multiply!(out::NDArray, arr1::NDArray, arr2::NDArray)
+
+Compute element-wise multiplication of `arr1` and `arr2`, storing the result in `out`.
+
+This function performs the operation in-place, modifying `out`.
+
+# Examples
+```jldoctest
+julia> a = cuNumeric.ones(2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> b = cuNumeric.ones(2, 2)
+
+julia> out = similar(a)
+
+julia> multiply!(out, a, b)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> out
+NDArray of Float64s, Dim: [2, 2]
+```
+"""
 function multiply!(out::NDArray, arr1::NDArray, arr2::NDArray)
     return nda_multiply(arr1, arr2, out)
 end
 
+@doc"""
+    LinearAlgebra.mul!(out::NDArray, arr1::NDArray, arr2::NDArray)
+
+Compute the matrix multiplication (dot product) of `arr1` and `arr2`, storing the result in `out`.
+
+This function performs the operation in-place, modifying `out`.
+
+# Examples
+```jldoctest
+julia> a = cuNumeric.ones(2, 3)
+NDArray of Float64s, Dim: [2, 3]
+
+julia> b = cuNumeric.ones(3, 2)
+NDArray of Float64s, Dim: [3, 2]
+
+julia> out = cuNumeric.zeros(2, 2)
+
+julia> LinearAlgebra.mul!(out, a, b)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> out
+NDArray of Float64s, Dim: [2, 2]
+```
+"""
 function LinearAlgebra.mul!(out::NDArray, arr1::NDArray, arr2::NDArray)
     return nda_three_dot_arg(arr1, arr2, out)
 end
 
+@doc"""
+    Base.copy(arr::NDArray)
+
+Create and return a deep copy of the given `NDArray`.
+
+# Examples
+```jldoctest
+julia> a = cuNumeric.ones(2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> b = copy(a)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> b === a
+false
+
+julia> b[1,1] == a[1,1]
+true
+```
+"""
 function Base.copy(arr::NDArray)
     return nda_copy(arr)
 end
 
+@doc"""
+    assign(arr::NDArray, other::NDArray)
+
+Assign the contents of `other` to `arr` element-wise.
+
+This function overwrites the data in `arr` with the values from `other`.  
+Both arrays must have the same shape.
+
+# Examples
+```jldoctest
+julia> a = cuNumeric.zeros(2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> b = cuNumeric.ones(2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> cuNumeric.assign(a, b);
+
+julia> a[1,1]
+1.0
+```
+"""
 assign(arr::NDArray, other::NDArray) = nda_assign(arr, other)
 
-#* replace with array_equal?
-# arr1 == arr2
+@doc"""
+    ==(arr1::NDArray, arr2::NDArray)
+
+Check if two NDArrays are equal element-wise.
+
+Returns `true` if both arrays have the same shape and all corresponding elements are equal.
+Currently supports arrays up to 3 dimensions. For higher dimensions, returns `false` with a warning.
+
+# Examples
+```jldoctest
+julia> a = cuNumeric.ones(2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> b = cuNumeric.ones(2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> a == b
+true
+
+julia> c = cuNumeric.zeros(2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> a == c
+false
+```
+"""
 function Base.:(==)(arr1::NDArray, arr2::NDArray)
-    # TODO this only works on 2D arrays
-    # should we use a lazy hashing approach? 
-    # something like this? would this be better than looping thru the elements?
-    # hash(arr1.data) == hash(arr2.data)
     if (Base.size(arr1) != Base.size(arr2))
         return false
     end
@@ -451,17 +932,50 @@ function Base.:(==)(arr1::NDArray, arr2::NDArray)
     end
 
     dims = Base.size(arr1)
-
     for CI in CartesianIndices(dims)
         if arr1[Tuple(CI)...] != arr2[Tuple(CI)...]
             return false
         end
     end
-
     return true
 end
 
-# arr == julia_array
+@doc"""
+    ==(arr::NDArray, julia_arr::Array)
+    ==(julia_arr::Array, arr::NDArray)
+
+Compare an `NDArray` and a Julia `Array` for element-wise equality.
+
+Returns `true` if both arrays have the same shape and all corresponding elements are equal.
+Returns `false` otherwise (including if sizes differ, with a warning).
+
+The second method simply calls the first with flipped arguments.
+
+# Examples
+```jldoctest
+julia> arr = cuNumeric.ones(2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> julia_arr = ones(2, 2)
+2x2 Matrix{Float64}:
+ 1.0  1.0
+ 1.0  1.0
+
+julia> arr == julia_arr
+true
+
+julia> julia_arr == arr
+true
+
+julia> julia_arr2 = zeros(2, 2)
+2x2 Matrix{Float64}:
+ 0.0  0.0
+ 0.0  0.0
+
+julia> arr == julia_arr2
+false
+```
+"""
 function Base.:(==)(arr::NDArray, julia_array::Array)
     if (Base.size(arr) != Base.size(julia_array))
         @warn "NDArray has size $(Base.size(arr)) and Julia array has size $(Base.size(julia_array))!\n"
@@ -484,20 +998,32 @@ function Base.:(==)(julia_array::Array, arr::NDArray)
     return (arr == julia_array)
 end
 
-# we should support rtol
-function Base.isapprox(julia_array::AbstractArray, arr::NDArray; atol=0, rtol=0)
-    return compare(julia_array, arr, atol)
-end
+@doc"""
+    compare(x, y, max_diff)
 
-function Base.isapprox(arr::NDArray, julia_array::AbstractArray; atol=0, rtol=0)
-    return compare(julia_array, arr, atol)
-end
+**Internal API**
 
-function Base.isapprox(arr::NDArray, arr2::NDArray; atol=0, rtol=0)
-    return compare(arr, arr2, atol)
-end
+Compare two arrays `x` and `y` for approximate equality within a maximum difference `max_diff`.
 
-#* ADD ISAPPROX FOR TWO NDARRAYS AFTER BINARY OPS DONE
+Supports comparisons between:
+- an `NDArray` and a Julia `AbstractArray`
+- two `NDArray`s
+- a Julia `AbstractArray` and an `NDArray`
+
+Returns `true` if the arrays have the same shape and element type (for mixed types),
+and all corresponding elements differ by no more than `max_diff`.
+
+Emits warnings when array sizes or element types differ.
+
+# Notes
+- This is an internal API used by higher-level approximate equality functions.
+- Does not support relative tolerance (`rtol`).
+
+# Behavior
+- Checks size compatibility.
+- Checks element type compatibility for `NDArray` vs Julia array.
+- Iterates over elements using `CartesianIndices` to compare element-wise difference.
+"""
 function compare(julia_array::AbstractArray, arr::NDArray, max_diff)
     if (Base.size(arr) != Base.size(julia_array))
         @warn "NDArray has size $(Base.size(arr)) and Julia array has size $(Base.size(julia_array))!\n"
@@ -538,4 +1064,52 @@ function compare(arr::NDArray, arr2::NDArray, max_diff)
 
     # successful completion
     return true
+end
+
+@doc"""
+    isapprox(arr1::NDArray, arr2::NDArray; atol=0, rtol=0)
+    isapprox(arr::NDArray, julia_array::AbstractArray; atol=0, rtol=0)
+    isapprox(julia_array::AbstractArray, arr::NDArray; atol=0, rtol=0)
+
+Approximate equality comparison between two `NDArray`s or between an `NDArray` and a Julia `AbstractArray`.
+
+Returns `true` if the arrays have the same shape and all corresponding elements are approximately equal
+within the given absolute tolerance `atol` and relative tolerance `rtol`.
+
+The second and third methods handle comparisons between `NDArray` and Julia arrays by forwarding to
+a common comparison function.
+
+# Examples
+```jldoctest
+julia> arr1 = cuNumeric.ones(2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> arr2 = cuNumeric.ones(2, 2)
+NDArray of Float64s, Dim: [2, 2]
+
+julia> julia_arr = ones(2, 2)
+2x2 Matrix{Float64}:
+ 1.0  1.0
+ 1.0  1.0
+
+julia> isapprox(arr1, arr2)
+true
+
+julia> isapprox(arr1, julia_arr)
+true
+
+julia> isapprox(julia_arr, arr2)
+true
+```
+"""
+function Base.isapprox(julia_array::AbstractArray, arr::NDArray; atol=0, rtol=0)
+    return compare(julia_array, arr, atol)
+end
+
+function Base.isapprox(arr::NDArray, julia_array::AbstractArray; atol=0, rtol=0)
+    return compare(julia_array, arr, atol)
+end
+
+function Base.isapprox(arr::NDArray, arr2::NDArray; atol=0, rtol=0)
+    return compare(arr, arr2, atol)
 end

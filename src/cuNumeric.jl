@@ -97,6 +97,12 @@ function cunumeric_setup(AA::ArgcArgv)
     cuNumeric.init_gc!() # setup memory.jl 
 end
 
+@doc"""
+    versioninfo()
+
+Prints the cuNumeric build configuration summary, including package
+metadata, Julia and compiler version, and paths to core dependencies.
+"""
 function versioninfo()
     println(cuNumeric_config_str)
 end

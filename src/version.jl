@@ -1,4 +1,3 @@
-
 function get_cxx_version(libpath::AbstractString)
     try
         cmd = `readelf -p .comment $libpath`
