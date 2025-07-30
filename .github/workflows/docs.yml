@@ -2,6 +2,7 @@ name: Docs
 on:
   push:
     paths:
+      - '.github/workflows/docs.yml'
       - 'src/**'
       - 'docs/src/**'
       - 'docs/make.jl'
@@ -12,6 +13,7 @@ on:
       - main
   pull_request:
     paths:
+    - '.github/workflows/docs.yml'
     - 'src/**'
     - 'docs/src/**'
     - 'docs/make.jl'
@@ -26,28 +28,18 @@ jobs:
       statuses: write
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Julia
-        uses: julia-actions/setup-julia@v1
-      - name: Load Julia packages from cache
-        id: julia-cache
-        uses: julia-actions/cache@v2
-      - name: Build and deploy docs
-        uses: julia-actions/julia-docdeploy@v1
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
         with:
-          install-package: false
+          version: '1'
+      - uses: julia-actions/cache@v2
+      - name: Instantiate docs environment
+        run: |
+          julia --color=yes --project=docs -e '
+            using Pkg
+            Pkg.instantiate()'
+      - name: Build documentation
+        run: julia --color=yes --project=docs docs/make.jl
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # For authentication with GitHub Actions token
-          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }} # For authentication with SSH deploy key
-          GKSwstype: "100" # for Plots.jl plots (if you have them)
-          JULIA_DEBUG: "Documenter"
-          DATADEPS_ALWAYS_ACCEPT: true
-      - name: Save Julia depot cache on cancel or failure
-        id: julia-cache-save
-        if: cancelled() || failure()
-        uses: actions/cache/save@v4
-        with: 
-          path: |
-            ${{ steps.julia-cache.outputs.cache-paths }}
-          key: ${{ steps.julia-cache.outputs.cache-key }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
