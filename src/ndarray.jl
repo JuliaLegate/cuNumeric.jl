@@ -558,11 +558,11 @@ Perform subtraction involving an `NDArray` and a scalar or between two NDArrays.
 Broadcasting is also supported for these operations.
 
 # Examples
-```@setup add
+```@setup subtract
 lhs = cuNumeric.ones(4, 4)
 rhs = cuNumeric.ones(4, 4)
 ```
-```@repl add
+```@repl subtract
 lhs - 3
 3 - rhs
 lhs - rhs
@@ -606,15 +606,15 @@ Multiply an `NDArray` by a scalar or perform element-wise multiplication between
 - Broadcasting works seamlessly with scalars and NDArrays.
 
 # Examples
-```@repl
-2 * arr
-NDArray with each element multiplied by 2
-
-arr * 3
-NDArray with each element multiplied by 3
-
-lhs .* rhs
-Element-wise multiplication of two NDArrays
+```@setup mul
+lhs = cuNumeric.ones(4, 4)
+rhs = cuNumeric.ones(4, 4)
+```
+```@repl mul
+lhs * 3
+2 * rhs
+lhs - rhs
+```
 """
 
 function Base.:*(val::Scalar, arr::NDArray)
