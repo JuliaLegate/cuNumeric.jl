@@ -78,9 +78,9 @@ Convert the element type of `arr` to type `T`, returning a new `NDArray` with el
 A new `NDArray` with the same shape as `arr` but with elements of type `T`.
 
 # Examples
-```julia-repl 
-julia> as_type(arr, Float32)
-NDArray of Float32s, Dim: [...]
+```@repl
+arr = cuNumeric.rand(4, 5);
+as_type(arr, Float32)
 """
 as_type(arr::NDArray, t::Type{T}) where {T} = nda_astype(arr, t)
 
@@ -96,14 +96,10 @@ Both functions query the underlying cuNumeric API to get
 the dimensionality of the array.
 
 # Examples
-```julia-repl 
-julia> arr = cuNumeric.rand(NDArray, 2, 3, 4);
-
-julia> dim(arr)
-3
-
-julia> ndims(arr)
-3
+```@repl
+arr = cuNumeric.rand(2, 3, 4);
+dim(arr)
+ndims(arr)
 ```
 """
 
@@ -122,14 +118,10 @@ These override Base's size methods for the `NDArray` type,
 using the underlying cuNumeric API to query array shape.
 
 # Examples
-```julia-repl 
-julia> arr = cuNumeric.rand(NDArray, 3, 4, 5);
-
-julia> size(arr)
-(3, 4, 5)
-
-julia> size(arr, 2)
-4
+```@repl
+arr = cuNumeric.rand(3, 4, 5);
+size(arr)
+size(arr, 2)
 ```
 """
 Base.size(arr::NDArray) = Tuple(Int.(cuNumeric.nda_array_shape(arr)))
@@ -146,17 +138,11 @@ Provide the first and last valid indices along a given dimension `dim` for `NDAr
 - `lastindex(arr)` returns the size along the first dimension.
 
 # Examples
-```julia-repl 
-julia> arr = cuNumeric.rand(NDArray, 4, 5);
-
-julia> firstindex(arr, 2)
-1
-
-julia> lastindex(arr, 2)
-5
-
-julia> lastindex(arr)
-4
+```@repl
+arr = cuNumeric.rand(4, 5);
+firstindex(arr, 2)
+lastindex(arr, 2)
+lastindex(arr)
 ```
 """
 Base.firstindex(arr::NDArray, dim::Int) = 1
@@ -174,9 +160,8 @@ Display a summary of the `NDArray` showing its element type and dimensions.
 These methods customize how `NDArray` instances appear in the REPL and in text/plain contexts.
 
 # Example
-```julia-repl 
-julia> arr = cuNumeric.ones(NDArray, 2, 3)
-NDArray of Float64s, Dim: (2, 3)
+```@repl
+arr = cuNumeric.ones(NDArray, 2, 3)
 ```
 """
 function Base.show(io::IO, arr::NDArray)
@@ -253,21 +238,12 @@ Assignment also supports:
 - Broadcasting a scalar `val::Float32` or `Float64` into a slice
 
 # Examples
-```julia-repl 
-julia> A = cuNumeric.full((3, 3), 1.0);
-
-julia> A[1, 2]
-1.0
-
-julia> A[1:2, 2:3] = cuNumeric.ones(2, 2);
-
-julia> A[:, 1] = 5.0;
-
-julia> Array(A)
-3x3 Matrix{Float64}:
- 5.0  1.0  1.0
- 5.0  1.0  1.0
- 5.0  1.0  1.0
+```@repl
+A = cuNumeric.full((3, 3), 1.0);
+A[1, 2]
+A[1:2, 2:3] = cuNumeric.ones(2, 2);
+A[:, 1] = 5.0;
+Array(A)
  """
 ##### REGULAR ARRAY INDEXING ####
 function Base.getindex(arr::NDArray, idxs::Vararg{Int,N}) where {N}
@@ -396,12 +372,9 @@ end
 Create an `NDArray` filled with the scalar value `val`, with the shape specified by `dims`.
 
 # Examples
-```julia-repl 
-julia> cuNumeric.full((2, 3), 7.5)
-NDArray of Float64s, Dim: [2, 3]
-
-julia> cuNumeric.full(4, 0)
-NDArray of Int64s, Dim: [4]
+```@repl
+cuNumeric.full((2, 3), 7.5)
+cuNumeric.full(4, 0)
 """
 function full(dims::Dims{N}, val::T) where {T,N}
     shape = UInt64.(collect(dims))
@@ -421,15 +394,10 @@ Create an NDArray with element type `T`, of all zeros with size specified by `di
 This function mirrors the signature of `Base.zeros`, and defaults to `Float64` when the type is omitted.
 
 # Examples
-```julia-repl 
-julia> cuNumeric.zeros(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> cuNumeric.zeros(Float32, 3)
-NDArray of Float32s, Dim: [3]
-
-julia> cuNumeric.zeros(Int32, (2,3))
-NDArray of Int32s, Dim: [2, 3]
+```@repl
+cuNumeric.zeros(2, 2)
+cuNumeric.zeros(Float32, 3)
+cuNumeric.zeros(Int32, (2,3))
 ```
 """
 function zeros(::Type{T}, dims::Dims{N}) where {N,T}
@@ -457,15 +425,10 @@ Create an NDArray with element type `T`, of all zeros with size specified by `di
 This function has the same signature as `Base.ones`, so be sure to call it as `cuNuermic.ones`.
 
 # Examples
-```julia-repl 
-julia> cuNumeric.ones(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> cuNumeric.ones(Float32, 3)
-NDArray of Float32s, Dim: [3]
-
-julia> cuNumeric.ones(Int32, (2, 3))
-NDArray of Int32s, Dim: [2, 3]
+```@repl
+cuNumeric.ones(2, 2)
+cuNumeric.ones(Float32, 3)
+cuNumeric.ones(Int32, (2, 3))
 ```
 """
 function ones(::Type{T}, dims::Dims) where {T}
@@ -498,15 +461,11 @@ This function uses the same signature as `Base.rand` with a custom backend,
 and currently supports only `Float64` with uniform distribution (`code = 0`).
 
 # Examples
-```julia-repl 
-julia> cuNumeric.rand(NDArray, 2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> cuNumeric.rand(NDArray, (4, 1))
-NDArray of Float64s, Dim: [4, 1]
-
-julia> A = cuNumeric.zeros(2, 2); cuNumeric.rand!(A)
-NDArray of Float64s, Dim: [2, 2]
+```@repl
+cuNumeric.rand(NDArray, 2, 2)
+cuNumeric.rand(NDArray, (4, 1))
+A = cuNumeric.zeros(2, 2); cuNumeric.rand!(A)
+```
 """
 Random.rand!(arr::NDArray) = cuNumeric.nda_random(arr, 0)
 Random.rand(::Type{NDArray}, dims::Dims) = cuNumeric.nda_random_array(UInt64.(collect(dims)))
@@ -524,12 +483,10 @@ random(arr::NDArray, code::Int64) = cuNumeric.nda_random(arr, code)
 Return a new `NDArray` reshaped to the specified dimensions.
 
 # Examples
-```julia-repl 
-julia> reshape(arr, (3, 4))
-NDArray reshaped to 3×4
-
-julia> reshape(arr, 5)
-NDArray reshaped to length 5
+```@repl
+arr = cuNumeric.ones(4, 3)
+reshape(arr, (3, 4))
+reshape(arr, 12)
 """
 
 function reshape(arr::NDArray, i::Dims{N}; copy::Bool=false) where {N}
@@ -553,15 +510,15 @@ returning a new `NDArray`.
 Broadcasting is supported to enable element-wise addition between `NDArray` and scalars or between two NDArrays.
 
 # Examples
-```julia-repl 
-julia> arr + 3
-NDArray with each element increased by 3
-
-julia> 3 + arr
-Same as above
-
-julia> lhs + rhs
-Element-wise addition of two NDArrays
+```@setup add
+lhs = cuNumeric.ones(4, 4)
+rhs = cuNumeric.ones(4, 4)
+```
+```@repl add
+lhs + 3
+3 + rhs
+lhs + rhs
+```
 """
 
 function Base.:+(arr::NDArray, val::Scalar)
@@ -594,25 +551,25 @@ end
 
 Perform subtraction involving an `NDArray` and a scalar or between two NDArrays. 
 
-- `val - arr` multiplies `arr` by `-val`.
+- `val - arr` subtracts `val` by `arr`.
 - `arr - val` subtracts scalar `val` from each element of `arr`.
 - Element-wise subtraction is supported between two NDArrays.
 
 Broadcasting is also supported for these operations.
 
 # Examples
-```julia-repl 
-julia> 3 - arr
-NDArray with each element multiplied by -3
-
-julia> arr - 4
-NDArray with 4 subtracted from each element
-
-julia> lhs - rhs
-Element-wise subtraction of two NDArrays
+```@setup add
+lhs = cuNumeric.ones(4, 4)
+rhs = cuNumeric.ones(4, 4)
+```
+```@repl add
+lhs - 3
+3 - rhs
+lhs - rhs
+```
 """
 function Base.:-(val::Scalar, arr::NDArray)
-    return nda_multiply_scalar(arr, -val)
+    return nda_add_scalar(-arr, val)
 end
 
 function Base.:-(arr::NDArray, val::Scalar)
@@ -649,14 +606,14 @@ Multiply an `NDArray` by a scalar or perform element-wise multiplication between
 - Broadcasting works seamlessly with scalars and NDArrays.
 
 # Examples
-```julia-repl 
-julia> 2 * arr
+```@repl
+2 * arr
 NDArray with each element multiplied by 2
 
-julia> arr * 3
+arr * 3
 NDArray with each element multiplied by 3
 
-julia> lhs .* rhs
+lhs .* rhs
 Element-wise multiplication of two NDArrays
 """
 
@@ -691,12 +648,9 @@ end
 Returns the element-wise multiplication of `arr` by the scalar reciprocal `1 / val`.
 
 # Examples
-```julia-repl 
-julia> arr = cuNumeric.ones(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> arr / 2
-NDArray of Float64s, Dim: [2, 2]  # Conceptually arr * 0.5
+```@repl
+arr = cuNumeric.ones(2, 2)
+arr / 2
 ```
 """
 function Base.:/(arr::NDArray, val::Scalar)
@@ -716,12 +670,9 @@ end
 Throws an error since element-wise division of a scalar by an NDArray is not supported yet.
 
 # Examples
-```julia-repl 
-julia> arr = cuNumeric.ones(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> 2 ./ arr
-ERROR: ErrorException: element wise [val ./ NDArray] is not supported yet
+```@repl
+arr = cuNumeric.ones(2, 2)
+# 2 ./ arr # ERROR
 ```
 """
 function Base.Broadcast.broadcasted(
@@ -736,18 +687,11 @@ end
 Perform element-wise division of two NDArrays.
 
 # Examples
-```julia-repl 
-julia> A = cuNumeric.rand(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> B = cuNumeric.ones(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> C = broadcast(/, A, B)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> typeof(C)
-NDArray
+```@repl
+A = cuNumeric.rand(2, 2)
+B = cuNumeric.ones(2, 2)
+C = A ./ B
+typeof(C)
 """
 function Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray, rhs::NDArray)
     return /(lhs, rhs)
@@ -765,19 +709,12 @@ Compute element-wise addition of `arr1` and `arr2` storing the result in `out`.
 This is an in-place operation and is used to support `.+=` style syntax.
 
 # Examples
-```julia-repl 
-julia> a = cuNumeric.ones(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> b = cuNumeric.ones(2, 2)
-
-julia> out = similar(a)
-
-julia> add!(out, a, b)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> out
-NDArray of Float64s, Dim: [2, 2]
+```@repl
+a = cuNumeric.ones(2, 2)
+b = cuNumeric.ones(2, 2)
+out = similar(a)
+add!(out, a, b)
+out
 ```
 """
 function add!(out::NDArray, arr1::NDArray, arr2::NDArray)
@@ -792,19 +729,12 @@ Compute element-wise multiplication of `arr1` and `arr2`, storing the result in 
 This function performs the operation in-place, modifying `out`.
 
 # Examples
-```julia-repl 
-julia> a = cuNumeric.ones(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> b = cuNumeric.ones(2, 2)
-
-julia> out = similar(a)
-
-julia> multiply!(out, a, b)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> out
-NDArray of Float64s, Dim: [2, 2]
+```@repl
+a = cuNumeric.ones(2, 2)
+b = cuNumeric.ones(2, 2)
+out = similar(a)
+multiply!(out, a, b)
+out
 ```
 """
 function multiply!(out::NDArray, arr1::NDArray, arr2::NDArray)
@@ -819,20 +749,12 @@ Compute the matrix multiplication (dot product) of `arr1` and `arr2`, storing th
 This function performs the operation in-place, modifying `out`.
 
 # Examples
-```julia-repl 
-julia> a = cuNumeric.ones(2, 3)
-NDArray of Float64s, Dim: [2, 3]
-
-julia> b = cuNumeric.ones(3, 2)
-NDArray of Float64s, Dim: [3, 2]
-
-julia> out = cuNumeric.zeros(2, 2)
-
-julia> LinearAlgebra.mul!(out, a, b)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> out
-NDArray of Float64s, Dim: [2, 2]
+```@repl
+a = cuNumeric.ones(2, 3)
+b = cuNumeric.ones(3, 2)
+out = cuNumeric.zeros(2, 2)
+LinearAlgebra.mul!(out, a, b)
+out
 ```
 """
 function LinearAlgebra.mul!(out::NDArray, arr1::NDArray, arr2::NDArray)
@@ -845,18 +767,11 @@ end
 Create and return a deep copy of the given `NDArray`.
 
 # Examples
-```julia-repl 
-julia> a = cuNumeric.ones(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> b = copy(a)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> b === a
-false
-
-julia> b[1,1] == a[1,1]
-true
+```@repl
+a = cuNumeric.ones(2, 2)
+b = copy(a)
+b === a
+b[1,1] == a[1,1]
 ```
 """
 function Base.copy(arr::NDArray)
@@ -872,17 +787,11 @@ This function overwrites the data in `arr` with the values from `other`.
 Both arrays must have the same shape.
 
 # Examples
-```julia-repl 
-julia> a = cuNumeric.zeros(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> b = cuNumeric.ones(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> cuNumeric.assign(a, b);
-
-julia> a[1,1]
-1.0
+```@repl
+a = cuNumeric.zeros(2, 2)
+b = cuNumeric.ones(2, 2)
+cuNumeric.assign(a, b);
+a[1,1]
 ```
 """
 assign(arr::NDArray, other::NDArray) = nda_assign(arr, other)
@@ -896,21 +805,12 @@ Returns `true` if both arrays have the same shape and all corresponding elements
 Currently supports arrays up to 3 dimensions. For higher dimensions, returns `false` with a warning.
 
 # Examples
-```julia-repl 
-julia> a = cuNumeric.ones(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> b = cuNumeric.ones(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> a == b
-true
-
-julia> c = cuNumeric.zeros(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> a == c
-false
+```@repl
+a = cuNumeric.ones(2, 2)
+b = cuNumeric.ones(2, 2)
+a == b
+c = cuNumeric.zeros(2, 2)
+a == c
 ```
 """
 function Base.:(==)(arr1::NDArray, arr2::NDArray)
@@ -945,28 +845,13 @@ Returns `false` otherwise (including if sizes differ, with a warning).
 The second method simply calls the first with flipped arguments.
 
 # Examples
-```julia-repl 
-julia> arr = cuNumeric.ones(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> julia_arr = ones(2, 2)
-2x2 Matrix{Float64}:
- 1.0  1.0
- 1.0  1.0
-
-julia> arr == julia_arr
-true
-
-julia> julia_arr == arr
-true
-
-julia> julia_arr2 = zeros(2, 2)
-2x2 Matrix{Float64}:
- 0.0  0.0
- 0.0  0.0
-
-julia> arr == julia_arr2
-false
+```@repl
+arr = cuNumeric.ones(2, 2)
+julia_arr = ones(2, 2)
+arr == julia_arr
+julia_arr == arr
+julia_arr2 = zeros(2, 2)
+arr == julia_arr2
 ```
 """
 function Base.:(==)(arr::NDArray, julia_array::Array)
@@ -1073,26 +958,13 @@ The second and third methods handle comparisons between `NDArray` and Julia arra
 a common comparison function.
 
 # Examples
-```julia-repl 
-julia> arr1 = cuNumeric.ones(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> arr2 = cuNumeric.ones(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> julia_arr = ones(2, 2)
-2x2 Matrix{Float64}:
- 1.0  1.0
- 1.0  1.0
-
-julia> isapprox(arr1, arr2)
-true
-
-julia> isapprox(arr1, julia_arr)
-true
-
-julia> isapprox(julia_arr, arr2)
-true
+```@repl
+arr1 = cuNumeric.ones(2, 2)
+arr2 = cuNumeric.ones(2, 2)
+julia_arr = ones(2, 2)
+isapprox(arr1, arr2)
+isapprox(arr1, julia_arr)
+isapprox(julia_arr, arr2)
 ```
 """
 function Base.isapprox(julia_array::AbstractArray, arr::NDArray; atol=0, rtol=0)
