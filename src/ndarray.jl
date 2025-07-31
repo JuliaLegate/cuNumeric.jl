@@ -21,6 +21,8 @@ export NDArray
 
 Base.Broadcast.broadcastable(v::NDArray) = v
 
+const Scalar = Union{Float32,Float64,Int64,Int32}
+
 @doc"""
     to_cpp_index(idx::Dims{N}, int_type::Type=UInt64) where {N}
 
@@ -516,8 +518,8 @@ random(dims::Dims, e::Type{T}) where {T} = cuNumeric.rand(e, dims)
 random(arr::NDArray, code::Int64) = cuNumeric.nda_random(arr, code)
 #### OPERATIONS ####
 @doc"""
-    reshape(arr::NDArray, dims::Dims{N}) where {N}
-    reshape(arr::NDArray, dim::Int64)
+    reshape(arr::NDArray, dims::Dims{N}; copy::Bool = false) where {N}
+    reshape(arr::NDArray, dim::Int64; copy::Bool = false)
 
 Return a new `NDArray` reshaped to the specified dimensions.
 
@@ -530,12 +532,14 @@ julia> reshape(arr, 5)
 NDArray reshaped to length 5
 """
 
-function reshape(arr::NDArray, i::Dims{N}) where {N}
-    return nda_reshape_array(arr, UInt64.(collect(i)))
+function reshape(arr::NDArray, i::Dims{N}; copy::Bool=false) where {N}
+    reshaped = nda_reshape_array(arr, UInt64.(collect(i)))
+    return copy ? copy(reshaped) : reshaped
 end
 
-function reshape(arr::NDArray, i::Int64)
-    return nda_reshape_array(arr, UInt64.([i]))
+function reshape(arr::NDArray, i::Int64; copy::Bool=false)
+    reshaped = nda_reshape_array(arr, UInt64.([i]))
+    return copy ? copy(reshaped) : reshaped
 end
 
 @doc"""
@@ -560,21 +564,21 @@ julia> lhs + rhs
 Element-wise addition of two NDArrays
 """
 
-function Base.:+(arr::NDArray, val::Union{Float32,Float64,Int64,Int32})
+function Base.:+(arr::NDArray, val::Scalar)
     return nda_add_scalar(arr, val)
 end
-function Base.:+(val::Union{Float32,Float64,Int64,Int32}, arr::NDArray)
+function Base.:+(val::Scalar, arr::NDArray)
     return +(arr, val)
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(+), arr::NDArray, val::Union{Float32,Float64,Int64,Int32}
+    ::typeof(+), arr::NDArray, val::Scalar
 )
     return +(arr, val)
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(+), val::Union{Float32,Float64,Int64,Int32}, arr::NDArray
+    ::typeof(+), val::Scalar, arr::NDArray
 )
     return +(arr, val)
 end
@@ -607,21 +611,21 @@ NDArray with 4 subtracted from each element
 julia> lhs - rhs
 Element-wise subtraction of two NDArrays
 """
-function Base.:-(val::Union{Float32,Float64,Int64,Int32}, arr::NDArray)
+function Base.:-(val::Scalar, arr::NDArray)
     return nda_multiply_scalar(arr, -val)
 end
 
-function Base.:-(arr::NDArray, val::Union{Float32,Float64,Int64,Int32})
+function Base.:-(arr::NDArray, val::Scalar)
     return +(arr, (-1*val))
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(-), arr::NDArray, val::Union{Float32,Float64,Int64,Int32}
+    ::typeof(-), arr::NDArray, val::Scalar
 )
     return -(arr, val)
 end
 function Base.Broadcast.broadcasted(
-    ::typeof(-), val::Union{Float32,Float64,Int64,Int32}, rhs::NDArray
+    ::typeof(-), val::Scalar, rhs::NDArray
 )
     arr_type = eltype(rhs) # match the arr type
     lhs = full(Base.size(rhs), arr_type(val))
@@ -656,22 +660,22 @@ julia> lhs .* rhs
 Element-wise multiplication of two NDArrays
 """
 
-function Base.:*(val::Union{Float32,Float64,Int64,Int32}, arr::NDArray)
+function Base.:*(val::Scalar, arr::NDArray)
     return nda_multiply_scalar(arr, val)
 end
 
-function Base.:*(arr::NDArray, val::Union{Float32,Float64,Int64,Int32})
+function Base.:*(arr::NDArray, val::Scalar)
     return *(val, arr)
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(*), arr::NDArray, val::Union{Float32,Float64,Int64,Int32}
+    ::typeof(*), arr::NDArray, val::Scalar
 )
     return *(val, arr)
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(*), val::Union{Float32,Float64,Int64,Int32}, arr::NDArray
+    ::typeof(*), val::Scalar, arr::NDArray
 )
     return *(val, arr)
 end
@@ -681,25 +685,8 @@ function Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray, rhs::NDArray)
 end
 
 @doc"""
-    Base.:/(arr::NDArray, val::Union{Float32,Float64,Int64,Int32})
-
-Throws an error because element-wise division of an NDArray by a scalar is not supported yet.
-
-# Examples
-```julia-repl 
-julia> arr = cuNumeric.ones(2, 2)
-NDArray of Float64s, Dim: [2, 2]
-
-julia> arr / 2
-ERROR: ErrorException: [/] is not supported yet
-```
-"""
-function Base.:/(arr::NDArray, val::Union{Float32,Float64,Int64,Int32})
-    throw(ErrorException("[/] is not supported yet"))
-end
-
-@doc"""
-    Base.Broadcast.broadcasted(::typeof(/), arr::NDArray, val::Union{Float32,Float64,Int64,Int32})
+    Base.:/(arr::NDArray, val::Scalar)
+    Base.Broadcast.broadcasted(::typeof(/), arr::NDArray, val::Scalar)
 
 Returns the element-wise multiplication of `arr` by the scalar reciprocal `1 / val`.
 
@@ -708,18 +695,23 @@ Returns the element-wise multiplication of `arr` by the scalar reciprocal `1 / v
 julia> arr = cuNumeric.ones(2, 2)
 NDArray of Float64s, Dim: [2, 2]
 
-julia> broadcast(/, arr, 2)
+julia> arr / 2
 NDArray of Float64s, Dim: [2, 2]  # Conceptually arr * 0.5
 ```
 """
+function Base.:/(arr::NDArray, val::Scalar)
+    # throw(ErrorException("[/] is not supported yet"))
+    return nda_multiply_scalar(arr, Float64(1 / val))
+end
+
 function Base.Broadcast.broadcasted(
-    ::typeof(/), arr::NDArray, val::Union{Float32,Float64,Int64,Int32}
+    ::typeof(/), arr::NDArray, val::Scalar
 )
     return nda_multiply_scalar(arr, Float64(1 / val))
 end
 
 @doc"""
-    Base.Broadcast.broadcasted(::typeof(/), val::Union{Float32,Float64,Int64,Int32}, arr::NDArray)
+    Base.Broadcast.broadcasted(::typeof(/), val::Scalar, arr::NDArray)
 
 Throws an error since element-wise division of a scalar by an NDArray is not supported yet.
 
@@ -733,7 +725,7 @@ ERROR: ErrorException: element wise [val ./ NDArray] is not supported yet
 ```
 """
 function Base.Broadcast.broadcasted(
-    ::typeof(/), val::Union{Float32,Float64,Int64,Int32}, arr::NDArray
+    ::typeof(/), val::Scalar, arr::NDArray
 )
     return throw(ErrorException("element wise [val ./ NDArray] is not supported yet"))
 end
@@ -923,6 +915,7 @@ false
 """
 function Base.:(==)(arr1::NDArray, arr2::NDArray)
     if (Base.size(arr1) != Base.size(arr2))
+        @warn "lhs has size $(Base.size(arr)) and rhs has size $(Base.size(arr2))!\n"
         return false
     end
 
