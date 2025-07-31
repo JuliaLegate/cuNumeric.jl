@@ -76,7 +76,7 @@ Convert the element type of `arr` to type `T`, returning a new `NDArray` with el
 A new `NDArray` with the same shape as `arr` but with elements of type `T`.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> as_type(arr, Float32)
 NDArray of Float32s, Dim: [...]
 """
@@ -94,7 +94,7 @@ Both functions query the underlying cuNumeric API to get
 the dimensionality of the array.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> arr = cuNumeric.rand(NDArray, 2, 3, 4);
 
 julia> dim(arr)
@@ -120,7 +120,7 @@ These override Base's size methods for the `NDArray` type,
 using the underlying cuNumeric API to query array shape.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> arr = cuNumeric.rand(NDArray, 3, 4, 5);
 
 julia> size(arr)
@@ -144,7 +144,7 @@ Provide the first and last valid indices along a given dimension `dim` for `NDAr
 - `lastindex(arr)` returns the size along the first dimension.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> arr = cuNumeric.rand(NDArray, 4, 5);
 
 julia> firstindex(arr, 2)
@@ -172,7 +172,7 @@ Display a summary of the `NDArray` showing its element type and dimensions.
 These methods customize how `NDArray` instances appear in the REPL and in text/plain contexts.
 
 # Example
-```jldoctest
+```julia-repl 
 julia> arr = cuNumeric.ones(NDArray, 2, 3)
 NDArray of Float64s, Dim: (2, 3)
 ```
@@ -251,7 +251,7 @@ Assignment also supports:
 - Broadcasting a scalar `val::Float32` or `Float64` into a slice
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> A = cuNumeric.full((3, 3), 1.0);
 
 julia> A[1, 2]
@@ -394,7 +394,7 @@ end
 Create an `NDArray` filled with the scalar value `val`, with the shape specified by `dims`.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> cuNumeric.full((2, 3), 7.5)
 NDArray of Float64s, Dim: [2, 3]
 
@@ -419,7 +419,7 @@ Create an NDArray with element type `T`, of all zeros with size specified by `di
 This function mirrors the signature of `Base.zeros`, and defaults to `Float64` when the type is omitted.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> cuNumeric.zeros(2, 2)
 NDArray of Float64s, Dim: [2, 2]
 
@@ -455,7 +455,7 @@ Create an NDArray with element type `T`, of all zeros with size specified by `di
 This function has the same signature as `Base.ones`, so be sure to call it as `cuNuermic.ones`.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> cuNumeric.ones(2, 2)
 NDArray of Float64s, Dim: [2, 2]
 
@@ -496,7 +496,7 @@ This function uses the same signature as `Base.rand` with a custom backend,
 and currently supports only `Float64` with uniform distribution (`code = 0`).
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> cuNumeric.rand(NDArray, 2, 2)
 NDArray of Float64s, Dim: [2, 2]
 
@@ -522,7 +522,7 @@ random(arr::NDArray, code::Int64) = cuNumeric.nda_random(arr, code)
 Return a new `NDArray` reshaped to the specified dimensions.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> reshape(arr, (3, 4))
 NDArray reshaped to 3×4
 
@@ -549,7 +549,7 @@ returning a new `NDArray`.
 Broadcasting is supported to enable element-wise addition between `NDArray` and scalars or between two NDArrays.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> arr + 3
 NDArray with each element increased by 3
 
@@ -597,7 +597,7 @@ Perform subtraction involving an `NDArray` and a scalar or between two NDArrays.
 Broadcasting is also supported for these operations.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> 3 - arr
 NDArray with each element multiplied by -3
 
@@ -645,7 +645,7 @@ Multiply an `NDArray` by a scalar or perform element-wise multiplication between
 - Broadcasting works seamlessly with scalars and NDArrays.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> 2 * arr
 NDArray with each element multiplied by 2
 
@@ -686,7 +686,7 @@ end
 Throws an error because element-wise division of an NDArray by a scalar is not supported yet.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> arr = cuNumeric.ones(2, 2)
 NDArray of Float64s, Dim: [2, 2]
 
@@ -704,7 +704,7 @@ end
 Returns the element-wise multiplication of `arr` by the scalar reciprocal `1 / val`.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> arr = cuNumeric.ones(2, 2)
 NDArray of Float64s, Dim: [2, 2]
 
@@ -724,7 +724,7 @@ end
 Throws an error since element-wise division of a scalar by an NDArray is not supported yet.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> arr = cuNumeric.ones(2, 2)
 NDArray of Float64s, Dim: [2, 2]
 
@@ -744,7 +744,7 @@ end
 Perform element-wise division of two NDArrays.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> A = cuNumeric.rand(2, 2)
 NDArray of Float64s, Dim: [2, 2]
 
@@ -773,7 +773,7 @@ Compute element-wise addition of `arr1` and `arr2` storing the result in `out`.
 This is an in-place operation and is used to support `.+=` style syntax.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> a = cuNumeric.ones(2, 2)
 NDArray of Float64s, Dim: [2, 2]
 
@@ -800,7 +800,7 @@ Compute element-wise multiplication of `arr1` and `arr2`, storing the result in 
 This function performs the operation in-place, modifying `out`.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> a = cuNumeric.ones(2, 2)
 NDArray of Float64s, Dim: [2, 2]
 
@@ -827,7 +827,7 @@ Compute the matrix multiplication (dot product) of `arr1` and `arr2`, storing th
 This function performs the operation in-place, modifying `out`.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> a = cuNumeric.ones(2, 3)
 NDArray of Float64s, Dim: [2, 3]
 
@@ -853,7 +853,7 @@ end
 Create and return a deep copy of the given `NDArray`.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> a = cuNumeric.ones(2, 2)
 NDArray of Float64s, Dim: [2, 2]
 
@@ -880,7 +880,7 @@ This function overwrites the data in `arr` with the values from `other`.
 Both arrays must have the same shape.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> a = cuNumeric.zeros(2, 2)
 NDArray of Float64s, Dim: [2, 2]
 
@@ -904,7 +904,7 @@ Returns `true` if both arrays have the same shape and all corresponding elements
 Currently supports arrays up to 3 dimensions. For higher dimensions, returns `false` with a warning.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> a = cuNumeric.ones(2, 2)
 NDArray of Float64s, Dim: [2, 2]
 
@@ -952,7 +952,7 @@ Returns `false` otherwise (including if sizes differ, with a warning).
 The second method simply calls the first with flipped arguments.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> arr = cuNumeric.ones(2, 2)
 NDArray of Float64s, Dim: [2, 2]
 
@@ -1080,7 +1080,7 @@ The second and third methods handle comparisons between `NDArray` and Julia arra
 a common comparison function.
 
 # Examples
-```jldoctest
+```julia-repl 
 julia> arr1 = cuNumeric.ones(2, 2)
 NDArray of Float64s, Dim: [2, 2]
 
