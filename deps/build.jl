@@ -204,8 +204,6 @@ function build()
     end
 
     hdf5_lib = Legate.get_install_libhdf5()
-    mpi_lib = Legate.get_install_libmpi()
-    nccl_lib = Legate.get_install_libnccl()
     cutensor_lib = get_library_root(CUTENSOR_jll, "JULIA_CUTENSOR_PATH")
 
     if get(ENV, "CUNUMERIC_DEVELOP_MODE", "0") == "1"
@@ -219,14 +217,10 @@ function build()
     end
 
     open(joinpath(deps_dir, "deps.jl"), "w") do io
-        println(io, "const LEGATE_LIB = \"$(legate_lib)\"")
+        println(io, "const CUTENSOR_LIB = \"$(cutensor_lib)\"")
+        println(io, "const TBLIS_LIB = \"$(tblis_lib)\"")
         println(io, "const CUPYNUMERIC_LIB = \"$(cupynumeric_lib)\"")
         println(io, "const CUNUMERIC_WRAPPER_LIB = \"$(cunumeric_wrapper_lib)\"")
-        println(io, "const TBLIS_LIB = \"$(tblis_lib)\"")
-        println(io, "const HDF5_LIB = \"$(hdf5_lib)\"")
-        println(io, "const NCCL_LIB = \"$(nccl_lib)\"")
-        println(io, "const CUTENSOR_LIB = \"$(cutensor_lib)\"")
-        println(io, "const MPI_LIB = \"$(mpi_lib)\"")
     end
 end
 

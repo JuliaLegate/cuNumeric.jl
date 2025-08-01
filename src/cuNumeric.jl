@@ -53,10 +53,21 @@ function preload_libs()
     end
 end
 
-preload_libs()
-lib = "libcupynumericwrapper.so"
-libpath = joinpath(@__DIR__, "../", "wrapper", "build", lib)
-@wrapmodule(() -> libpath)
+if isfile(deps_path)
+    include(deps_path)
+else
+    using cupynumeric_jll
+    using cunumeric_jl_wrapper_jll
+    using CUTENSOR_jll
+
+    const CUTENSOR_LIB = joinpath(CUTENSOR_jll.artifact_dir, "lib")
+    const TBLIS_LIB = joinpath(cupynumeric_jll.artifact_dir, "lib")
+    const CUPYNUMERIC_LIB = joinpath(cupynumeric_jll.artifact_dir, "lib")
+    const CUNUMERIC_WRAPPER_LIB = joinpath(cunumeric_jl_wrapper_jll.artifact_dir, "lib")
+end
+
+preload_libs() # for precompilation
+@wrapmodule(() -> joinpath(CUNUMERIC_WRAPPER_LIB, "liblegate_jl_wrapper.so"))
 
 include("version.jl") # version_config_setup
 
