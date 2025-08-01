@@ -61,19 +61,17 @@ end
 
 function build_cpp_wrapper(repo_root, cupynumeric_loc, legate_loc, hdf5_lib)
     @info "libcupynumericwrapper: Building C++ Wrapper Library"
-    build_dir = joinpath(repo_root, "wrapper", "build")
-    if !isdir(build_dir)
-        mkdir(build_dir)
-    else
-        @warn "libcupynumericwrapper: Build dir exists. Deleting prior build."
-        rm(build_dir; recursive=true)
-        mkdir(build_dir)
+    install_dir = joinpath(repo_root, "deps", "cunumeric_wrapper_install")
+    if isdir(install_dir)
+        @warn "libcunumericwrapper: Build dir exists. Deleting prior build."
+        rm(install_dir; recursive=true)
+        mkdir(install_dir)
     end
 
     build_cpp_wrapper = joinpath(repo_root, "scripts/build_cpp_wrapper.sh")
     nthreads = Threads.nthreads()
     run_sh(
-        `bash $build_cpp_wrapper $cupynumeric_loc $legate_loc $hdf5_lib $repo_root $build_dir $nthreads`,
+        `bash $build_cpp_wrapper $repo_root $cupynumeric_loc $legate_loc $hdf5_lib $install_dir $nthreads`,
         "cpp_wrapper",
     )
 end
@@ -152,6 +150,16 @@ function check_prefix_install(env_var, env_loc)
     return false
 end
 
+function cupynumeric_jll_local_branch_install()
+    ## todo
+    @error "need jll"
+end
+
+function cunumeric_wrapper_jll_local_branch_install()
+    ## todo
+    @error "need jll"
+end
+
 function build()
     pkg_root = abspath(joinpath(@__DIR__, "../"))
     deps_dir = joinpath(@__DIR__)
@@ -163,7 +171,7 @@ function build()
         # conda install 
     elseif check_prefix_install("CUNUMERIC_LEGATE_CONDA_INSTALL", "CONDA_PREFIX")
         cupynumeric_root = get(ENV, "CONDA_PREFIX", nothing)
-    else # default install 
+    elseif get(ENV, "CUNUMERIC_INSTALL_CUPYNUMERIC", "0") == "1"
         cupynumeric_root = abspath(joinpath(@__DIR__, "../libcupynumeric"))
         cupynumeric_installed = is_cupynumeric_installed(cupynumeric_root)
         if cupynumeric_installed
@@ -177,6 +185,12 @@ function build()
         else
             install_cupynumeric(pkg_root, LATEST_CUPYNUMERIC_VERSION)
         end
+    elseif true == true # temporary until we have cupynumeric_jll
+        # waiting for this PR to happen
+        # https://github.com/JuliaPackaging/Yggdrasil/pull/11762
+        cupynumeric_root = cupynumeric_jll_local_branch_install()
+    else # default
+        cupynumeric_root = cupynumeric_jll.artifact_dir
     end
 
     legate_lib = Legate.get_install_liblegate()
@@ -194,12 +208,20 @@ function build()
     nccl_lib = Legate.get_install_libnccl()
     cutensor_lib = get_library_root(CUTENSOR_jll, "JULIA_CUTENSOR_PATH")
 
-    # create libcupynumericwrapper.so
-    build_cpp_wrapper(pkg_root, cupynumeric_root, legate_root, hdf5_lib)
+    if get(ENV, "CUNUMERIC_DEVELOP_MODE", "0") == "1"
+        # create libcupynumericwrapper.so
+        build_cpp_wrapper(pkg_root, cupynumeric_root, legate_root, hdf5_lib)
+        cunumeric_wrapper_lib = joinpath(pkg_root, "deps", "cunumeric_wrapper_install")
+    elseif true == true # temporary until cunumeric_jl_wrapper_jll
+        cunumeric_wrapper_lib = cunumeric_wrapper_jll_local_branch_install()
+    else
+        cunumeric_wrapper_lib = joinpath(cunumeric_jl_wrapper_jll.artifact_dir, "lib")
+    end
 
     open(joinpath(deps_dir, "deps.jl"), "w") do io
         println(io, "const LEGATE_LIB = \"$(legate_lib)\"")
         println(io, "const CUPYNUMERIC_LIB = \"$(cupynumeric_lib)\"")
+        println(io, "const CUNUMERIC_WRAPPER_LIB = \"$(cunumeric_wrapper_lib)\"")
         println(io, "const TBLIS_LIB = \"$(tblis_lib)\"")
         println(io, "const HDF5_LIB = \"$(hdf5_lib)\"")
         println(io, "const NCCL_LIB = \"$(nccl_lib)\"")
