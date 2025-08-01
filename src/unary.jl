@@ -1,5 +1,53 @@
 export square
 
+@doc"""
+Supported Unary Operations
+===========================
+
+The following unary operations are supported and can be applied directly to `NDArray` values:
+
+  • `abs`
+  • `acos`
+  • `asin`
+  • `asinh`
+  • `atan`
+  • `atanh`
+  • `cbrt`
+  • `conj`
+  • `cos`
+  • `cosh`
+  • `deg2rad`
+  • `exp`
+  • `exp2`
+  • `expm1`
+  • `floor`
+  • `log`
+  • `log10`
+  • `log1p`
+  • `log2`
+  • `-` (negation)
+  • `rad2deg`
+  • `sin`
+  • `sinh`
+  • `sqrt`
+  • `square`
+  • `tan`
+  • `tanh`
+
+These operations are applied elementwise and follow standard Julia semantics.
+
+Examples
+--------
+
+```julia
+A = NDArray(randn(Float32, 3, 3))
+
+abs(A)
+log.(A .+ 1)
+-sqrt(abs(A))
+square(A)
+```
+"""
 global const unary_op_map_no_args = Dict{Union{Function,Symbol},UnaryOpCode}(
     Base.abs => cuNumeric.ABSOLUTE,
     Base.acos => cuNumeric.ARCCOS,
@@ -44,7 +92,7 @@ global const unary_op_map_no_args = Dict{Union{Function,Symbol},UnaryOpCode}(
     Base.tanh => cuNumeric.TANH,
 )
 
-"""
+@doc"""
 square(arr::NDArray)
 
 Elementwise square of each element in `arr`. 

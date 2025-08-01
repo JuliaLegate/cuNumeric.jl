@@ -1,3 +1,34 @@
+@doc"""
+Supported Binary Operations
+===========================
+
+The following binary operations are supported and can be applied elementwise to pairs of `NDArray` values:
+
+  • `+`        — Addition  
+  • `-`        — Subtraction  
+  • `*`        — Multiplication (elementwise)  
+  • `/`        — Division (elementwise)  
+  • `^`        — Floating-point power (elementwise)  
+  • `div`      — Floor division  
+  • `atan`     — Two-argument arctangent (`atan(y, x)`)  
+  • `hypot`    — Hypotenuse (`hypot(x, y)`)
+
+These operations are broadcast-compatible and follow Julia's standard operator overloading behavior.
+
+Examples
+--------
+
+```julia
+A = NDArray(randn(Float64, 4))
+B = NDArray(randn(Float64, 4))
+
+A + B
+A / B
+hypot.(A, B)
+div.(A, B)
+A .^ 2
+```
+"""
 global const binary_op_map = Dict{Function,BinaryOpCode}(
     Base.:+ => cuNumeric.ADD,
     Base.atan => cuNumeric.ARCTAN2,
