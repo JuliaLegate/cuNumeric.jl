@@ -197,7 +197,7 @@ function slice(start::Union{Nothing,Integer}, stop::Union{Nothing,Integer})
     )
 end
 
-@doc@doc"""
+@doc"""
     slice_array(slices::Vararg{Tuple{Union{Int,Nothing},Union{Int,Nothing}},N}) where {N}
 
 **Internal API**
