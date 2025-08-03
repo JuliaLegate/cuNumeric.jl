@@ -7,6 +7,7 @@ FROM nvidia/cuda:${CUDA_VERSION}.0-devel-ubuntu${UBUNTU_VERSION}
 # once we are fully dependent on jlls, we can do the following
 ARG JULIA_VERSION=1.10
 # FROM julia:${JULIA_VERSION}
+
 ARG REF=main
 ENV REF=${REF}
 # using bash
@@ -40,12 +41,12 @@ LABEL org.opencontainers.image.authors="David Krasowska <krasow@u.northwestern.e
       org.opencontainers.image.licenses="MIT"
 
 
-# system-wide packages
-RUN apt-get update && apt-get install -y \
-    wget curl git clang libhwloc15 build-essential vim \
-    libssl-dev software-properties-common \
-    ca-certificates python3-pip libhwloc-dev && \
-    rm -rf /var/lib/apt/lists/*
+# # system-wide packages
+# RUN apt-get update && apt-get install -y \
+#     wget curl git clang libhwloc15 build-essential vim \
+#     libssl-dev software-properties-common \
+#     ca-certificates python3-pip libhwloc-dev && \
+#     rm -rf /var/lib/apt/lists/*
 
 # We need CMake to install cuPyNumeric and the cuNumeric.jl wrapper
 # In future releases, we hope to have the jlls available. 
@@ -67,85 +68,17 @@ RUN echo "export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/cuda-${CUDA_VERSION}/
 RUN chmod +x /etc/profile.d/custom_ld_library_path.sh
 RUN cat /etc/profile.d/custom_ld_library_path.sh
 
-
-# pre-install the CUDA toolkit from an artifact. we do this separately from CUDA.jl so that
-# this layer can be cached independently. it also avoids double precompilation of CUDA.jl in
-# order to call `CUDA.set_runtime_version!`.
-RUN julia -e '#= make bundled depot non-writable (JuliaLang/Pkg.jl#4120) =# \
-              bundled_depot = last(DEPOT_PATH); \
-              run(`find $bundled_depot/compiled -type f -writable -exec chmod -w \{\} \;`); \
-              #= configure the preference =# \
-              env = "/usr/local/share/julia/environments/v$(VERSION.major).$(VERSION.minor)"; \
-              mkpath(env); \
-              write("$env/LocalPreferences.toml", \
-                    "[CUDA_Runtime_jll]\nversion = \"'${CUDA_VERSION}'\""); \
-              \
-              #= install the JLL =# \
-              using Pkg; \
-              Pkg.add("CUDA_Runtime_jll"); \
-              #= revert bundled depot changes =# \
-              run(`find $bundled_depot/compiled -type f -writable -exec chmod +w \{\} \;`)' && \
-    #= demote the JLL to an [extras] dep =# \
-    find /usr/local/share/julia/environments -name Project.toml -exec sed -i 's/deps/extras/' {} + && \
-    #= remove nondeterminisms =# \
-    cd /usr/local/share/julia && \
-    rm -rf compiled registries scratchspaces logs && \
-    find -exec touch -h -d "@0" {} + && \
-    touch -h -d "@0" /usr/local/share
-
 # install CUDA.jl itself
-RUN julia -e 'using Pkg; pkg"add '${PACKAGE_SPEC_CUDA}'"; \
-              using CUDA; CUDA.precompile_runtime()'
-
-# currently, Legate.jl and cuNumeric.jl will fail if the following ENVs are not specified 
-# OR if the jll isn't available
-# JULIA_NCCL_PATH 
-# JULIA_CUTENSOR_PATH
-# JULIA_CUDA_PATH
-
-# the reason we do the above is to make the jlls for CUTENSOR, NCCL, Legate, cuPyNumeric available
-# we need is_available() on the jlls to return a success so we can properly determine the
-# proper .so file. This requires selecting the CUDA version upfront so this container only 
-# supports the version listed in CUDA_VERSION
-
-# TODO [BUG]: Legate.jl throw an error when trying to get the NCCL_jll.artifact_dir, CUTENSOR_jll.artifcat_dir and legate_jll.artifact_dir. 
-#       We shouldn't have to do this. This is very hacky. I'm not sure why yet.
-RUN julia -e 'using Pkg; Pkg.add("NCCL_jll")'
-RUN julia -e 'using NCCL_jll; println(joinpath(NCCL_jll.artifact_dir, "lib"))' > /usr/local/NCCL_PATH.txt
-RUN JULIA_NCCL_PATH=$(cat /usr/local/NCCL_PATH.txt) && \
-    echo "export JULIA_NCCL_PATH=$JULIA_NCCL_PATH" >> /etc/.env
-
-RUN julia -e 'using Pkg; Pkg.add("CUTENSOR_jll")'
-RUN julia -e 'using CUTENSOR_jll; println(joinpath(CUTENSOR_jll.artifact_dir, "lib"))' > /usr/local/CUTENSOR_PATH.txt
-RUN JULIA_CUTENSOR_PATH=$(cat /usr/local/CUTENSOR_PATH.txt) && \
-    echo "export JULIA_CUTENSOR_PATH=$JULIA_CUTENSOR_PATH" >> /etc/.env
-
-RUN julia -e 'using Pkg; Pkg.add("legate_jll");'
-RUN julia -e 'using Pkg; Pkg.add("cupynumeric_jll");'
-RUN julia -e 'using Pkg; Pkg.add("CUDA_Driver_jll");'
-RUN julia -e 'using Pkg; Pkg.add("Libdl");'
-
-RUN julia -e 'using Libdl; using CUDA_Driver_jll; \
-              Libdl.dlopen(joinpath(CUDA_Driver_jll.artifact_dir, "lib", "libcuda.so"), Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW); \
-              using legate_jll; \
-              println(joinpath(legate_jll.artifact_dir))' > /usr/local/LEGATE_PATH.txt
-
-ENV LEGATE_CUSTOM_INSTALL=1
-RUN LEGATE_CUSTOM_INSTALL_LOCATION=$(cat /usr/local/LEGATE_PATH.txt) && \
-    echo "export LEGATE_CUSTOM_INSTALL_LOCATION=$LEGATE_CUSTOM_INSTALL_LOCATION" >> /etc/.env
-
-RUN julia -e 'using Libdl; using CUDA_Driver_jll; \
-              Libdl.dlopen(joinpath(CUDA_Driver_jll.artifact_dir, "lib", "libcuda.so"), Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW); \
-              using cupynumeric_jll; \
-              println(joinpath(cupynumeric_jll.artifact_dir))' > /usr/local/CUPYNUMERIC_PATH.txt
-
-ENV CUNUMERIC_CUSTOM_INSTALL=1
-RUN CUNUMERIC_CUSTOM_INSTALL_LOCATION=$(cat /usr/local/CUPYNUMERIC_PATH.txt) && \
-    echo "export CUNUMERIC_CUSTOM_INSTALL_LOCATION=$CUNUMERIC_CUSTOM_INSTALL_LOCATION" >> /etc/.env
-
+RUN julia --color=yes -e '
+              using Pkg
+              Pkg.add("CUDA")
+              using CUDA
+              CUDA.set_runtime_version!(v"${CUDA_VERSION}")
+          '
+          
 RUN echo "Install Legate and cuNumeric.jl"
 # Install Legate.jl and cuNumeric.jl
-RUN source /etc/.env && julia -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")'
+RUN source /etc/.env && julia -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test")'
 RUN source /etc/.env && julia -e "using Pkg; Pkg.add(url = \"https://github.com/JuliaLegate/cuNumeric.jl\", rev = \"$REF\")"
 RUN source /etc/.env && julia -e 'using Pkg; Pkg.resolve()'
 
