@@ -84,16 +84,20 @@ if !JULIA_LEGATE_BUILDING_DOCS
     include("capi.jl") # c-array interface prior to ndarray
     include("util.jl")
     include("cuda.jl")
+    include("unary.jl")
+    include("binary.jl")
 else
     @info "JULIA_LEGATE_BUILDING_DOCS is set to 1."
     libnda = "libcunumeric_c_wrapper.so"
     libpath = "libcunumeric_jl_wrapper.so"
+    mutable struct NDArray
+        ptr::Cvoid
+        nbytes::Int64
+    end
 end
 
 # these have doc strings in them
 include("ndarray.jl")
-include("unary.jl")
-include("binary.jl")
 
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147
 mutable struct ArgcArgv
