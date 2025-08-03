@@ -49,11 +49,9 @@ jobs:
           julia --color=yes --project=docs -e '
               using Pkg
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test"))
-          '
-          julia --color=yes --project=docs -e '
-              using Pkg
               Pkg.develop(path = joinpath(homedir(), ".julia", "dev", "cuNumeric"))
           '
+          
           julia --color=yes --project=docs -e '
             using Pkg; Pkg.build();
           '
