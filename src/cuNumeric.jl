@@ -78,19 +78,20 @@ if !JULIA_LEGATE_BUILDING_DOCS
 
     preload_libs() # for precompilation
     @wrapmodule(() -> libpath)
+    include("version.jl") # version_config_setup
+    include("memory.jl") # memory gc before c-array 
+    include("capi.jl") # c-array interface prior to ndarray
+    include("util.jl")
+    include("cuda.jl")
 else
     @info "JULIA_LEGATE_BUILDING_DOCS is set to 1."
 end
 
-include("version.jl") # version_config_setup
-
-include("memory.jl") # memory gc before c-array 
-include("capi.jl") # c-array interface prior to ndarray
-include("util.jl")
+# these have doc strings in them
 include("ndarray.jl")
 include("unary.jl")
 include("binary.jl")
-include("cuda.jl")
+
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147
 mutable struct ArgcArgv
     argv
