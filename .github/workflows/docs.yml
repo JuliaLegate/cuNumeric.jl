@@ -36,6 +36,7 @@ jobs:
       - name: Build Legate.jl and cuNumeric.jl
         env:
           JULIA_LEGATE_BUILDING_DOCS: "true"
+          LEGATE_AUTO_CONFIG: 0
         run: |
           julia --color=yes --project=docs -e '
               using Pkg
