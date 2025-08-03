@@ -50,7 +50,7 @@ jobs:
                                     print(joinpath(CUDA_Driver_jll.artifact_dir, "lib"))' \
                                   ):$LD_LIBRARY_PATH"
 
-          export LD_LIBRARY_PATH="$(julia -e 'print(joinpath(Sys.BINDIR, "..", "lib", "libjulia.so"))'):$LD_LIBRARY_PATH"
+          export LD_LIBRARY_PATH="$(julia -e 'print(joinpath(Sys.BINDIR, "..", "lib"))'):$LD_LIBRARY_PATH"
 
           git clone --depth=1 --branch=documentation https://github.com/JuliaLegate/cuNumeric.jl ~/.julia/dev/cuNumeric
 
