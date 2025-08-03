@@ -47,7 +47,6 @@ jobs:
               Pkg.add("CUDA")
               using CUDA
               CUDA.set_runtime_version!(v"12.4")
-              CUDA.precompile_runtime()
           '
 
           git clone --depth=1 --branch=documentation https://github.com/JuliaLegate/cuNumeric.jl ~/.julia/dev/cuNumeric
