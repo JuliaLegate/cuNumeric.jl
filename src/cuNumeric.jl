@@ -19,13 +19,13 @@
 
 module cuNumeric
 
-using OpenSSL_jll
-
-using CUDA
 using Legate
-using CxxWrap
-using Pkg
+
+using OpenSSL_jll
 using Libdl
+using CxxWrap
+
+using Pkg
 using TOML
 
 using LinearAlgebra
@@ -55,8 +55,6 @@ function preload_libs()
         Libdl.dlopen(lib, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
     end
 end
-
-const JULIA_LEGATE_BUILDING_DOCS = get(ENV, "JULIA_LEGATE_BUILDING_DOCS", "false") == "true"
 
 deps_path = joinpath(@__DIR__, "../deps/deps.jl")
 
@@ -127,12 +125,10 @@ end
 
 # Runtime initilization
 function __init__()
-    if !JULIA_LEGATE_BUILDING_DOCS
-        preload_libs()
-        @initcxx
-        AA = ArgcArgv([Base.julia_cmd()[1]])
-        global cuNumeric_config_str = version_config_setup()
-        cunumeric_setup(AA)
-    end
+    preload_libs()
+    @initcxx
+    AA = ArgcArgv([Base.julia_cmd()[1]])
+    global cuNumeric_config_str = version_config_setup()
+    cunumeric_setup(AA)
 end
 end
