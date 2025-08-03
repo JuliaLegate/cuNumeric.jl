@@ -43,8 +43,9 @@ jobs:
               Pkg.add("CUDA")
               using CUDA
               CUDA.set_runtime_version!(v"12.4")
-              CUDA.precompile_runtime()
           '
+          export LD_LIBRARY_PATH="$(julia -e 'using Pkg; Pkg.add("CUDA_Runtime_jll"); using CUDA_Runtime_jll; print(joinpath(CUDA_Runtime_jll.artifact_dir, "lib"))'):$LD_LIBRARY_PATH"
+          
           git clone --depth=1 --branch=documentation https://github.com/JuliaLegate/cuNumeric.jl ~/.julia/dev/cuNumeric
 
           julia --color=yes --project=docs -e '
