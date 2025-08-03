@@ -69,11 +69,11 @@ RUN chmod +x /etc/profile.d/custom_ld_library_path.sh
 RUN cat /etc/profile.d/custom_ld_library_path.sh
 
 # install CUDA.jl itself
-RUN julia --color=yes -e '
-              using Pkg
-              Pkg.add("CUDA")
-              using CUDA
-              CUDA.set_runtime_version!(v"${CUDA_VERSION}")
+RUN julia --color=yes -e ' \
+              using Pkg \
+              Pkg.add("CUDA") \
+              using CUDA \
+              CUDA.set_runtime_version!(v"${CUDA_VERSION}") \
           '
           
 RUN echo "Install Legate and cuNumeric.jl"
