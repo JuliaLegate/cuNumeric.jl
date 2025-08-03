@@ -71,10 +71,17 @@ else
     const CUNUMERIC_WRAPPER_LIB = joinpath(cunumeric_jl_wrapper_jll.artifact_dir, "lib")
 end
 
-preload_libs() # for precompilation
+const JULIA_LEGATE_BUILDING_DOCS = get(ENV, "JULIA_LEGATE_BUILDING_DOCS", "false") == "true"
+
 libnda = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_c_wrapper.so")
 libpath = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_jl_wrapper.so")
-@wrapmodule(() -> libpath)
+
+if !JULIA_LEGATE_BUILDING_DOCS
+    preload_libs() # for precompilation
+    @wrapmodule(() -> libpath)
+else
+    @info "JULIA_LEGATE_BUILDING_DOCS is set to 1."
+end
 
 include("version.jl") # version_config_setup
 
@@ -85,7 +92,6 @@ include("ndarray.jl")
 include("unary.jl")
 include("binary.jl")
 include("cuda.jl")
-
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147
 mutable struct ArgcArgv
     argv
@@ -101,13 +107,12 @@ end
 getargv(a::ArgcArgv) = Base.unsafe_convert(CxxPtr{CxxPtr{CxxChar}}, a.argv)
 
 function my_on_exit()
-    @info "Cleaning Up cuNuermic"
+    # @info "Cleaning Up cuNuermic"
 end
 
 global cuNumeric_config_str::String = ""
 
 function cunumeric_setup(AA::ArgcArgv)
-    @info "Started cuNuermic"
     Base.atexit(my_on_exit)
 
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
@@ -127,10 +132,12 @@ end
 
 # Runtime initilization
 function __init__()
-    preload_libs()
-    @initcxx
-    AA = ArgcArgv([Base.julia_cmd()[1]])
-    global cuNumeric_config_str = version_config_setup()
-    cunumeric_setup(AA)
+    if !JULIA_LEGATE_BUILDING_DOCS
+        preload_libs()
+        @initcxx
+        AA = ArgcArgv([Base.julia_cmd()[1]])
+        global cuNumeric_config_str = version_config_setup()
+        cunumeric_setup(AA)
+    end
 end
 end

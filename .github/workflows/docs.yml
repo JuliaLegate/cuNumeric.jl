@@ -33,45 +33,16 @@ jobs:
         with:
           version: '1'
       - uses: julia-actions/cache@v2
-      - name: Add JLL dependencies
-        run: |
-          julia -e 'using Pkg; Pkg.add(["NCCL_jll", "CUTENSOR_jll", "legate_jll", "CUDA_Driver_jll", "Libdl"])'
-
-      - name: Export JULIA_NCCL_PATH
-        run: |
-          NCCL_PATH=$(julia -e 'using NCCL_jll; print(joinpath(NCCL_jll.artifact_dir, "lib"))')
-          echo "JULIA_NCCL_PATH=$NCCL_PATH" >> $GITHUB_ENV
-
-      - name: Export JULIA_CUTENSOR_PATH
-        run: |
-          CUTENSOR_PATH=$(julia -e 'using CUTENSOR_jll; print(joinpath(CUTENSOR_jll.artifact_dir, "lib"))')
-          echo "JULIA_CUTENSOR_PATH=$CUTENSOR_PATH" >> $GITHUB_ENV
-
-      - name: Load libcuda + export LEGATE_CUSTOM_INSTALL_LOCATION
-        run: |
-          LEGATE_PATH=$(julia -e '
-            using Libdl, CUDA_Driver_jll, legate_jll
-            Libdl.dlopen(joinpath(CUDA_Driver_jll.artifact_dir, "lib", "libcuda.so"), Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
-            print(joinpath(legate_jll.artifact_dir))
-          ')
-          echo "LEGATE_CUSTOM_INSTALL=1" >> $GITHUB_ENV
-          echo "LEGATE_CUSTOM_INSTALL_LOCATION=$LEGATE_PATH" >> $GITHUB_ENV
-
-      - name: Show Environment
-        run: |
-          echo "NCCL: $JULIA_NCCL_PATH"
-          echo "CUTENSOR: $JULIA_CUTENSOR_PATH"
-          echo "LEGATE: $LEGATE_CUSTOM_INSTALL_LOCATION"
-
       - name: Build Legate.jl and cuNumeric.jl
+        env:
+          JULIA_LEGATE_BUILDING_DOCS: "true"
         run: |
           julia --color=yes --project=docs -e '
-            using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")
+            using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test")
           '
           julia --color=yes --project=docs -e '
             using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "documentation")
-          ' || true # this will fail to precompile
-          
+          ' 
           julia --color=yes --project=docs -e '
             using Pkg; Pkg.build();
           '
