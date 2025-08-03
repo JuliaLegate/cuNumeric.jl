@@ -7,7 +7,8 @@ global const binary_op_map = Dict{Function,BinaryOpCode}(
     # Base.copysign => cuNumeric.COPYSIGN, #* ANNOYING TO TEST 
     Base.:/ => cuNumeric.DIVIDE,
     # Base.:(==) => cuNumeric.EQUAL,  #* DONT REALLY WANT ELEMENTWISE ==, RATHER HAVE REDUCTION
-    Base.:^ => cuNumeric.FLOAT_POWER, # diff from POWER?
+    # Base.:^ => cuNumeric.FLOAT_POWER, # DONT THINK THIS IS WHAT WE WANT
+    Base.:^ => cuNumeric.POWER,
     Base.div => cuNumeric.FLOOR_DIVIDE,
     #missing => cuNumeric.fmod, #same as mod in Julia?
     # Base.gcd => cuNumeric.GCD, #* ANNOYING TO TEST (need ints)
@@ -30,21 +31,43 @@ global const binary_op_map = Dict{Function,BinaryOpCode}(
     Base.:* => cuNumeric.MULTIPLY, #elementwise product? == .* in Julia
     #missing => cuNumeric.NEXTAFTER,
     # Base.:(!=) => cuNumeric.NOT_EQUAL, #* DONT REALLY WANT ELEMENTWISE !=, RATHER HAVE REDUCTION
-    #Base.:^ => cuNumeric.POWER,
     # Base.:(>>) => cuNumeric.RIGHT_SHIFT, #* ANNOYING TO TEST (no == for bools)
     Base.:(-) => cuNumeric.SUBTRACT)
+
+
+maybe_promote_arr(arr::NDArray{T}, ::Type{T}) = arr
+maybe_promote_arr(arr::NDArray{T}, ::Type{S}) where S = as_type(arr, S)
 
 #* THIS SORT OF BREAKS WHAT A JULIA USER MIGHT EXPECT
 #* WILL AUTOMATICALLY BROADCAST OVER ARRAY INSTEAD OF REQUIRING `.()` call sytax
 #* NEED TO IMPLEMENT BROADCASTING INTERFACE
 # Generate code for all binary operations.
 for (base_func, op_code) in binary_op_map
+    # Definitions and type promotion rules
     @eval begin
-        function $(Symbol(base_func))(rhs1::NDArray, rhs2::NDArray)
-            #* what happens if rhs1 and rhs2 have different types but are compatible?
-            out = cuNumeric.zeros(cuNumeric.eltype(rhs1), Base.size(rhs1)) # not sure this is ok for performance
+        
+        function $(Symbol(base_func))(rhs1::NDArray{T}, rhs2::NDArray{T}) where T
+            @inline 
+            out = cuNumeric.zeros(T, Base.size(rhs1)) #! not sure this is ok for performance
             return nda_binary_op(out, $(op_code), rhs1, rhs2)
         end
+
+        function $(Symbol(base_func))(arr::NDArray{T}, c::T) where T
+            return $(Symbol(base_func))(T(c), maybe_promote_arr(arr, T))
+        end
+
+        function $(Symbol(base_func))(c::A, arr::NDArray{B}) where {A <: Number, B <: Number}
+            @inline
+            T = __my_promote_type(A, B)
+            return $(Symbol(base_func))(T(c), maybe_promote_arr(arr, T))
+        end
+
+        function $(Symbol(base_func))(arr::NDArray{B}, c::A) where {A <: Number, B <: Number}
+            @inline
+            T = __my_promote_type(A, B)
+            return $(Symbol(base_func))(T(c), maybe_promote_arr(arr, T))
+        end
+
     end
 end
 
@@ -58,3 +81,12 @@ end
 # function Base.map!(f::Function, dest::NDArray, arr1::NDArray, arr2::NDArray)
 #     return f
 # end
+
+smaller_type(::A, ::B) where {A,B} = ifelse(sizeof(A) < sizeof(B), A, B)
+
+function __my_promote_type(x::Type, y::Type)
+    S = smaller_type(x, y)
+    T = promote_type(x, y)
+    S != T || error("Detected promotion from $S to larger type, $T")
+    return T
+end

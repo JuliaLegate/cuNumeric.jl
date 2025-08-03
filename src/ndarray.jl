@@ -394,7 +394,7 @@ function Base.:/(arr::NDArray, val::Union{Float32,Float64,Int64,Int32})
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(/), arr::NDArray, val::Union{Float32,Float64,Int64,Int32}
+    ::typeof(/), arr::NDArray{T}, val::Union{Float32,Float64,Int64,Int32}
 )
     return nda_multiply_scalar(arr, Float64(1 / val))
 end

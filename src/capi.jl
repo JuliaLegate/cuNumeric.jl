@@ -189,7 +189,7 @@ function nda_add(rhs1::NDArray, rhs2::NDArray, out::NDArray)
     return out
 end
 
-function nda_multiply_scalar(rhs1::NDArray, value::T) where {T}
+function nda_multiply_scalar(rhs1::NDArray{T}, value::T) where {T}
     # type = Legate.to_legate_type(T)
     # val = Ref(value)
 
@@ -205,7 +205,7 @@ function nda_multiply_scalar(rhs1::NDArray, value::T) where {T}
     return NDArray(ptr)
 end
 
-function nda_add_scalar(rhs1::NDArray, value::T) where {T}
+function nda_add_scalar(rhs1::NDArray{T}, value::T) where {T}
     # type = Legate.to_legate_type(T)
     # val = Ref(value)
 
