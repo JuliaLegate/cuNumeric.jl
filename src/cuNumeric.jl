@@ -94,6 +94,7 @@ else
         ptr::Cvoid
         nbytes::Int64
     end
+    include("memory.jl")
 end
 
 # these have doc strings in them

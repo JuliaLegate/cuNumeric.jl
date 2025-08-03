@@ -121,6 +121,7 @@ RUN JULIA_CUTENSOR_PATH=$(cat /usr/local/CUTENSOR_PATH.txt) && \
     echo "export JULIA_CUTENSOR_PATH=$JULIA_CUTENSOR_PATH" >> /etc/.env
 
 RUN julia -e 'using Pkg; Pkg.add("legate_jll");'
+RUN julia -e 'using Pkg; Pkg.add("cupynumeric_jll");'
 RUN julia -e 'using Pkg; Pkg.add("CUDA_Driver_jll");'
 RUN julia -e 'using Pkg; Pkg.add("Libdl");'
 

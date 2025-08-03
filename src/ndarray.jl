@@ -81,6 +81,7 @@ A new `NDArray` with the same shape as `arr` but with elements of type `T`.
 ```@repl
 arr = cuNumeric.rand(4, 5);
 as_type(arr, Float32)
+```
 """
 as_type(arr::NDArray, t::Type{T}) where {T} = nda_astype(arr, t)
 
@@ -244,6 +245,7 @@ A[1, 2]
 A[1:2, 2:3] = cuNumeric.ones(2, 2);
 A[:, 1] = 5.0;
 Array(A)
+```
  """
 ##### REGULAR ARRAY INDEXING ####
 function Base.getindex(arr::NDArray, idxs::Vararg{Int,N}) where {N}
@@ -375,6 +377,7 @@ Create an `NDArray` filled with the scalar value `val`, with the shape specified
 ```@repl
 cuNumeric.full((2, 3), 7.5)
 cuNumeric.full(4, 0)
+```
 """
 function full(dims::Dims{N}, val::T) where {T,N}
     shape = UInt64.(collect(dims))
@@ -487,6 +490,7 @@ Return a new `NDArray` reshaped to the specified dimensions.
 arr = cuNumeric.ones(4, 3)
 reshape(arr, (3, 4))
 reshape(arr, 12)
+```
 """
 
 function reshape(arr::NDArray, i::Dims{N}; copy::Bool=false) where {N}
@@ -510,11 +514,7 @@ returning a new `NDArray`.
 Broadcasting is supported to enable element-wise addition between `NDArray` and scalars or between two NDArrays.
 
 # Examples
-```@setup add
-lhs = cuNumeric.ones(4, 4)
-rhs = cuNumeric.ones(4, 4)
-```
-```@repl add
+```@repl
 lhs + 3
 3 + rhs
 lhs + rhs
@@ -558,11 +558,7 @@ Perform subtraction involving an `NDArray` and a scalar or between two NDArrays.
 Broadcasting is also supported for these operations.
 
 # Examples
-```@setup subtract
-lhs = cuNumeric.ones(4, 4)
-rhs = cuNumeric.ones(4, 4)
-```
-```@repl subtract
+```@repl
 lhs - 3
 3 - rhs
 lhs - rhs
@@ -606,11 +602,7 @@ Multiply an `NDArray` by a scalar or perform element-wise multiplication between
 - Broadcasting works seamlessly with scalars and NDArrays.
 
 # Examples
-```@setup mul
-lhs = cuNumeric.ones(4, 4)
-rhs = cuNumeric.ones(4, 4)
-```
-```@repl mul
+```@repl
 lhs * 3
 2 * rhs
 lhs - rhs
@@ -692,6 +684,7 @@ A = cuNumeric.rand(2, 2)
 B = cuNumeric.ones(2, 2)
 C = A ./ B
 typeof(C)
+```
 """
 function Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray, rhs::NDArray)
     return /(lhs, rhs)
@@ -714,7 +707,6 @@ a = cuNumeric.ones(2, 2)
 b = cuNumeric.ones(2, 2)
 out = similar(a)
 add!(out, a, b)
-out
 ```
 """
 function add!(out::NDArray, arr1::NDArray, arr2::NDArray)
@@ -734,7 +726,6 @@ a = cuNumeric.ones(2, 2)
 b = cuNumeric.ones(2, 2)
 out = similar(a)
 multiply!(out, a, b)
-out
 ```
 """
 function multiply!(out::NDArray, arr1::NDArray, arr2::NDArray)
@@ -754,7 +745,6 @@ a = cuNumeric.ones(2, 3)
 b = cuNumeric.ones(3, 2)
 out = cuNumeric.zeros(2, 2)
 LinearAlgebra.mul!(out, a, b)
-out
 ```
 """
 function LinearAlgebra.mul!(out::NDArray, arr1::NDArray, arr2::NDArray)

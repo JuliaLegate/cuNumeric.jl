@@ -10,7 +10,7 @@ Depth = 2:2
 
 ```@autodocs
 Modules = [cuNumeric]
-Pages = ["cuNumeric.jl", "ndarray.jl", "unary.jl", "binary.jl"]
+Pages = ["cuNumeric.jl", "memory.jl", "ndarray.jl", "unary.jl", "binary.jl"]
 ```
 
 ## Initializing NDArrays
@@ -21,24 +21,6 @@ The CuPyNumeric C++ API only supports generating Float64 random numbers. The exa
 arr_fp64 = rand(NDArray, 100)
 arr_fp32 = cuNumeric.as_type(arr_fp64, LegateType(Float32))
 ```
-
-#### Methods to intiailize NDArrays
-
-- `cuNumeric.zeros`
-- `cuNumeric.full`
-- `Random.rand!`
-- `Random.rand`
-
-
-## Slicing NDArrays
-TODO
-
-## Linear Algebra Operations
-
-Matrix multiplicaiton is only implemented through `mul!`. Calling the `*` operator on a pair of 2D NDArrays will perform elementwise multiplication.
-
-#### Implemented Linear Algebra Operations
-- `LinearAlgebra.mul!`
 
 ## Unary Operations
 
@@ -112,11 +94,3 @@ res2 = map(*, arr1, arr2)
 - `Base.hypot`
 - `Base.:(*)`
 - `Base.(-)`
-
-
-## Timing cuNumeric.jl Code
-
-These timers will block until all prior Legate operations are complete.
-
-- `get_time_microseconds`
-- `get_time_nanoseconds`
