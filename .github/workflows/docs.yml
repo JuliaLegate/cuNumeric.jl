@@ -38,10 +38,10 @@ jobs:
           JULIA_LEGATE_BUILDING_DOCS: "true"
         run: |
           echo '[CUDA_Runtime_jll]
-                version = "12.4"' > ./docs/LocalPreferences.toml
+          version = "12.4"' > ./docs/LocalPreferences.toml
           
           cat ./docs/LocalPreferences.toml
-          
+
           git clone --depth=1 --branch=documentation https://github.com/JuliaLegate/cuNumeric.jl ~/.julia/dev/cuNumeric
 
           julia --color=yes --project=docs -e '
