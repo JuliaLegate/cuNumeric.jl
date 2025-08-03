@@ -50,7 +50,6 @@ function preload_libs()
         joinpath(CUTENSOR_LIB, "libcutensor.so"),
         joinpath(TBLIS_LIB, "libtblis.so"),
         joinpath(CUPYNUMERIC_LIB, "libcupynumeric.so"),
-        joinpath(Sys.BINDIR, "..", "lib", "libjulia.so"), # needed for cxxwrapper
     ]
     for lib in libs
         Libdl.dlopen(lib, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
