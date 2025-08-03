@@ -27,7 +27,7 @@ function to_cpp_index(idx::Dims{N}, int_type::Type=UInt64) where {N}
 end
 to_cpp_index(d::Int64, int_type::Type=UInt64) = StdVector(int_type.([d - 1]))
 
-Base.eltype(arr::NDArray) = Legate.code_type_map[nda_array_type_code(arr)]
+Base.eltype(arr::NDArray{T}) where {T} = T
 LegateType(T::Type) = Legate.to_legate_type(T)
 
 as_type(arr::NDArray, t::Type{T}) where {T} = nda_astype(arr, t)
@@ -35,7 +35,7 @@ as_type(arr::NDArray, t::Type{T}) where {T} = nda_astype(arr, t)
 #### ARRAY/INDEXING INTERFACE ####
 # https://docs.julialang.org/en/v1/manual/interfaces/#Indexing
 dim(arr::NDArray) = Int(cuNumeric.nda_array_dim(arr))
-Base.ndims(arr::NDArray) = Int(cuNumeric.nda_array_dim(arr))
+Base.ndims(::NDArray{T,N}) where {T,N} = N
 Base.size(arr::NDArray) = Tuple(Int.(cuNumeric.nda_array_shape(arr)))
 Base.size(arr::NDArray, dim::Int) = Base.size(arr)[dim]
 
@@ -45,25 +45,22 @@ Base.lastindex(arr::NDArray) = Base.size(arr, 1)
 
 Base.IndexStyle(::NDArray) = IndexCartesian()
 
-function Base.show(io::IO, arr::NDArray)
-    T = eltype(arr)
+function Base.show(io::IO, arr::NDArray{T}) where T
     dim = Base.size(arr)
     print(io, "NDArray of $(T)s, Dim: $(dim)")
 end
 
-function Base.show(io::IO, ::MIME"text/plain", arr::NDArray)
-    T = eltype(arr)
+function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T}) where T
     dim = Base.size(arr)
     print(io, "NDArray of $(T)s, Dim: $(dim)")
 end
 
-function Base.getindex(arr::NDArray, idxs::Vararg{Int,N}) where {N}
-    T = eltype(arr)
+function Base.getindex(arr::NDArray{T}, idxs::Vararg{Int,N}) where {T,N}
     acc = NDArrayAccessor{T,N}()
     return read(acc, arr.ptr, to_cpp_index(idxs))
 end
 
-function Base.setindex!(arr::NDArray, value::T, idxs::Vararg{Int,N}) where {T<:Number,N}
+function Base.setindex!(arr::NDArray{T}, value::T, idxs::Vararg{Int,N}) where {T<:Number,N}
     acc = NDArrayAccessor{T,N}()
     write(acc, arr.ptr, to_cpp_index(idxs), value)
 end
@@ -179,9 +176,8 @@ end
 # USED TO CONVERT NDArray to Julia Array
 # Long term probably be a named function since we allocate
 # whole new array in here. Not exactly what I expect form []
-function Base.getindex(arr::NDArray, c::Vararg{Colon,N}) where {N}
+function Base.getindex(arr::NDArray{T}, c::Vararg{Colon,N}) where {T,N}
     arr_dims = Int.(cuNumeric.nda_array_shape(arr))
-    T = eltype(arr)
     julia_array = Base.zeros(T, arr_dims...)
 
     for CI in CartesianIndices(julia_array)
