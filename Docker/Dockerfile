@@ -61,10 +61,10 @@ ENV JULIA_DEPOT_PATH=/usr/local/share/julia:
 
 ENV PATH="/usr/local/cuda-${CUDA_VERSION}/bin:/usr/local/.juliaup/bin:/usr/local/bin:$PATH"
 # Install Julia packages and extract artifact paths
-RUN echo "export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/cuda-${CUDA_VERSION}/lib64:\$LD_LIBRARY_PATH" > /etc/profile.d/custom_ld_library_path.sh
+RUN echo "export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/cuda-${CUDA_VERSION}/lib64:\$LD_LIBRARY_PATH" > /etc/.env
 
-RUN chmod +x /etc/profile.d/custom_ld_library_path.sh
-RUN cat /etc/profile.d/custom_ld_library_path.sh
+RUN chmod +x /etc/.env
+RUN cat /etc/.env
 
 # install CUDA.jl itself
 RUN julia --color=yes -e ' \
@@ -73,7 +73,6 @@ RUN julia --color=yes -e ' \
               using CUDA \
               CUDA.set_runtime_version!(v"${CUDA_VERSION}") \
           '
-          
 RUN echo "Install Legate and cuNumeric.jl"
 # Install Legate.jl and cuNumeric.jl
 RUN source /etc/.env && julia -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test")'
@@ -118,5 +117,5 @@ RUN apt-get clean && \
 
 ENV LEGATE_AUTO_CONFIG=1 
 
-ENTRYPOINT source /etc/profile.d/custom_ld_library_path.sh && exec /bin/bash
+ENTRYPOINT source /etc/.env && exec /bin/bash
 WORKDIR /workspace

@@ -25,7 +25,7 @@ using cupynumeric_jll
 using Preferences
 using Legate
 
-include(joinpath(@__DIR__, "..", "src", "cunumeric_wrapper.jl"))
+include(joinpath(@__DIR__, "..", "src", "develop", "cunumeric_wrapper.jl"))
 
 const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.05.00"]
 const LATEST_CUPYNUMERIC_VERSION = SUPPORTED_CUPYNUMERIC_VERSIONS[end]
