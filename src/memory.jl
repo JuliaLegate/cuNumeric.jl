@@ -50,11 +50,6 @@ function register_free!(nbytes::Integer)
     return nothing
 end
 
-"""
-    maybe_collect()
-
-Soft: `GC.gc(false)` (non-full); Hard: `GC.gc(true)`
-"""
 function maybe_collect()
     # cur = current_bytes[]
     # pend = pending_bytes[]

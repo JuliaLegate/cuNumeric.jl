@@ -60,42 +60,31 @@ const JULIA_LEGATE_BUILDING_DOCS = get(ENV, "JULIA_LEGATE_BUILDING_DOCS", "false
 
 deps_path = joinpath(@__DIR__, "../deps/deps.jl")
 
-if !JULIA_LEGATE_BUILDING_DOCS
-    if isfile(deps_path)
-        include(deps_path)
-    else
-        using cupynumeric_jll
-        using cunumeric_jl_wrapper_jll
-        using CUTENSOR_jll
-
-        const CUTENSOR_LIB = joinpath(CUTENSOR_jll.artifact_dir, "lib")
-        const TBLIS_LIB = joinpath(cupynumeric_jll.artifact_dir, "lib")
-        const CUPYNUMERIC_LIB = joinpath(cupynumeric_jll.artifact_dir, "lib")
-        const CUNUMERIC_WRAPPER_LIB = joinpath(cunumeric_jl_wrapper_jll.artifact_dir, "lib")
-    end
-
-    libnda = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_c_wrapper.so")
-    libpath = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_jl_wrapper.so")
-
-    preload_libs() # for precompilation
-    @wrapmodule(() -> libpath)
-    include("version.jl") # version_config_setup
-    include("memory.jl") # memory gc before c-array 
-    include("capi.jl") # c-array interface prior to ndarray
-    include("util.jl")
-    include("cuda.jl")
-    include("unary.jl")
-    include("binary.jl")
+if isfile(deps_path)
+    include(deps_path)
 else
-    @info "JULIA_LEGATE_BUILDING_DOCS is set to 1."
-    libnda = "libcunumeric_c_wrapper.so"
-    libpath = "libcunumeric_jl_wrapper.so"
-    mutable struct NDArray
-        ptr::Cvoid
-        nbytes::Int64
-    end
-    include("memory.jl")
+    using cupynumeric_jll
+    using cunumeric_jl_wrapper_jll
+    using CUTENSOR_jll
+
+    const CUTENSOR_LIB = joinpath(CUTENSOR_jll.artifact_dir, "lib")
+    const TBLIS_LIB = joinpath(cupynumeric_jll.artifact_dir, "lib")
+    const CUPYNUMERIC_LIB = joinpath(cupynumeric_jll.artifact_dir, "lib")
+    const CUNUMERIC_WRAPPER_LIB = joinpath(cunumeric_jl_wrapper_jll.artifact_dir, "lib")
 end
+
+libnda = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_c_wrapper.so")
+libpath = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_jl_wrapper.so")
+
+preload_libs() # for precompilation
+@wrapmodule(() -> libpath)
+include("version.jl") # version_config_setup
+include("memory.jl") # memory gc before c-array 
+include("capi.jl") # c-array interface prior to ndarray
+include("util.jl")
+include("cuda.jl")
+include("unary.jl")
+include("binary.jl")
 
 # these have doc strings in them
 include("ndarray.jl")
