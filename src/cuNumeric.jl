@@ -58,8 +58,6 @@ end
 
 const JULIA_LEGATE_BUILDING_DOCS = get(ENV, "JULIA_LEGATE_BUILDING_DOCS", "false") == "true"
 
-libnda = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_c_wrapper.so")
-libpath = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_jl_wrapper.so")
 deps_path = joinpath(@__DIR__, "../deps/deps.jl")
 
 if !JULIA_LEGATE_BUILDING_DOCS
@@ -76,6 +74,9 @@ if !JULIA_LEGATE_BUILDING_DOCS
         const CUNUMERIC_WRAPPER_LIB = joinpath(cunumeric_jl_wrapper_jll.artifact_dir, "lib")
     end
 
+    libnda = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_c_wrapper.so")
+    libpath = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_jl_wrapper.so")
+
     preload_libs() # for precompilation
     @wrapmodule(() -> libpath)
     include("version.jl") # version_config_setup
@@ -85,6 +86,8 @@ if !JULIA_LEGATE_BUILDING_DOCS
     include("cuda.jl")
 else
     @info "JULIA_LEGATE_BUILDING_DOCS is set to 1."
+    libnda = "libcunumeric_c_wrapper.so"
+    libpath = "libcunumeric_jl_wrapper.so"
 end
 
 # these have doc strings in them
