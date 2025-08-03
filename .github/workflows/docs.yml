@@ -42,6 +42,14 @@ jobs:
           
           cat ./docs/LocalPreferences.toml
 
+          julia --color=yes --project=docs -e '
+              using Pkg
+              Pkg.add("CUDA")
+              using CUDA
+              CUDA.set_runtime_version!(v"12.4")
+              CUDA.precompile_runtime()
+          '
+
           git clone --depth=1 --branch=documentation https://github.com/JuliaLegate/cuNumeric.jl ~/.julia/dev/cuNumeric
 
           julia --color=yes --project=docs -e '
