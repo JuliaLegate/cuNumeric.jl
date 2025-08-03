@@ -72,6 +72,12 @@ else
     const CUPYNUMERIC_LIB = joinpath(cupynumeric_jll.artifact_dir, "lib")
     # const CUNUMERIC_WRAPPER_LIB = joinpath(cunumeric_jl_wrapper_jll.artifact_dir, "lib")
     const CUNUMERIC_WRAPPER_LIB = cunumeric_wrapper_jll_local_branch_install()
+    open(joinpath(deps_path), "w") do io
+        println(io, "const CUTENSOR_LIB = \"$(CUTENSOR_LIB)\"")
+        println(io, "const TBLIS_LIB = \"$(TBLIS_LIB)\"")
+        println(io, "const CUPYNUMERIC_LIB = \"$(CUPYNUMERIC_LIB)\"")
+        println(io, "const CUNUMERIC_WRAPPER_LIB = \"$(CUNUMERIC_WRAPPER_LIB)\"")
+    end
 end
 
 libnda = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_c_wrapper.so")
