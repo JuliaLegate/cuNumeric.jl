@@ -42,11 +42,9 @@ LABEL org.opencontainers.image.authors="David Krasowska <krasow@u.northwestern.e
 
 
 # # system-wide packages
-# RUN apt-get update && apt-get install -y \
-#     wget curl git clang libhwloc15 build-essential vim \
-#     libssl-dev software-properties-common \
-#     ca-certificates python3-pip libhwloc-dev && \
-#     rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y \
+    wget curl git build-essential && \
+    rm -rf /var/lib/apt/lists/*
 
 # We need CMake to install cuPyNumeric and the cuNumeric.jl wrapper
 # In future releases, we hope to have the jlls available. 
