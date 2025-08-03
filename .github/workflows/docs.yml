@@ -44,7 +44,7 @@ jobs:
               using CUDA
               CUDA.set_runtime_version!(v"12.4")
           '
-          export LD_LIBRARY_PATH="$(julia -e 'using Pkg; Pkg.add("CUDA_Runtime_jll"); using CUDA_Runtime_jll; print(joinpath(CUDA_Runtime_jll.artifact_dir, "lib"))'):$LD_LIBRARY_PATH"
+          export LD_LIBRARY_PATH="$(julia -e 'using Pkg; Pkg.add("CUDA_Driver_jll"); using CUDA_Driver_jll; print(joinpath(CUDA_Driver_jll.artifact_dir, "lib"))'):$LD_LIBRARY_PATH"
           
           git clone --depth=1 --branch=documentation https://github.com/JuliaLegate/cuNumeric.jl ~/.julia/dev/cuNumeric
 
