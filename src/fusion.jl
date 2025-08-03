@@ -1,7 +1,7 @@
 export @fuse
 
 
-const FUSED_KERNEL_CACHE = Dict{UInt64, FusedKernelData}() # xor(hash(f_name), hash(list of types)) => PTX
+const FUSED_KERNEL_CACHE = Dict{UInt64, FusedKernelData}()
 const FUSE_KWARGS = [:blocks, :threads]
 
 
@@ -15,9 +15,9 @@ end
 #    return CuDeviceArray{T, N, 1}
 # end
 
-function to_cuda_type(T, N)
-   return CuDeviceArray{T, N, 1}
-end
+# function to_cuda_type(T, N)
+#    return CuDeviceArray{T, N, 1}
+# end
 
 # Collects operators and function calls from an expression.
 # E.g. x .+ y .* z will return (.+, .*)
@@ -40,41 +40,44 @@ function collect_ops(expr::Expr)
     return Tuple(ops)
 end
 
-# @generated function maybe_fuse_kernel(
-#                      :: NTuple{NARGS, NDArray{T,DIM}},
-#         rhs_ops      :: NTuple{NOPS, Symbol},
-#         wrapper      :: Function          
-#     ) where {NARGS,T, DIM, NOPS}
+# This version requires all args are the same type
+@generated function maybe_fuse_kernel(
+                     :: NTuple{NARGS, NDArray{T,DIM}},
+        rhs_ops      :: NTuple{NOPS, Symbol},
+        wrapper      :: Function          
+    ) where {NARGS,T, DIM, NOPS}
 
-#     # converted_types is constructed purely from the types of the arguments
-#     # so a generated function will allow us to pre-compute most of this function
-#     # at compile time!
-#     converted_types = ntuple(_ -> CuDeviceArray{T, DIM, 1}, Val(NARGS))
-#     _hash = xor(hash(rhs_ops), hash(converted_types))
+    # converted_types is constructed purely from the types of the arguments
+    # so a generated function will allow us to pre-compute most of this function
+    # at compile time!
+    converted_types = ntuple(_ -> CuDeviceArray{T, DIM, 1}, Val(NARGS))
+    _hash = xor(hash(rhs_ops), hash(converted_types))
     
-#     quote
-#         if !haskey($FUSED_KERNEL_CACHE, $_hash)
-#             println("Compiling kernel to PTX")
-#             local ptx = ptx_as_string(wrapper, $converted_types) #! DO NOT interpolate wrapper
-#             local ptx_f_name = cuNumeric.extract_kernel_name(ptx)
-#             cuNumeric.ptx_task(ptx, ptx_f_name)
-#             $FUSED_KERNEL_CACHE[$_hash] = FusedKernelData(ptx_f_name, $converted_types)
-#         end
-#         $_hash
-#     end
-# end
+    quote
+        if !haskey($FUSED_KERNEL_CACHE, $_hash)
+            println("Compiling kernel to PTX")
+            local ptx = ptx_as_string(wrapper, $converted_types) #! DO NOT interpolate wrapper
+            f = open("/pool/emeitz/ptx2.txt", "w")
+            println(f, ptx)
+            close(f)
+            local ptx_f_name = cuNumeric.extract_kernel_name(ptx)
+            cuNumeric.ptx_task(ptx, ptx_f_name)
+            $FUSED_KERNEL_CACHE[$_hash] = FusedKernelData(ptx_f_name, $converted_types)
+        end
+        $_hash
+    end
+end
 
-
+# This version does not assume args have same types
+# Manually enforces that all args are NDArray
 @generated function maybe_fuse_kernel(rhs_args   :: R,
                                       rhs_ops    :: NTuple{NOPS,Symbol},
                                       wrapper    :: Function) where
                                      {R<:Tuple, NOPS}
 
-    # 1. Inspect the static types of every argument --------------------------
-    arg_types = R.parameters                    # e.g. (NDArray{Float32,2}, NDArray{Int,1}, …)
+    arg_types = R.parameters # e.g. (NDArray{Float32,2}, NDArray{Int,1}, …)
     println("IN HERE")
 
-    # verify the contract early – this happens once per specialisation
     for T in arg_types
         T <: NDArray || throw(ArgumentError("all arguments must be NDArray, got $T"))
     end
@@ -82,24 +85,21 @@ end
     # 2. Build the matching CuDeviceArray type for each element -------------
     conv_type_exprs = Expr[]
     for T in arg_types
-        elty, dim = T.parameters[1:2]           # NDArray{T,D}
-        push!(conv_type_exprs,
-              :(CuDeviceArray{$elty, $dim, 1}))
+        elty, dim = T.parameters[1:2] # the {T, N} in NDArray{T,N}
+        push!(conv_type_exprs, :(CuDeviceArray{$elty, $dim, 1}))
     end
     # an Expr(:tuple, …) is a compile‑time literal of the tuple of types
     converted_types_expr = Expr(:tuple, conv_type_exprs...)
 
-    # 3. Prepare a constant hash for this specialisation --------------------
     const_hash = xor(hash(rhs_ops), hash(arg_types))
 
-    # 4. Return run‑time code that does the once‑only PTX work --------------
     quote
         _hash = $const_hash                    # value is a literal, not recomputed
         if !haskey($FUSED_KERNEL_CACHE, _hash)
             println("Compiling kernel to PTX")
             local ptx        = ptx_as_string(wrapper, $converted_types_expr)
             local ptx_f_name = cuNumeric.extract_kernel_name(ptx)
-            # cuNumeric.ptx_task(ptx, ptx_f_name) #! UNCOMMENT LATER
+            cuNumeric.ptx_task(ptx, ptx_f_name) #! UNCOMMENT LATER
             $FUSED_KERNEL_CACHE[_hash] =
                 FusedKernelData(ptx_f_name, $converted_types_expr)
         end
@@ -142,17 +142,20 @@ macro fuse(ex...)
             quote
 
                 # Create wrapper function that we can fuse
-                $wrapper_name = ($(rhs_symbol_state.references...)) -> $(rhs)
+                function $(wrapper_name)($(rhs_symbol_state.references...))
+                    # println("Wrapper called!")
+                    return $(rhs)
+                end
 
                 $_hash = $maybe_fuse_kernel(($(rhs_symbol_state.references...),), $rhs_ops, $wrapper_name)
 
                 println($FUSED_KERNEL_CACHE[$_hash])
 
-                # $task = $(cuNumeric.CUDATask)($FUSED_KERNEL_CACHE[$_hash])
+                $task = $(cuNumeric.CUDATask)($FUSED_KERNEL_CACHE[$_hash])
                 
-                # $(cuNumeric.launch)(
-                #     $task, ($(rhs_symbol_state.references...),), $lhs, (); $(kwargs...)
-                # )
+                $(cuNumeric.launch)(
+                    $task, ($(rhs_symbol_state.references...),), $lhs, (); $(kwargs...)
+                )
             end)
     else
         throw(ArgumentError("fuse expected assignment operator `=` or `.=`, got $(call.head)"))

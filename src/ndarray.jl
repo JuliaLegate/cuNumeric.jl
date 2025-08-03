@@ -35,7 +35,7 @@ as_type(arr::NDArray, t::Type{T}) where {T} = nda_astype(arr, t)
 #### ARRAY/INDEXING INTERFACE ####
 # https://docs.julialang.org/en/v1/manual/interfaces/#Indexing
 dim(arr::NDArray) = Int(cuNumeric.nda_array_dim(arr))
-Base.ndims(arr::NDArray{T,N}) where {T,N} = N
+Base.ndims(::NDArray{T,N}) where {T,N} = N
 Base.size(arr::NDArray) = Tuple(Int.(cuNumeric.nda_array_shape(arr)))
 Base.size(arr::NDArray, dim::Int) = Base.size(arr)[dim]
 
