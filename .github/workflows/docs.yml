@@ -37,14 +37,15 @@ jobs:
         env:
           JULIA_LEGATE_BUILDING_DOCS: "true"
         run: |
-          julia --color=yes --project=docs -e '
-              using Pkg
-              Pkg.develop(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test"))
-          '
+          git clone --depth=1 --branch=documentation https://github.com/JuliaLegate/cuNumeric.jl ~/.julia/dev/cuNumeric
 
           julia --color=yes --project=docs -e '
               using Pkg
-              Pkg.develop(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "documentation"))
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test"))
+          '
+          julia --color=yes --project=docs -e '
+              using Pkg
+              Pkg.develop(path = joinpath(homedir(), ".julia", "dev", "cuNumeric"))
           '
           julia --color=yes --project=docs -e '
             using Pkg; Pkg.build();
