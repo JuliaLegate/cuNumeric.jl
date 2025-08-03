@@ -5,7 +5,7 @@ makedocs(;
     sitename="cuNumeric.jl",
     authors="Ethan Meitz and David Krasowska",
     format=MarkdownVitepress(;
-        repo=Remotes.repourl("github.com/JuliaLegate/cuNumeric.jl"),
+        repo=Github("JuliaLegate", "cuNumeric.jl"),
         devbranch="main",
         devurl="dev",
     ),
@@ -21,7 +21,7 @@ makedocs(;
 )
 
 DocumenterVitepress.deploydocs(;
-    repo="github.com/JuliaLegate/cuNumeric.jl",
+    repo=Github("JuliaLegate", "cuNumeric.jl"),
     target=joinpath(@__DIR__, "build"),
     branch="gh-pages",
     devbranch="main",

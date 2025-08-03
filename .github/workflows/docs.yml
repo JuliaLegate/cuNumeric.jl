@@ -38,11 +38,14 @@ jobs:
           JULIA_LEGATE_BUILDING_DOCS: "true"
         run: |
           julia --color=yes --project=docs -e '
-            using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test")
+              using Pkg
+              Pkg.develop(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test"))
           '
+
           julia --color=yes --project=docs -e '
-            using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "documentation")
-          ' 
+              using Pkg
+              Pkg.develop(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "documentation"))
+          '
           julia --color=yes --project=docs -e '
             using Pkg; Pkg.build();
           '
