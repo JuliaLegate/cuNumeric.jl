@@ -50,6 +50,7 @@ function preload_libs()
         joinpath(CUTENSOR_LIB, "libcutensor.so"),
         joinpath(TBLIS_LIB, "libtblis.so"),
         joinpath(CUPYNUMERIC_LIB, "libcupynumeric.so"),
+        joinpath(Sys.BINDIR, "..", "lib", "libjulia.so"), # needed for cxxwrapper
     ]
     for lib in libs
         Libdl.dlopen(lib, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
@@ -84,6 +85,7 @@ libnda = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_c_wrapper.so")
 libpath = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_jl_wrapper.so")
 
 preload_libs() # for precompilation
+
 @wrapmodule(() -> libpath)
 include("version.jl") # version_config_setup
 include("memory.jl") # memory gc before c-array 
