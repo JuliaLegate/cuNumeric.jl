@@ -1,8 +1,5 @@
 using Base.Threads: Atomic, atomic_add!, atomic_sub!, atomic_xchg!
 
-lib = "libcwrapper.so"
-libnda = joinpath(@__DIR__, "../", "wrapper", "build", lib)
-
 query_device_memory() = ccall((:nda_query_device_memory, libnda),
     Int64, ())
 

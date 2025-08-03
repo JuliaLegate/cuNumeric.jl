@@ -36,6 +36,15 @@ jobs:
       - name: Instantiate docs environment
         run: |
           julia --color=yes --project=docs -e '
+            using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")
+          '
+          julia --color=yes --project=docs -e '
+            using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "documentation")
+          ' || true # this will fail to precompile
+          julia --color=yes --project=docs -e '
+            using Pkg; Pkg.build();
+          '
+          julia --color=yes --project=docs -e '
             using Pkg
             Pkg.instantiate()'
       - name: Build documentation

@@ -19,6 +19,8 @@
 
 module cuNumeric
 
+using OpenSSL_jll
+
 using CUDA
 using Legate
 using CxxWrap
@@ -47,11 +49,14 @@ function preload_libs()
     libs = [
         joinpath(CUTENSOR_LIB, "libcutensor.so"),
         joinpath(TBLIS_LIB, "libtblis.so"),
+        joinpath(CUPYNUMERIC_LIB, "libcupynumeric.so"),
     ]
     for lib in libs
         Libdl.dlopen(lib, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
     end
 end
+
+deps_path = joinpath(@__DIR__, "../deps/deps.jl")
 
 if isfile(deps_path)
     include(deps_path)
@@ -67,7 +72,9 @@ else
 end
 
 preload_libs() # for precompilation
-@wrapmodule(() -> joinpath(CUNUMERIC_WRAPPER_LIB, "liblegate_jl_wrapper.so"))
+libnda = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_c_wrapper.so")
+libpath = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_jl_wrapper.so")
+@wrapmodule(() -> libpath)
 
 include("version.jl") # version_config_setup
 
