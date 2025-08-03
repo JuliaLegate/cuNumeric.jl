@@ -103,7 +103,7 @@ RUN julia -e 'using Pkg; pkg"add '${PACKAGE_SPEC_CUDA}'"; \
 # JULIA_CUTENSOR_PATH
 # JULIA_CUDA_PATH
 
-# the reason we do the above is to make the jlls for CUTENSOR, NCCL, and Legate available
+# the reason we do the above is to make the jlls for CUTENSOR, NCCL, Legate, cuPyNumeric available
 # we need is_available() on the jlls to return a success so we can properly determine the
 # proper .so file. This requires selecting the CUDA version upfront so this container only 
 # supports the version listed in CUDA_VERSION
@@ -132,6 +132,15 @@ RUN julia -e 'using Libdl; using CUDA_Driver_jll; \
 ENV LEGATE_CUSTOM_INSTALL=1
 RUN LEGATE_CUSTOM_INSTALL_LOCATION=$(cat /usr/local/LEGATE_PATH.txt) && \
     echo "export LEGATE_CUSTOM_INSTALL_LOCATION=$LEGATE_CUSTOM_INSTALL_LOCATION" >> /etc/.env
+
+RUN julia -e 'using Libdl; using CUDA_Driver_jll; \
+              Libdl.dlopen(joinpath(CUDA_Driver_jll.artifact_dir, "lib", "libcuda.so"), Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW); \
+              using cupynumeric_jll; \
+              println(joinpath(cupynumeric_jll.artifact_dir))' > /usr/local/CUPYNUMERIC_PATH.txt
+
+ENV CUNUMERIC_CUSTOM_INSTALL=1
+RUN CUNUMERIC_CUSTOM_INSTALL_LOCATION=$(cat /usr/local/CUPYNUMERIC_PATH.txt) && \
+    echo "export CUNUMERIC_CUSTOM_INSTALL_LOCATION=$CUNUMERIC_CUSTOM_INSTALL_LOCATION" >> /etc/.env
 
 RUN echo "Install Legate and cuNumeric.jl"
 # Install Legate.jl and cuNumeric.jl

@@ -5,7 +5,7 @@ makedocs(;
     sitename="cuNumeric.jl",
     authors="Ethan Meitz and David Krasowska",
     format=MarkdownVitepress(;
-        repo="github.com/JuliaLegate/cuNumeric.jl",
+        repo=Remotes.repourl("github.com/JuliaLegate/cuNumeric.jl"),
         devbranch="main",
         devurl="dev",
     ),
