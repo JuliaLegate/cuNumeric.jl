@@ -33,7 +33,8 @@ ENV JULIA_NUM_THREADS=auto
 
 ARG CUNUMERIC_VERSION=25.05.00
 ARG PACKAGE_SPEC_CUDA=CUDA
-ENV CUDA_VERSION=${CUDA_MAJOR}.${CUDA_MINOR}
+ENV CUDA_VERSION="${CUDA_MAJOR}.${CUDA_MINOR}"
+RUN echo $CUDA_VERSION
 
 LABEL org.opencontainers.image.authors="David Krasowska <krasow@u.northwestern.edu>, Ethan Meitz <emeitz@andrew.cmu.edu>" \
       org.opencontainers.image.description="A cuNumeric.jl container with CUDA ${CUDA_VERSION}, Julia ${JULIA_VERSION}, and cuNumeric ${CUNUMERIC_VERSION}" \
