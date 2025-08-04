@@ -49,7 +49,7 @@ ENV PATH="/usr/local/.juliaup/bin:/usr/local/bin:$PATH"
 RUN julia --color=yes -e 'using Pkg; Pkg.add("CUDA"); using CUDA; CUDA.set_runtime_version!(VersionNumber(ENV["CUDA_VERSION_MAJOR_MINOR"]))'
 
 RUN julia -e 'using Pkg; Pkg.add("CUDA_Driver_jll"); Pkg.add("CUDA_Runtime_jll")'
-RUN echo "export LD_LIBRARY_PATH=\$(julia -e 'using CUDA_Driver_jll; print(joinpath(CUDA_Driver_jll.artifact_dir, \"lib\"))'):\$(julia -e 'using CUDA_Runtime_jll; print(joinpath(CUDA_Runtime_jll.artifact_dir, \"lib\"))'):\$LD_LIBRARY_PATH" >> /etc/.env
+RUN echo "export LD_LIBRARY_PATH=\$(julia -e 'print(Sys.BINDIR * "/../lib")'):\$(julia -e 'using CUDA_Driver_jll; print(joinpath(CUDA_Driver_jll.artifact_dir, \"lib\"))'):\$(julia -e 'using CUDA_Runtime_jll; print(joinpath(CUDA_Runtime_jll.artifact_dir, \"lib\"))'):\$LD_LIBRARY_PATH" >> /etc/.env
 RUN chmod +x /etc/.env
 RUN cat /etc/.env
 

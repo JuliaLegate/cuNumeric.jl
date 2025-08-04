@@ -4,6 +4,7 @@ overheads
 *.prof
 help.sh
 docker.log
+docs/package-lock.json
 
 extracted_cunumeric
 *.tar.gz
