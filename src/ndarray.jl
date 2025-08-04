@@ -152,19 +152,6 @@ Base.lastindex(arr::NDArray) = Base.size(arr, 1)
 
 Base.IndexStyle(::NDArray) = IndexCartesian()
 
-@doc"""
-    Base.show(io::IO, arr::NDArray)
-    Base.show(io::IO, ::MIME"text/plain", arr::NDArray)
-
-Display a summary of the `NDArray` showing its element type and dimensions.
-
-These methods customize how `NDArray` instances appear in the REPL and in text/plain contexts.
-
-# Example
-```@repl
-arr = cuNumeric.ones(NDArray, 2, 3)
-```
-"""
 function Base.show(io::IO, arr::NDArray)
     T = eltype(arr)
     dim = Base.size(arr)
@@ -794,6 +781,12 @@ Check if two NDArrays are equal element-wise.
 Returns `true` if both arrays have the same shape and all corresponding elements are equal.
 Currently supports arrays up to 3 dimensions. For higher dimensions, returns `false` with a warning.
 
+!!! warning
+
+    This function uses scalar indexing and should not be used in production code. This is meant for testing.
+
+
+
 # Examples
 ```@repl
 a = cuNumeric.ones(2, 2)
@@ -832,7 +825,11 @@ Compare an `NDArray` and a Julia `Array` for element-wise equality.
 Returns `true` if both arrays have the same shape and all corresponding elements are equal.
 Returns `false` otherwise (including if sizes differ, with a warning).
 
-The second method simply calls the first with flipped arguments.
+!!! warning
+
+    This function uses scalar indexing and should not be used in production code. This is meant for testing.
+
+
 
 # Examples
 ```@repl
@@ -882,6 +879,11 @@ Returns `true` if the arrays have the same shape and element type (for mixed typ
 and all corresponding elements differ by no more than `max_diff`.
 
 Emits warnings when array sizes or element types differ.
+
+!!! warning
+
+    This function uses scalar indexing and should not be used in production code. This is meant for testing.
+
 
 # Notes
 - This is an internal API used by higher-level approximate equality functions.
@@ -946,6 +948,12 @@ within the given absolute tolerance `atol` and relative tolerance `rtol`.
 
 The second and third methods handle comparisons between `NDArray` and Julia arrays by forwarding to
 a common comparison function.
+
+!!! warning
+
+    This function uses scalar indexing and should not be used in production code. This is meant for testing.
+
+
 
 # Examples
 ```@repl
