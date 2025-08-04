@@ -18,6 +18,7 @@ on:
       - 'scripts/**'
       - 'Dockerfile'
       - 'deps/build.jl'
+      - '.github/workflows/ci.yml'
     tags:
       - 'v*'
     branches:
@@ -29,6 +30,7 @@ on:
       - 'scripts/**'
       - 'Dockerfile'
       - 'deps/build.jl'
+      - '.github/workflows/ci.yml'
 jobs:
   push_to_registry:
     name: Container for ${{ matrix.platform }} - Julia ${{ matrix.julia }} - CUDA ${{ matrix.cuda }}
