@@ -67,8 +67,8 @@ jobs:
         with:
           version: '1.10'
 
-      - name: Install curl (required for install-jq-action)
-        run: apt-get update && apt-get install -y curl
+      - name: Install basic utils
+        run: apt-get update && apt-get install -y wget curl git build-essential
 
       - uses: julia-actions/cache@v2
         with:
