@@ -35,6 +35,8 @@ jobs:
       id-token: write
       actions: write
     runs-on: [self-hosted, linux, x64]
+    container:
+      image: ubuntu:22.04
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
