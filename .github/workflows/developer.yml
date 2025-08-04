@@ -1,6 +1,6 @@
 # Develeper CI test. This will build the workflow using Jlls and building wrappers from SRC
 # This test only occurs if build.jl changes or if this CI script changes.
-name: Conda test
+name: Develeper CI test
 on:
   workflow_dispatch:
     inputs:
