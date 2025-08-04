@@ -67,7 +67,7 @@ RUN chmod +x /etc/.env
 RUN cat /etc/.env
 
 # install CUDA.jl itself
-RUN julia --color=yes -e 'using Pkg; Pkg.add("CUDA"); using CUDA; CUDA.set_runtime_version!(v\"'${CUDA_VERSION}'\")'
+RUN julia --color=yes -e 'using Pkg; Pkg.add(\"CUDA\"); using CUDA; CUDA.set_runtime_version!(v\"$CUDA_VERSION\")'
 RUN echo "Install Legate and cuNumeric.jl"
 # Install Legate.jl and cuNumeric.jl
 RUN source /etc/.env && julia -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test")'
