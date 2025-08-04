@@ -29,10 +29,10 @@ jobs:
   docs:
     name : Conda Test
     permissions:
-      actions: read
       contents: read
-      pull-requests: read
-      statuses: read
+      packages: write
+      attestations: write
+      id-token: write
     runs-on: [self-hosted, linux, x64]
     steps:
       - name: Check out the repo
