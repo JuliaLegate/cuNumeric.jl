@@ -153,7 +153,7 @@ jobs:
                 sleep 0.5
             done
             echo "Running tests in container!"
-            docker exec -i ${{ steps.pkg.outputs.ref }} /workspace/test_container.sh
+            docker exec -i ${{ steps.pkg.outputs.ref }} source /etc/.env && /workspace/test_container.sh
             docker stop ${{ steps.pkg.outputs.ref }}
 
       - name: Push image if tests pass
