@@ -44,8 +44,6 @@ import Base: abs, angle, acos, acosh, asin, asinh, atan, atanh, cbrt,
     prod, sum, read
 
 function preload_libs()
-    cache_build_meta = joinpath(@__DIR__, "../", "deps", "deps.jl")
-    include(cache_build_meta)
     libs = [
         joinpath(CUTENSOR_LIB, "libcutensor.so"),
         joinpath(TBLIS_LIB, "libtblis.so"),
@@ -136,8 +134,12 @@ end
 
 # Runtime initilization
 function __init__()
+    cache_build_meta = joinpath(@__DIR__, "../", "deps", "deps.jl")
+    include(cache_build_meta)
+
     preload_libs()
     @initcxx
+
     AA = ArgcArgv([Base.julia_cmd()[1]])
     global cuNumeric_config_str = version_config_setup()
     cunumeric_setup(AA)
