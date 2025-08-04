@@ -145,13 +145,29 @@ jobs:
             CUDA_MINOR=${{ steps.cuda.outputs.minor }}
             JULIA_CPU_TARGET=${{ steps.cpu_target.outputs.target }}
             REF=${{ steps.pkg.outputs.ref }}
+
       - name: Run tests in built image
         run: |
             docker run --rm -dit --name=tester ${{ steps.meta.outputs.tags }} > docker.log 2>&1
-            while ! docker ps | grep -q tester; do
+            while ! docker ps --format '{{.Names}}' | grep -q tester; do
                 sleep 0.5
             done
             docker exec -i tester /workspace/test_container.sh
             docker stop tester
+
+      - name: Remove image if tests fail
+        if: failure()
+        run: docker image rm ${{ steps.meta.outputs.tags }}
+
       - name: Push image if tests pass
-        run: docker push ${{ steps.meta.outputs.tags }}
+        if: success()
+        run: |
+          docker push ${{ steps.meta.outputs.tags }}
+          docker image rm ${{ steps.meta.outputs.tags }}
+          
+      # can happen if there is a failure to push
+      - name: Ensure image is removed (safety)
+        if: always()
+        run: |
+          docker image inspect ${{ steps.meta.outputs.tags }} > /dev/null 2>&1 && \
+          docker image rm ${{ steps.meta.outputs.tags }} || true
