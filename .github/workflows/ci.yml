@@ -78,6 +78,8 @@ jobs:
         run: |
           CUDA_MAJOR=$(echo "${{ matrix.cuda }}" | cut -d'.' -f1)
           CUDA_MINOR=$(echo "${{ matrix.cuda }}" | cut -d'.' -f2)
+          echo "major=${CUDA_MAJOR}"
+          echo "minor=${CUDA_MINOR}"
           echo "major=${CUDA_MAJOR}" >> $GITHUB_OUTPUT
           echo "minor=${CUDA_MINOR}" >> $GITHUB_OUTPUT
 
@@ -104,7 +106,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-              type=raw,value=${{ steps.pkg.outputs.name }}-julia${{ matrix.julia }}-cuda${{ matrix.cuda }} 
+              type=raw,value=${{ steps.pkg.outputs.name }}-julia${{ matrix.julia }}-cuda${{ steps.cuda.outputs.major }}.${{ steps.cuda.outputs.minor }}
               type=raw,value=${{ steps.pkg.outputs.name }},enable=${{ matrix.default == true && (github.ref_type == 'tag' || inputs.tag != '') }}
               type=raw,value=latest,enable=${{ matrix.default == true && (github.ref_type == 'tag' || (inputs.tag != '' && inputs.mark_as_latest)) }}
               type=raw,value=dev,enable=${{ matrix.default == true && github.ref_type == 'branch' && inputs.tag == '' }}
