@@ -1,6 +1,8 @@
 # we need nvcc as we are compiling during the build of this docker container
 # CUDA_Runtime_jll does not contain nvcc 
 ARG CUDA_VERSION=12.4
+ENV CUDA_VERSION=${CUDA_VERSION}
+
 ARG UBUNTU_VERSION=22.04
 
 FROM nvidia/cuda:${CUDA_VERSION}.0-devel-ubuntu${UBUNTU_VERSION}
@@ -67,7 +69,7 @@ RUN chmod +x /etc/.env
 RUN cat /etc/.env
 
 # install CUDA.jl itself
-RUN julia --color=yes -e 'using Pkg; Pkg.add(\"CUDA\"); using CUDA; CUDA.set_runtime_version!(v\"$CUDA_VERSION\")'
+RUN julia --color=yes -e 'using Pkg; Pkg.add("CUDA"); using CUDA; CUDA.set_runtime_version!(VersionNumber(ENV["CUDA_VERSION"]))'
 RUN echo "Install Legate and cuNumeric.jl"
 # Install Legate.jl and cuNumeric.jl
 RUN source /etc/.env && julia -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test")'

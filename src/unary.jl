@@ -93,7 +93,7 @@ global const unary_op_map_no_args = Dict{Union{Function,Symbol},UnaryOpCode}(
 )
 
 @doc"""
-square(arr::NDArray)
+    square(arr::NDArray)
 
 Elementwise square of each element in `arr`. 
 """
