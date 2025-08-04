@@ -9,6 +9,11 @@ FROM nvidia/cuda:${CUDA_MAJOR}.${CUDA_MINOR}.0-devel-ubuntu${UBUNTU_VERSION}
 ARG JULIA_VERSION=1.10
 # FROM julia:${JULIA_VERSION}
 
+ENV CUDA_MAJOR=${CUDA_MAJOR}
+ENV CUDA_MINOR=${CUDA_MINOR}
+ENV CUDA_VERSION="${CUDA_MAJOR}.${CUDA_MINOR}"
+RUN echo $CUDA_VERSION
+
 ARG REF=main
 ENV REF=${REF}
 # using bash
@@ -33,11 +38,6 @@ ENV JULIA_NUM_THREADS=auto
 
 ARG CUNUMERIC_VERSION=25.05.00
 ARG PACKAGE_SPEC_CUDA=CUDA
-ENV CUDA_MAJOR=${CUDA_MAJOR}
-ENV CUDA_MINOR=${CUDA_MINOR}
-ENV CUDA_VERSION="${CUDA_MAJOR}.${CUDA_MINOR}"
-RUN echo $CUDA_VERSION
-
 LABEL org.opencontainers.image.authors="David Krasowska <krasow@u.northwestern.edu>, Ethan Meitz <emeitz@andrew.cmu.edu>" \
       org.opencontainers.image.description="A cuNumeric.jl container with CUDA ${CUDA_VERSION}, Julia ${JULIA_VERSION}, and cuNumeric ${CUNUMERIC_VERSION}" \
       org.opencontainers.image.title="cuNumeric.jl" \
