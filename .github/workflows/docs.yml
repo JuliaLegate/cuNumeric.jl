@@ -33,10 +33,7 @@ jobs:
         with:
           version: '1.10'
       - uses: julia-actions/cache@v2
-      - name: Build Legate.jl and cuNumeric.jl
-        env:
-          JULIA_LEGATE_BUILDING_DOCS: "true"
-          LEGATE_AUTO_CONFIG: 0
+      - name: Setup CUDA runtime version
         run: |
           julia --color=yes --project=docs -e '
               using Pkg
@@ -53,6 +50,9 @@ jobs:
           ):$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
       - name: Setup cuNumeric.jl and Legate.jl
+        env:
+          JULIA_LEGATE_BUILDING_DOCS: "true"
+          LEGATE_AUTO_CONFIG: 0
         run: |
           git clone --depth=1 --branch=documentation https://github.com/JuliaLegate/cuNumeric.jl ~/.julia/dev/cuNumeric
 
@@ -69,5 +69,7 @@ jobs:
       - name: Build documentation
         run: julia --color=yes --project=docs docs/make.jl
         env:
+          JULIA_LEGATE_BUILDING_DOCS: "true"
+          LEGATE_AUTO_CONFIG: 0
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}

@@ -86,6 +86,7 @@ libpath = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_jl_wrapper.so")
 preload_libs() # for precompilation
 
 @wrapmodule(() -> libpath)
+
 include("version.jl") # version_config_setup
 include("memory.jl") # memory gc before c-array 
 include("capi.jl") # c-array interface prior to ndarray
