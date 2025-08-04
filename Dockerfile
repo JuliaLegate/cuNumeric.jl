@@ -5,7 +5,7 @@ FROM julia:${JULIA_VERSION}
 
 ARG CUDA_MAJOR
 ARG CUDA_MINOR
-ENV CUDA_VERSION="${CUDA_MAJOR}.${CUDA_MINOR}"
+ENV CUDA_VERSION_MAJOR_MINOR="${CUDA_MAJOR}.${CUDA_MINOR}"
 
 ARG REF=main
 ENV REF=${REF}
@@ -29,7 +29,7 @@ ENV JULIA_NUM_THREADS=auto
 ARG CUNUMERIC_VERSION=25.05.00
 ARG PACKAGE_SPEC_CUDA=CUDA
 LABEL org.opencontainers.image.authors="David Krasowska <krasow@u.northwestern.edu>, Ethan Meitz <emeitz@andrew.cmu.edu>" \
-      org.opencontainers.image.description="A cuNumeric.jl container with CUDA ${CUDA_VERSION}, Julia ${JULIA_VERSION}, and cuNumeric ${CUNUMERIC_VERSION}" \
+      org.opencontainers.image.description="A cuNumeric.jl container with CUDA ${CUDA_VERSION_MAJOR_MINOR}, Julia ${JULIA_VERSION}, and cuNumeric ${CUNUMERIC_VERSION}" \
       org.opencontainers.image.title="cuNumeric.jl" \
     #   org.opencontainers.image.url="https://juliagpu.org/cuda/" \
       org.opencontainers.image.source="https://github.com/JuliaLegate/cuNumeric.jl" \
@@ -46,7 +46,7 @@ ENV JULIA_DEPOT_PATH=/usr/local/share/julia:
 ENV PATH="/usr/local/.juliaup/bin:/usr/local/bin:$PATH"
 
 # install CUDA.jl itself
-RUN julia --color=yes -e 'using Pkg; Pkg.add("CUDA"); using CUDA; println(VersionNumber(ENV["CUDA_VERSION"])); CUDA.set_runtime_version!(VersionNumber(ENV["CUDA_VERSION"]))'
+RUN julia --color=yes -e 'using Pkg; Pkg.add("CUDA"); using CUDA; println(VersionNumber(ENV["CUDA_VERSION_MAJOR_MINOR"])); CUDA.set_runtime_version!(VersionNumber(ENV["CUDA_VERSION_MAJOR_MINOR"]))'
 
 RUN julia -e 'using Pkg; Pkg.add("CUDA_Driver_jll")'
 RUN echo "export LD_LIBRARY_PATH=\$(julia -e 'using CUDA_Driver_jll; print(joinpath(CUDA_Driver_jll.artifact_dir, \"lib\"))'):\$LD_LIBRARY_PATH" >> /etc/.env

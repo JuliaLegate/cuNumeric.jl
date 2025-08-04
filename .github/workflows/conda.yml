@@ -33,7 +33,7 @@ jobs:
       contents: read
       pull-requests: read
       statuses: read
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, x64]
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
