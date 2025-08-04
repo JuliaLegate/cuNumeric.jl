@@ -66,6 +66,9 @@ jobs:
         uses: julia-actions/setup-julia@v2
         with:
           version: '1.10'
+      
+      - name: Install curl (required for install-jq-action)
+        run: sudo apt-get update && sudo apt-get install -y curl
 
       - uses: julia-actions/cache@v2
         with:
