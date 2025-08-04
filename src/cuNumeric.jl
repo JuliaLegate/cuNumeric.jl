@@ -56,7 +56,7 @@ function preload_libs()
     end
 end
 
-deps_path = joinpath(@__DIR__, "../deps/deps.jl")
+deps_path = joinpath(@__DIR__, "../", "deps", "deps.jl")
 
 if isfile(deps_path)
     include(deps_path)
