@@ -32,13 +32,16 @@ nda_nbytes(arr::NDArray_t) = ccall((:nda_nbytes, libnda),
 #     end
 # end
 
-mutable struct NDArray
+mutable struct NDArray{T,N}
     ptr::NDArray_t
     nbytes::Int64
     function NDArray(ptr::NDArray_t)
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
-        handle = new(ptr, nbytes)
+        type_code = ccall((:nda_array_type_code, libnda), Int32, (NDArray_t,), ptr)
+        julia_type = Legate.code_type_map[type_code]
+        n_dim = ccall((:nda_array_dim, libnda), Int32, (NDArray_t,), ptr)
+        handle = new{julia_type, n_dim}(ptr, nbytes)
         finalizer(handle) do h
             cuNumeric.nda_destroy_array(h.ptr)
             cuNumeric.register_free!(h.nbytes)
@@ -186,7 +189,7 @@ function nda_add(rhs1::NDArray, rhs2::NDArray, out::NDArray)
     return out
 end
 
-function nda_multiply_scalar(rhs1::NDArray, value::T) where {T}
+function nda_multiply_scalar(rhs1::NDArray{T}, value::T) where {T}
     # type = Legate.to_legate_type(T)
     # val = Ref(value)
 
@@ -202,7 +205,7 @@ function nda_multiply_scalar(rhs1::NDArray, value::T) where {T}
     return NDArray(ptr)
 end
 
-function nda_add_scalar(rhs1::NDArray, value::T) where {T}
+function nda_add_scalar(rhs1::NDArray{T}, value::T) where {T}
     # type = Legate.to_legate_type(T)
     # val = Ref(value)
 
