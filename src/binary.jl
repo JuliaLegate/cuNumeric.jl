@@ -38,6 +38,15 @@ global const binary_op_map = Dict{Function,BinaryOpCode}(
 maybe_promote_arr(arr::NDArray{T}, ::Type{T}) = arr
 maybe_promote_arr(arr::NDArray{T}, ::Type{S}) where S = as_type(arr, S)
 
+smaller_type(::A, ::B) where {A,B} = ifelse(sizeof(A) < sizeof(B), A, B)
+
+function __my_promote_type(x::Type, y::Type)
+    S = smaller_type(x, y)
+    T = promote_type(x, y)
+    S != T || error("Detected promotion from $S to larger type, $T")
+    return T
+end
+
 #* THIS SORT OF BREAKS WHAT A JULIA USER MIGHT EXPECT
 #* WILL AUTOMATICALLY BROADCAST OVER ARRAY INSTEAD OF REQUIRING `.()` call sytax
 #* NEED TO IMPLEMENT BROADCASTING INTERFACE
@@ -52,18 +61,20 @@ for (base_func, op_code) in binary_op_map
             return nda_binary_op(out, $(op_code), rhs1, rhs2)
         end
 
-        function $(Symbol(base_func))(arr::NDArray{T}, c::T) where T
+        @inline function $(Symbol(base_func))(arr::NDArray{T}, c::T) where T
             return $(Symbol(base_func))(T(c), maybe_promote_arr(arr, T))
         end
+        
+        @inline function $(Symbol(base_func))(c::T, arr::NDArray{T}) where T
+            return $(Symbol(base_func))(arr, c)
+        end
 
-        function $(Symbol(base_func))(c::A, arr::NDArray{B}) where {A <: Number, B <: Number}
-            @inline
+        @inline function $(Symbol(base_func))(c::A, arr::NDArray{B}) where {A <: Number, B <: Number}
             T = __my_promote_type(A, B)
             return $(Symbol(base_func))(T(c), maybe_promote_arr(arr, T))
         end
 
-        function $(Symbol(base_func))(arr::NDArray{B}, c::A) where {A <: Number, B <: Number}
-            @inline
+        @inline function $(Symbol(base_func))(arr::NDArray{B}, c::A) where {A <: Number, B <: Number}
             T = __my_promote_type(A, B)
             return $(Symbol(base_func))(T(c), maybe_promote_arr(arr, T))
         end
@@ -82,11 +93,3 @@ end
 #     return f
 # end
 
-smaller_type(::A, ::B) where {A,B} = ifelse(sizeof(A) < sizeof(B), A, B)
-
-function __my_promote_type(x::Type, y::Type)
-    S = smaller_type(x, y)
-    T = promote_type(x, y)
-    S != T || error("Detected promotion from $S to larger type, $T")
-    return T
-end

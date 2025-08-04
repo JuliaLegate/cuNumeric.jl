@@ -420,7 +420,8 @@ function multiply!(out::NDArray, arr1::NDArray, arr2::NDArray)
     return nda_multiply(arr1, arr2, out)
 end
 
-function LinearAlgebra.mul!(out::NDArray, arr1::NDArray, arr2::NDArray)
+function LinearAlgebra.mul!(out::NDArray{T, 2}, arr1::NDArray{T, 2}, arr2::NDArray{T, 2})
+    #! TODO: Support type promotion
     return nda_three_dot_arg(arr1, arr2, out)
 end
 
