@@ -44,24 +44,22 @@ jobs:
               using CUDA
               CUDA.set_runtime_version!(v"12.4")
           '
-          export LD_LIBRARY_PATH="$(julia -e 'using Pkg; \
-                                    Pkg.add("CUDA_Driver_jll"); \
-                                    using CUDA_Driver_jll; \
-                                    print(joinpath(CUDA_Driver_jll.artifact_dir, "lib"))' \
-                                  ):$LD_LIBRARY_PATH"
+      - name: Set LD_LIBRARY_PATH for CUDA_Driver_jll
+        run: |
+          echo "LD_LIBRARY_PATH=$(julia -e 'using Pkg; \
+            Pkg.add("CUDA_Driver_jll"); \
+            using CUDA_Driver_jll; \
+            print(joinpath(CUDA_Driver_jll.artifact_dir, "lib"))' \
+          ):$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
-          export LD_LIBRARY_PATH="$(julia -e 'print(joinpath(Sys.BINDIR, "..", "lib"))'):$LD_LIBRARY_PATH"
-
+      - name: Setup cuNumeric.jl and Legate.jl
+        run: |
           git clone --depth=1 --branch=documentation https://github.com/JuliaLegate/cuNumeric.jl ~/.julia/dev/cuNumeric
 
           julia --color=yes --project=docs -e '
               using Pkg
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test"))
               Pkg.develop(path = joinpath(homedir(), ".julia", "dev", "cuNumeric"))
-          '
-
-          julia --color=yes --project=docs -e '
-            using Pkg; Pkg.build();
           '
       - name: Instantiate docs environment
         run: |
