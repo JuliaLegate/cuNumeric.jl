@@ -34,7 +34,7 @@ The following unary operations are supported and can be applied directly to `NDA
   • `tan`
   • `tanh`
 
-These operations are applied elementwise and follow standard Julia semantics.
+These operations are applied elementwise by default and follow standard Julia semantics.
 
 Examples
 --------
@@ -133,7 +133,30 @@ end
 #     end
 # end
 
-# Could implement most of the missing functions here
+@doc"""
+Supported Unary Reduction Operations
+===========================
+
+The following unary reduction operations are supported and can be applied directly to `NDArray` values:
+
+  • `maximum`
+  • `minimum`
+  • `prod`
+  • `sum`
+
+
+These operations follow standard Julia semantics.
+
+Examples
+--------
+
+```julia
+A = NDArray(randn(Float32, 3, 3))
+
+maximum(A)
+sum(A)
+```
+"""
 global const unary_reduction_map = Dict{Function,UnaryRedCode}(
     # Base.all => cuNumeric.ALL, #* ANNOYING TO TEST
     # Base.any => cuNumeric.ANY, #* ANNOYING TO TEST

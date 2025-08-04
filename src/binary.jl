@@ -4,16 +4,16 @@ Supported Binary Operations
 
 The following binary operations are supported and can be applied elementwise to pairs of `NDArray` values:
 
-  • `+`        — Addition  
-  • `-`        — Subtraction  
-  • `*`        — Multiplication (elementwise)  
-  • `/`        — Division (elementwise)  
-  • `^`        — Floating-point power (elementwise)  
-  • `div`      — Floor division  
-  • `atan`     — Two-argument arctangent (`atan(y, x)`)  
-  • `hypot`    — Hypotenuse (`hypot(x, y)`)
+  • `+`
+  • `-`
+  • `*`
+  • `/`
+  • `^`
+  • `div`
+  • `atan` 
+  • `hypot`
 
-These operations are broadcast-compatible and follow Julia's standard operator overloading behavior.
+These operations are applied elementwise by default and follow standard Julia semantics.
 
 Examples
 --------
