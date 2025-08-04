@@ -22,6 +22,8 @@ module cuNumeric
 using Legate
 
 using OpenSSL_jll
+using OpenBLAS32_jll
+
 using Libdl
 using CxxWrap
 
@@ -45,6 +47,7 @@ import Base: abs, angle, acos, acosh, asin, asinh, atan, atanh, cbrt,
 
 function preload_libs()
     libs = [
+        joinpath(OpenBLAS32_jll.artifact_dir, "lib", "libopenblas.so"), # required for libcupynumeric.so
         joinpath(CUTENSOR_LIB, "libcutensor.so"),
         joinpath(TBLIS_LIB, "libtblis.so"),
         joinpath(CUPYNUMERIC_LIB, "libcupynumeric.so"),
