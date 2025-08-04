@@ -44,6 +44,9 @@ import Base: abs, angle, acos, acosh, asin, asinh, atan, atanh, cbrt,
     prod, sum, read
 
 function preload_libs()
+    push!(Base.DL_LOAD_PATH, Legate.get_install_libcuda())
+    push!(Base.DL_LOAD_PATH, Legate.get_install_libcudart())
+
     libs = [
         joinpath(CUTENSOR_LIB, "libcutensor.so"),
         joinpath(TBLIS_LIB, "libtblis.so"),
