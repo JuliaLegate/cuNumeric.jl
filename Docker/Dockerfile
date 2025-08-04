@@ -1,13 +1,7 @@
-# we need nvcc as we are compiling during the build of this docker container
-# CUDA_Runtime_jll does not contain nvcc 
-ARG CUDA_MAJOR=12
-ARG CUDA_MINOR=4
 ARG UBUNTU_VERSION=22.04
 
-FROM nvidia/cuda:${CUDA_MAJOR}.${CUDA_MINOR}.0-devel-ubuntu${UBUNTU_VERSION}
-# once we are fully dependent on jlls, we can do the following
 ARG JULIA_VERSION=1.10
-# FROM julia:${JULIA_VERSION}
+FROM julia:${JULIA_VERSION}
 
 ARG CUDA_MAJOR
 ARG CUDA_MINOR
@@ -20,9 +14,6 @@ ENV REF=${REF}
 SHELL ["/bin/bash", "-c"] 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# develop mode enables us to build wrappers from source. it installs libcxx wrap into deps of Legate.jl
-# this will enable both Legate.jl and/or cuNumeric.jl to build its wrapper from source within this container
-ENV LEGATE_DEVELOP_MODE=1
 # force turn off legate auto config for precompilation.
 ENV LEGATE_AUTO_CONFIG=0
 
@@ -51,23 +42,12 @@ RUN apt-get update && apt-get install -y \
     wget curl git build-essential && \
     rm -rf /var/lib/apt/lists/*
 
-# We need CMake to install cuPyNumeric and the cuNumeric.jl wrapper
-# In future releases, we hope to have the jlls available. 
-RUN mkdir -p /usr/local && \
-    cd $WORKSPACE && \
-    wget https://github.com/Kitware/CMake/releases/download/v3.30.7/cmake-3.30.7-linux-x86_64.sh --no-check-certificate && \
-    sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=/usr/local
-
-# requires Julia install due to not using an official Julia container
-RUN curl -fsSL https://install.julialang.org | bash -s -- --default-channel ${JULIA_VERSION} --yes \
-    --path /usr/local/.juliaup
 
 ENV JULIA_DEPOT_PATH=/usr/local/share/julia:
+ENV PATH="/usr/local/.juliaup/bin:/usr/local/bin:$PATH"
 
-ENV PATH="/usr/local/cuda-${CUDA_VERSION}/bin:/usr/local/.juliaup/bin:/usr/local/bin:$PATH"
-# Install Julia packages and extract artifact paths
-RUN echo "export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/cuda-${CUDA_VERSION}/lib64:\$LD_LIBRARY_PATH" > /etc/.env
-
+RUN julia -e 'using Pkg; Pkg.add("CUDA_Driver_jll")'
+RUN echo "export LD_LIBRARY_PATH=\$(julia -e 'using CUDA_Driver_jll; print(joinpath(CUDA_Driver_jll.artifact_dir, \"lib\"))'):\$LD_LIBRARY_PATH" >> /etc/.env
 RUN chmod +x /etc/.env
 RUN cat /etc/.env
 
