@@ -152,6 +152,7 @@ jobs:
             while ! docker ps --format '{{.Names}}' | grep -q tester; do
                 sleep 0.5
             done
+            echo "Running tests in container!"
             docker exec -i tester /workspace/test_container.sh
             docker stop tester
 
@@ -164,7 +165,7 @@ jobs:
         run: |
           docker push ${{ steps.meta.outputs.tags }}
           docker image rm ${{ steps.meta.outputs.tags }}
-          
+
       # can happen if there is a failure to push
       - name: Ensure image is removed (safety)
         if: always()

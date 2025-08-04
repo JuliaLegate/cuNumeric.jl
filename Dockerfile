@@ -37,6 +37,7 @@ LABEL org.opencontainers.image.authors="David Krasowska <krasow@u.northwestern.e
 
 COPY scripts/test_container.sh /workspace/test_container.sh
 RUN chmod +x /workspace/test_container.sh
+RUN cat /workspace/test_container.sh
 
 # # system-wide packages
 RUN apt-get update && apt-get install -y \

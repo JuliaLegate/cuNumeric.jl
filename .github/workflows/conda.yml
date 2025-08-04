@@ -85,7 +85,7 @@ jobs:
           echo "PATH=$HOME/miniconda/bin:$PATH" >> $GITHUB_ENV
           conda create --name myenv python=3.10 -y
           conda activate myenv
-          CONDA_OVERRIDE_CUDA="12.4" conda create -n myenv -c conda-forge -c legate/label/rc cupynumeric=${{ steps.pkg.outputs.version }}.rc3 -y
+          CONDA_OVERRIDE_CUDA="12.4" conda create -n myenv -c conda-forge -c legate/label/rc cuda-toolkit=12.4 cublas=12.4 cupynumeric=${{ steps.pkg.outputs.version }}.rc3 -y
 
       - name: Setup CUDA runtime version
         run: |
