@@ -106,7 +106,7 @@ jobs:
           LEGATE_AUTO_CONFIG: 0
           LEGATE_DEVELOP_MODE: 1
           CUNUMERIC_DEVELOP_MODE: 1
-          PATH: $HOME/.local:$PATH
+          PATH: $HOME/.local:${{ env.PATH }}
         run: |
           julia --color=yes -e '
               using Pkg;
