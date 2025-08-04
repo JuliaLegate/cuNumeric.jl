@@ -6,7 +6,6 @@ FROM julia:${JULIA_VERSION}
 ARG CUDA_MAJOR
 ARG CUDA_MINOR
 ENV CUDA_VERSION="${CUDA_MAJOR}.${CUDA_MINOR}"
-RUN echo $CUDA_VERSION
 
 ARG REF=main
 ENV REF=${REF}
@@ -46,13 +45,15 @@ RUN apt-get update && apt-get install -y \
 ENV JULIA_DEPOT_PATH=/usr/local/share/julia:
 ENV PATH="/usr/local/.juliaup/bin:/usr/local/bin:$PATH"
 
+# install CUDA.jl itself
+RUN julia --color=yes -e 'using Pkg; Pkg.add("CUDA"); using CUDA; CUDA.set_runtime_version!(VersionNumber(ENV["CUDA_VERSION"]))'
+
 RUN julia -e 'using Pkg; Pkg.add("CUDA_Driver_jll")'
 RUN echo "export LD_LIBRARY_PATH=\$(julia -e 'using CUDA_Driver_jll; print(joinpath(CUDA_Driver_jll.artifact_dir, \"lib\"))'):\$LD_LIBRARY_PATH" >> /etc/.env
 RUN chmod +x /etc/.env
 RUN cat /etc/.env
 
-# install CUDA.jl itself
-RUN julia --color=yes -e 'using Pkg; Pkg.add("CUDA"); using CUDA; CUDA.set_runtime_version!(VersionNumber(ENV["CUDA_VERSION"]))'
+
 RUN echo "Install Legate and cuNumeric.jl"
 # Install Legate.jl and cuNumeric.jl
 RUN source /etc/.env && julia -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test")'

@@ -163,20 +163,6 @@ function build()
         # conda install 
     elseif check_prefix_install("CUNUMERIC_LEGATE_CONDA_INSTALL", "CONDA_PREFIX")
         cupynumeric_root = get(ENV, "CONDA_PREFIX", nothing)
-    elseif get(ENV, "CUNUMERIC_INSTALL_CUPYNUMERIC", "0") == "1"
-        cupynumeric_root = abspath(joinpath(@__DIR__, "../libcupynumeric"))
-        cupynumeric_installed = is_cupynumeric_installed(cupynumeric_root)
-        if cupynumeric_installed
-            installed_version = parse_cupynumeric_version(cupynumeric_root)
-            if installed_version ∉ SUPPORTED_CUPYNUMERIC_VERSIONS
-                @warn "cuNumeric.jl: Detected unsupported version of cupynumeric installed: $(installed_version). Installing newest version."
-                install_cupynumeric(pkg_root, LATEST_CUPYNUMERIC_VERSION)
-            else
-                @info "cuNumeric.jl: Found cupynumeric already installed."
-            end
-        else
-            install_cupynumeric(pkg_root, LATEST_CUPYNUMERIC_VERSION)
-        end
     else # default
         cupynumeric_root = cupynumeric_jll.artifact_dir
     end

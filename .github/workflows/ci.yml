@@ -16,7 +16,7 @@ on:
       - 'src/**'
       - 'wrapper/src/**'
       - 'scripts/**'
-      - 'Docker/Dockerfile'
+      - 'Dockerfile'
       - 'deps/build.jl'
     tags:
       - 'v*'
@@ -27,7 +27,7 @@ on:
       - 'src/**'
       - 'wrapper/src/**'
       - 'scripts/**'
-      - 'Docker/Dockerfile'
+      - 'Dockerfile'
       - 'deps/build.jl'
 jobs:
   push_to_registry:
@@ -119,8 +119,7 @@ jobs:
       - name: Build image
         uses: docker/build-push-action@v6
         with:
-          context: ./Docker
-          file: ./Docker/Dockerfile
+          file: Dockerfile
           load: true
           push: false
           provenance: false # the build fetches the repo again, so provenance tracking is not useful
@@ -135,7 +134,7 @@ jobs:
             REF=${{ steps.pkg.outputs.ref }}
       - name: Run tests in built image
         run: |
-            docker run --rm -dit --name=tester -v $PWD/Docker:/workspace ${{ steps.meta.outputs.tags }} > docker.log 2>&1
+            docker run --rm -dit --name=tester -v $PWD:/workspace ${{ steps.meta.outputs.tags }} > docker.log 2>&1
             while ! docker ps | grep -q tester; do
                 sleep 0.5
             done
