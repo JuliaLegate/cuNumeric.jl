@@ -19,6 +19,9 @@
 const JULIA_LEGATE_BUILDING_DOCS = get(ENV, "JULIA_LEGATE_BUILDING_DOCS", "false") == "true"
 if !JULIA_LEGATE_BUILDING_DOCS
     using Legate
+    push!(Base.DL_LOAD_PATH, Legate.get_install_libcuda())
+    push!(Base.DL_LOAD_PATH, Legate.get_install_libcudart())
+
     using OpenSSL_jll
     using HDF5_jll
     using NCCL_jll
