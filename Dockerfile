@@ -35,6 +35,7 @@ LABEL org.opencontainers.image.authors="David Krasowska <krasow@u.northwestern.e
       org.opencontainers.image.source="https://github.com/JuliaLegate/cuNumeric.jl" \
       org.opencontainers.image.licenses="MIT"
 
+COPY scripts/test_container.sh /workspace/test_container.sh
 
 # # system-wide packages
 RUN apt-get update && apt-get install -y \
