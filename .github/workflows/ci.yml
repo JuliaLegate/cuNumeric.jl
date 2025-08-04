@@ -129,7 +129,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             JULIA_VERSION=${{ matrix.julia }}
-            CUDA_VERSION=${{ steps.cuda.outputs.major }}.${{ steps.cuda.outputs.minor }}
+            CUDA_MAJOR=${{ steps.cuda.outputs.major }}
+            CUDA_MINOR=${{ steps.cuda.outputs.minor }}
             JULIA_CPU_TARGET=${{ steps.cpu_target.outputs.target }}
             REF=${{ steps.pkg.outputs.ref }}
       - name: Run tests in built image

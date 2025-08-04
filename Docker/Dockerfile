@@ -1,9 +1,10 @@
 # we need nvcc as we are compiling during the build of this docker container
 # CUDA_Runtime_jll does not contain nvcc 
-ARG CUDA_VERSION=12.4
+ARG CUDA_MAJOR=12
+ARG CUDA_MINOR=4
 ARG UBUNTU_VERSION=22.04
 
-FROM nvidia/cuda:${CUDA_VERSION}.0-devel-ubuntu${UBUNTU_VERSION}
+FROM nvidia/cuda:${CUDA_MAJOR}.${CUDA_MINOR}.0-devel-ubuntu${UBUNTU_VERSION}
 # once we are fully dependent on jlls, we can do the following
 ARG JULIA_VERSION=1.10
 # FROM julia:${JULIA_VERSION}
@@ -32,7 +33,7 @@ ENV JULIA_NUM_THREADS=auto
 
 ARG CUNUMERIC_VERSION=25.05.00
 ARG PACKAGE_SPEC_CUDA=CUDA
-ENV CUDA_VERSION=${CUDA_VERSION}
+ENV CUDA_VERSION=${CUDA_MAJOR}.${CUDA_MINOR}
 
 LABEL org.opencontainers.image.authors="David Krasowska <krasow@u.northwestern.edu>, Ethan Meitz <emeitz@andrew.cmu.edu>" \
       org.opencontainers.image.description="A cuNumeric.jl container with CUDA ${CUDA_VERSION}, Julia ${JULIA_VERSION}, and cuNumeric ${CUNUMERIC_VERSION}" \
