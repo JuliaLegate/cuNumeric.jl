@@ -62,6 +62,8 @@ jobs:
               Pkg.develop(path = joinpath(homedir(), ".julia", "dev", "cuNumeric"))
           '
       - name: Instantiate docs environment
+        env:
+          LEGATE_AUTO_CONFIG: 0
         run: |
           julia --color=yes --project=docs -e '
             using Pkg
