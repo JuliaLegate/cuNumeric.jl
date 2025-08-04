@@ -77,7 +77,7 @@ RUN mkdir -m 0777 /depot
 # we add the user environment from a start-up script
 # so that the user can mount `/depot` for persistency
 COPY <<EOF /usr/local/share/julia/config/startup.jl
-if !isdir("/depot/environments/v$(VERSION.major).$(VERSION.minor)")
+if !ispath("/depot/environments/v$(VERSION.major).$(VERSION.minor)")
     if isinteractive() && Base.JLOptions().quiet == 0
         println("""Welcome to this cuNumeric.jl container!
 
@@ -91,7 +91,7 @@ if !isdir("/depot/environments/v$(VERSION.major).$(VERSION.minor)")
     end
     mkpath("/depot/environments")
     cp("/usr/local/share/julia/environments/v$(VERSION.major).$(VERSION.minor)",
-       "/depot/environments/v$(VERSION.major).$(VERSION.minor)")
+       "/depot/environments/v$(VERSION.major).$(VERSION.minor)", force=true)
 end
 pushfirst!(DEPOT_PATH, "/depot")
 EOF

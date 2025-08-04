@@ -156,10 +156,6 @@ jobs:
             docker exec -i ${{ steps.pkg.outputs.ref }} /workspace/test_container.sh
             docker stop ${{ steps.pkg.outputs.ref }}
 
-      - name: Remove image if tests fail
-        if: failure()
-        run: docker image rm ${{ steps.meta.outputs.tags }}
-
       - name: Push image if tests pass
         if: success()
         run: |
