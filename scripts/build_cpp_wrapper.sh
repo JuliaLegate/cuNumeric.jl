@@ -36,7 +36,7 @@ fi
 
 GIT_REPO="https://github.com/JuliaLegate/cunumeric_jl_wrapper"
 # COMMIT_HASH="f00bd063be66b735fc6040b40027669337399a06"
-CUNUMERIC_WRAPPER_SOURCE=$LEGATEJL_PKG_ROOT_DIR/deps/cunumeric_jl_wrapper
+CUNUMERIC_WRAPPER_SOURCE=$CUNUMERICJL_PKG_ROOT_DIR/deps/cunumeric_jl_wrapper
 BUILD_DIR=$CUNUMERIC_WRAPPER_SOURCE/build
 
 if [ ! -d "$CUNUMERIC_WRAPPER_SOURCE" ]; then
@@ -59,7 +59,6 @@ fi
 diff -u $CUNUMERIC_WRAPPER_SOURCE/CMakeLists.txt $CUNUMERICJL_ROOT_DIR/deps/CMakeLists.txt > deps_install.patch  || true
 cd $CUNUMERIC_WRAPPER_SOURCE
 patch -i $CUNUMERIC_WRAPPER_SOURCE/deps_install.patch
-
 
 echo $LEGATE_ROOT_DIR
 LEGION_CMAKE_DIR=$LEGATE_ROOT_DIR/share/Legion/cmake

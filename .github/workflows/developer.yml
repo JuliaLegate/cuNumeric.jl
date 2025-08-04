@@ -1,5 +1,5 @@
-# Conda CI test. This will build the workflow using the conda build path.
-# This test only occurs if build.jl changes.
+# Develeper CI test. This will build the workflow using Jlls and building wrappers from SRC
+# This test only occurs if build.jl changes or if this CI script changes.
 name: Conda test
 on:
   workflow_dispatch:
@@ -16,7 +16,7 @@ on:
   push:
     paths:
       - 'deps/build.jl'
-      - '.github/workflows/conda.yml'
+      - '.github/workflows/developer.yml'
     tags:
       - 'v*'
     branches:
@@ -24,7 +24,7 @@ on:
   pull_request:
     paths:
       - 'deps/build.jl'
-      - '.github/workflows/conda.yml'
+      - '.github/workflows/developer.yml'
 jobs:
   docs:
     name : Conda Test
@@ -67,26 +67,12 @@ jobs:
 
       - uses: julia-actions/cache@v2
 
-      - name: Setup cache for Conda env
-        uses: actions/cache@v4
-        with:
-            path: $HOME/miniconda/envs
-            key: conda-${{ runner.os }}-${{ steps.pkg.outputs.version }}
-            restore-keys: |
-                conda-${{ runner.os }}-
-      - name: Create Conda env
+      - name: Install CMake 3.30.7
         run: |
-          mkdir -p ~/miniconda3
-          wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-          bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
-          rm ~/miniconda3/miniconda.sh
-          source ~/miniconda3/bin/activate
-          conda init --all
-          export PATH="$HOME/miniconda/bin:$PATH"
-          echo "PATH=$HOME/miniconda/bin:$PATH" >> $GITHUB_ENV
-          conda create --name myenv python=3.10 -y
-          conda activate myenv
-          CONDA_OVERRIDE_CUDA="12.4" conda create -n myenv -c conda-forge -c legate/label/rc -c nvidia  cuda-toolkit=12.4 libcublas=12.4 cupynumeric=${{ steps.pkg.outputs.version }}.rc3 -y
+          mkdir -p /usr/local
+          cd $WORKSPACE
+          wget https://github.com/Kitware/CMake/releases/download/v3.30.7/cmake-3.30.7-linux-x86_64.sh --no-check-certificate
+          sudo sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=/usr/local
 
       - name: Setup CUDA runtime version
         run: |
@@ -104,23 +90,28 @@ jobs:
             print(joinpath(CUDA_Driver_jll.artifact_dir, "lib"))' \
           ):$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
-      - name: Setup cuNumeric.jl and Legate.jl
+      - name: Setup cuNumeric.jl and Legate.jl with build from src wrappers
         env:
           LEGATE_AUTO_CONFIG: 0
-          CUNUMERIC_LEGATE_CONDA_INSTALL: 1
+          LEGATE_DEVELOP_MODE: 1
+          CUNUMERIC_DEVELOP_MODE: 1
         run: |
-          conda run --no-capture-output -n myenv julia --color=yes -e '
+          julia --color=yes -e '
               using Pkg;
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test"))
-          '
-          conda run --no-capture-output -n myenv julia --color=yes -e '
+          ' || true
+          julia --color=yes -e 'using Pkg; Pkg.build()'
+
+          julia --color=yes -e '
               using Pkg;
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}"))
-          '
+          ' || true
+          julia --color=yes -e 'using Pkg; Pkg.build()'
+
       - name: Perform Test
         env: 
             LEGATE_AUTO_CONFIG: 0
         run: |
-         conda run --no-capture-output -n myenv julia --color=yes -e 'using Pkg; Pkg.test("cuNumeric")'
+          julia --color=yes -e 'using Pkg; Pkg.test("cuNumeric")'
 
      
