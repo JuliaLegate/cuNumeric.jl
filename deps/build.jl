@@ -19,9 +19,6 @@
 const JULIA_LEGATE_BUILDING_DOCS = get(ENV, "JULIA_LEGATE_BUILDING_DOCS", "false") == "true"
 if !JULIA_LEGATE_BUILDING_DOCS
     using Legate
-    push!(Base.DL_LOAD_PATH, Legate.get_install_libcuda())
-    push!(Base.DL_LOAD_PATH, Legate.get_install_libcudart())
-
     using OpenSSL_jll
     using HDF5_jll
     using NCCL_jll
@@ -108,31 +105,6 @@ function parse_cupynumeric_version(cupynumeric_root)
     end
 
     return version
-end
-
-function install_cupynumeric(repo_root, version_to_install)
-    @info "libcupynumeric: Building cupynumeric"
-
-    build_dir = joinpath(repo_root, "libcupynumeric")
-    if !isdir(build_dir)
-        mkdir(build_dir)
-    else
-        @warn "libcupynumeric: Build dir exists. Deleting prior build."
-        rm(build_dir; recursive=true)
-        mkdir(build_dir)
-    end
-
-    legate_root = joinpath(Legate.get_install_liblegate(), "..") # new gives /lib
-
-    nccl_root = joinpath(Legate.get_install_libnccl(), "..")
-    cutensor_root = joinpath(get_library_root(CUTENSOR_jll, "JULIA_CUTENSOR_PATH"), "..")
-
-    build_cupynumeric = joinpath(repo_root, "scripts/build_cupynumeric.sh")
-    nthreads = Threads.nthreads()
-    run_sh(
-        `bash $build_cupynumeric $repo_root $legate_root $nccl_root $cutensor_root $build_dir $version_to_install $nthreads`,
-        "cupynumeric",
-    )
 end
 
 function check_prefix_install(env_var, env_loc)
