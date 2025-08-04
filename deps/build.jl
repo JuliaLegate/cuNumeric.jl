@@ -16,14 +16,15 @@
  * Author(s): David Krasowska <krasow@u.northwestern.edu>
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
-using Pkg
-using OpenSSL_jll
-using HDF5_jll
-using NCCL_jll
-using CUTENSOR_jll
-using cupynumeric_jll
-using Preferences
-using Legate
+const JULIA_LEGATE_BUILDING_DOCS = get(ENV, "JULIA_LEGATE_BUILDING_DOCS", "false") == "true"
+if !JULIA_LEGATE_BUILDING_DOCS
+    using Legate
+    using OpenSSL_jll
+    using HDF5_jll
+    using NCCL_jll
+    using CUTENSOR_jll
+    using cupynumeric_jll
+end
 
 include(joinpath(@__DIR__, "..", "src", "develop", "cunumeric_wrapper.jl"))
 
@@ -211,7 +212,6 @@ function build()
     end
 end
 
-const JULIA_LEGATE_BUILDING_DOCS = get(ENV, "JULIA_LEGATE_BUILDING_DOCS", "false") == "true"
 if !JULIA_LEGATE_BUILDING_DOCS
     build()
 end
