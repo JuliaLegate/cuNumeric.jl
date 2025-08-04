@@ -148,13 +148,13 @@ jobs:
 
       - name: Run tests in built image
         run: |
-            docker run --rm -dit --name=tester ${{ steps.meta.outputs.tags }} > docker.log 2>&1
-            while ! docker ps --format '{{.Names}}' | grep -q tester; do
+            docker run --rm -dit --name=${{ steps.pkg.outputs.ref }} ${{ steps.meta.outputs.tags }} > docker.log 2>&1
+            while ! docker ps --format '{{.Names}}' | grep -q ${{ steps.pkg.outputs.ref }}; do
                 sleep 0.5
             done
             echo "Running tests in container!"
-            docker exec -i tester /workspace/test_container.sh
-            docker stop tester
+            docker exec -i ${{ steps.pkg.outputs.ref }} /workspace/test_container.sh
+            docker stop ${{ steps.pkg.outputs.ref }}
 
       - name: Remove image if tests fail
         if: failure()
@@ -170,5 +170,8 @@ jobs:
       - name: Ensure image is removed (safety)
         if: always()
         run: |
-          docker image inspect ${{ steps.meta.outputs.tags }} > /dev/null 2>&1 && \
-          docker image rm ${{ steps.meta.outputs.tags }} || true
+          if docker image inspect ${{ steps.meta.outputs.tags }} > /dev/null 2>&1; then
+            docker stop ${{ steps.pkg.outputs.ref }} || true
+            docker rm ${{ steps.pkg.outputs.ref }} || true
+            docker image rm ${{ steps.meta.outputs.tags }} || true
+          fi
