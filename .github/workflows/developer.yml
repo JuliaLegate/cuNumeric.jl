@@ -73,7 +73,6 @@ jobs:
           cd $WORKSPACE
           wget https://github.com/Kitware/CMake/releases/download/v3.30.7/cmake-3.30.7-linux-x86_64.sh --no-check-certificate
           sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=$HOME/.local
-          echo "PATH=$HOME/.local:$PATH" >> $GITHUB_ENV
 
       - name: Setup CUDA runtime version
         run: |
@@ -96,6 +95,7 @@ jobs:
           LEGATE_AUTO_CONFIG: 0
           LEGATE_DEVELOP_MODE: 1
           CUNUMERIC_DEVELOP_MODE: 1
+          PATH: $HOME/.local:$PATH
         run: |
           julia --color=yes -e '
               using Pkg;
