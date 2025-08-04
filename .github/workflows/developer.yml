@@ -27,7 +27,7 @@ on:
       - '.github/workflows/developer.yml'
 jobs:
   docs:
-    name : Conda Test
+    name : Developer CI test
     permissions:
       contents: read
       packages: write
@@ -69,10 +69,11 @@ jobs:
 
       - name: Install CMake 3.30.7
         run: |
-          mkdir -p /usr/local
+          mkdir -p $HOME/.local
           cd $WORKSPACE
           wget https://github.com/Kitware/CMake/releases/download/v3.30.7/cmake-3.30.7-linux-x86_64.sh --no-check-certificate
-          sudo sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=/usr/local
+          sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=$HOME/.local
+          echo "PATH=$HOME/.local:$PATH" >> $GITHUB_ENV
 
       - name: Setup CUDA runtime version
         run: |
