@@ -36,7 +36,9 @@ jobs:
       actions: write
     runs-on: [self-hosted, linux, x64]
     container:
-      image: ubuntu:22.04
+      # need nvcc 
+      image: nvidia/cuda:12.4.0-devel-ubuntu22.04
+      options: --gpus all
     defaults:
       run:
         shell: bash

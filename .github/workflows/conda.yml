@@ -94,6 +94,7 @@ jobs:
           rm ~/miniconda3/miniconda.sh
           source ~/miniconda3/bin/activate
           conda init --all
+          echo "PATH=$HOME/miniconda/bin:\$PATH" >> $GITHUB_ENV
           export PATH="$HOME/miniconda/bin:$PATH"
           conda create --name myenv python=3.10 -y
           conda activate myenv
@@ -119,7 +120,6 @@ jobs:
         env:
           LEGATE_AUTO_CONFIG: 0
           CUNUMERIC_LEGATE_CONDA_INSTALL: 1
-          PATH: $HOME/miniconda/bin:${{ env.PATH }}
         run: |
           conda run --no-capture-output -n myenv julia --color=yes -e '
               using Pkg;
