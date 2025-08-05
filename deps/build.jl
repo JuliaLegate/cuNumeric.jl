@@ -66,7 +66,7 @@ function get_library_root(jll_module, env_var::String)
 end
 
 function build_cpp_wrapper(repo_root, cupynumeric_loc, legate_loc, hdf5_lib, blas_lib)
-    @info "libcupynumericwrapper: Building C++ Wrapper Library"
+    @info "libcunumeric_jl_wrapper: Building C++ Wrapper Library"
     install_dir = joinpath(repo_root, "deps", "cunumeric_jl_wrapper")
     if isdir(install_dir)
         @warn "libcunumeric_jl_wrapper: Build dir exists. Deleting prior build."
