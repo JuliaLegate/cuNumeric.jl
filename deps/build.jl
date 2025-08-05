@@ -135,12 +135,16 @@ function build()
     deps_dir = joinpath(@__DIR__)
 
     @info "cuNumeric.jl: Parsed Package Dir as: $(pkg_root)"
+    hdf5_lib = Legate.get_install_libhdf5()
+    cutensor_lib = get_library_root(CUTENSOR_jll, "JULIA_CUTENSOR_PATH") # default
+
     # custom install 
     if check_prefix_install("CUNUMERIC_CUSTOM_INSTALL", "CUNUMERIC_CUSTOM_INSTALL_LOCATION")
         cupynumeric_root = get(ENV, "CUNUMERIC_CUSTOM_INSTALL_LOCATION", nothing)
         # conda install 
     elseif check_prefix_install("CUNUMERIC_LEGATE_CONDA_INSTALL", "CONDA_PREFIX")
         cupynumeric_root = get(ENV, "CONDA_PREFIX", nothing)
+        cutensor_lib = joinpath(cupynumeric_root, "lib") # use cutensor from conda env
     else # default
         cupynumeric_root = cupynumeric_jll.artifact_dir
     end
@@ -149,14 +153,13 @@ function build()
     legate_root = joinpath(legate_lib, "..")
 
     cupynumeric_lib = joinpath(cupynumeric_root, "lib")
+    push!(Base.DL_LOAD_PATH, cupynumeric_lib) # TODO: check if this actually does something
+
     if haskey(ENV, "JULIA_TBLIS_PATH")
         tblis_lib = get(ENV, "JULIA_TBLIS_PATH", "0")
     else
-        tblis_lib = joinpath(cupynumeric_root, "lib")
+        tblis_lib = cupynumeric_lib # cupynumeric libpath will by default contain tblis
     end
-
-    hdf5_lib = Legate.get_install_libhdf5()
-    cutensor_lib = get_library_root(CUTENSOR_jll, "JULIA_CUTENSOR_PATH")
 
     if get(ENV, "CUNUMERIC_DEVELOP_MODE", "0") == "1"
         # create libcupynumericwrapper.so
