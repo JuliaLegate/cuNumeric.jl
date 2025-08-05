@@ -53,7 +53,7 @@ function run_sh(cmd::Cmd, filename::String)
             println("---- Begin stderr log ----")
             println(contents)
             println("---- End stderr log ----")
-            # exit(127)
+            exit(127)
         end
     end
 end
@@ -83,7 +83,7 @@ function build_cpp_wrapper(repo_root, cupynumeric_loc, legate_loc, hdf5_lib, bla
         `bash $build_cpp_wrapper $repo_root $cupynumeric_loc $legate_loc $hdf5_lib $blas_lib $install_dir $nthreads`,
         "cpp_wrapper",
     )
-    return install_dir
+    return joinpath(install_dir, "lib")
 end
 
 function is_cupynumeric_installed(cupynumeric_root::String; throw_errors::Bool=false)
