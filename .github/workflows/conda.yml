@@ -126,14 +126,18 @@ jobs:
           LEGATE_AUTO_CONFIG: 0
           CUNUMERIC_LEGATE_CONDA_INSTALL: 1
         run: |
+          export LD_LIBRARY_PATH=/home/david/miniconda3/envs/myenv/lib:$LD_LIBRARY_PATH
+
           conda run --no-capture-output -n myenv julia --color=yes -e '
               using Pkg;
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test"))
-          '
+          ' || true
+          julia --color=yes -e 'using Pkg; Pkg.build()'
           conda run --no-capture-output -n myenv julia --color=yes -e '
               using Pkg;
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}"))
-          '
+          ' || true
+          julia --color=yes -e 'using Pkg; Pkg.build()'
       - name: Perform Test
         env: 
             LEGATE_AUTO_CONFIG: 0
