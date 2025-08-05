@@ -56,8 +56,8 @@ function preload_libs()
         Libdl.dlopen(lib, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
     end
 end
-
-deps_path = joinpath(@__DIR__, "../", "deps", "deps.jl")
+pkg_root = joinpath(@__DIR__, "../")
+deps_path = joinpath(pkg_root, "deps", "deps.jl")
 
 if isfile(deps_path)
     include(deps_path)
@@ -72,7 +72,7 @@ else
     const TBLIS_LIB = joinpath(cupynumeric_jll.artifact_dir, "lib")
     const CUPYNUMERIC_LIB = joinpath(cupynumeric_jll.artifact_dir, "lib")
     # const CUNUMERIC_WRAPPER_LIB = joinpath(cunumeric_jl_wrapper_jll.artifact_dir, "lib")
-    const CUNUMERIC_WRAPPER_LIB = cunumeric_wrapper_jll_local_branch_install()
+    const CUNUMERIC_WRAPPER_LIB = cunumeric_wrapper_jll_local_branch_install(pkg_root)
     open(joinpath(deps_path), "w") do io
         println(io, "const CUTENSOR_LIB = \"$(CUTENSOR_LIB)\"")
         println(io, "const TBLIS_LIB = \"$(TBLIS_LIB)\"")

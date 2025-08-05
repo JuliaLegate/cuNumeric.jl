@@ -166,7 +166,7 @@ function build()
         build_cpp_wrapper(pkg_root, cupynumeric_root, legate_root, hdf5_lib)
         cunumeric_wrapper_lib = joinpath(pkg_root, "deps", "cunumeric_wrapper_install")
     elseif true == true # temporary until cunumeric_jl_wrapper_jll
-        cunumeric_wrapper_lib = cunumeric_wrapper_jll_local_branch_install()
+        cunumeric_wrapper_lib = cunumeric_wrapper_jll_local_branch_install(pkg_root)
     else
         cunumeric_wrapper_lib = joinpath(cunumeric_jl_wrapper_jll.artifact_dir, "lib")
     end

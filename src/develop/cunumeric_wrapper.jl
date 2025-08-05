@@ -4,10 +4,10 @@ using Tar
 using Downloads
 using CodecZlib
 
-function cunumeric_wrapper_jll_local_branch_install()
+function cunumeric_wrapper_jll_local_branch_install(pkg_root)
     url = "https://github.com/krasow/Yggdrasil/releases/download/v25.5.0/cunumeric_jl_wrapper.v25.5.0.x86_64-linux-gnu-cxx11-julia_version+1.10.0-cuda+12.4.tar.gz"
-    dest = joinpath(pwd(), basename(url))
-    extract_dir = joinpath(pwd(), "extracted_cunumeric")
+    dest = joinpath(pkg_root, "deps", basename(url))
+    extract_dir = joinpath(pkg_root, "deps", "extracted_cunumeric")
 
     # Download only if not already present
     isfile(dest) || Downloads.download(url, dest)
