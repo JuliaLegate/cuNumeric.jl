@@ -94,6 +94,8 @@ jobs:
       - name: Load Julia packages from cache
         id: julia-cache
         uses: julia-actions/cache@v2
+        with:
+            cache-name: julia-developer-ci-test
 
       - name: Setup CUDA runtime version
         run: |
