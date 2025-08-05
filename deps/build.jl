@@ -83,6 +83,7 @@ function build_cpp_wrapper(repo_root, cupynumeric_loc, legate_loc, hdf5_lib, bla
         `bash $build_cpp_wrapper $repo_root $cupynumeric_loc $legate_loc $hdf5_lib $blas_lib $install_dir $nthreads`,
         "cpp_wrapper",
     )
+    return install_dir
 end
 
 function is_cupynumeric_installed(cupynumeric_root::String; throw_errors::Bool=false)
@@ -168,8 +169,9 @@ function build()
 
     if get(ENV, "CUNUMERIC_DEVELOP_MODE", "0") == "1"
         # create libcupynumericwrapper.so
-        build_cpp_wrapper(pkg_root, cupynumeric_root, legate_root, hdf5_lib, blas_lib)
-        cunumeric_wrapper_lib = joinpath(pkg_root, "deps", "cunumeric_wrapper_install")
+        cunumeric_wrapper_lib = build_cpp_wrapper(
+            pkg_root, cupynumeric_root, legate_root, hdf5_lib, blas_lib
+        )
     elseif true == true # temporary until cunumeric_jl_wrapper_jll
         cunumeric_wrapper_lib = cunumeric_wrapper_jll_local_branch_install(pkg_root)
     else
