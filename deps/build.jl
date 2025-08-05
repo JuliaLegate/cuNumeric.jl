@@ -48,11 +48,11 @@ function run_sh(cmd::Cmd, filename::String)
         run(pipeline(cmd; stdout=build_log, stderr=err_log, append=false))
     catch e
         println("stderr log generated: ", err_log, '\n')
-        println("---- Begin stderr log ----")
         contents = read(err_log, String)
-        println(contents)
-        println("---- End stderr log ----")
         if !isempty(strip(contents))
+            println("---- Begin stderr log ----")
+            println(contents)
+            println("---- End stderr log ----")
             exit(1)
         end
     end
