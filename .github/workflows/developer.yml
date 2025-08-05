@@ -73,6 +73,7 @@ jobs:
 
           VERSION=$(grep "^version = " Project.toml | cut -d'"' -f2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
         with:
@@ -84,6 +85,7 @@ jobs:
       - uses: julia-actions/cache@v2
         with:
             cache-name: develop
+            
       - name: Install CMake 3.30.7
         run: |
           mkdir -p $HOME/.local

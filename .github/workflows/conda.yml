@@ -73,26 +73,25 @@ jobs:
 
           VERSION=$(grep "^version = " Project.toml | cut -d'"' -f2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          
-      - name: Install basic utils
-        run: apt-get update && apt-get install -y wget curl git build-essential
 
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
         with:
           version: '1.10'
+      
+      - name: Install basic utils
+        run: apt-get update && apt-get install -y wget curl git build-essential
 
       - uses: julia-actions/cache@v2
         with:
-          cache-name: julia
-          depot: /root/.julia
+            cache-name: conda-install
 
       - name: Setup cache for Conda env
         uses: actions/cache@v4
         with:
             path: |
-              /root/.conda
-              /root/miniconda3
+              ~/.conda
+              ~/miniconda3
             key: conda-${{ runner.os }}-${{ steps.pkg.outputs.version }}
             restore-keys: |
                 conda-${{ runner.os }}-
@@ -104,7 +103,7 @@ jobs:
           python-version: 3.11
           activate-environment: true
           use-mamba: true
-          miniconda-prefix: /root/miniconda3
+          miniconda-prefix: ~/miniconda3
 
       - name: Setup Conda env
         run: |
@@ -128,8 +127,8 @@ jobs:
 
       - name: Setup cuNumeric.jl and Legate.jl
         run: |
-          export CONDA_PREFIX=/root/miniconda3/envs/myenv
-          export LD_LIBRARY_PATH=/root/miniconda3/envs/myenv/lib:$LD_LIBRARY_PATH
+          export CONDA_PREFIX=~/miniconda3/envs/myenv
+          export LD_LIBRARY_PATH=~/miniconda3/envs/myenv/lib:$LD_LIBRARY_PATH
 
           conda run --no-capture-output -n myenv julia --color=yes -e '
               using Pkg;

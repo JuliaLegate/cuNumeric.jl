@@ -37,12 +37,12 @@ fi
 
 GIT_REPO="https://github.com/JuliaLegate/cunumeric_jl_wrapper"
 # COMMIT_HASH="f00bd063be66b735fc6040b40027669337399a06"
-CUNUMERIC_WRAPPER_SOURCE=$CUNUMERICJL_ROOT_DIR/deps/cunumeric_jl_wrapper
+CUNUMERIC_WRAPPER_SOURCE=$CUNUMERICJL_ROOT_DIR/deps/cunumeric_jl_wrapper_src
 BUILD_DIR=$CUNUMERIC_WRAPPER_SOURCE/build
 
 if [ ! -d "$CUNUMERIC_WRAPPER_SOURCE" ]; then
     cd $CUNUMERICJL_ROOT_DIR/deps
-    git clone $GIT_REPO
+    git clone $GIT_REPO $CUNUMERIC_WRAPPER_SOURCE
 fi
 
 cd $CUNUMERIC_WRAPPER_SOURCE
