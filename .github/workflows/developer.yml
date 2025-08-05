@@ -42,6 +42,10 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+        LEGATE_AUTO_CONFIG: 0
+        LEGATE_DEVELOP_MODE: 1
+        CUNUMERIC_DEVELOP_MODE: 1
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
@@ -79,7 +83,7 @@ jobs:
 
       - uses: julia-actions/cache@v2
         with:
-            cache-name: devel
+            cache-name: develop
       - name: Install CMake 3.30.7
         run: |
           mkdir -p $HOME/.local
@@ -106,9 +110,6 @@ jobs:
 
       - name: Setup cuNumeric.jl and Legate.jl with build from src wrappers
         env:
-          LEGATE_AUTO_CONFIG: 0
-          LEGATE_DEVELOP_MODE: 1
-          CUNUMERIC_DEVELOP_MODE: 1
           PATH: $HOME/.local/bin:${{ env.PATH }}
         run: |
           julia --color=yes -e '
@@ -124,8 +125,6 @@ jobs:
           julia --color=yes -e 'using Pkg; Pkg.build()'
 
       - name: Perform Test
-        env: 
-            LEGATE_AUTO_CONFIG: 0
         run: |
           julia --color=yes -e 'using Pkg; Pkg.test("cuNumeric")'
 

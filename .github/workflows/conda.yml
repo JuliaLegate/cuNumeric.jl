@@ -40,11 +40,17 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      LEGATE_AUTO_CONFIG: 0
+      CUNUMERIC_LEGATE_CONDA_INSTALL: 1
+      
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
+
       - name: bash
         run: source /etc/profile
+
       - name: Get package spec
         id: pkg
         run: |
@@ -67,22 +73,23 @@ jobs:
 
           VERSION=$(grep "^version = " Project.toml | cut -d'"' -f2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
         with:
           version: '1.10'
 
-      - name: Install basic utils
-        run: apt-get update && apt-get install -y wget curl git build-essential
-
       - uses: julia-actions/cache@v2
         with:
-            cache-name: conda
+          cache-name: julia
+          custom-path: /root/.julia
 
       - name: Setup cache for Conda env
         uses: actions/cache@v4
         with:
-            path: $HOME/miniconda/envs
+            path: |
+              /root/.conda
+              /root/miniconda3
             key: conda-${{ runner.os }}-${{ steps.pkg.outputs.version }}
             restore-keys: |
                 conda-${{ runner.os }}-
@@ -94,15 +101,16 @@ jobs:
           python-version: 3.11
           activate-environment: true
           use-mamba: true
+          miniconda-prefix: /root/miniconda3
+
+      - name: Install basic utils
+        run: apt-get update && apt-get install -y wget curl git build-essential
 
       - name: Setup Conda env
         run: |
           CONDA_OVERRIDE_CUDA="12.4" conda create -n myenv -c conda-forge -c legate/label/rc -c nvidia cuda-toolkit=12.4 libcublas=12.4 cupynumeric=${{ steps.pkg.outputs.version }}.rc3 -y
 
       - name: Setup CUDA runtime version
-        env:
-          LEGATE_AUTO_CONFIG: 0
-          CUNUMERIC_LEGATE_CONDA_INSTALL: 1
         run: |
           julia --color=yes -e '
               using Pkg
@@ -111,9 +119,6 @@ jobs:
               CUDA.set_runtime_version!(v"12.4")
           '
       - name: Set LD_LIBRARY_PATH for CUDA_Driver_jll
-        env:
-          LEGATE_AUTO_CONFIG: 0
-          CUNUMERIC_LEGATE_CONDA_INSTALL: 1
         run: |
           echo "LD_LIBRARY_PATH=$(julia -e 'using Pkg; \
             Pkg.add("CUDA_Driver_jll"); \
@@ -122,12 +127,9 @@ jobs:
           ):$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
       - name: Setup cuNumeric.jl and Legate.jl
-        env:
-          LEGATE_AUTO_CONFIG: 0
-          CUNUMERIC_LEGATE_CONDA_INSTALL: 1
         run: |
-          export CONDA_PREFIX=~/miniconda3/envs/myenv
-          export LD_LIBRARY_PATH=~/miniconda3/envs/myenv/lib:$LD_LIBRARY_PATH
+          export CONDA_PREFIX=/root/miniconda3/envs/myenv
+          export LD_LIBRARY_PATH=/root/miniconda3/envs/myenv/lib:$LD_LIBRARY_PATH
 
           conda run --no-capture-output -n myenv julia --color=yes -e '
               using Pkg;
@@ -142,8 +144,6 @@ jobs:
           julia --color=yes -e 'using Pkg; Pkg.build()'
 
       - name: Perform Test
-        env: 
-            LEGATE_AUTO_CONFIG: 0
         run: |
          conda run --no-capture-output -n myenv julia --color=yes -e 'using Pkg; Pkg.test("cuNumeric")'
 
