@@ -84,8 +84,8 @@ jobs:
 
       - uses: julia-actions/cache@v2
         with:
-            cache-name: develop
-            
+            cache-name: developer
+
       - name: Install CMake 3.30.7
         run: |
           mkdir -p $HOME/.local
