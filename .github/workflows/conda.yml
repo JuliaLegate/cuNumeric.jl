@@ -86,19 +86,19 @@ jobs:
             key: conda-${{ runner.os }}-${{ steps.pkg.outputs.version }}
             restore-keys: |
                 conda-${{ runner.os }}-
-      - name: Create Conda env
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniconda-version: "latest"
+          environment-name: myenv
+          python-version: 3.11
+          activate-environment: true
+          auto-activate-base: false
+          use-mamba: true
+
+      - name: Setup Conda env
         run: |
-          mkdir -p ~/miniconda3
-          wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-          bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
-          rm ~/miniconda3/miniconda.sh
-          source ~/miniconda3/bin/activate
-          conda init --all
-          echo "PATH=$HOME/miniconda/bin:\$PATH" >> $GITHUB_ENV
-          export PATH="$HOME/miniconda/bin:$PATH"
-          conda create --name myenv python=3.10 -y
-          conda activate myenv
-          CONDA_OVERRIDE_CUDA="12.4" conda create -n myenv -c conda-forge -c legate/label/rc -c nvidia  cuda-toolkit=12.4 libcublas=12.4 cupynumeric=${{ steps.pkg.outputs.version }}.rc3 -y
+          CONDA_OVERRIDE_CUDA="12.4" conda create -n myenv -c conda-forge -c legate/label/rc -c nvidia cuda-toolkit=12.4 libcublas=12.4 cupynumeric=${{ steps.pkg.outputs.version }}.rc3 -y
 
       - name: Setup CUDA runtime version
         run: |
