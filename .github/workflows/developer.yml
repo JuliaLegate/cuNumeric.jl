@@ -124,8 +124,7 @@ jobs:
 
           julia --color=yes -e '
               using Pkg;
-            #  Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}"))
-               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "documentation"))
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}"))
           ' || true
           julia --color=yes -e 'using Pkg; Pkg.build()'
 

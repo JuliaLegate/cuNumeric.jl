@@ -74,17 +74,29 @@ jobs:
           VERSION=$(grep "^version = " Project.toml | cut -d'"' -f2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Install basic utils
+        run: apt-get update && apt-get install -y wget curl git build-essential
+
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
         with:
           version: '1.10'
-      
-      - name: Install basic utils
-        run: apt-get update && apt-get install -y wget curl git build-essential
 
       - uses: julia-actions/cache@v2
         with:
             cache-name: conda-install
+            cache-packages: true
+            key: ${{ runner.os }}-julia-${{ hashFiles('Project.toml') }}-${{ hashFiles('Manifest.toml') }}
+            restore-keys: |
+                ${{ runner.os }}-julia-${{ hashFiles('Project.toml') }}
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniconda-version: "latest"
+          python-version: 3.11
+          activate-environment: true
+          use-mamba: true
 
       - name: Setup cache for Conda env
         uses: actions/cache@v4
@@ -95,15 +107,6 @@ jobs:
             key: conda-${{ runner.os }}-${{ steps.pkg.outputs.version }}
             restore-keys: |
                 conda-${{ runner.os }}-
-
-      - name: Setup Miniconda
-        uses: conda-incubator/setup-miniconda@v3
-        with:
-          miniconda-version: "latest"
-          python-version: 3.11
-          activate-environment: true
-          use-mamba: true
-          miniconda-prefix: ~/miniconda3
 
       - name: Setup Conda env
         run: |
