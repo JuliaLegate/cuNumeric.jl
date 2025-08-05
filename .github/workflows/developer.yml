@@ -85,6 +85,8 @@ jobs:
       - uses: julia-actions/cache@v2
         with:
             cache-name: developer
+            cache-packages: true
+            key: ${{ runner.os }}-julia-${{ hashFiles('Project.toml') }}-${{ hashFiles('Manifest.toml') }}
 
       - name: Install CMake 3.30.7
         run: |
