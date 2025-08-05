@@ -86,12 +86,11 @@ jobs:
             key: conda-${{ runner.os }}-${{ steps.pkg.outputs.version }}
             restore-keys: |
                 conda-${{ runner.os }}-
-                  
+
       - name: Setup Miniconda
         uses: conda-incubator/setup-miniconda@v3
         with:
           miniconda-version: "latest"
-          environment-name: myenv
           python-version: 3.11
           activate-environment: true
           use-mamba: true
@@ -101,6 +100,9 @@ jobs:
           CONDA_OVERRIDE_CUDA="12.4" conda create -n myenv -c conda-forge -c legate/label/rc -c nvidia cuda-toolkit=12.4 libcublas=12.4 cupynumeric=${{ steps.pkg.outputs.version }}.rc3 -y
 
       - name: Setup CUDA runtime version
+        env:
+          LEGATE_AUTO_CONFIG: 0
+          CUNUMERIC_LEGATE_CONDA_INSTALL: 1
         run: |
           julia --color=yes -e '
               using Pkg
@@ -109,6 +111,9 @@ jobs:
               CUDA.set_runtime_version!(v"12.4")
           '
       - name: Set LD_LIBRARY_PATH for CUDA_Driver_jll
+        env:
+          LEGATE_AUTO_CONFIG: 0
+          CUNUMERIC_LEGATE_CONDA_INSTALL: 1
         run: |
           echo "LD_LIBRARY_PATH=$(julia -e 'using Pkg; \
             Pkg.add("CUDA_Driver_jll"); \
