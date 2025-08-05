@@ -20,6 +20,7 @@ const JULIA_LEGATE_BUILDING_DOCS = get(ENV, "JULIA_LEGATE_BUILDING_DOCS", "false
 if !JULIA_LEGATE_BUILDING_DOCS
     using Legate
     using OpenSSL_jll
+    using OpenBLAS32_jll
     using HDF5_jll
     using NCCL_jll
     using CUTENSOR_jll
@@ -64,7 +65,7 @@ function get_library_root(jll_module, env_var::String)
     end
 end
 
-function build_cpp_wrapper(repo_root, cupynumeric_loc, legate_loc, hdf5_lib)
+function build_cpp_wrapper(repo_root, cupynumeric_loc, legate_loc, hdf5_lib, blas_lib)
     @info "libcupynumericwrapper: Building C++ Wrapper Library"
     install_dir = joinpath(repo_root, "deps", "cunumeric_jl_wrapper")
     if isdir(install_dir)
@@ -76,7 +77,7 @@ function build_cpp_wrapper(repo_root, cupynumeric_loc, legate_loc, hdf5_lib)
     build_cpp_wrapper = joinpath(repo_root, "scripts/build_cpp_wrapper.sh")
     nthreads = Threads.nthreads()
     run_sh(
-        `bash $build_cpp_wrapper $repo_root $cupynumeric_loc $legate_loc $hdf5_lib $install_dir $nthreads`,
+        `bash $build_cpp_wrapper $repo_root $cupynumeric_loc $legate_loc $hdf5_lib $blas_lib $install_dir $nthreads`,
         "cpp_wrapper",
     )
 end
@@ -136,7 +137,8 @@ function build()
 
     @info "cuNumeric.jl: Parsed Package Dir as: $(pkg_root)"
     hdf5_lib = Legate.get_install_libhdf5()
-    cutensor_lib = get_library_root(CUTENSOR_jll, "JULIA_CUTENSOR_PATH") # default
+    cutensor_lib = get_library_root(CUTENSOR_jll, "JULIA_CUTENSOR_PATH")
+    blas_lib = get_library_root(OpenBLAS32_jll, "JULIA_OPENBLAS_PATH")
 
     # custom install 
     if check_prefix_install("CUNUMERIC_CUSTOM_INSTALL", "CUNUMERIC_CUSTOM_INSTALL_LOCATION")
@@ -163,7 +165,7 @@ function build()
 
     if get(ENV, "CUNUMERIC_DEVELOP_MODE", "0") == "1"
         # create libcupynumericwrapper.so
-        build_cpp_wrapper(pkg_root, cupynumeric_root, legate_root, hdf5_lib)
+        build_cpp_wrapper(pkg_root, cupynumeric_root, legate_root, hdf5_lib, blas_lib)
         cunumeric_wrapper_lib = joinpath(pkg_root, "deps", "cunumeric_wrapper_install")
     elseif true == true # temporary until cunumeric_jl_wrapper_jll
         cunumeric_wrapper_lib = cunumeric_wrapper_jll_local_branch_install(pkg_root)
