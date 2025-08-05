@@ -98,7 +98,7 @@ jobs:
             cache-name: julia-developer-ci-test
 
       - name: Setup CUDA runtime version
-        run: |
+        run: |       
           julia --color=yes -e '
               using Pkg
               Pkg.add("CUDA")
@@ -117,6 +117,8 @@ jobs:
         env:
           PATH: $HOME/.local/bin:${{ env.PATH }}
         run: |
+          julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")'
+          
           julia --color=yes -e '
               using Pkg;
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test"))
