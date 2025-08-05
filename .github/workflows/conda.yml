@@ -82,7 +82,7 @@ jobs:
       - uses: julia-actions/cache@v2
         with:
           cache-name: julia
-          custom-path: /root/.julia
+          depot: /root/.julia
 
       - name: Setup cache for Conda env
         uses: actions/cache@v4

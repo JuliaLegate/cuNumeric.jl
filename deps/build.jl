@@ -66,9 +66,9 @@ end
 
 function build_cpp_wrapper(repo_root, cupynumeric_loc, legate_loc, hdf5_lib)
     @info "libcupynumericwrapper: Building C++ Wrapper Library"
-    install_dir = joinpath(repo_root, "deps", "cunumeric_wrapper_install")
+    install_dir = joinpath(repo_root, "deps", "cunumeric_jl_wrapper")
     if isdir(install_dir)
-        @warn "libcunumericwrapper: Build dir exists. Deleting prior build."
+        @warn "libcunumeric_jl_wrapper: Build dir exists. Deleting prior build."
         rm(install_dir; recursive=true)
         mkdir(install_dir)
     end
