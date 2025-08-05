@@ -82,11 +82,6 @@ jobs:
       - name: Install basic utils
         run: apt-get update && apt-get install -y wget curl git build-essential
 
-      - uses: julia-actions/cache@v2
-        with:
-            cache-name: developer
-            cache-packages: true
-            key: ${{ runner.os }}-julia-${{ hashFiles('Project.toml') }}-${{ hashFiles('Manifest.toml') }}
 
       - name: Install CMake 3.30.7
         run: |
@@ -111,6 +106,10 @@ jobs:
             using CUDA_Driver_jll; \
             print(joinpath(CUDA_Driver_jll.artifact_dir, "lib"))' \
           ):$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          
+      - name: Load Julia packages from cache
+        id: julia-cache
+        uses: julia-actions/cache@v2
 
       - name: Setup cuNumeric.jl and Legate.jl with build from src wrappers
         env:
@@ -132,4 +131,13 @@ jobs:
         run: |
           julia --color=yes -e 'using Pkg; Pkg.test("cuNumeric")'
 
+
+      - name: Save Julia depot cache on cancel or failure
+        id: julia-cache-save
+        if: cancelled() || failure()
+        uses: actions/cache/save@v4
+        with: 
+          path: |
+            ${{ steps.julia-cache.outputs.cache-paths }}
+          key: ${{ steps.julia-cache.outputs.cache-key }}
      
