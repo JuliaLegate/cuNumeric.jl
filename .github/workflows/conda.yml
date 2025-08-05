@@ -103,6 +103,10 @@ jobs:
       - name: Setup Conda env
         run: |
           CONDA_OVERRIDE_CUDA="12.4" conda create -n myenv -c conda-forge -c legate/label/rc -c nvidia cuda-toolkit=12.4 libcublas=12.4 cupynumeric=${{ steps.pkg.outputs.version }}.rc3 -y
+      
+      - name: Load Julia packages from cache
+        id: julia-cache
+        uses: julia-actions/cache@v2
 
       - name: Setup CUDA runtime version
         run: |
@@ -119,10 +123,6 @@ jobs:
             using CUDA_Driver_jll; \
             print(joinpath(CUDA_Driver_jll.artifact_dir, "lib"))' \
           ):$LD_LIBRARY_PATH" >> $GITHUB_ENV
-
-      - name: Load Julia packages from cache
-        id: julia-cache
-        uses: julia-actions/cache@v2
 
       - name: Setup cuNumeric.jl and Legate.jl
         run: |

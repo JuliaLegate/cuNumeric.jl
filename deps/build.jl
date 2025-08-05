@@ -49,9 +49,12 @@ function run_sh(cmd::Cmd, filename::String)
     catch e
         println("stderr log generated: ", err_log, '\n')
         println("---- Begin stderr log ----")
-        println(read(err_log, String))
+        contents = read(err_log, String)
+        println(contents)
         println("---- End stderr log ----")
-        exit(-1)
+        if !isempty(strip(contents))
+            exit(1)
+        end
     end
 end
 
