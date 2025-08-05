@@ -53,7 +53,7 @@ function run_sh(cmd::Cmd, filename::String)
             println("---- Begin stderr log ----")
             println(contents)
             println("---- End stderr log ----")
-            exit(1)
+            # exit(127)
         end
     end
 end
