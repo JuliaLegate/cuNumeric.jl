@@ -77,7 +77,7 @@ target_include_directories(${CXX_CUNUMERICJL_WRAPPER} PRIVATE
                         )
           
 install(TARGETS ${CXX_CUNUMERICJL_WRAPPER} 
-          DESTINATION "${PROJECT_INSTALL_PATH}")
+          DESTINATION "${PROJECT_INSTALL_PATH}/lib")
 
 # C- API
 add_library(${C_INTERFACE_LIB} SHARED
@@ -106,4 +106,4 @@ target_include_directories(${C_INTERFACE_LIB} PRIVATE
            )
 
 install(TARGETS ${C_INTERFACE_LIB} 
-          DESTINATION "${PROJECT_INSTALL_PATH}")
+          DESTINATION "${PROJECT_INSTALL_PATH}/lib")

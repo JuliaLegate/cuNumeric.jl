@@ -38,14 +38,24 @@ function run_sh(cmd::Cmd, filename::String)
     println(cmd)
 
     build_log = joinpath(@__DIR__, "build.log")
+    tmp_build_log = joinpath(@__DIR__, "$(filename).log")
     err_log = joinpath(@__DIR__, "$(filename).err")
 
     if isfile(err_log)
         rm(err_log)
     end
 
+    if isfile(tmp_build_log)
+        rm(tmp_build_log)
+    end
+
     try
-        run(pipeline(cmd; stdout=build_log, stderr=err_log, append=false))
+        run(pipeline(cmd; stdout=tmp_build_log, stderr=err_log, append=false))
+        println(contents)
+        contents = read(tmp_build_log, String)
+        open(build_log, "a") do io
+            println(contents)
+        end
     catch e
         println("stderr log generated: ", err_log, '\n')
         contents = read(err_log, String)
@@ -53,7 +63,6 @@ function run_sh(cmd::Cmd, filename::String)
             println("---- Begin stderr log ----")
             println(contents)
             println("---- End stderr log ----")
-            exit(127)
         end
     end
 end
@@ -68,7 +77,7 @@ function get_library_root(jll_module, env_var::String)
     end
 end
 
-function build_cpp_wrapper(repo_root, cupynumeric_loc, legate_loc, hdf5_lib, blas_lib)
+function build_cpp_wrapper(repo_root, cupynumeric_loc, legate_loc, hdf5_root, blas_lib)
     @info "libcunumeric_jl_wrapper: Building C++ Wrapper Library"
     install_dir = joinpath(repo_root, "deps", "cunumeric_jl_wrapper")
     if isdir(install_dir)
@@ -80,9 +89,10 @@ function build_cpp_wrapper(repo_root, cupynumeric_loc, legate_loc, hdf5_lib, bla
     build_cpp_wrapper = joinpath(repo_root, "scripts/build_cpp_wrapper.sh")
     nthreads = Threads.nthreads()
     run_sh(
-        `bash $build_cpp_wrapper $repo_root $cupynumeric_loc $legate_loc $hdf5_lib $blas_lib $install_dir $nthreads`,
+        `bash $build_cpp_wrapper $repo_root $cupynumeric_loc $legate_loc $hdf5_root $blas_lib $install_dir $nthreads`,
         "cpp_wrapper",
     )
+    println(readdir(joinpath(install_dir, "lib")))
     return joinpath(install_dir, "lib")
 end
 
@@ -139,6 +149,11 @@ function build()
     pkg_root = abspath(joinpath(@__DIR__, "../"))
     deps_dir = joinpath(@__DIR__)
 
+    build_log = joinpath(deps_dir, "build.log")
+    open(build_log, "w") do io
+        println(io, "=== Build started ===")
+    end
+
     @info "cuNumeric.jl: Parsed Package Dir as: $(pkg_root)"
     hdf5_lib = Legate.get_install_libhdf5()
     cutensor_lib = get_library_root(CUTENSOR_jll, "JULIA_CUTENSOR_PATH")
@@ -157,6 +172,7 @@ function build()
 
     legate_lib = Legate.get_install_liblegate()
     legate_root = joinpath(legate_lib, "..")
+    hdf5_root = joinpath(hdf5_lib, "..")
 
     cupynumeric_lib = joinpath(cupynumeric_root, "lib")
     push!(Base.DL_LOAD_PATH, cupynumeric_lib) # TODO: check if this actually does something
@@ -170,7 +186,7 @@ function build()
     if get(ENV, "CUNUMERIC_DEVELOP_MODE", "0") == "1"
         # create libcupynumericwrapper.so
         cunumeric_wrapper_lib = build_cpp_wrapper(
-            pkg_root, cupynumeric_root, legate_root, hdf5_lib, blas_lib
+            pkg_root, cupynumeric_root, legate_root, hdf5_root, blas_lib
         )
     elseif true == true # temporary until cunumeric_jl_wrapper_jll
         cunumeric_wrapper_lib = cunumeric_wrapper_jll_local_branch_install(pkg_root)

@@ -1,14 +1,14 @@
 set -e
 
 # Check if exactly one argument is provided
-if [[ $# -ne 6 ]]; then
-    echo "Usage: $0 <cunumeric-pkg> <cupynumeric-root> <legate-root> <hdf5-lib> <blas-lib> <install-dir> <nthreads>"
+if [[ $# -ne 7 ]]; then
+    echo "Usage: $0 <cunumeric-pkg> <cupynumeric-root> <legate-root> <hdf5-root> <blas-lib> <install-dir> <nthreads>"
     exit 1
 fi
 CUNUMERICJL_ROOT_DIR=$1 # this is the repo root of cunumeric.jl
 CUPYNUMERIC_ROOT_DIR=$2
 LEGATE_ROOT_DIR=$3
-HDF5_LIB_DIR=$4
+HDF5_ROOT_DIR=$4
 BLAS_LIB_DIR=$5
 INSTALL_DIR=$6
 NTHREADS=$7
@@ -30,8 +30,8 @@ if [[ ! -d "$LEGATE_ROOT_DIR" ]]; then
     exit 1
 fi
 
-if [[ ! -d "$HDF5_LIB_DIR" ]]; then
-    echo "Error: '$HDF5_LIB_DIR' is not a valid directory."
+if [[ ! -d "$HDF5_ROOT_DIR" ]]; then
+    echo "Error: '$HDF5_ROOT_DIR' is not a valid directory."
     exit 1
 fi
 
@@ -67,7 +67,7 @@ cmake -S $CUNUMERIC_WRAPPER_SOURCE -B $BUILD_DIR \
     -D CMAKE_PREFIX_PATH="$CUPYNUMERIC_ROOT_DIR;$LEGION_CMAKE_DIR;$LEGATE_ROOT_DIR;" \
     -D CUPYNUMERIC_PATH="$CUPYNUMERIC_ROOT_DIR" \
     -D LEGATE_PATH=$LEGATE_ROOT_DIR \
-    -D HDF5_PATH=$HDF5_LIB_DIR \
+    -D HDF5_PATH=$HDF5_ROOT_DIR \
     -D BLAS_LIBRARIES=$BLAS_LIB_DIR/libopenblas.so \
     -D PROJECT_INSTALL_PATH=$INSTALL_DIR \
     -D CMAKE_BUILD_TYPE=Release
