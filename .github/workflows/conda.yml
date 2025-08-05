@@ -73,6 +73,9 @@ jobs:
 
           VERSION=$(grep "^version = " Project.toml | cut -d'"' -f2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
+      - name: Install basic utils
+        run: apt-get update && apt-get install -y wget curl git build-essential
 
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
@@ -102,9 +105,6 @@ jobs:
           activate-environment: true
           use-mamba: true
           miniconda-prefix: /root/miniconda3
-
-      - name: Install basic utils
-        run: apt-get update && apt-get install -y wget curl git build-essential
 
       - name: Setup Conda env
         run: |
