@@ -96,7 +96,7 @@ jobs:
         uses: julia-actions/cache@v2
         with:
             cache-name: julia-developer-ci-test
-      - name: Cleanup old version (if present)
+      - name: Cleanup old cuNumeric and Legate
         run: | 
           julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")' || true # ensure clean env
           julia --color=yes -e 'using Pkg; Pkg.rm("Legate")' || true # ensure clean env
@@ -112,14 +112,12 @@ jobs:
       - name: Set LD_LIBRARY_PATH for CUDA_Driver_jll
         run: |
           echo "LD_LIBRARY_PATH=$(julia -e 'using Pkg; \
-            Pkg.add("CUDA_Driver_jll"); \
+            Pkg.add(name = "CUDA_Driver_jll", version = "0.12.1"); \
             using CUDA_Driver_jll; \
             print(joinpath(CUDA_Driver_jll.artifact_dir, "lib"))' \
           ):$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
       - name: Setup cuNumeric.jl and Legate.jl with build from src wrappers
-        env:
-          PATH: $HOME/.local/bin:${{ env.PATH }}
         run: |
           julia --color=yes -e '
               using Pkg;

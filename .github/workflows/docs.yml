@@ -27,12 +27,19 @@ jobs:
       pull-requests: read
       statuses: write
     runs-on: ubuntu-latest
+    env:
+      LEGATE_AUTO_CONFIG: 0
     steps:
       - uses: actions/checkout@v4
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.11'
       - uses: julia-actions/cache@v2
+      - name: Cleanup old cuNumeric and Legate
+        run: |
+          julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")' || true # ensure clean env
+          julia --color=yes -e 'using Pkg; Pkg.rm("Legate")' || true # ensure clean env
+
       - name: Setup CUDA runtime version
         run: |
           julia --color=yes --project=docs -e '
@@ -44,7 +51,7 @@ jobs:
       - name: Set LD_LIBRARY_PATH for CUDA_Driver_jll
         run: |
           echo "LD_LIBRARY_PATH=$(julia -e 'using Pkg; \
-            Pkg.add("CUDA_Driver_jll"); \
+            Pkg.add(name = "CUDA_Driver_jll", version = "0.12.1"); \
             using CUDA_Driver_jll; \
             print(joinpath(CUDA_Driver_jll.artifact_dir, "lib"))' \
           ):$LD_LIBRARY_PATH" >> $GITHUB_ENV
@@ -52,11 +59,7 @@ jobs:
       - name: Setup cuNumeric.jl and Legate.jl
         env:
           JULIA_LEGATE_BUILDING_DOCS: "true"
-          LEGATE_AUTO_CONFIG: 0
         run: |
-          julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")' || true # ensure clean env
-          julia --color=yes -e 'using Pkg; Pkg.rm("Legate")' || true # ensure clean env
-          
           git clone --depth=1 --branch=documentation https://github.com/JuliaLegate/cuNumeric.jl ~/.julia/dev/cuNumeric
 
           julia --color=yes --project=docs -e '
@@ -66,8 +69,6 @@ jobs:
               Pkg.develop(path = joinpath(homedir(), ".julia", "dev", "cuNumeric"))
           '
       - name: Instantiate docs environment
-        env:
-          LEGATE_AUTO_CONFIG: 0
         run: |
           julia --color=yes --project=docs -e '
             using Pkg
@@ -76,6 +77,5 @@ jobs:
         run: julia --color=yes --project=docs docs/make.jl
         env:
           JULIA_LEGATE_BUILDING_DOCS: "true"
-          LEGATE_AUTO_CONFIG: 0
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
