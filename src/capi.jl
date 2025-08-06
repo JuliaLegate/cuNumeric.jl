@@ -29,6 +29,9 @@ nda_nbytes(arr::NDArray_t) = ccall((:nda_nbytes, libnda),
 #     end
 # end
 
+@doc"""
+The NDArray
+"""
 mutable struct NDArray
     ptr::NDArray_t
     nbytes::Int64

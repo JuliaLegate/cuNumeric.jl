@@ -105,5 +105,5 @@ As part of a more [complete benchmark](@ref "Benchmark Results") we ran our code
 
 GEMM Efficiency            |  GEMM GFLOPS
 :-------------------------:|:-------------------------:
-![GEMM Efficiency](../images/gemm_efficiency.svg)  |  ![GEMM GFLOPS](../images/gemm_gflops.svg)
+![GEMM Efficiency](images/gemm_efficiency.svg)  |  ![GEMM GFLOPS](images/gemm_gflops.svg)
 

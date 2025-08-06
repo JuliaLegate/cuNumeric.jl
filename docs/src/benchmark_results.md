@@ -17,7 +17,7 @@ mul!(C, A, B)
 
 GEMM Efficiency            |  GEMM GFLOPS
 :-------------------------:|:-------------------------:
-![GEMM Efficiency](../images/gemm_efficiency.svg)  |  ![GEMM GFLOPS](../images/gemm_gflops.svg)
+![GEMM Efficiency](images/gemm_efficiency.svg)  |  ![GEMM GFLOPS](images/gemm_gflops.svg)
 
 ## Monte-Carlo Integration
 
@@ -31,11 +31,11 @@ val = (V/N) * sum(integrand(x))
 
 MC Efficiency            |  MC GFLOPS
 :-------------------------:|:-------------------------:
-![MC Efficiency](../images/mc_eff.svg)  |  ![MC GFLOPS](../images/mc_ops.svg)
+![MC Efficiency](images/mc_eff.svg)  |  ![MC GFLOPS](images/mc_ops.svg)
 
 
 ## Gray-Scott (2D)
 
 Solving a PDE requires halo-exchanges and lots of data movement. In this benchmark we fall an order of magnitude short of the `ImplicitGlobalGrid.jl` library which specifically targets multi-node, multi-GPU halo exchanges. We attribute this to the lack of kernel fusion in cuNumeric.jl
 
-![GS GFLOPS](../images/gs_gflops_diffeq.svg)
+![GS GFLOPS](images/gs_gflops_diffeq.svg)
