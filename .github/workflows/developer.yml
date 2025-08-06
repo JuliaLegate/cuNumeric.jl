@@ -122,6 +122,7 @@ jobs:
           
           julia --color=yes -e '
               using Pkg;
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test", subdir = "lib/LegatePreferences"))
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test"))
               using LegatePreferences;
               LegatePreferences.use_developer_mode();
