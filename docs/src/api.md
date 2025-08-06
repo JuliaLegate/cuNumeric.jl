@@ -12,3 +12,4 @@ Depth = 2:2
 Modules = [cuNumeric]
 Pages = ["cuNumeric.jl", "memory.jl", "ndarray.jl", "unary.jl", "binary.jl"]
 ```
+

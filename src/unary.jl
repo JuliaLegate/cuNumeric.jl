@@ -6,33 +6,33 @@ Supported Unary Operations
 
 The following unary operations are supported and can be applied directly to `NDArray` values:
 
-  • `abs`
-  • `acos`
-  • `asin`
-  • `asinh`
-  • `atan`
-  • `atanh`
-  • `cbrt`
-  • `conj`
-  • `cos`
-  • `cosh`
-  • `deg2rad`
-  • `exp`
-  • `exp2`
-  • `expm1`
-  • `floor`
-  • `log`
-  • `log10`
-  • `log1p`
-  • `log2`
-  • `-` (negation)
-  • `rad2deg`
-  • `sin`
-  • `sinh`
-  • `sqrt`
-  • `square`
-  • `tan`
-  • `tanh`
+  - `abs`
+  - `acos`
+  - `asin`
+  - `asinh`
+  - `atan`
+  - `atanh`
+  - `cbrt`
+  - `conj`
+  - `cos`
+  - `cosh`
+  - `deg2rad`
+  - `exp`
+  - `exp2`
+  - `expm1`
+  - `floor`
+  - `log`
+  - `log10`
+  - `log1p`
+  - `log2`
+  - `-` (negation)
+  - `rad2deg`
+  - `sin`
+  - `sinh`
+  - `sqrt`
+  - `square`
+  - `tan`
+  - `tanh`
 
 These operations are applied elementwise by default and follow standard Julia semantics.
 
