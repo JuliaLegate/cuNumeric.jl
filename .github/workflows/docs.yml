@@ -61,6 +61,7 @@ jobs:
 
           julia --color=yes --project=docs -e '
               using Pkg
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test", subdir = "lib/LegatePreferences"))
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test"))
               Pkg.develop(path = joinpath(homedir(), ".julia", "dev", "cuNumeric"))
           '
