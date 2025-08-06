@@ -1,4 +1,4 @@
-# [Benchmark Results](@ref)
+# Benchmark Results
 
 For JuliaCon2025 we benchmarks cuNumeric.jl on 8 A100 GPUs (single-node) and compared it to the Python library cuPyNumeric and other relevant benchmarks depending on the problem. All results shown are weak scaling. We hope to have multi-node benchmarks soon!
 

@@ -100,7 +100,7 @@ cuNumeric FLOPS: 6448.581918175012 GFLOPS
 To generate a weak scaling plot, you must increment the problem size in proportion to the number of GPUs. This helps reveal any communication overhead in our SGEMM implementation since data may be transfered between GPUs or even across nodes in a server.
 
 
-As part of a more [complete benchmark](@ref "Benchmark Results") we ran our code on up to 8 A100 GPUs (single-node) and compared it to the Python library cuPyNumeric as well as a custom implementation using CUDA.jl. From these resutls we can see that cuNumeric.jl is capable of scaling and saturating the GPU memory bandwidth for matrix multiplication.
+As part of a more complete benchmark we ran our code on up to 8 A100 GPUs (single-node) and compared it to the Python library cuPyNumeric as well as a custom implementation using CUDA.jl. From these resutls we can see that cuNumeric.jl is capable of scaling and saturating the GPU memory bandwidth for matrix multiplication.
 
 
 GEMM Efficiency            |  GEMM GFLOPS
