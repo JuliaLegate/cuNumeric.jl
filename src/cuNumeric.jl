@@ -19,6 +19,9 @@
 
 module cuNumeric
 
+using Preferences
+using CNPreferences: CNPreferences
+
 using Legate
 
 using OpenSSL_jll
@@ -29,6 +32,12 @@ using CxxWrap
 
 using Pkg
 using TOML
+
+using cupynumeric_jll
+# temporary until cunumeric_jl_wrapper_jll exists
+include("develop/cunumeric_wrapper.jl")
+# using cunumeric_jl_wrapper_jll
+using CUTENSOR_jll
 
 using LinearAlgebra
 import LinearAlgebra: mul!
@@ -45,6 +54,8 @@ import Base: abs, angle, acos, acosh, asin, asinh, atan, atanh, cbrt,
     <, <=, !=, >>, all, any, argmax, argmin, maximum, minimum,
     prod, sum, read
 
+const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.05.00"]
+
 function preload_libs()
     libs = [
         joinpath(OpenBLAS32_jll.artifact_dir, "lib", "libopenblas.so"), # required for libcupynumeric.so
@@ -56,33 +67,21 @@ function preload_libs()
         Libdl.dlopen(lib, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
     end
 end
-pkg_root = joinpath(@__DIR__, "../")
-deps_path = joinpath(pkg_root, "deps", "deps.jl")
 
-if isfile(deps_path)
-    include(deps_path)
-else
-    using cupynumeric_jll
-    # temporary until cunumeric_jl_wrapper_jll exists
-    include("develop/cunumeric_wrapper.jl")
-    # using cunumeric_jl_wrapper_jll
-    using CUTENSOR_jll
+include("preference.jl")
+find_preferences()
 
-    const CUTENSOR_LIB = joinpath(CUTENSOR_jll.artifact_dir, "lib")
-    const TBLIS_LIB = joinpath(cupynumeric_jll.artifact_dir, "lib")
-    const CUPYNUMERIC_LIB = joinpath(cupynumeric_jll.artifact_dir, "lib")
-    # const CUNUMERIC_WRAPPER_LIB = joinpath(cunumeric_jl_wrapper_jll.artifact_dir, "lib")
-    const CUNUMERIC_WRAPPER_LIB = cunumeric_wrapper_jll_local_branch_install(pkg_root)
-    open(joinpath(deps_path), "w") do io
-        println(io, "const CUTENSOR_LIB = \"$(CUTENSOR_LIB)\"")
-        println(io, "const TBLIS_LIB = \"$(TBLIS_LIB)\"")
-        println(io, "const CUPYNUMERIC_LIB = \"$(CUPYNUMERIC_LIB)\"")
-        println(io, "const CUNUMERIC_WRAPPER_LIB = \"$(CUNUMERIC_WRAPPER_LIB)\"")
-    end
-end
+const BLAS_LIB = load_preference(CNPreferences, "BLAS_LIB", nothing)
+const CUTENSOR_LIB = load_preference(CNPreferences, "CUTENSOR_LIB", nothing)
+const TBLIS_LIB = load_preference(CNPreferences, "TBLIS_LIB", nothing)
+const CUPYNUMERIC_LIB = load_preference(CNPreferences, "CUPYNUMERIC_LIB", nothing)
+const CUNUMERIC_WRAPPER_LIB = load_preference(CNPreferences, "CUNUMERIC_WRAPPER_LIB", nothing)
 
 libnda = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_c_wrapper.so")
 libpath = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_jl_wrapper.so")
+if !isfile(libpath)
+    error("Developer mode: You need to call Pkg.build()")
+end
 
 preload_libs() # for precompilation
 
@@ -137,6 +136,7 @@ end
 
 # Runtime initilization
 function __init__()
+    CNPreferences.check_unchanged()
     preload_libs()
     @initcxx
 

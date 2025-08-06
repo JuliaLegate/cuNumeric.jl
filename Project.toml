@@ -3,6 +3,7 @@ uuid = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
 version = "25.5.0"
 
 [deps]
+CNPreferences = "3e078157-ea10-49d5-bf32-908f777cd46f"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CUTENSOR_jll = "35b6c64b-1ee1-5834-92a3-3f624899209a"
 CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
@@ -27,8 +28,8 @@ cupynumeric_jll = "2862d674-414d-5b0b-a494-b21f8deca547"
 libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
 
 [sources]
-Legate = {url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test"}
-LegatePreferences = {url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test", subdir = "lib/LegatePreferences"}
+Legate = {rev = "doc-test", url = "https://github.com/JuliaLegate/Legate.jl"}
+LegatePreferences = {rev = "doc-test", subdir = "lib/LegatePreferences", url = "https://github.com/JuliaLegate/Legate.jl"}
 
 [compat]
 CxxWrap = "0.17"

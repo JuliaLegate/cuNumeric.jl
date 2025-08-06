@@ -1,8 +1,8 @@
 set -e
 
 # Check if exactly one argument is provided
-if [[ $# -ne 7 ]]; then
-    echo "Usage: $0 <cunumeric-pkg> <cupynumeric-root> <legate-root> <hdf5-root> <blas-lib> <install-dir> <nthreads>"
+if [[ $# -ne 8 ]]; then
+    echo "Usage: $0 <cunumeric-pkg> <cupynumeric-root> <legate-root> <hdf5-root> <blas-lib> <install-dir> <branch> <nthreads>"
     exit 1
 fi
 CUNUMERICJL_ROOT_DIR=$1 # this is the repo root of cunumeric.jl
@@ -11,7 +11,8 @@ LEGATE_ROOT_DIR=$3
 HDF5_ROOT_DIR=$4
 BLAS_LIB_DIR=$5
 INSTALL_DIR=$6
-NTHREADS=$7
+WRAPPER_BRANCH=$7
+NTHREADS=$8
 
 # Check if the provided argument is a valid directory
 
@@ -35,19 +36,25 @@ if [[ ! -d "$HDF5_ROOT_DIR" ]]; then
     exit 1
 fi
 
+echo "Checking out wrapper branch: $WRAPPER_BRANCH"
 GIT_REPO="https://github.com/JuliaLegate/cunumeric_jl_wrapper"
-# COMMIT_HASH="f00bd063be66b735fc6040b40027669337399a06"
 CUNUMERIC_WRAPPER_SOURCE=$CUNUMERICJL_ROOT_DIR/deps/cunumeric_jl_wrapper_src
-BUILD_DIR=$CUNUMERIC_WRAPPER_SOURCE/build
 
 if [ ! -d "$CUNUMERIC_WRAPPER_SOURCE" ]; then
-    cd $CUNUMERICJL_ROOT_DIR/deps
     git clone $GIT_REPO $CUNUMERIC_WRAPPER_SOURCE
 fi
 
-cd $CUNUMERIC_WRAPPER_SOURCE
+cd "$CUNUMERIC_WRAPPER_SOURCE" || exit 1
 git fetch --tags
-# git checkout $COMMIT_HASH
+
+cd "$LEGATE_WRAPPER_SOURCE" || exit 1
+echo "Current repo: $(basename $(pwd))"
+git remote -v
+
+git fetch origin "$WRAPPER_BRANCH"
+git checkout "$WRAPPER_BRANCH"
+
+BUILD_DIR=$CUNUMERIC_WRAPPER_SOURCE/build
 
 if [[ ! -d "$BUILD_DIR" ]]; then
     mkdir $BUILD_DIR 
