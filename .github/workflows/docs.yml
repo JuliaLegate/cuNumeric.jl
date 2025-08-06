@@ -54,6 +54,9 @@ jobs:
           JULIA_LEGATE_BUILDING_DOCS: "true"
           LEGATE_AUTO_CONFIG: 0
         run: |
+          julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")' || true # ensure clean env
+          julia --color=yes -e 'using Pkg; Pkg.rm("Legate")' || true # ensure clean env
+          
           git clone --depth=1 --branch=documentation https://github.com/JuliaLegate/cuNumeric.jl ~/.julia/dev/cuNumeric
 
           julia --color=yes --project=docs -e '

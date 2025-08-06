@@ -131,8 +131,8 @@ jobs:
           export CONDA_PREFIX=~/miniconda3/envs/myenv
           export LD_LIBRARY_PATH=~/miniconda3/envs/myenv/lib:$LD_LIBRARY_PATH
           
-          julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")'
-          julia --color=yes -e 'using Pkg; Pkg.rm("Legate")'
+          julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")' || true # ensure clean env
+          julia --color=yes -e 'using Pkg; Pkg.rm("Legate")' || true # ensure clean env
 
           conda run --no-capture-output -n myenv julia --color=yes -e '
               using Pkg;
