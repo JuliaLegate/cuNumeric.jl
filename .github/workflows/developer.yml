@@ -131,6 +131,8 @@ jobs:
           julia --color=yes -e '
               using Pkg;
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}", subdir = "lib/CNPreferences"))
+              using CNPreferences;
+              CNPreferences.use_developer_mode();
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}"))
           ' || true
           julia --color=yes -e 'using Pkg; Pkg.build()'

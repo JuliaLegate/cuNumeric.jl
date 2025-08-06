@@ -30,6 +30,8 @@ libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
 [sources]
 Legate = {rev = "doc-test", url = "https://github.com/JuliaLegate/Legate.jl"}
 LegatePreferences = {rev = "doc-test", subdir = "lib/LegatePreferences", url = "https://github.com/JuliaLegate/Legate.jl"}
+CNPreferences = {rev = "documentation", subdir = "lib/CNPreferences", url = "https://github.com/JuliaLegate/cuNumeric.jl"}
+
 
 [compat]
 CxxWrap = "0.17"
