@@ -77,7 +77,7 @@ jobs:
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
         with:
-          version: '1.10'
+          version: '1.11'
       
       - name: Install basic utils
         run: apt-get update && apt-get install -y wget curl git build-essential
@@ -118,10 +118,13 @@ jobs:
           PATH: $HOME/.local/bin:${{ env.PATH }}
         run: |
           julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")'
+          julia --color=yes -e 'using Pkg; Pkg.rm("Legate")'
           
           julia --color=yes -e '
               using Pkg;
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test"))
+              using LegatePreferences;
+              LegatePreferences.use_developer_mode();
           ' || true
           julia --color=yes -e 'using Pkg; Pkg.build()'
 

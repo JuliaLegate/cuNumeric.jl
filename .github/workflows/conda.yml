@@ -80,7 +80,7 @@ jobs:
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
         with:
-          version: '1.10'
+          version: '1.11'
 
       - name: Setup Miniconda
         uses: conda-incubator/setup-miniconda@v3
@@ -130,12 +130,17 @@ jobs:
         run: |
           export CONDA_PREFIX=~/miniconda3/envs/myenv
           export LD_LIBRARY_PATH=~/miniconda3/envs/myenv/lib:$LD_LIBRARY_PATH
+          
+          julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")'
+          julia --color=yes -e 'using Pkg; Pkg.rm("Legate")'
 
           conda run --no-capture-output -n myenv julia --color=yes -e '
               using Pkg;
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test"))
+              using LegatePreferences;
+              LegatePreferences.use_conda();
           ' || true
-          julia --color=yes -e 'using Pkg; Pkg.build()'
+          julia --color=yes -e 'using Pkg; Pkg.build("/miniconda3/envs/myenv")'
 
           conda run --no-capture-output -n myenv julia --color=yes -e '
               using Pkg;
