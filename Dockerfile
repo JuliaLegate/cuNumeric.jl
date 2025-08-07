@@ -3,8 +3,8 @@ ARG UBUNTU_VERSION=22.04
 ARG JULIA_VERSION=1.10
 FROM julia:${JULIA_VERSION}
 
-ARG CUDA_MAJOR
-ARG CUDA_MINOR
+ARG CUDA_MAJOR=12
+ARG CUDA_MINOR=4
 ENV CUDA_VERSION_MAJOR_MINOR="${CUDA_MAJOR}.${CUDA_MINOR}"
 
 ARG REF=main
@@ -51,7 +51,7 @@ ENV PATH="/usr/local/.juliaup/bin:/usr/local/bin:$PATH"
 # install CUDA.jl itself
 RUN julia --color=yes -e 'using Pkg; Pkg.add("CUDA"); using CUDA; CUDA.set_runtime_version!(VersionNumber(ENV["CUDA_VERSION_MAJOR_MINOR"]))'
 
-RUN julia -e 'using Pkg; Pkg.add("CUDA_Driver_jll"); Pkg.add("CUDA_Runtime_jll")'
+RUN julia -e 'using Pkg; Pkg.add(name = "CUDA_Driver_jll", version = "0.12.1"); Pkg.add("CUDA_Runtime_jll")'
 RUN echo "export LD_LIBRARY_PATH=\$(julia -e 'print(Sys.BINDIR * \"/../lib\")'):\$(julia -e 'using CUDA_Driver_jll; print(joinpath(CUDA_Driver_jll.artifact_dir, \"lib\"))'):\$(julia -e 'using CUDA_Runtime_jll; print(joinpath(CUDA_Runtime_jll.artifact_dir, \"lib\"))'):\$LD_LIBRARY_PATH" >> /etc/.env
 RUN chmod +x /etc/.env
 RUN cat /etc/.env
@@ -59,10 +59,17 @@ RUN cat /etc/.env
 
 RUN echo "Install Legate and cuNumeric.jl"
 # Install Legate.jl and cuNumeric.jl
-RUN source /etc/.env && julia -e 'using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test")'
-RUN source /etc/.env && julia -e "using Pkg; Pkg.add(url = \"https://github.com/JuliaLegate/cuNumeric.jl\", rev = \"$REF\")"
-RUN source /etc/.env && julia -e 'using Pkg; Pkg.resolve()'
-
+RUN source /etc/.env && julia --color=yes -e ' \
+    using Pkg; \
+    Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test", subdir = "lib/LegatePreferences")); \
+    Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test")) # Pkg.add invokes Pkg.build \
+'
+ENV REF="documentation"
+RUN source /etc/.env && julia --color=yes -e ' \
+    using Pkg; \
+    Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = ENV["REF"], subdir = "lib/CNPreferences")); \
+    Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = ENV["REF"])) # Pkg.add invokes Pkg.build \
+'
 RUN #= remove useless stuff =# \
     cd /usr/local/share/julia && \
     rm -rf registries scratchspaces logs

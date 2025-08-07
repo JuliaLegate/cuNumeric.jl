@@ -134,18 +134,16 @@ jobs:
           conda run --no-capture-output -n myenv julia --color=yes -e '
               using Pkg;
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test", subdir = "lib/LegatePreferences"))
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test"))
-          ' || true
-          julia --color=yes -e 'using Pkg; Pkg.build()'
+              using LegatePreferences; LegatePreferences.use_conda("/github/home/miniconda3/envs/myenv");
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test")) # Pkg.add invokes Pkg.build
+          '
 
           conda run --no-capture-output -n myenv julia --color=yes -e '
               using Pkg;
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}", subdir = "lib/CNPreferences"))
-              using CNPreferences;
-              CNPreferences.use_conda("/github/home/miniconda3/envs/myenv");
+              using CNPreferences; CNPreferences.use_conda("/github/home/miniconda3/envs/myenv");
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}"))
-          ' || true
-          julia --color=yes -e 'using Pkg; Pkg.build()'
+          '
 
       - name: Perform Test
         run: |

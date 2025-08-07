@@ -122,20 +122,16 @@ jobs:
           julia --color=yes -e '
               using Pkg;
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test", subdir = "lib/LegatePreferences"))
-              using LegatePreferences;
-              LegatePreferences.use_developer_mode();
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test"))
-          ' || true
-          julia --color=yes -e 'using Pkg; Pkg.build()'
+              using LegatePreferences; LegatePreferences.use_developer_mode();
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test")) # Pkg.add invokes Pkg.build
+          '
 
           julia --color=yes -e '
               using Pkg;
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}", subdir = "lib/CNPreferences"))
-              using CNPreferences;
-              CNPreferences.use_developer_mode();
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}"))
-          ' || true
-          julia --color=yes -e 'using Pkg; Pkg.build()'
+              using CNPreferences; CNPreferences.use_developer_mode();
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}")) # Pkg.add invokes Pkg.build
+          '
 
       - name: Perform Test
         run: |
