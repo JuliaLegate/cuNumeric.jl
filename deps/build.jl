@@ -111,9 +111,9 @@ end
 
 function replace_nothing_jll(lib, jll)
     if isnothing(lib)
-        Base.require(jll)
-        lib = joinpath(jll.artifact_dir, "lib")
-        return lib
+        eval(:(using $(jll)))
+        jll_mod = getfield(Main, jll)
+        lib = joinpath(jll_mod.artifact_dir, "lib")
     end
     return lib
 end
@@ -123,9 +123,9 @@ function replace_nothing_conda_jll(mode, lib, jll)
         if mode == LegatePreferences.MODE_CONDA
             lib = load_preference(LegatePreferences, "conda_env", nothing)
         else
-            Base.require(jll)
-            lib = joinpath(jll.artifact_dir, "lib")
-            return lib
+            eval(:(using $(jll)))
+            jll_mod = getfield(Main, jll)
+            lib = joinpath(jll_mod.artifact_dir, "lib")
         end
     end
     return lib

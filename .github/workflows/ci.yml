@@ -160,7 +160,7 @@ jobs:
 
       - name: Run tests in built image
         run: |
-            docker run --rm -dit --user ${{ matrix.user }} --name=${{ steps.pkg.outputs.ref }} ${{ steps.meta.outputs.tags }} > docker.log 2>&1
+            docker run --rm -dit --name=${{ steps.pkg.outputs.ref }} ${{ steps.meta.outputs.tags }} > docker.log 2>&1
             while ! docker ps --format '{{.Names}}' | grep -q ${{ steps.pkg.outputs.ref }}; do
                 sleep 0.5
             done
