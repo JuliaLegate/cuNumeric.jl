@@ -57,11 +57,11 @@ git checkout "$WRAPPER_BRANCH"
 BUILD_DIR=$CUNUMERIC_WRAPPER_SOURCE/build
 
 if [[ ! -d "$BUILD_DIR" ]]; then
-    mkdir $BUILD_DIR 
+    mkdir -p $BUILD_DIR 
 fi
 
 if [[ ! -d "$INSTALL_DIR" ]]; then
-    mkdir $INSTALL_DIR 
+    mkdir -p $INSTALL_DIR 
 fi
 # patch the cmake for our custom install
 diff -u $CUNUMERIC_WRAPPER_SOURCE/CMakeLists.txt $CUNUMERICJL_ROOT_DIR/deps/CMakeLists.txt > deps_install.patch  || true

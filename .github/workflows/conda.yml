@@ -110,6 +110,13 @@ jobs:
         with:
             cache-name: julia-developer-conda-test
 
+      - name: debugging 
+        run: |
+          ls ~/miniconda3/envs/myenv
+          ls ~/miniconda3/envs/myenv/include
+          ls ~/miniconda3/envs/myenv/include/legate
+          ls ~/miniconda3/envs/myenv/include/legate/legate
+
       - name: Setup CUDA runtime version
         run: |
           julia --color=yes -e '

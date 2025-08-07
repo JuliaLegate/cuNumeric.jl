@@ -21,5 +21,7 @@ function cunumeric_wrapper_jll_local_branch_install(pkg_root)
         Tar.extract(GzipDecompressorStream(io), extract_dir)
     end
 
+    @info "Downloading cunumeric wrapper into $(extract_dir)"
+
     return joinpath(extract_dir, "lib")
 end

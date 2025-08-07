@@ -24,6 +24,8 @@ using CNPreferences: CNPreferences
 const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.05.00"]
 const LATEST_CUPYNUMERIC_VERSION = SUPPORTED_CUPYNUMERIC_VERSIONS[end]
 
+up_dir(dir::String) = abspath(joinpath(dir, ".."))
+
 # Automatically pipes errors to new file
 # and appends stdout to build.log
 function run_sh(cmd::Cmd, filename::String)
@@ -85,12 +87,14 @@ function build_jlcxxwrap(repo_root)
     end
 end
 
-function build_cpp_wrapper(repo_root, cupynumeric_loc, legate_loc, hdf5_root, blas_lib, install_dir)
+function build_cpp_wrapper(
+    repo_root, cupynumeric_loc, legate_loc, hdf5_root, blas_lib, install_root
+)
     @info "libcunumeric_jl_wrapper: Building C++ Wrapper Library"
-    if isdir(install_dir)
+    if isdir(install_root)
         @warn "libcunumeric_jl_wrapper: Build dir exists. Deleting prior build."
-        rm(install_dir; recursive=true)
-        mkdir(install_dir)
+        rm(install_root; recursive=true)
+        mkdir(install_root)
     end
 
     branch = load_preference(
@@ -100,7 +104,7 @@ function build_cpp_wrapper(repo_root, cupynumeric_loc, legate_loc, hdf5_root, bl
     build_cpp_wrapper = joinpath(repo_root, "scripts/build_cpp_wrapper.sh")
     nthreads = Threads.nthreads()
     run_sh(
-        `bash $build_cpp_wrapper $repo_root $cupynumeric_loc $legate_loc $hdf5_root $blas_lib $install_dir $branch $nthreads`,
+        `bash $build_cpp_wrapper $repo_root $cupynumeric_loc $legate_loc $hdf5_root $blas_lib $install_root $branch $nthreads`,
         "cpp_wrapper",
     )
 end
@@ -120,19 +124,16 @@ function build(mode)
     @info "cuNumeric.jl: Parsed Package Dir as: $(pkg_root)"
 
     hdf5_lib = Legate.get_install_libhdf5()
-    hdf5_root = joinpath(hdf5_lib, "..")
     legate_lib = Legate.get_install_liblegate()
-    legate_root = joinpath(legate_lib, "..")
-
     cupynumeric_lib = load_preference(CNPreferences, "CUPYNUMERIC_LIB", nothing)
-    cupynumeric_root = joinpath(cupynumeric_lib, "..")
     blas_lib = load_preference(CNPreferences, "BLAS_LIB", nothing)
 
     if mode == CNPreferences.MODE_DEVELOPER
-        install_dir = load_preference(CNPreferences, "CUNUMERIC_WRAPPER_LIB", nothing)
+        install_lib = load_preference(CNPreferences, "CUNUMERIC_WRAPPER_LIB", nothing)
         build_jlcxxwrap(pkg_root)
         build_cpp_wrapper(
-            pkg_root, cupynumeric_root, legate_root, hdf5_root, blas_lib, install_dir
+            pkg_root, up_dir(cupynumeric_lib), up_dir(legate_lib), up_dir(hdf5_lib), blas_lib,
+            up_dir(install_lib)
         )
     end
 end
