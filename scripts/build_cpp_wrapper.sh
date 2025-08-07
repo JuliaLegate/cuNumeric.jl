@@ -42,17 +42,18 @@ CUNUMERIC_WRAPPER_SOURCE=$CUNUMERICJL_ROOT_DIR/deps/cunumeric_jl_wrapper_src
 
 if [ ! -d "$CUNUMERIC_WRAPPER_SOURCE" ]; then
     git clone $GIT_REPO $CUNUMERIC_WRAPPER_SOURCE
+
+    cd "$CUNUMERIC_WRAPPER_SOURCE" || exit 1
+    echo "Current repo: $(basename $(pwd))"
+    git remote -v
+
+    git fetch origin "$WRAPPER_BRANCH"
+    git checkout "$WRAPPER_BRANCH"
+    # patch the cmake for our custom install
+    diff -u $CUNUMERIC_WRAPPER_SOURCE/CMakeLists.txt $CUNUMERICJL_ROOT_DIR/deps/CMakeLists.txt > deps_install.patch  || true
+    cd $CUNUMERIC_WRAPPER_SOURCE
+    patch -i $CUNUMERIC_WRAPPER_SOURCE/deps_install.patch
 fi
-
-cd "$CUNUMERIC_WRAPPER_SOURCE" || exit 1
-git fetch --tags
-
-cd "$LEGATE_WRAPPER_SOURCE" || exit 1
-echo "Current repo: $(basename $(pwd))"
-git remote -v
-
-git fetch origin "$WRAPPER_BRANCH"
-git checkout "$WRAPPER_BRANCH"
 
 BUILD_DIR=$CUNUMERIC_WRAPPER_SOURCE/build
 
@@ -63,10 +64,6 @@ fi
 if [[ ! -d "$INSTALL_DIR" ]]; then
     mkdir -p $INSTALL_DIR 
 fi
-# patch the cmake for our custom install
-diff -u $CUNUMERIC_WRAPPER_SOURCE/CMakeLists.txt $CUNUMERICJL_ROOT_DIR/deps/CMakeLists.txt > deps_install.patch  || true
-cd $CUNUMERIC_WRAPPER_SOURCE
-patch -i $CUNUMERIC_WRAPPER_SOURCE/deps_install.patch
 
 echo $LEGATE_ROOT_DIR
 LEGION_CMAKE_DIR=$LEGATE_ROOT_DIR/share/Legion/cmake

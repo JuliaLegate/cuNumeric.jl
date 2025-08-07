@@ -129,11 +129,11 @@ function build(mode)
     blas_lib = load_preference(CNPreferences, "BLAS_LIB", nothing)
 
     if mode == CNPreferences.MODE_DEVELOPER
-        install_lib = load_preference(CNPreferences, "CUNUMERIC_WRAPPER_LIB", nothing)
+        install_lib = joinpath(pkg_root, "deps", "cunumeric_jl_wrapper")
         build_jlcxxwrap(pkg_root)
         build_cpp_wrapper(
             pkg_root, up_dir(cupynumeric_lib), up_dir(legate_lib), up_dir(hdf5_lib), blas_lib,
-            up_dir(install_lib)
+            install_lib,
         )
     end
 end
