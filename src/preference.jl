@@ -26,15 +26,7 @@ function parse_cupynumeric_version(cupynumeric_root)
     return version
 end
 
-function check_if_patch(legate_dir)
-    patch = joinpath(legate_dir, "include", "legate/legate", "patch")
-    if isfile(patch)
-        return true
-    end
-    return false
-end
-
-function check_legate_install(cupynumeric_root)
+function check_cupynumeric_install(cupynumeric_root)
     cupynumeric_installed = is_cupynumeric_installed(cupynumeric_root)
     if !cupynumeric_installed
         error("cuNumeric.jl: Build halted: cupynumeric not found in $cupynumeric_root")
@@ -80,14 +72,14 @@ function find_preferences()
             cupynumeric_path = load_preference(
                 CNPreferences, "cupynumeric_path", CNPreferences.DEVEL_DEFAULT_CUPYNUMERIC_PATH
             )
-            check_legate_install(cupynumeric_path)
+            check_cupynumeric_install(cupynumeric_path)
         end
         cunumeric_wrapper_lib = joinpath(pkg_root, "deps", "cunumeric_jl_wrapper", "lib")
         # if conda
     elseif mode == CNPreferences.MODE_CONDA
         @warn "mode = conda may break. We are using a subset of libraries from conda."
         conda_env = load_preference(CNPreferences, "conda_env", nothing)
-        check_legate_install(conda_env)
+        check_cupynumeric_install(conda_env)
         cupynumeric_path = conda_env
         cutensor_lib = joinpath(conda_env, "lib")
     end
