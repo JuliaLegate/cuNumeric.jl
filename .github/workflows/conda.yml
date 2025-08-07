@@ -110,10 +110,6 @@ jobs:
         with:
             cache-name: julia-developer-conda-test
 
-      - name: debugging 
-        run: |
-          ls ~/miniconda3/envs/myenv/include/legate/legate
-
       - name: Setup CUDA runtime version
         run: |
           julia --color=yes -e '
@@ -146,7 +142,7 @@ jobs:
               using Pkg;
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}", subdir = "lib/CNPreferences"))
               using CNPreferences;
-              CNPreferences.use_conda("~/miniconda3/envs/myenv");
+              CNPreferences.use_conda("/github/home/miniconda3/envs/myenv");
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}"))
           ' || true
           julia --color=yes -e 'using Pkg; Pkg.build()'
