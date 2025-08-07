@@ -57,8 +57,6 @@ jobs:
           ):$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
       - name: Setup cuNumeric.jl and Legate.jl
-        env:
-          JULIA_LEGATE_BUILDING_DOCS: "true"
         run: |
           git clone --depth=1 --branch=documentation https://github.com/JuliaLegate/cuNumeric.jl ~/.julia/dev/cuNumeric
 
@@ -77,6 +75,5 @@ jobs:
       - name: Build documentation
         run: julia --color=yes --project=docs docs/make.jl
         env:
-          JULIA_LEGATE_BUILDING_DOCS: "true"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}

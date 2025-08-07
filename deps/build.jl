@@ -20,8 +20,6 @@
 using Preferences
 using Legate
 using CNPreferences: CNPreferences
-using OpenBLAS32_jll
-using cupynumeric_jll
 
 const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.05.00"]
 const LATEST_CUPYNUMERIC_VERSION = SUPPORTED_CUPYNUMERIC_VERSIONS[end]
@@ -111,9 +109,32 @@ function build_cpp_wrapper(
     )
 end
 
+function replace_nothing_jll(lib, jll)
+    if isnothing(lib)
+        Base.require(jll)
+        lib = joinpath(jll.artifact_dir, "lib")
+        return lib
+    end
+    return lib
+end
+
+function replace_nothing_conda_jll(mode, lib, jll)
+    if isnothing(lib)
+        if mode == LegatePreferences.MODE_CONDA
+            lib = load_preference(LegatePreferences, "conda_env", nothing)
+        else
+            Base.require(jll)
+            lib = joinpath(jll.artifact_dir, "lib")
+            return lib
+        end
+    end
+    return lib
+end
+
 function build(mode)
     if mode == CNPreferences.MODE_JLL
-        @warn "No reason to Build on JLL mode."
+        @warn "No reason to Build on JLL mode. Exiting Build"
+        return nothing
     end
     pkg_root = abspath(joinpath(@__DIR__, "../"))
     deps_dir = joinpath(@__DIR__)
@@ -127,12 +148,11 @@ function build(mode)
 
     hdf5_lib = Legate.get_install_libhdf5()
     legate_lib = Legate.get_install_liblegate()
-    cupynumeric_lib = load_preference(
-        CNPreferences, "CUPYNUMERIC_LIB", joinpath(cupynumeric_jll.artifact_dir, "lib")
-    )
-    blas_lib = load_preference(
-        CNPreferences, "BLAS_LIB", joinpath(OpenBLAS32_jll.artifact_dir, "lib")
-    )
+    cupynumeric_lib = load_preference(CNPreferences, "CUPYNUMERIC_LIB", nothing)
+    blas_lib = load_preference(CNPreferences, "BLAS_LIB", nothing)
+
+    cupynumeric_lib = replace_nothing_conda_jll(mode, cupynumeric_lib, :cupynumeric_jll)
+    blas_lib = replace_nothing_jll(blas_lib, :OpenBLAS32_jll)
 
     if mode == CNPreferences.MODE_DEVELOPER
         install_lib = joinpath(pkg_root, "deps", "cunumeric_jl_wrapper")
@@ -144,9 +164,5 @@ function build(mode)
     end
 end
 
-const JULIA_LEGATE_BUILDING_DOCS = get(ENV, "JULIA_LEGATE_BUILDING_DOCS", "false") == "true"
 const mode = load_preference(CNPreferences, "mode", CNPreferences.MODE_JLL)
-
-if !JULIA_LEGATE_BUILDING_DOCS
-    build(mode)
-end
+build(mode)

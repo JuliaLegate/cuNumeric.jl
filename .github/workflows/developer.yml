@@ -45,8 +45,6 @@ jobs:
         shell: bash
     env:
         LEGATE_AUTO_CONFIG: 0
-        LEGATE_DEVELOP_MODE: 1
-        CUNUMERIC_DEVELOP_MODE: 1
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4

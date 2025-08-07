@@ -28,13 +28,11 @@ jobs:
       - name: Pull and run image
         run: |
           docker pull ghcr.io/${{ github.repository }}:${{ env.IMAGE_TAG }}
-          docker run --rm ghcr.io/${{ github.repository }}:${{ env.IMAGE_TAG }}
-          docker run --rm -dit --name=${{ steps.pkg.outputs.ref }} ${{ steps.meta.outputs.tags }} > docker.log 2>&1
-          while ! docker ps --format '{{.Names}}' | grep -q ${{ steps.pkg.outputs.ref }}; do
+
+          docker run --rm -dit --gpus=all --name=testy-mctest ghcr.io/${{ github.repository }}:${{ env.IMAGE_TAG }} > docker.log 2>&1
+          while ! docker ps --format '{{.Names}}' | grep -q testy-mctest; do
               sleep 0.5
           done
           echo "Running tests in container!"
-          docker exec -i ${{ steps.pkg.outputs.ref }} /bin/bash -c "source /etc/.env && /bin/bash /workspace/test_container.sh"
-          docker stop ${{ steps.pkg.outputs.ref }}
-
-
+          docker exec -i testy-mctest /bin/bash -c "source /etc/.env && export LEGATE_AUTO_CONFIG=1 && /bin/bash /workspace/test_container.sh"
+          docker stop testy-mctest

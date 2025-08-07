@@ -43,8 +43,6 @@ jobs:
         shell: bash
     env:
       LEGATE_AUTO_CONFIG: 0
-      CUNUMERIC_LEGATE_CONDA_INSTALL: 1
-      
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
