@@ -132,9 +132,9 @@ jobs:
 
           conda run --no-capture-output -n myenv julia --color=yes -e '
               using Pkg;
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test", subdir = "lib/LegatePreferences"))
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main", subdir = "lib/LegatePreferences"))
               using LegatePreferences; LegatePreferences.use_conda("/github/home/miniconda3/envs/myenv");
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test")) # Pkg.add invokes Pkg.build
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")) # Pkg.add invokes Pkg.build
           '
 
           conda run --no-capture-output -n myenv julia --color=yes -e '
