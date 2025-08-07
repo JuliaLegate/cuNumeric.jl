@@ -46,8 +46,8 @@ jobs:
         cuda: ["12.4"]
         platform: ["linux/amd64"]
         os: ["ubuntu-22.04"]
-
-    runs-on: [self-hosted, linux, x64]
+    # runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Check out the repo

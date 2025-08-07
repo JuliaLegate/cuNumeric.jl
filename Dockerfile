@@ -64,7 +64,7 @@ RUN source /etc/.env && julia --color=yes -e ' \
     Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test", subdir = "lib/LegatePreferences")); \
     Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test")) # Pkg.add invokes Pkg.build \
 '
-ENV REF="documentation"
+
 RUN source /etc/.env && julia --color=yes -e ' \
     using Pkg; \
     Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = ENV["REF"], subdir = "lib/CNPreferences")); \

@@ -34,7 +34,8 @@ jobs:
       attestations: write
       id-token: write
       actions: write
-    runs-on: [self-hosted, linux, x64]
+    # runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     container:
       image: ubuntu:22.04
     defaults:

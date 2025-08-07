@@ -34,7 +34,8 @@ jobs:
       attestations: write
       id-token: write
       actions: write
-    runs-on: [self-hosted, linux, x64]
+    # runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
     container:
       # need nvcc 
       image: nvidia/cuda:12.4.0-devel-ubuntu22.04
