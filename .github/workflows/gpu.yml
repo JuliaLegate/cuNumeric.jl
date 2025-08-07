@@ -1,0 +1,40 @@
+name: gpu-test
+
+on:
+  workflow_run:
+    workflows: ["ci"]
+    types:
+      - completed
+
+jobs:
+  run-container:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: [self-hosted, linux, x64]
+    permissions:
+        contents: read
+        packages: read
+    steps:
+      - name: Download docker tag artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-tag
+          
+      - name: Read image tag
+        id: tag
+        run: echo "IMAGE_TAG=$(cat image_tag.txt)" >> $GITHUB_ENV
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Pull and run image
+        run: |
+          docker pull ghcr.io/${{ github.repository }}:${{ env.IMAGE_TAG }}
+          docker run --rm ghcr.io/${{ github.repository }}:${{ env.IMAGE_TAG }}
+          docker run --rm -dit --name=${{ steps.pkg.outputs.ref }} ${{ steps.meta.outputs.tags }} > docker.log 2>&1
+          while ! docker ps --format '{{.Names}}' | grep -q ${{ steps.pkg.outputs.ref }}; do
+              sleep 0.5
+          done
+          echo "Running tests in container!"
+          docker exec -i ${{ steps.pkg.outputs.ref }} /bin/bash -c "source /etc/.env && /bin/bash /workspace/test_container.sh"
+          docker stop ${{ steps.pkg.outputs.ref }}
+
+

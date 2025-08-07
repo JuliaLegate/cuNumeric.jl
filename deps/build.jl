@@ -20,6 +20,8 @@
 using Preferences
 using Legate
 using CNPreferences: CNPreferences
+using OpenBLAS32_jll
+using cupynumeric_jll
 
 const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.05.00"]
 const LATEST_CUPYNUMERIC_VERSION = SUPPORTED_CUPYNUMERIC_VERSIONS[end]
@@ -125,8 +127,12 @@ function build(mode)
 
     hdf5_lib = Legate.get_install_libhdf5()
     legate_lib = Legate.get_install_liblegate()
-    cupynumeric_lib = load_preference(CNPreferences, "CUPYNUMERIC_LIB", nothing)
-    blas_lib = load_preference(CNPreferences, "BLAS_LIB", nothing)
+    cupynumeric_lib = load_preference(
+        CNPreferences, "CUPYNUMERIC_LIB", joinpath(cupynumeric_jll.artifact_dir, "lib")
+    )
+    blas_lib = load_preference(
+        CNPreferences, "BLAS_LIB", joinpath(OpenBLAS32_jll.artifact_dir, "lib")
+    )
 
     if mode == CNPreferences.MODE_DEVELOPER
         install_lib = joinpath(pkg_root, "deps", "cunumeric_jl_wrapper")
