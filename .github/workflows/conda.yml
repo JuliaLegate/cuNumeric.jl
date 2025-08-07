@@ -112,9 +112,6 @@ jobs:
 
       - name: debugging 
         run: |
-          ls ~/miniconda3/envs/myenv
-          ls ~/miniconda3/envs/myenv/include
-          ls ~/miniconda3/envs/myenv/include/legate
           ls ~/miniconda3/envs/myenv/include/legate/legate
 
       - name: Setup CUDA runtime version
