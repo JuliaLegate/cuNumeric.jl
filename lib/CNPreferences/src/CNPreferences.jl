@@ -41,7 +41,7 @@ relies on the values of CNPreferences.
 function check_unchanged()
     if PREFS_CHANGED[]
         error(
-            "CNPreferences have changed, you will need to restart Julia for the changes to take effect",
+            "CNPreferences have changed, you will need to restart Julia for the changes to take effect"
         )
     end
     DEPS_LOADED[] = true
@@ -49,28 +49,28 @@ function check_unchanged()
 end
 
 """
-    CNPreferences.use_conda(env_path::String; export_prefs = false, force = true)
+    CNPreferences.use_conda(conda_env::String; export_prefs = false, force = true)
 
 Tells cuNumeric.jl to use existing conda install. We make no gurantees of compiler compatability at this time.
 
-Expects `env_path` to be the absolute path to the root of the environment.
+Expects `conda_env` to be the absolute path to the root of the environment.
 For example, `/home/julialegate/.conda/envs/cunumeric-gpu`
 """
-function use_conda(env_path::String; export_prefs=false, force=true)
+function use_conda(conda_env::String; export_prefs=false, force=true)
     set_preferences!(CNPreferences,
-        "conda_env" => env_path,
+        "conda_env" => conda_env,
         "mode" => MODE_CONDA;
         export_prefs=export_prefs,
         force=force,
     )
     # add transitive support to preferences
-    LegatePreferences.use_conda(env_path)
+    LegatePreferences.use_conda(conda_env)
 
-    if env_path == CNPreferences.env_path && CNPreferences.mode == MODE_CONDA
+    if conda_env == CNPreferences.conda_env && CNPreferences.mode == MODE_CONDA
         @info "CNPreferences found no differences."
     else
         PREFS_CHANGED[] = true
-        @info "CNPreferences set to use local conda env at:" env_path
+        @info "CNPreferences set to use local conda env at:" conda_env
 
         if DEPS_LOADED[]
             error("You will need to restart Julia for the changes to take effect.")
@@ -101,7 +101,7 @@ function use_jll_binary(; export_prefs=false, force=true)
 
         if DEPS_LOADED[]
             error(
-                "You will need to restart Julia for the changes to take effect. JLLs do not require building.",
+                "You will need to restart Julia for the changes to take effect. JLLs do not require building."
             )
         end
     end
@@ -157,7 +157,7 @@ function use_developer_mode(;
 
         if DEPS_LOADED[]
             error(
-                "You will need to restart Julia for the changes to take effect. You need to call Pkg.build()",
+                "You will need to restart Julia for the changes to take effect. You need to call Pkg.build()"
             )
         end
     end
