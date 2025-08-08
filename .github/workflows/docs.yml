@@ -102,7 +102,7 @@ jobs:
               using Pkg
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main", subdir = "lib/LegatePreferences"))
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main"))
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}", subdir = "lib/CNPreferences"))
+              Pkg.develop(path = joinpath(homedir(), ".julia", "dev", "cuNumeric/lib/CNPreferences"))
               Pkg.develop(path = joinpath(homedir(), ".julia", "dev", "cuNumeric"))
           '
       - name: Instantiate docs environment
