@@ -56,15 +56,17 @@ Tells cuNumeric.jl to use existing conda install. We make no gurantees of compil
 Expects `conda_env` to be the absolute path to the root of the environment.
 For example, `/home/julialegate/.conda/envs/cunumeric-gpu`
 """
-function use_conda(conda_env::String; export_prefs=false, force=true)
+function use_conda(conda_env::String; transitive=true, export_prefs=false, force=true)
     set_preferences!(CNPreferences,
         "conda_env" => conda_env,
         "mode" => MODE_CONDA;
         export_prefs=export_prefs,
         force=force,
     )
-    # add transitive support to preferences
-    LegatePreferences.use_conda(conda_env)
+    if (transitive == true)
+        # add transitive support to preferences
+        LegatePreferences.use_conda(conda_env)
+    end
 
     if conda_env == CNPreferences.conda_env && CNPreferences.mode == MODE_CONDA
         @info "CNPreferences found no differences."
@@ -83,16 +85,16 @@ end
 
 Tells Legate.jl to use JLLs. This is the default option. 
 """
-function use_jll_binary(; export_prefs=false, force=true)
+function use_jll_binary(; transitive=true, export_prefs=false, force=true)
     set_preferences!(CNPreferences,
         "mode" => MODE_JLL;
         export_prefs=export_prefs,
         force=force,
     )
-
-    # add transitive support to preferences
-    LegatePreferences.use_jll_binary(; export_prefs=export_prefs, force=force)
-
+    if (transitive == true)
+        # add transitive support to preferences
+        LegatePreferences.use_jll_binary(; export_prefs=export_prefs, force=force)
+    end
     if CNPreferences.mode == MODE_JLL
         @info "CNPreferences found no differences. Using JLLs."
     else
