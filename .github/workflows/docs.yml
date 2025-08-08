@@ -7,6 +7,8 @@ on:
       - 'docs/src/**'
       - 'docs/make.jl'
       - 'docs/Project.toml'
+      - 'README.md'
+      - 'lib/CNPreferences/src*'
     tags:
       - 'v*'
     branches:
@@ -18,6 +20,8 @@ on:
     - 'docs/src/**'
     - 'docs/make.jl'
     - 'docs/Project.toml'
+    - 'README.md'
+    - 'lib/CNPreferences/src*'
 jobs:
   docs:
     name : Documentation

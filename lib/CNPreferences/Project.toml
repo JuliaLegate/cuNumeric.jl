@@ -1,6 +1,6 @@
 name = "CNPreferences"
 uuid = "3e078157-ea10-49d5-bf32-908f777cd46f"
-authors = ["""krasow <krasow@u.northwestern.edu\n>"""]
+authors = ["""David Krasowska <krasow@u.northwestern.edu\n> and Ethan Meitz <emeitz@andrew.cmu.edu\n>"""]
 version = "0.1.0"
 
 [deps]
