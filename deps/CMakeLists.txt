@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.22.1 FATAL_ERROR)
 
 project(cuNumericWrapper VERSION 0.01 LANGUAGES C CXX)
 
+set(CXX_CUNUMERICJL_WRAPPER cunumeric_jl_wrapper)
+set(C_INTERFACE_LIB cunumeric_c_wrapper)
+
 # Specify C++ standard
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
@@ -41,61 +44,60 @@ message(STATUS "Found JlCxx at ${JlCxx_location}")
 
 
 # Julia Wrapper Library
-add_library(cupynumericwrapper SHARED
+add_library(${CXX_CUNUMERICJL_WRAPPER} SHARED
              src/wrapper.cpp
              src/types.cpp
              src/cuda.cpp)
 
 
-set_target_properties(cupynumericwrapper PROPERTIES
+set_target_properties(${CXX_CUNUMERICJL_WRAPPER} PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH "${HDF5_PATH}/lib;${LEGATE_PATH}/lib;${CUPYNUMERIC_PATH}/lib"
 )
 
 
-set_target_properties(cupynumericwrapper PROPERTIES
+set_target_properties(${CXX_CUNUMERICJL_WRAPPER} PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH "${HDF5_PATH}/lib;${LEGATE_PATH}/lib;${CUPYNUMERIC_PATH}/lib"
 )
 
 # both can be private I think
-target_link_libraries(cupynumericwrapper 
+target_link_libraries(${CXX_CUNUMERICJL_WRAPPER} 
                         PRIVATE cupynumeric::cupynumeric
                         PRIVATE legate::legate
                         PUBLIC JlCxx::cxxwrap_julia
                       )
 
 
-target_include_directories(cupynumericwrapper PRIVATE 
+target_include_directories(${CXX_CUNUMERICJL_WRAPPER} PRIVATE 
                             include
                             ${LEGATE_PATH}/include/legate
                             ${LEGATE_PATH}/include/legate/deps
                             ${CUDAToolkit_INCLUDE_DIRS}
                         )
-
-install(TARGETS cupynumericwrapper 
-          DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/cmake-install")
-
+          
+install(TARGETS ${CXX_CUNUMERICJL_WRAPPER} 
+          DESTINATION "${PROJECT_INSTALL_PATH}/lib")
 
 # C- API
-add_library(cwrapper SHARED
+add_library(${C_INTERFACE_LIB} SHARED
     src/ndarray.cpp
 )
 
 
-set_target_properties(cwrapper PROPERTIES
+set_target_properties(${C_INTERFACE_LIB} PROPERTIES
 BUILD_WITH_INSTALL_RPATH TRUE
 INSTALL_RPATH "${HDF5_PATH}/lib;${LEGATE_PATH}/lib;${CUPYNUMERIC_PATH}/lib"
 )
 
 # both can be private I think
-target_link_libraries(cwrapper 
+target_link_libraries(${C_INTERFACE_LIB} 
            PRIVATE cupynumeric::cupynumeric
            PRIVATE legate::legate
          )
 
 
-target_include_directories(cwrapper PRIVATE 
+target_include_directories(${C_INTERFACE_LIB} PRIVATE 
                include
                ${CUPYNUMERIC_PATH}/include
                ${LEGATE_PATH}/include/legate
@@ -103,5 +105,5 @@ target_include_directories(cwrapper PRIVATE
                ${CUDAToolkit_INCLUDE_DIRS}
            )
 
-install(TARGETS cwrapper 
-DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/cmake-install")
+install(TARGETS ${C_INTERFACE_LIB} 
+          DESTINATION "${PROJECT_INSTALL_PATH}/lib")

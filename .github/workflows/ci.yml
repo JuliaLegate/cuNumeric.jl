@@ -16,8 +16,9 @@ on:
       - 'src/**'
       - 'wrapper/src/**'
       - 'scripts/**'
-      - 'Docker/Dockerfile'
+      - 'Dockerfile'
       - 'deps/build.jl'
+      - '.github/workflows/ci.yml'
     tags:
       - 'v*'
     branches:
@@ -27,8 +28,9 @@ on:
       - 'src/**'
       - 'wrapper/src/**'
       - 'scripts/**'
-      - 'Docker/Dockerfile'
+      - 'Dockerfile'
       - 'deps/build.jl'
+      - '.github/workflows/ci.yml'
 jobs:
   push_to_registry:
     name: Container for ${{ matrix.platform }} - Julia ${{ matrix.julia }} - CUDA ${{ matrix.cuda }}
@@ -39,12 +41,15 @@ jobs:
       id-token: write
     strategy:
       matrix:
-        julia: ["1.10", "1.11"]
+        # julia: ["1.10", "1.11"]
+        julia: ["1.11"] # 1.10 will break
         cuda: ["12.4"]
         platform: ["linux/amd64"]
         os: ["ubuntu-22.04"]
+        user: ["50020:50020"]
 
     runs-on: [self-hosted, linux, x64]
+    # runs-on: ubuntu-latest
 
     steps:
       - name: Check out the repo
@@ -76,8 +81,12 @@ jobs:
       - name: Get CUDA major version
         id: cuda
         run: |
-          CUDA_MAJOR=$(echo ${{ matrix.cuda }} | cut -d'.' -f1)
+          CUDA_MAJOR=$(echo "${{ matrix.cuda }}" | cut -d'.' -f1)
+          CUDA_MINOR=$(echo "${{ matrix.cuda }}" | cut -d'.' -f2)
+          echo "major=${CUDA_MAJOR}"
+          echo "minor=${CUDA_MINOR}"
           echo "major=${CUDA_MAJOR}" >> $GITHUB_OUTPUT
+          echo "minor=${CUDA_MINOR}" >> $GITHUB_OUTPUT
 
 
       - name: Set CPU target
@@ -102,21 +111,40 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-              type=raw,value=${{ steps.pkg.outputs.name }}-julia${{ matrix.julia }}-cuda${{ matrix.cuda }} 
+              type=raw,value=${{ steps.pkg.outputs.name }}-julia${{ matrix.julia }}-cuda${{ steps.cuda.outputs.major }}.${{ steps.cuda.outputs.minor }}
               type=raw,value=${{ steps.pkg.outputs.name }},enable=${{ matrix.default == true && (github.ref_type == 'tag' || inputs.tag != '') }}
               type=raw,value=latest,enable=${{ matrix.default == true && (github.ref_type == 'tag' || (inputs.tag != '' && inputs.mark_as_latest)) }}
               type=raw,value=dev,enable=${{ matrix.default == true && github.ref_type == 'branch' && inputs.tag == '' }}
           labels: |
               org.opencontainers.image.version=${{ steps.pkg.outputs.version }}
 
+      - name: Save tag to file
+        run: |
+          echo "${{ steps.meta.outputs.tags }}" | cut -d',' -f1 > image_tag.txt
+
+      - name: Upload tag artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-tag
+          path: image_tag.txt
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: docker-${{ matrix.platform }}-julia-${{ matrix.julia }}-cuda-${{ matrix.cuda }}-${{ github.sha }}
+          restore-keys: |
+            docker-${{ matrix.platform }}-julia-${{ matrix.julia }}-cuda-${{ matrix.cuda }}-
+            docker-${{ matrix.platform }}-julia-${{ matrix.julia }}-
+            docker-${{ matrix.platform }}-
 
       - name: Build image
         uses: docker/build-push-action@v6
         with:
-          context: ./Docker
-          file: ./Docker/Dockerfile
+          file: Dockerfile
           load: true
           push: false
           provenance: false # the build fetches the repo again, so provenance tracking is not useful
@@ -125,16 +153,33 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             JULIA_VERSION=${{ matrix.julia }}
-            CUDA_VERSION=${{ matrix.cuda }}
+            CUDA_MAJOR=${{ steps.cuda.outputs.major }}
+            CUDA_MINOR=${{ steps.cuda.outputs.minor }}
             JULIA_CPU_TARGET=${{ steps.cpu_target.outputs.target }}
             REF=${{ steps.pkg.outputs.ref }}
+
       - name: Run tests in built image
         run: |
-            docker run --rm -dit --name=tester -v $PWD/Docker:/workspace ${{ steps.meta.outputs.tags }} > docker.log 2>&1
-            while ! docker ps | grep -q tester; do
+            docker run --rm -dit --name=${{ steps.pkg.outputs.ref }} ${{ steps.meta.outputs.tags }} > docker.log 2>&1
+            while ! docker ps --format '{{.Names}}' | grep -q ${{ steps.pkg.outputs.ref }}; do
                 sleep 0.5
             done
-            docker exec -i tester /workspace/test.sh
-            docker stop tester
+            echo "Running tests in container!"
+            docker exec -i ${{ steps.pkg.outputs.ref }} /bin/bash -c "source /etc/.env && /bin/bash /workspace/test_container.sh"
+            docker stop ${{ steps.pkg.outputs.ref }}
+
       - name: Push image if tests pass
-        run: docker push ${{ steps.meta.outputs.tags }}
+        if: success()
+        run: |
+          docker push ${{ steps.meta.outputs.tags }}
+          docker image rm ${{ steps.meta.outputs.tags }}
+
+      # can happen if there is a failure to push
+      - name: Ensure image is removed (safety)
+        if: always()
+        run: |
+          if docker image inspect ${{ steps.meta.outputs.tags }} > /dev/null 2>&1; then
+            docker stop ${{ steps.pkg.outputs.ref }} || true
+            docker rm ${{ steps.pkg.outputs.ref }} || true
+            docker image rm ${{ steps.meta.outputs.tags }} || true
+          fi

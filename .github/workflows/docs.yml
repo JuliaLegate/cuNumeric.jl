@@ -27,12 +27,84 @@ jobs:
       pull-requests: read
       statuses: write
     runs-on: ubuntu-latest
+    env:
+      LEGATE_AUTO_CONFIG: 0
     steps:
       - uses: actions/checkout@v4
+      - name: Get package spec
+        id: pkg
+        run: |
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            echo "ref=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            echo "name=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "ref=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "ref=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "name=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_type }}" == "branch" ]]; then
+            echo "ref=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "ref=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "name=dev" >> $GITHUB_OUTPUT
+          fi
+          VERSION=$(grep "^version = " Project.toml | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - uses: julia-actions/setup-julia@v2
         with:
-          version: '1'
+          version: '1.11'
       - uses: julia-actions/cache@v2
+      - name: Cleanup old cuNumeric and Legate
+        run: |
+          julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")' || true # ensure clean env
+          julia --color=yes -e 'using Pkg; Pkg.rm("Legate")' || true # ensure clean env
+
+      - name: Setup CUDA runtime version
+        run: |
+          julia --color=yes --project=docs -e '
+              using Pkg
+              Pkg.add("CUDA")
+              using CUDA
+              CUDA.set_runtime_version!(v"12.4")
+          '
+      - name: Set LD_LIBRARY_PATH for CUDA_Driver_jll
+        run: |
+          echo "LD_LIBRARY_PATH=$(julia -e 'using Pkg; \
+            Pkg.add(name = "CUDA_Driver_jll", version = "0.12.1"); \
+            using CUDA_Driver_jll; \
+            print(joinpath(CUDA_Driver_jll.artifact_dir, "lib"))' \
+          ):$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
+      - name: Clone cuNumeric at ref
+        run: |
+          REF=${{ steps.pkg.outputs.ref }}
+          DEST=~/.julia/dev/cuNumeric
+          REPO=https://github.com/JuliaLegate/cuNumeric.jl
+
+          if [[ "$REF" =~ ^[0-9a-f]{40}$ ]]; then
+            # Commit hash
+            git init "$DEST"
+            cd "$DEST"
+            git remote add origin "$REPO"
+            git fetch --depth=1 origin "$REF"
+            git checkout FETCH_HEAD
+          else
+            # Branch or tag
+            git clone --depth=1 --branch="$REF" "$REPO" "$DEST"
+          fi
+
+      - name: Setup cuNumeric.jl and Legate.jl
+        run: |
+          julia --color=yes --project=docs -e '
+              using Pkg
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main", subdir = "lib/LegatePreferences"))
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main"))
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}", subdir = "lib/CNPreferences"))
+              Pkg.develop(path = joinpath(homedir(), ".julia", "dev", "cuNumeric"))
+          '
       - name: Instantiate docs environment
         run: |
           julia --color=yes --project=docs -e '

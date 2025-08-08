@@ -1,4 +1,5 @@
 using Documenter, DocumenterVitepress
+using cuNumeric
 
 makedocs(;
     sitename="cuNumeric.jl",
@@ -14,7 +15,8 @@ makedocs(;
         "Examples" => "examples.md",
         "Performance Tips" => "perf.md",
         "Back End Details" => "usage.md",
-        "Benchmarking" => "benchmark.md",
+        "Benchmarks" => "benchmark_results.md",
+        "How to Benchmark" => "benchmark.md",
         "Public API" => "api.md",
     ],
 )
