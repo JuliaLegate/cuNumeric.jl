@@ -39,7 +39,7 @@ using Pkg; Pkg.develop(url = "https://github.com/JuliaLegate/cuNumeric.jl")
 ```
 By default, this will use [legate_jll](https://github.com/JuliaBinaryWrappers/legate_jll.jl/) and [cupynumeric_jll](https://github.com/JuliaBinaryWrappers/cupynumeric_jll.jl/). 
 
-For more build configurations and options, please visit our [installation guide](https://julialegate.github.io/cuNumeric.jl/dev/install/).
+For more build configurations and options, please visit our [installation guide](https://julialegate.github.io/cuNumeric.jl/dev/install).
 
 #### 2b. Contributing to cuNumeric.jl
 To contribute to cuNumeric.jl, we recommend cloning the repository and adding it to one of your existing environments with `Pkg.develop`.
@@ -58,7 +58,7 @@ Run this command in the Julia environment where cuNumeric.jl is installed.
 ```julia
 using Pkg; Pkg.test("cuNumeric")
 ```
-With everything working, its the perfect time to checkout some of our [examples](https://julialegate.github.io/cuNumeric.jl/dev/examples/)!
+With everything working, its the perfect time to checkout some of our [examples](https://julialegate.github.io/cuNumeric.jl/dev/examples)!
 
 
 ## Contact
