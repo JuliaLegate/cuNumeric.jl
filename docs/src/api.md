@@ -9,7 +9,7 @@ Depth = 2:2
 ```
 
 ```@autodocs
-Modules = [cuNumeric]
-Pages = ["cuNumeric.jl", "memory.jl", "ndarray.jl", "unary.jl", "binary.jl"]
+Modules = [cuNumeric, CNPreferences]
+Pages = ["cuNumeric.jl", "memory.jl", "ndarray.jl", "unary.jl", "binary.jl", "CNPreferences.jl"]
 ```
 

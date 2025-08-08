@@ -1,5 +1,6 @@
 using Documenter, DocumenterVitepress
 using cuNumeric
+using CNPreferences
 
 makedocs(;
     sitename="cuNumeric.jl",
