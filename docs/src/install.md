@@ -6,7 +6,7 @@ To make customization of the build options easier we have the `CNPreferences.jl`
 
 By default cuNumeric.jl will use [Binary Builder](https://github.com/JuliaPackaging/Yggdrasil) to install cuNumeric.jl
 
-```
+```juliarepl
 Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl")
 ```
 
@@ -19,7 +19,7 @@ julia --project -e 'using CNPreferences; CNPreferences.use_jll_binary()'
 
 `CNPreferences` is a separate module so that it can be used to configure the build settings before `cuNumeric.jl` is added to your environment. To install it separately run
 
-```julia
+```juliarepl
 using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", subdir="lib/CNPreferences")
 ```
 
@@ -27,8 +27,8 @@ By default, this will also revert any LegatePreferences you have set. It will re
 
 ## Developer mode
 
-[!WARNING] 
-This gives the most flexibility in installs. It is meant for developing on cuNumeric.jl. By default, this does not set any LegatePreferences. 
+> [!WARNING]  
+> This gives the most flexibility in installs. It is meant for developing on cuNumeric.jl. By default, this does not set any LegatePreferences. 
 
 We require that you have the cuda driver `libcuda.so` on your path, cuda runtime `libcudart.so`,  g++ capable compiler of C++ 20, and a recent version CMake >= 3.26.
 
@@ -47,8 +47,8 @@ LegatePreferences has similar kwargs and behavior as CNPreferences. This will cl
 
 ## Link Against Existing Conda Environment
 
-[!WARNING] 
-This feature is not passing our CI currently. Please use with caution. We are failing to currently match proper versions of .so libraries together. Our hope is to get this functional for users already using cuPyNumeric within conda. 
+> [!WARNING]  
+> This feature is not passing our CI currently. Please use with caution. We are failing to currently match proper versions of .so libraries together. Our hope is to get this functional for users already using cuPyNumeric within conda. 
 
 To update `LocalPreferences.toml` so that a local conda environment is used as the binary provider for cupynumeric run the following command. `conda_env` should be the absolute path to the conda environment (e.g., the value of CONDA_PREFIX when your environment is active). For example, this path is: `/home/JuliaLegate/.conda/envs/cunumeric-gpu`.
 
