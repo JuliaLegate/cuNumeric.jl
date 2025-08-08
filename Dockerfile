@@ -61,8 +61,8 @@ RUN echo "Install Legate and cuNumeric.jl"
 # Install Legate.jl and cuNumeric.jl
 RUN source /etc/.env && julia --color=yes -e ' \
     using Pkg; \
-    Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test", subdir = "lib/LegatePreferences")); \
-    Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "doc-test")) # Pkg.add invokes Pkg.build \
+    Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main", subdir = "lib/LegatePreferences")); \
+    Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")) # Pkg.add invokes Pkg.build \
 '
 
 RUN source /etc/.env && julia --color=yes -e ' \
