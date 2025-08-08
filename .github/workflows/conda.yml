@@ -101,7 +101,7 @@ jobs:
 
       - name: Setup Conda env
         run: |
-          CONDA_OVERRIDE_CUDA="12.4" conda create -n myenv -c conda-forge -c legate/label/rc -c nvidia cuda-toolkit=12.4 libcublas=12.4 cupynumeric=${{ steps.pkg.outputs.version }}.rc3 -y
+          CONDA_OVERRIDE_CUDA="12.4" conda create -n myenv -c conda-forge -c legate/label/rc -c nvidia cuda-toolkit=12.4 libcublas=12.4 libgomp cupynumeric=${{ steps.pkg.outputs.version }}.rc3 -y
       
       - name: Load Julia packages from cache
         id: julia-cache
@@ -124,7 +124,11 @@ jobs:
             using CUDA_Driver_jll; \
             print(joinpath(CUDA_Driver_jll.artifact_dir, "lib"))' \
           ):$LD_LIBRARY_PATH" >> $GITHUB_ENV
-
+      
+      - name: Set LD_LIBRARY_PATH for CONDA
+        run: |
+          echo "LD_LIBRARY_PATH=/github/home/miniconda3/envs/myenv/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          
       - name: Setup cuNumeric.jl and Legate.jl
         run: |
           julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")' || true # ensure clean env
