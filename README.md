@@ -12,7 +12,7 @@ The cuNumeric.jl package wraps the [cuPyNumeric](https://github.com/nv-legate/cu
 
 This project is in alpha and we do not commit to anything necessarily working as you would expect. The current build process requires several external dependencies which are not registered on BinaryBuilder.jl yet. The build instructions and minimum pre-requesites are as follows:
 
-## Minimum prereqs
+### Minimum prereqs
 - Ubuntu 20.04 or RHEL 8
 - Julia 1.11
 
@@ -40,16 +40,19 @@ using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "m
 ```
 The `rev` option can be main or any tagged version.  By default, this will use [legate_jll](https://github.com/JuliaBinaryWrappers/legate_jll.jl/) and [cupynumeric_jll](https://github.com/JuliaBinaryWrappers/cupynumeric_jll.jl/). 
 
-## 2b. Contributing to cuNumeric.jl
+For more build configurations and options, please visit our [installation guide](https://julialegate.github.io/cuNumeric.jl/dev/install/).
+
+#### 2b. Contributing to cuNumeric.jl
 To contribute to cuNumeric.jl, we recommend cloning the repository or adding it to one of your existing environments with `Pkg.develop`.
 ```bash
-git clone https://github.com/JuliaLegate/cuNumeric.jl.git
-cd cuNumeric.jl
-julia --project=. -e 'using Pkg; Pkg.add(path="./lib/CNPreferences"); Pkg.develop(".")'
+git clone https://github.com/JuliaLegate/cuNumeric.jl.git 
+julia --project=. -e 'using Pkg; Pkg.develop(path = "cuNumeric.jl/lib/CNPreferences")'
+julia --project=. -e 'using Pkg; Pkg.develop(path = "cuNumeric.jl")'
 julia --project=. -e 'using CNPreferences; CNPreferences.use_developer_mode()'
+julia --project=. -e 'using Pkg; Pkg.build()'
 ```
 
-For more build configurations and options, please visit our [installation guide](https://julialegate.github.io/cuNumeric.jl/dev/install/).
+To learn more about contributing to Legate.jl, check out the [Legate.jl README.md](https://github.com/JuliaLegate/Legate.jl?tab=readme-ov-file#2-download-legatejl)
 
 ### 3. Test the Julia Package
 Run this command in the Julia environment where cuNumeric.jl is installed.

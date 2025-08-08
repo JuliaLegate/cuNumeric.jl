@@ -4,14 +4,13 @@ To make customization of the build options easier we have the `CNPreferences.jl`
 
 ## Default Build (jlls)
 
-By default cuNumeric.jl will use [Binary Builder](https://github.com/JuliaPackaging/Yggdrasil) to install cuNumeric.jl
+By default cuNumeric.jl will use [Binary Builder](https://github.com/JuliaPackaging/Yggdrasil) to install cuNumeric.jl. [Legate.jl](https://github.com/JuliaLegate/Legate.jl) is not yet registered. 
 
 ```julia
-Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl")
+using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")
+using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "main")
 ```
-
 If you previously used a custom build or conda build and would like to revert back to using prebuilt JLLs, run the following command in the directory containing the Project.toml of your environment.
-
 
 ```julia
 julia --project -e 'using CNPreferences; CNPreferences.use_jll_binary()'
