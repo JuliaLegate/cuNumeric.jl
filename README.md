@@ -35,15 +35,14 @@ juliaup default 1.11
 ### 2. Download cuNumeric.jl (quick setup)
 cuNumeric.jl is not on the general registry yet. To add cuNumeric.jl to your environment run:
 ```julia
-using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")
-using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "main")
+using Pkg; Pkg.develop(url = "https://github.com/JuliaLegate/cuNumeric.jl")
 ```
-The `rev` option can be main or any tagged version.  By default, this will use [legate_jll](https://github.com/JuliaBinaryWrappers/legate_jll.jl/) and [cupynumeric_jll](https://github.com/JuliaBinaryWrappers/cupynumeric_jll.jl/). 
+By default, this will use [legate_jll](https://github.com/JuliaBinaryWrappers/legate_jll.jl/) and [cupynumeric_jll](https://github.com/JuliaBinaryWrappers/cupynumeric_jll.jl/). 
 
 For more build configurations and options, please visit our [installation guide](https://julialegate.github.io/cuNumeric.jl/dev/install/).
 
 #### 2b. Contributing to cuNumeric.jl
-To contribute to cuNumeric.jl, we recommend cloning the repository or adding it to one of your existing environments with `Pkg.develop`.
+To contribute to cuNumeric.jl, we recommend cloning the repository and adding it to one of your existing environments with `Pkg.develop`.
 ```bash
 git clone https://github.com/JuliaLegate/cuNumeric.jl.git 
 julia --project=. -e 'using Pkg; Pkg.develop(path = "cuNumeric.jl/lib/CNPreferences")'
