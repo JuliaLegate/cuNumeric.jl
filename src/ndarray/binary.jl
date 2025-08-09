@@ -1,3 +1,5 @@
+include("detail/ndarray.jl")
+
 @doc"""
 Supported Binary Operations
 ===========================

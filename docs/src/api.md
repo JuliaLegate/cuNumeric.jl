@@ -10,7 +10,7 @@ Depth = 2:2
 
 ```@autodocs
 Modules = [cuNumeric]
-Pages = ["cuNumeric.jl", "memory.jl", "ndarray.jl", "unary.jl", "binary.jl"]
+Pages = ["cuNumeric.jl", "cuda.jl", "memory.jl", "util.jl", "ndarray/ndarray.jl", "ndarray/unary.jl", "ndarray/binary.jl"]
 ```
 
 # CNPreferences
@@ -22,3 +22,8 @@ Modules = [CNPreferences]
 Pages = ["CNPreferences.jl"]
 ```
 
+# Internal API
+```@autodocs
+Modules = [cuNumeric]
+Pages = ["ndarray/detail/ndarray.jl"]
+```

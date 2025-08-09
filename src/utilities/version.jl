@@ -1,3 +1,17 @@
+function update_project(version::String)
+    Pkg.compat("cupynumeric_jll", version)
+    Pkg.compat("Legate", version)
+
+    path = "Project.toml"
+    project = TOML.parsefile(path)
+    project["version"] = version
+
+    open(path, "w") do io
+        TOML.print(io, project)
+    end
+end
+
+
 function get_cxx_version(libpath::AbstractString)
     try
         cmd = `readelf -p .comment $libpath`

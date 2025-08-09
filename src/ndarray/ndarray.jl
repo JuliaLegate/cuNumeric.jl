@@ -1,5 +1,3 @@
-export NDArray
-
 #= Copyright 2025 Northwestern University, 
  *                   Carnegie Mellon University University
  *
@@ -19,51 +17,7 @@ export NDArray
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 
-Base.Broadcast.broadcastable(v::NDArray) = v
-
-const Scalar = Union{Float32,Float64,Int64,Int32}
-
-@doc"""
-    to_cpp_index(idx::Dims{N}, int_type::Type=UInt64) where {N}
-
-**Internal API**
-
-Converts a Julia 1-based index tuple `idx` to a zero-based C++ style index wrapped in `StdVector` of the specified integer type.
-
-Each element of `idx` is decremented by 1 to adjust from Julia’s 1-based indexing to C++ 0-based indexing.
-"""
-function to_cpp_index(idx::Dims{N}, int_type::Type=UInt64) where {N}
-    StdVector(int_type.([e - 1 for e in idx]))
-end
-
-@doc"""
-    to_cpp_index(d::Int64, int_type::Type=UInt64)
-
-**Internal API**
-
-Converts a single Julia 1-based index `d` to a zero-based C++ style index wrapped in `StdVector`.
-"""
-to_cpp_index(d::Int64, int_type::Type=UInt64) = StdVector(int_type.([d - 1]))
-
-@doc"""
-    Base.eltype(arr::NDArray)
-
-Returns the element type of the `NDArray`.
-
-**Internal API**
-
-This method uses `nda_array_type_code` internally to map to the appropriate Julia element type.
-"""
-Base.eltype(arr::NDArray) = Legate.code_type_map[nda_array_type_code(arr)]
-
-@doc"""
-    LegateType(T::Type)
-
-Converts a Julia type `T` to the corresponding Legate type.
-
-**Internal API**
-"""
-LegateType(T::Type) = Legate.to_legate_type(T)
+include("detail/ndarray.jl")
 
 @doc"""
     as_type(arr::NDArray, t::Type{T}) where {T}
@@ -125,8 +79,9 @@ size(arr)
 size(arr, 2)
 ```
 """
-Base.size(arr::NDArray) = Tuple(Int.(cuNumeric.nda_array_shape(arr)))
+Base.size(arr::NDArray) = cuNumeric.shape(arr)
 Base.size(arr::NDArray, dim::Int) = Base.size(arr)[dim]
+
 @doc"""
     Base.firstindex(arr::NDArray, dim::Int)
     Base.lastindex(arr::NDArray, dim::Int)
@@ -165,43 +120,6 @@ function Base.show(io::IO, ::MIME"text/plain", arr::NDArray)
 end
 
 #### ARRAY INDEXING AND SLICES ####
-@doc"""
-    slice(start::Union{Nothing,Integer}, stop::Union{Nothing,Integer})
-
-**Internal API**
-
-Constructs a `cuNumeric.Slice` object representing a slice with optional start and stop indices.
-
-- If `start` or `stop` is `nothing`, the slice end is considered unbounded (`Slice::OPEN`).
-- Otherwise, the slice is defined as `[start, stop]` interval (inclusive).
-"""
-
-function slice(start::Union{Nothing,Integer}, stop::Union{Nothing,Integer})
-    cuNumeric.Slice(
-        isnothing(start) ? 0 : 1,
-        isnothing(start) ? 0 : Int64(start),
-        isnothing(stop) ? 0 : 1,
-        isnothing(stop) ? 0 : Int64(stop),
-    )
-end
-
-@doc"""
-    slice_array(slices::Vararg{Tuple{Union{Int,Nothing},Union{Int,Nothing}},N}) where {N}
-
-**Internal API**
-
-Constructs a vector of `cuNumeric.Slice` objects from a variable number of `(start, stop)` tuples.
-
-Each tuple corresponds to a dimension slice, using `slice` internally.
-"""
-function slice_array(slices::Vararg{Tuple{Union{Int,Nothing},Union{Int,Nothing}},N}) where {N}
-    v = Vector{cuNumeric.Slice}(undef, N)
-    for i in 1:N
-        start, stop = slices[i]
-        v[i] = slice(start, stop)
-    end
-    return v
-end
 
 @doc"""
     arr[i, j]
@@ -861,79 +779,6 @@ end
 function Base.:(==)(julia_array::Array, arr::NDArray)
     # flip LHS and RHS
     return (arr == julia_array)
-end
-
-@doc"""
-    compare(x, y, max_diff)
-
-**Internal API**
-
-Compare two arrays `x` and `y` for approximate equality within a maximum difference `max_diff`.
-
-Supports comparisons between:
-- an `NDArray` and a Julia `AbstractArray`
-- two `NDArray`s
-- a Julia `AbstractArray` and an `NDArray`
-
-Returns `true` if the arrays have the same shape and element type (for mixed types),
-and all corresponding elements differ by no more than `max_diff`.
-
-Emits warnings when array sizes or element types differ.
-
-!!! warning
-
-    This function uses scalar indexing and should not be used in production code. This is meant for testing.
-
-
-# Notes
-- This is an internal API used by higher-level approximate equality functions.
-- Does not support relative tolerance (`rtol`).
-
-# Behavior
-- Checks size compatibility.
-- Checks element type compatibility for `NDArray` vs Julia array.
-- Iterates over elements using `CartesianIndices` to compare element-wise difference.
-"""
-function compare(julia_array::AbstractArray, arr::NDArray, max_diff)
-    if (Base.size(arr) != Base.size(julia_array))
-        @warn "NDArray has size $(Base.size(arr)) and Julia array has size $(Base.size(julia_array))!\n"
-        return false
-    end
-
-    if (eltype(arr) != eltype(julia_array))
-        @warn "NDArray has eltype $(eltype(arr)) and Julia array has eltype $(eltype(julia_array))!\n"
-        return false
-    end
-
-    for CI in CartesianIndices(julia_array)
-        if abs(julia_array[CI] - arr[Tuple(CI)...]) > max_diff
-            return false
-        end
-    end
-
-    # successful completion
-    return true
-end
-
-function compare(arr::NDArray, julia_array::AbstractArray, max_diff)
-    return compare(julia_array, arr, max_diff)
-end
-
-function compare(arr::NDArray, arr2::NDArray, max_diff)
-    if (Base.size(arr) != Base.size(arr2))
-        @warn "NDArray LHS has size $(Base.size(arr)) and NDArray RHS has size $(Base.size(arr2))!\n"
-        return false
-    end
-
-    dims = Base.size(arr)
-    for CI in CartesianIndices(dims)
-        if abs(arr2[Tuple(CI)...] - arr[Tuple(CI)...]) > max_diff
-            return false
-        end
-    end
-
-    # successful completion
-    return true
 end
 
 @doc"""

@@ -1,4 +1,5 @@
 export square
+include("detail/ndarray.jl")
 
 @doc"""
 Supported Unary Operations
