@@ -10,7 +10,6 @@ using TOML
 
 using cupynumeric_jll
 # temporary until cunumeric_jl_wrapper_jll exists
-include("develop/cunumeric_wrapper.jl")
 # using cunumeric_jl_wrapper_jll
 using CUTENSOR_jll
 
