@@ -17,8 +17,6 @@
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 
-include("detail/ndarray.jl")
-
 @doc"""
     as_type(arr::NDArray, t::Type{T}) where {T}
 

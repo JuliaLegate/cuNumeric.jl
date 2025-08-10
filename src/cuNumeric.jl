@@ -58,7 +58,10 @@ preload_libs() # for precompilation
 # custom GC
 include("memory.jl")
 
-# NDArray
+# NDArray internal
+include("ndarray/detail/ndarray.jl")
+
+# NDArray interface
 include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
