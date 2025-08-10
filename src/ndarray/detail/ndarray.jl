@@ -18,7 +18,11 @@ nda_nbytes(arr::NDArray_t) = ccall((:nda_nbytes, libnda),
     Int64, (NDArray_t,), arr)
 
 @doc"""
-The NDArray
+**Internal API**
+
+The NDArray type represents a multi-dimensional array in cuNumeric.
+It is a wrapper around a Legate array and provides various methods for array manipulation and operations. 
+Finalizer calls `nda_destroy_array` to clean up the underlying Legate array when the NDArray is garbage collected.
 """
 mutable struct NDArray
     ptr::NDArray_t
@@ -223,7 +227,6 @@ function nda_dot(rhs1::NDArray, rhs2::NDArray)
     return NDArray(ptr)
 end
 
-
 @doc"""
     to_cpp_index(idx::Dims{N}, int_type::Type=UInt64) where {N}
 
@@ -249,9 +252,9 @@ to_cpp_index(d::Int64, int_type::Type=UInt64) = StdVector(int_type.([d - 1]))
 @doc"""
     Base.eltype(arr::NDArray)
 
-Returns the element type of the `NDArray`.
-
 **Internal API**
+
+Returns the element type of the `NDArray`.
 
 This method uses `nda_array_type_code` internally to map to the appropriate Julia element type.
 """
@@ -260,12 +263,11 @@ Base.eltype(arr::NDArray) = Legate.code_type_map[nda_array_type_code(arr)]
 @doc"""
     LegateType(T::Type)
 
-Converts a Julia type `T` to the corresponding Legate type.
-
 **Internal API**
+
+Converts a Julia type `T` to the corresponding Legate type.
 """
 LegateType(T::Type) = Legate.to_legate_type(T)
-
 
 @doc"""
     slice(start::Union{Nothing,Integer}, stop::Union{Nothing,Integer})
