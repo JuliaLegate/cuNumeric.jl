@@ -16,4 +16,4 @@ echo "LD_LIBRARY_PATH=$(julia --project=[yourenv] -e 'using Pkg; \
 ):$LD_LIBRARY_PATH"
 ```
 
-Note: You may use a different compatible driver version, but ensure it works with our supported CUDA toolkit/runtime versions (12.2 – 12.9). CUDA runtime 13.0 is untested and will likely break this package.
+Note: You may use a different compatible driver version, but ensure it works with our supported CUDA toolkit/runtime versions (12.2 – 12.9). CUDA runtime 13.0 is untested and will likely break this package. 
