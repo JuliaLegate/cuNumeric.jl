@@ -52,7 +52,7 @@ function get_library_root(jll_module, env_var::String)
 end
 
 function find_preferences()
-    pkg_root = abspath(joinpath(@__DIR__, "../"))
+    pkg_root = abspath(joinpath(@__DIR__, "../", "../"))
 
     blas_lib = get_library_root(OpenBLAS32_jll, "JULIA_OPENBLAS_PATH")
     cutensor_lib = get_library_root(CUTENSOR_jll, "JULIA_CUTENSOR_PATH")

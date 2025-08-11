@@ -15,16 +15,3 @@ preceding the call to this function.
 function get_time_nanoseconds()
     return Legate.value(Legate.time_nanoseconds())
 end
-
-function update_project(version::String)
-    Pkg.compat("cupynumeric_jll", version)
-    Pkg.compat("Legate", version)
-
-    path = "Project.toml"
-    project = TOML.parsefile(path)
-    project["version"] = version
-
-    open(path, "w") do io
-        TOML.print(io, project)
-    end
-end
