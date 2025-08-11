@@ -1,23 +1,11 @@
 export get_time_microseconds, get_time_nanoseconds
 
-# function timer_microseconds()
-#     return time_microseconds()
-# end
-
-# function timer_nanoseconds()
-#     return time_nanoseconds()
-# end
-
-# function get_time(t::Time)
-#     return value(t)
-# end
-
 @doc"""
 Returns the timestamp in microseconds. Blocks on all Legate operations
 preceding the call to this function.
 """
 function get_time_microseconds()
-    return value(time_microseconds())
+    return Legate.value(Legate.time_microseconds())
 end
 
 @doc"""
@@ -25,5 +13,18 @@ Returns the timestamp in nanoseconds. Blocks on all Legate operations
 preceding the call to this function.
 """
 function get_time_nanoseconds()
-    return value(time_nanoseconds())
+    return Legate.value(Legate.time_nanoseconds())
+end
+
+function update_project(version::String)
+    Pkg.compat("cupynumeric_jll", version)
+    Pkg.compat("Legate", version)
+
+    path = "Project.toml"
+    project = TOML.parsefile(path)
+    project["version"] = version
+
+    open(path, "w") do io
+        TOML.print(io, project)
+    end
 end

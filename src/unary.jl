@@ -1,5 +1,53 @@
 export square
 
+@doc"""
+Supported Unary Operations
+===========================
+
+The following unary operations are supported and can be applied directly to `NDArray` values:
+
+  - `abs`
+  - `acos`
+  - `asin`
+  - `asinh`
+  - `atan`
+  - `atanh`
+  - `cbrt`
+  - `conj`
+  - `cos`
+  - `cosh`
+  - `deg2rad`
+  - `exp`
+  - `exp2`
+  - `expm1`
+  - `floor`
+  - `log`
+  - `log10`
+  - `log1p`
+  - `log2`
+  - `-` (negation)
+  - `rad2deg`
+  - `sin`
+  - `sinh`
+  - `sqrt`
+  - `square`
+  - `tan`
+  - `tanh`
+
+These operations are applied elementwise by default and follow standard Julia semantics.
+
+Examples
+--------
+
+```julia
+A = NDArray(randn(Float32, 3, 3))
+
+abs(A)
+log.(A .+ 1)
+-sqrt(abs(A))
+square(A)
+```
+"""
 global const unary_op_map_no_args = Dict{Union{Function,Symbol},UnaryOpCode}(
     Base.abs => cuNumeric.ABSOLUTE,
     Base.acos => cuNumeric.ARCCOS,
@@ -44,8 +92,8 @@ global const unary_op_map_no_args = Dict{Union{Function,Symbol},UnaryOpCode}(
     Base.tanh => cuNumeric.TANH,
 )
 
-"""
-square(arr::NDArray)
+@doc"""
+    square(arr::NDArray)
 
 Elementwise square of each element in `arr`. 
 """
@@ -85,7 +133,30 @@ end
 #     end
 # end
 
-# Could implement most of the missing functions here
+@doc"""
+Supported Unary Reduction Operations
+===========================
+
+The following unary reduction operations are supported and can be applied directly to `NDArray` values:
+
+  • `maximum`
+  • `minimum`
+  • `prod`
+  • `sum`
+
+
+These operations follow standard Julia semantics.
+
+Examples
+--------
+
+```julia
+A = NDArray(randn(Float32, 3, 3))
+
+maximum(A)
+sum(A)
+```
+"""
 global const unary_reduction_map = Dict{Function,UnaryRedCode}(
     # Base.all => cuNumeric.ALL, #* ANNOYING TO TEST
     # Base.any => cuNumeric.ANY, #* ANNOYING TO TEST

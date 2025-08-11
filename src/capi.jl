@@ -1,9 +1,6 @@
 export test_factories
 export NDArray
 
-lib = "libcwrapper.so"
-libnda = joinpath(@__DIR__, "../", "wrapper", "build", lib)
-
 struct Slice
     has_start::Cint
     start::Int64
@@ -32,6 +29,9 @@ nda_nbytes(arr::NDArray_t) = ccall((:nda_nbytes, libnda),
 #     end
 # end
 
+@doc"""
+The NDArray
+"""
 mutable struct NDArray
     ptr::NDArray_t
     nbytes::Int64

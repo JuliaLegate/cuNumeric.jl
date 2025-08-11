@@ -1,4 +1,3 @@
-
 function get_cxx_version(libpath::AbstractString)
     try
         cmd = `readelf -p .comment $libpath`
@@ -37,10 +36,15 @@ function version_config_setup()
     libnccl = Legate.get_install_libnccl()
     libmpi = Legate.get_install_libmpi()
     libhdf5 = Legate.get_install_libhdf5()
+    libcuda = Legate.get_install_libcuda()
+    libcudart = Legate.get_install_libcudart()
+    liblegatewrapper = Legate.LEGATE_WRAPPER_LIB
 
+    libblas = BLAS_LIB
     libcutensor = CUTENSOR_LIB
     libcupynumeric = CUPYNUMERIC_LIB
     libtblis = TBLIS_LIB
+    libcunumericwrapper = CUNUMERIC_WRAPPER_LIB
 
     str = """
     ───────────────────────────────────────────────
@@ -54,15 +58,22 @@ function version_config_setup()
     Hostname:         $hostname
     Julia Version:    $julia_ver
     C++ Compiler:     $compiler
+    CUDA Driver:      $libcuda
+    CUDA Runtime:     $libcudart
 
     Library Paths:
       Legate:         $liblegate
       cuPyNumeric:    $libcupynumeric
+      BLAS:           $libblas
       TBLIS:          $libtblis
       CUTENSOR:       $libcutensor
       NCCL:           $libnccl
       MPI:            $libmpi
       HDF5:           $libhdf5
+
+    Wrappers:
+      cuNumeric       $libcunumericwrapper
+      Legate          $liblegatewrapper
     ───────────────────────────────────────────────
     """
     return str
