@@ -35,8 +35,8 @@ global const binary_op_map = Dict{Function,BinaryOpCode}(
     Base.:(-) => cuNumeric.SUBTRACT)
 
 
-maybe_promote_arr(arr::NDArray{T}, ::Type{T}) = arr
-maybe_promote_arr(arr::NDArray{T}, ::Type{S}) where S = as_type(arr, S)
+maybe_promote_arr(arr::NDArray{T}, ::Type{T}) where T = arr
+maybe_promote_arr(arr::NDArray{T}, ::Type{S}) where {T,S} = as_type(arr, S)
 
 smaller_type(::A, ::B) where {A,B} = ifelse(sizeof(A) < sizeof(B), A, B)
 
@@ -55,28 +55,39 @@ for (base_func, op_code) in binary_op_map
     # Definitions and type promotion rules
     @eval begin
         
-        function $(Symbol(base_func))(rhs1::NDArray{T}, rhs2::NDArray{T}) where T
-            @inline 
-            out = cuNumeric.zeros(T, Base.size(rhs1)) #! not sure this is ok for performance
+        # With same types, no promotion
+        @inline function $(Symbol(base_func))(rhs1::NDArray{T}, rhs2::NDArray{T}) where T
+            out = cuNumeric.zeros(T, Base.size(rhs1))
             return nda_binary_op(out, $(op_code), rhs1, rhs2)
         end
 
+        # With un-matched types, promote to same type and call back to other function
+        @inline function $(Symbol(base_func))(rhs1::NDArray{A}, rhs2::NDArray{B}) where {A <: Number, B <: Number} 
+            T = __my_promote_type(A, B)
+            return  $(Symbol(base_func))(maybe_promote_arr(rhs1, T), maybe_promote_arr(rhs2, T))
+        end
+
+        #! Need to add support in C++ for this!!!!
         @inline function $(Symbol(base_func))(arr::NDArray{T}, c::T) where T
-            return $(Symbol(base_func))(T(c), maybe_promote_arr(arr, T))
+            error("Not yet implemented")
+            # return $(Symbol(base_func))(T(c), maybe_promote_arr(arr, T))
         end
         
         @inline function $(Symbol(base_func))(c::T, arr::NDArray{T}) where T
-            return $(Symbol(base_func))(arr, c)
+            error("Not yet implemented")
+            # return $(Symbol(base_func))(arr, c)
         end
 
         @inline function $(Symbol(base_func))(c::A, arr::NDArray{B}) where {A <: Number, B <: Number}
-            T = __my_promote_type(A, B)
-            return $(Symbol(base_func))(T(c), maybe_promote_arr(arr, T))
+            error("Not yet implemented")
+            # T = __my_promote_type(A, B)
+            # return $(Symbol(base_func))(T(c), maybe_promote_arr(arr, T))
         end
 
         @inline function $(Symbol(base_func))(arr::NDArray{B}, c::A) where {A <: Number, B <: Number}
-            T = __my_promote_type(A, B)
-            return $(Symbol(base_func))(T(c), maybe_promote_arr(arr, T))
+            error("Not yet implemented")
+            # T = __my_promote_type(A, B)
+            # return $(Symbol(base_func))(T(c), maybe_promote_arr(arr, T))
         end
 
     end
@@ -93,3 +104,99 @@ end
 #     return f
 # end
 
+const ARITHMETIC_TYPES = Union{Float32,Float64,Int64,Int32}
+
+
+function Base.:+(arr::NDArray{T}, val::V) where {T, V <: ARITHMETIC_TYPES}
+    P = __my_promote_type(V, T)
+    return nda_add_scalar(maybe_promote_arr(arr, P), P(val))
+end
+
+function Base.:+(val::V, arr::NDArray{T}) where {T, V <: ARITHMETIC_TYPES}
+    return +(arr, val)
+end
+
+function Base.Broadcast.broadcasted(
+    ::typeof(+), arr::NDArray{T}, val::V
+) where {T, V <: ARITHMETIC_TYPES}
+    return +(arr, val)
+end
+
+function Base.Broadcast.broadcasted(
+    ::typeof(+), val::V, arr::NDArray{T}
+) where {T, V <: ARITHMETIC_TYPES}
+    return +(arr, val)
+end
+
+function Base.Broadcast.broadcasted(::typeof(+), lhs::NDArray{T}, rhs::NDArray{T}) where T
+    return +(lhs, rhs)
+end
+
+function Base.:-(val::V, arr::NDArray{T}) where {T, V <: ARITHMETIC_TYPES}
+    return nda_multiply_scalar(arr, -val)
+end
+
+function Base.:-(arr::NDArray{T}, val::V) where {T, V <: ARITHMETIC_TYPES}
+    return +(arr, (-1*val))
+end
+
+function Base.Broadcast.broadcasted(
+    ::typeof(-), arr::NDArray{T}, val::V
+) where {T, V <: ARITHMETIC_TYPES}
+    return -(arr, val)
+end
+function Base.Broadcast.broadcasted(
+    ::typeof(-), val::V, rhs::NDArray{T}
+) where {T, V <: ARITHMETIC_TYPES}
+    lhs = full(Base.size(rhs), T)
+    return -(lhs, rhs)
+end
+
+function Base.Broadcast.broadcasted(::typeof(-), lhs::NDArray{T}, rhs::NDArray{T}) where T
+    return -(lhs, rhs)
+end
+
+function Base.:*(val::V, arr::NDArray{T}) where {T, V <: ARITHMETIC_TYPES}
+    P = __my_promote_type(V, T)
+    return nda_multiply_scalar(maybe_promote_arr(arr, P), P(val))
+end
+
+function Base.:*(arr::NDArray{T}, val::V) where {T, V <: ARITHMETIC_TYPES}
+    return *(val, arr)
+end
+
+function Base.Broadcast.broadcasted(
+    ::typeof(*), arr::NDArray{T}, val::V
+) where {T, V <: ARITHMETIC_TYPES}
+    return *(val, arr)
+end
+
+function Base.Broadcast.broadcasted(
+    ::typeof(*), val::V, arr::NDArray{T}
+) where {T, V <: ARITHMETIC_TYPES}
+    return *(val, arr)
+end
+
+function Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray{T}, rhs::NDArray{T})
+    return *(lhs, rhs)
+end
+
+function Base.:/(arr::NDArray{T}, val::V) where {T, V <: ARITHMETIC_TYPES}
+    throw(ErrorException("[/] is not supported yet"))
+end
+
+function Base.Broadcast.broadcasted(
+    ::typeof(/), arr::NDArray{T}, val::V
+) where {T, V <: Union{Float16, Float32, Float64}}
+    return nda_multiply_scalar(arr, V(1 / val))
+end
+
+function Base.Broadcast.broadcasted(
+    ::typeof(/), val::V, arr::NDArray{T}
+) where {T, V <: ARITHMETIC_TYPES}
+    return throw(ErrorException("element wise [val ./ NDArray] is not supported yet"))
+end
+
+function Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray{T}, rhs::NDArray{T}) where T
+    return /(lhs, rhs)
+end

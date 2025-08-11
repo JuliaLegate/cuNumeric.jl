@@ -41,6 +41,8 @@ import Base: abs, angle, acos, acosh, asin, asinh, atan, atanh, cbrt,
     <, <=, !=, >>, all, any, argmax, argmin, maximum, minimum,
     prod, sum, read
 
+# const MAX_DIM = 6 # idk what we compiled?
+
 function preload_libs()
     cache_build_meta = joinpath(@__DIR__, "../", "deps", "deps.jl")
     include(cache_build_meta)
