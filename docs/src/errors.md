@@ -10,7 +10,7 @@ However, if you want to solve the JLL being available- you need the cuda driver 
 
 ```bash
 echo "LD_LIBRARY_PATH=$(julia --project=[yourenv] -e 'using Pkg; \
-    Pkg.add(name = "CUDA_Driver_jll", version = "0.12.1"); \
+    Pkg.add(name = \"CUDA_Driver_jll\", version = \"0.12.1\"); \
     using CUDA_Driver_jll; \
     print(joinpath(CUDA_Driver_jll.artifact_dir, "lib"))' \
 ):$LD_LIBRARY_PATH"
