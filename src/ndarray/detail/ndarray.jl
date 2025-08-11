@@ -1,8 +1,4 @@
-export test_factories
 export NDArray
-
-lib = "libcwrapper.so"
-libnda = joinpath(@__DIR__, "../", "wrapper", "build", lib)
 
 struct Slice
     has_start::Cint
@@ -21,17 +17,13 @@ nda_destroy_array(arr::NDArray_t) = ccall((:nda_destroy_array, libnda),
 nda_nbytes(arr::NDArray_t) = ccall((:nda_nbytes, libnda),
     Int64, (NDArray_t,), arr)
 
-# mutable struct NDArray
-#     ptr::NDArray_t
-#     function NDArray(ptr)
-#         handle = new(ptr)
-#         finalizer(handle) do h
-#             cuNumeric.nda_destroy_array(h.ptr)
-#         end
-#         return handle
-#     end
-# end
+@doc"""
+**Internal API**
 
+The NDArray type represents a multi-dimensional array in cuNumeric.
+It is a wrapper around a Legate array and provides various methods for array manipulation and operations. 
+Finalizer calls `nda_destroy_array` to clean up the underlying Legate array when the NDArray is garbage collected.
+"""
 mutable struct NDArray{T,N}
     ptr::NDArray_t
     nbytes::Int64
@@ -49,6 +41,9 @@ mutable struct NDArray{T,N}
         return handle
     end
 end
+
+Base.Broadcast.broadcastable(v::NDArray) = v
+const Scalar = Union{Float32,Float64,Int64,Int32}
 
 # construction 
 function nda_zeros_array(shape::Vector{UInt64}; type::Union{Nothing,Type{T}}=nothing) where {T}
@@ -221,15 +216,164 @@ function nda_dot(rhs1::NDArray, rhs2::NDArray)
     return NDArray(ptr)
 end
 
-# --- quick smoke test ---
-function test_factories()
-    shp = UInt64[4, 5, 6]
-    a = nda_zeros_array(shp)                 # default type
-    b = nda_zeros_array(shp; type=Float64)
-    c = nda_full_array(shp, 3.1415)
-    for x in (a, b, c)
-        @show nda_array_dim(x), nda_array_size(x),
-        nda_array_type(x), nda_array_shape(x)
-        nda_destroy_array(x)
+@doc"""
+    to_cpp_index(idx::Dims{N}, int_type::Type=UInt64) where {N}
+
+**Internal API**
+
+Converts a Julia 1-based index tuple `idx` to a zero-based C++ style index wrapped in `StdVector` of the specified integer type.
+
+Each element of `idx` is decremented by 1 to adjust from Julia’s 1-based indexing to C++ 0-based indexing.
+"""
+function to_cpp_index(idx::Dims{N}, int_type::Type=UInt64) where {N}
+    StdVector(int_type.([e - 1 for e in idx]))
+end
+
+@doc"""
+    to_cpp_index(d::Int64, int_type::Type=UInt64)
+
+**Internal API**
+
+Converts a single Julia 1-based index `d` to a zero-based C++ style index wrapped in `StdVector`.
+"""
+to_cpp_index(d::Int64, int_type::Type=UInt64) = StdVector(int_type.([d - 1]))
+
+@doc"""
+    Base.eltype(arr::NDArray)
+
+**Internal API**
+
+Returns the element type of the `NDArray`.
+
+This method uses `nda_array_type_code` internally to map to the appropriate Julia element type.
+"""
+Base.eltype(arr::NDArray) = Legate.code_type_map[nda_array_type_code(arr)]
+
+@doc"""
+    LegateType(T::Type)
+
+**Internal API**
+
+Converts a Julia type `T` to the corresponding Legate type.
+"""
+LegateType(T::Type) = Legate.to_legate_type(T)
+
+@doc"""
+    slice(start::Union{Nothing,Integer}, stop::Union{Nothing,Integer})
+
+**Internal API**
+
+Constructs a `cuNumeric.Slice` object representing a slice with optional start and stop indices.
+
+- If `start` or `stop` is `nothing`, the slice end is considered unbounded (`Slice::OPEN`).
+- Otherwise, the slice is defined as `[start, stop]` interval (inclusive).
+"""
+
+function slice(start::Union{Nothing,Integer}, stop::Union{Nothing,Integer})
+    cuNumeric.Slice(
+        isnothing(start) ? 0 : 1,
+        isnothing(start) ? 0 : Int64(start),
+        isnothing(stop) ? 0 : 1,
+        isnothing(stop) ? 0 : Int64(stop),
+    )
+end
+
+@doc"""
+    slice_array(slices::Vararg{Tuple{Union{Int,Nothing},Union{Int,Nothing}},N}) where {N}
+
+**Internal API**
+
+Constructs a vector of `cuNumeric.Slice` objects from a variable number of `(start, stop)` tuples.
+
+Each tuple corresponds to a dimension slice, using `slice` internally.
+"""
+function slice_array(slices::Vararg{Tuple{Union{Int,Nothing},Union{Int,Nothing}},N}) where {N}
+    v = Vector{cuNumeric.Slice}(undef, N)
+    for i in 1:N
+        start, stop = slices[i]
+        v[i] = slice(start, stop)
     end
+    return v
+end
+
+@doc"""
+    shape(arr::NDArray)
+
+**Internal API**
+
+Return the size of the given `NDArray`.
+"""
+shape(arr::NDArray) = Tuple(Int.(cuNumeric.nda_array_shape(arr)))
+
+@doc"""
+    compare(x, y, max_diff)
+
+**Internal API**
+
+Compare two arrays `x` and `y` for approximate equality within a maximum difference `max_diff`.
+
+Supports comparisons between:
+- an `NDArray` and a Julia `AbstractArray`
+- two `NDArray`s
+- a Julia `AbstractArray` and an `NDArray`
+
+Returns `true` if the arrays have the same shape and element type (for mixed types),
+and all corresponding elements differ by no more than `max_diff`.
+
+Emits warnings when array sizes or element types differ.
+
+!!! warning
+
+    This function uses scalar indexing and should not be used in production code. This is meant for testing.
+
+
+# Notes
+- This is an internal API used by higher-level approximate equality functions.
+- Does not support relative tolerance (`rtol`).
+
+# Behavior
+- Checks size compatibility.
+- Checks element type compatibility for `NDArray` vs Julia array.
+- Iterates over elements using `CartesianIndices` to compare element-wise difference.
+"""
+function compare(julia_array::AbstractArray, arr::NDArray, max_diff)
+    if (shape(arr) != Base.size(julia_array))
+        @warn "NDArray has shape $(shape(arr)) and Julia array has shape $(Base.size(julia_array))!\n"
+        return false
+    end
+
+    if (eltype(arr) != eltype(julia_array))
+        @warn "NDArray has eltype $(eltype(arr)) and Julia array has eltype $(eltype(julia_array))!\n"
+        return false
+    end
+
+    for CI in CartesianIndices(julia_array)
+        if abs(julia_array[CI] - arr[Tuple(CI)...]) > max_diff
+            return false
+        end
+    end
+
+    # successful completion
+    return true
+end
+
+function compare(arr::NDArray, julia_array::AbstractArray, max_diff)
+    return compare(julia_array, arr, max_diff)
+end
+
+function compare(arr::NDArray, arr2::NDArray, max_diff)
+    if (shape(arr) != shape(arr2))
+        @warn "NDArray LHS has shape $(shape(arr)) and NDArray RHS has shape $(shape(arr2))!\n"
+        return false
+    end
+
+    dims = shape(arr)
+    for CI in CartesianIndices(dims)
+        if abs(arr2[Tuple(CI)...] - arr[Tuple(CI)...]) > max_diff
+            return false
+        end
+    end
+
+    # successful completion
+    return true
 end

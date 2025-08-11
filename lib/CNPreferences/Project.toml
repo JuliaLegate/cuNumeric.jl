@@ -1,0 +1,15 @@
+name = "CNPreferences"
+uuid = "3e078157-ea10-49d5-bf32-908f777cd46f"
+authors = ["""David Krasowska <krasow@u.northwestern.edu\n> and Ethan Meitz <emeitz@andrew.cmu.edu\n>"""]
+version = "0.1.0"
+
+[deps]
+LegatePreferences = "8028f36a-2b64-49e9-aa04-2d0933fd2ed9"
+Preferences = "21216c6a-2e73-6563-6e65-726566657250"
+
+[sources]
+LegatePreferences = {url = "https://github.com/JuliaLegate/Legate.jl", rev = "main", subdir = "lib/LegatePreferences"}
+
+[compat]
+LegatePreferences = "0.1.0"
+Preferences = "1.4.3"

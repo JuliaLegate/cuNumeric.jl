@@ -1,3 +1,15 @@
+function update_project(version::String)
+    Pkg.compat("cupynumeric_jll", version)
+    Pkg.compat("Legate", version)
+
+    path = "Project.toml"
+    project = TOML.parsefile(path)
+    project["version"] = version
+
+    open(path, "w") do io
+        TOML.print(io, project)
+    end
+end
 
 function get_cxx_version(libpath::AbstractString)
     try
@@ -16,12 +28,12 @@ function get_cxx_version(libpath::AbstractString)
 end
 
 function read_githash()
-    githash_path = joinpath(@__DIR__, "../", ".githash")
+    githash_path = joinpath(@__DIR__, "../", "../", ".githash")
     return isfile(githash_path) ? readchomp(githash_path) : "unknown"
 end
 
 function version_config_setup()
-    project_file = joinpath(@__DIR__, "../", "Project.toml")
+    project_file = joinpath(@__DIR__, "../", "../", "Project.toml")
     project = TOML.parsefile(project_file)
 
     name = get(project, "name", "unknown")
@@ -37,10 +49,15 @@ function version_config_setup()
     libnccl = Legate.get_install_libnccl()
     libmpi = Legate.get_install_libmpi()
     libhdf5 = Legate.get_install_libhdf5()
+    libcuda = Legate.get_install_libcuda()
+    libcudart = Legate.get_install_libcudart()
+    liblegatewrapper = Legate.LEGATE_WRAPPER_LIB
 
+    libblas = BLAS_LIB
     libcutensor = CUTENSOR_LIB
     libcupynumeric = CUPYNUMERIC_LIB
     libtblis = TBLIS_LIB
+    libcunumericwrapper = CUNUMERIC_WRAPPER_LIB
 
     str = """
     ───────────────────────────────────────────────
@@ -54,15 +71,22 @@ function version_config_setup()
     Hostname:         $hostname
     Julia Version:    $julia_ver
     C++ Compiler:     $compiler
+    CUDA Driver:      $libcuda
+    CUDA Runtime:     $libcudart
 
     Library Paths:
       Legate:         $liblegate
       cuPyNumeric:    $libcupynumeric
+      BLAS:           $libblas
       TBLIS:          $libtblis
       CUTENSOR:       $libcutensor
       NCCL:           $libnccl
       MPI:            $libmpi
       HDF5:           $libhdf5
+
+    Wrappers:
+      cuNumeric       $libcunumericwrapper
+      Legate          $liblegatewrapper
     ───────────────────────────────────────────────
     """
     return str
