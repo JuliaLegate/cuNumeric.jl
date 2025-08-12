@@ -46,7 +46,7 @@ mutable struct NDArray{T,N}
     end
 end
 
-function NDArray(value::T) where T
+function NDArray(value::T) where {T <: SCALAR_TYPES}
     type = Legate.to_legate_type(T)
     ptr = ccall((:nda_from_scalar, libnda),
         NDArray_t, (Legate.LegateTypeAllocated, Ptr{Cvoid}),
@@ -55,7 +55,6 @@ function NDArray(value::T) where T
 end
 
 Base.Broadcast.broadcastable(v::NDArray) = v
-const Scalar = Union{Float32,Float64,Int64,Int32}
 
 # construction 
 function nda_zeros_array(shape::Vector{UInt64}, ::Type{T}) where {T}
@@ -147,7 +146,7 @@ function nda_fill_array(arr::NDArray{T}, value::T) where {T}
 end
 
 #! probably should be copyto!
-function nda_assign(arr::NDArray{T}, other::NDArray{T})
+function nda_assign(arr::NDArray{T}, other::NDArray{T}) where T
     ccall((:nda_assign, libnda),
         Cvoid, (NDArray_t, NDArray_t),
         arr.ptr, other.ptr)

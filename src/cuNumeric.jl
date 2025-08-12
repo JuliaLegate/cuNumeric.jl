@@ -25,6 +25,8 @@ include("utilities/wrapper_download.jl")
 const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.05.00"]
 
 const DEFAULT_FLOAT = Float32
+const SCALAR_TYPES = Union{Float32,Float64,Int64,Int32}
+
 # const MAX_DIM = 6 # idk what we compiled?
 
 function preload_libs()

@@ -40,7 +40,7 @@ global const binary_op_map = Dict{Function,BinaryOpCode}(
     # Base.:(==) => cuNumeric.EQUAL,  #* DONT REALLY WANT ELEMENTWISE ==, RATHER HAVE REDUCTION
     # Base.:^ => cuNumeric.FLOAT_POWER, # DONT THINK THIS IS WHAT WE WANT
     Base.:^ => cuNumeric.POWER,
-    Base.div => cuNumeric.FLOOR_DIVIDE,
+    # Base.div => cuNumeric.FLOOR_DIVIDE, #* THIS NEEDS TO RETURN INTEGERS
     #missing => cuNumeric.fmod, #same as mod in Julia?
     # Base.gcd => cuNumeric.GCD, #* ANNOYING TO TEST (need ints)
     # Base.:> => cuNumeric.GREATER, #* ANNOYING TO TEST (no == for bools
@@ -98,27 +98,24 @@ for (base_func, op_code) in binary_op_map
             return  $(Symbol(base_func))(maybe_promote_arr(rhs1, T), maybe_promote_arr(rhs2, T))
         end
 
-        #! Need to add support in C++ for this!!!!
         @inline function $(Symbol(base_func))(arr::NDArray{T}, c::T) where T
-            error("Not yet implemented")
-            # return $(Symbol(base_func))(T(c), maybe_promote_arr(arr, T))
+            return $(Symbol(base_func))(arr, NDArray(c))
         end
         
+        #! NOT ALL OPS ARE COMMUTATIVE!!! FIX THIS
         @inline function $(Symbol(base_func))(c::T, arr::NDArray{T}) where T
-            error("Not yet implemented")
-            # return $(Symbol(base_func))(arr, c)
+            return $(Symbol(base_func))(arr, NDArray(c))
         end
 
         @inline function $(Symbol(base_func))(c::A, arr::NDArray{B}) where {A <: Number, B <: Number}
-            error("Not yet implemented")
-            # T = __my_promote_type(A, B)
-            # return $(Symbol(base_func))(T(c), maybe_promote_arr(arr, T))
+            T = __my_promote_type(A, B)
+            return $(Symbol(base_func))(maybe_promote_arr(arr, T), NDArray(T(c)))
         end
 
+        #! NOT ALL OPS ARE COMMUTATIVE!!! FIX THIS
         @inline function $(Symbol(base_func))(arr::NDArray{B}, c::A) where {A <: Number, B <: Number}
-            error("Not yet implemented")
-            # T = __my_promote_type(A, B)
-            # return $(Symbol(base_func))(T(c), maybe_promote_arr(arr, T))
+            T = __my_promote_type(A, B)
+            return $(Symbol(base_func))(maybe_promote_arr(arr, T), NDArray(T(c)))
         end
 
     end

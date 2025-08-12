@@ -304,7 +304,7 @@ cuNumeric.zeros(Int32, (2,3))
 """
 function zeros(::Type{T}, dims::Dims{N}) where {N,T}
     shape = UInt64.(collect(dims))
-    return nda_zeros_array(shape; type=T)
+    return nda_zeros_array(shape, T)
 end
 
 function zeros(::Type{T}, dims::Int...) where {T}
@@ -402,8 +402,6 @@ function reshape(arr::NDArray, i::Int64; copy::Bool=false)
     return copy ? copy(reshaped) : reshaped
 end
 
-const ARITHMETIC_TYPES = Union{Float32,Float64,Int64,Int32}
-
 @doc"""
     Base.:+(arr::NDArray, val::Number)
     Base.:+(val::Number, arr::NDArray)
@@ -422,24 +420,24 @@ lhs + rhs
 ```
 """
 
-function Base.:+(arr::NDArray{T}, val::V) where {T, V <: ARITHMETIC_TYPES}
+function Base.:+(arr::NDArray{T}, val::V) where {T, V <: SCALAR_TYPES}
     P = __my_promote_type(V, T)
     return nda_add_scalar(maybe_promote_arr(arr, P), P(val))
 end
 
-function Base.:+(val::V, arr::NDArray{T}) where {T, V <: ARITHMETIC_TYPES}
+function Base.:+(val::V, arr::NDArray{T}) where {T, V <: SCALAR_TYPES}
     return +(arr, val)
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(+), arr::NDArray{T}, val::V
-) where {T, V <: ARITHMETIC_TYPES}
+) where {T, V <: SCALAR_TYPES}
     return +(arr, val)
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(+), val::V, arr::NDArray{T}
-) where {T, V <: ARITHMETIC_TYPES}
+) where {T, V <: SCALAR_TYPES}
     return +(arr, val)
 end
 
@@ -467,22 +465,22 @@ lhs - 3
 lhs - rhs
 ```
 """
-function Base.:-(val::V, arr::NDArray{T}) where {T, V <: ARITHMETIC_TYPES}
+function Base.:-(val::V, arr::NDArray{T}) where {T, V <: SCALAR_TYPES}
     return nda_multiply_scalar(arr, -val)
 end
 
-function Base.:-(arr::NDArray{T}, val::V) where {T, V <: ARITHMETIC_TYPES}
+function Base.:-(arr::NDArray{T}, val::V) where {T, V <: SCALAR_TYPES}
     return +(arr, (-1*val))
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(-), arr::NDArray{T}, val::V
-) where {T, V <: ARITHMETIC_TYPES}
+) where {T, V <: SCALAR_TYPES}
     return -(arr, val)
 end
 function Base.Broadcast.broadcasted(
     ::typeof(-), val::V, rhs::NDArray{T}
-) where {T, V <: ARITHMETIC_TYPES}
+) where {T, V <: SCALAR_TYPES}
     lhs = full(Base.size(rhs), T)
     return -(lhs, rhs)
 end
@@ -512,24 +510,24 @@ lhs - rhs
 """
 
 
-function Base.:*(val::V, arr::NDArray{T}) where {T, V <: ARITHMETIC_TYPES}
+function Base.:*(val::V, arr::NDArray{T}) where {T, V <: SCALAR_TYPES}
     P = __my_promote_type(V, T)
     return nda_multiply_scalar(maybe_promote_arr(arr, P), P(val))
 end
 
-function Base.:*(arr::NDArray{T}, val::V) where {T, V <: ARITHMETIC_TYPES}
+function Base.:*(arr::NDArray{T}, val::V) where {T, V <: SCALAR_TYPES}
     return *(val, arr)
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(*), arr::NDArray{T}, val::V
-) where {T, V <: ARITHMETIC_TYPES}
+) where {T, V <: SCALAR_TYPES}
     return *(val, arr)
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(*), val::V, arr::NDArray{T}
-) where {T, V <: ARITHMETIC_TYPES}
+) where {T, V <: SCALAR_TYPES}
     return *(val, arr)
 end
 
@@ -549,7 +547,7 @@ arr = cuNumeric.ones(2, 2)
 arr / 2
 ```
 """
-function Base.:/(arr::NDArray{T}, val::V) where {T, V <: ARITHMETIC_TYPES}
+function Base.:/(arr::NDArray{T}, val::V) where {T, V <: SCALAR_TYPES}
     throw(ErrorException("[/] is not supported yet"))
 end
 
@@ -572,7 +570,7 @@ arr = cuNumeric.ones(2, 2)
 """
 function Base.Broadcast.broadcasted(
     ::typeof(/), val::V, arr::NDArray{T}
-) where {T, V <: ARITHMETIC_TYPES}
+) where {T, V <: SCALAR_TYPES}
     return throw(ErrorException("element wise [val ./ NDArray] is not supported yet"))
 end
 
