@@ -68,15 +68,15 @@ function nda_zeros_array(shape::Vector{UInt64}, ::Type{T}) where {T}
 end
 
 function nda_full_array(shape::Vector{UInt64}, value::T) where {T}
-    dim = Int32(length(shape))
+    n_dim = Int32(length(shape))
     type = Legate.to_legate_type(T)
 
     ptr = ccall((:nda_full_array, libnda),
         NDArray_t,
         (Int32, Ptr{UInt64}, Legate.LegateTypeAllocated, Ptr{Cvoid}),
-        dim, shape, type, Ref(value))
+        n_dim, shape, type, Ref(value))
 
-    return NDArray(ptr)
+    return NDArray(ptr; T = T, n_dim = n_dim)
 end
 
 function nda_random(arr::NDArray, gen_code)
@@ -86,18 +86,18 @@ function nda_random(arr::NDArray, gen_code)
 end
 
 function nda_random_array(shape::Vector{UInt64})
-    dim = Int32(length(shape))
+    n_dim = Int32(length(shape))
     ptr = ccall((:nda_random_array, libnda),
         NDArray_t, (Int32, Ptr{UInt64}),
-        dim, shape)
-    return NDArray(ptr)
+        n_dim, shape)
+    return NDArray(ptr; n_dim = n_dim)
 end
 
-function nda_get_slice(arr::NDArray, slices::Vector{Slice})
+function nda_get_slice(arr::NDArray{T,N}, slices::Vector{Slice}) where {T,N}
     ptr = ccall((:nda_get_slice, libnda),
         NDArray_t, (NDArray_t, Ptr{Slice}, Cint),
         arr.ptr, pointer(slices), length(slices))
-    return NDArray(ptr)
+    return NDArray(ptr; T = T, n_dim = N)
 end
 
 # queries
@@ -120,24 +120,24 @@ function nda_array_shape(arr::NDArray)
 end
 
 # modify
-function nda_reshape_array(arr::NDArray, newshape::Vector{UInt64})
-    dim = Int32(length(newshape))
+function nda_reshape_array(arr::NDArray{T}, newshape::Vector{UInt64}) where T
+    n_dim = Int32(length(newshape))
     ptr = ccall((:nda_reshape_array, libnda),
         NDArray_t, (NDArray_t, Int32, Ptr{UInt64}),
-        arr.ptr, dim, newshape)
-    return NDArray(ptr)
+        arr.ptr, n_dim, newshape)
+    return NDArray(ptr; T = T, n_dim = n_dim)
 end
 
-function nda_astype(arr::NDArray, t::Type{T}) where {T}
-    type = Legate.to_legate_type(t)
+function nda_astype(arr::NDArray{OLD_T, N}, ::Type{NEW_T}) where {OLD_T, NEW_T, N}
+    type = Legate.to_legate_type(NEW_T)
     ptr = ccall((:nda_astype, libnda),
         NDArray_t,
         (NDArray_t, Legate.LegateTypeAllocated),
         arr.ptr, type)
-    return NDArray(ptr)
+    return NDArray(ptr; T = NEW_T, n_dim = N)
 end
 
-function nda_fill_array(arr::NDArray, value::T) where {T}
+function nda_fill_array(arr::NDArray{T}, value::T) where {T}
     type = Legate.to_legate_type(T)
     val = Ref(value)
     ccall((:nda_fill_array, libnda),
@@ -146,7 +146,8 @@ function nda_fill_array(arr::NDArray, value::T) where {T}
     return nothing
 end
 
-function nda_assign(arr::NDArray, other::NDArray)
+#! probably should be copyto!
+function nda_assign(arr::NDArray{T}, other::NDArray{T})
     ccall((:nda_assign, libnda),
         Cvoid, (NDArray_t, NDArray_t),
         arr.ptr, other.ptr)
@@ -195,22 +196,22 @@ function nda_add(rhs1::NDArray, rhs2::NDArray, out::NDArray)
     return out
 end
 
-function nda_multiply_scalar(rhs1::NDArray{T}, value::T) where {T}
+function nda_multiply_scalar(rhs1::NDArray{T, N}, value::T) where {T, N}
     type = Legate.to_legate_type(T)
 
     ptr = ccall((:nda_multiply_scalar, libnda),
         NDArray_t, (NDArray_t, Legate.LegateTypeAllocated, Ptr{Cvoid}),
         rhs1.ptr, type, Ref(value))
-    return NDArray(ptr)
+    return NDArray(ptr; T = T, n_dim = N)
 end
 
-function nda_add_scalar(rhs1::NDArray{T}, value::T) where {T}
+function nda_add_scalar(rhs1::NDArray{T}, value::T) where {T, N}
     type = Legate.to_legate_type(T)
 
     ptr = ccall((:nda_add_scalar, libnda),
         NDArray_t, (NDArray_t, Legate.LegateTypeAllocated, Ptr{Cvoid}),
         rhs1.ptr, type, Ref(value))
-    return NDArray(ptr)
+    return NDArray(ptr; T = T, n_dim = N)
 end
 
 function nda_three_dot_arg(rhs1::NDArray, rhs2::NDArray, out::NDArray)
