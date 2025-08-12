@@ -289,16 +289,16 @@ function full(dim::Int, val::T) where {T}
 end
 
 @doc"""
-    cuNumeric.zeros([T=Float64,] dims::Int...)
-    cuNumeric.zeros([T=Float64,] dims::Tuple)
+    cuNumeric.zeros([T=Float32,] dims::Int...)
+    cuNumeric.zeros([T=Float32,] dims::Tuple)
 
 Create an NDArray with element type `T`, of all zeros with size specified by `dims`.
-This function mirrors the signature of `Base.zeros`, and defaults to `Float64` when the type is omitted.
+This function mirrors the signature of `Base.zeros`, and defaults to `Float32` when the type is omitted.
 
 # Examples
 ```@repl
 cuNumeric.zeros(2, 2)
-cuNumeric.zeros(Float32, 3)
+cuNumeric.zeros(Float64, 3)
 cuNumeric.zeros(Int32, (2,3))
 ```
 """
@@ -312,11 +312,11 @@ function zeros(::Type{T}, dims::Int...) where {T}
 end
 
 function zeros(dims::Dims{N}) where {N}
-    return zeros(Float64, dims)
+    return zeros(DEFAULT_FLOAT, dims)
 end
 
 function zeros(dims::Int...)
-    return zeros(Float64, dims)
+    return zeros(DEFAULT_FLOAT, dims)
 end
 
 @doc"""
@@ -402,6 +402,8 @@ function reshape(arr::NDArray, i::Int64; copy::Bool=false)
     return copy ? copy(reshaped) : reshaped
 end
 
+const ARITHMETIC_TYPES = Union{Float32,Float64,Int64,Int32}
+
 @doc"""
     Base.:+(arr::NDArray, val::Number)
     Base.:+(val::Number, arr::NDArray)
@@ -420,26 +422,28 @@ lhs + rhs
 ```
 """
 
-function Base.:+(arr::NDArray, val::Scalar)
-    return nda_add_scalar(arr, val)
+function Base.:+(arr::NDArray{T}, val::V) where {T, V <: ARITHMETIC_TYPES}
+    P = __my_promote_type(V, T)
+    return nda_add_scalar(maybe_promote_arr(arr, P), P(val))
 end
-function Base.:+(val::Scalar, arr::NDArray)
+
+function Base.:+(val::V, arr::NDArray{T}) where {T, V <: ARITHMETIC_TYPES}
     return +(arr, val)
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(+), arr::NDArray, val::Scalar
-)
+    ::typeof(+), arr::NDArray{T}, val::V
+) where {T, V <: ARITHMETIC_TYPES}
     return +(arr, val)
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(+), val::Scalar, arr::NDArray
-)
+    ::typeof(+), val::V, arr::NDArray{T}
+) where {T, V <: ARITHMETIC_TYPES}
     return +(arr, val)
 end
 
-function Base.Broadcast.broadcasted(::typeof(+), lhs::NDArray, rhs::NDArray)
+function Base.Broadcast.broadcasted(::typeof(+), lhs::NDArray{T}, rhs::NDArray{T}) where T
     return +(lhs, rhs)
 end
 
@@ -463,28 +467,27 @@ lhs - 3
 lhs - rhs
 ```
 """
-function Base.:-(val::Scalar, arr::NDArray)
-    return nda_add_scalar(-arr, val)
+function Base.:-(val::V, arr::NDArray{T}) where {T, V <: ARITHMETIC_TYPES}
+    return nda_multiply_scalar(arr, -val)
 end
 
-function Base.:-(arr::NDArray, val::Scalar)
+function Base.:-(arr::NDArray{T}, val::V) where {T, V <: ARITHMETIC_TYPES}
     return +(arr, (-1*val))
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(-), arr::NDArray, val::Scalar
-)
+    ::typeof(-), arr::NDArray{T}, val::V
+) where {T, V <: ARITHMETIC_TYPES}
     return -(arr, val)
 end
 function Base.Broadcast.broadcasted(
-    ::typeof(-), val::Scalar, rhs::NDArray
-)
-    arr_type = eltype(rhs) # match the arr type
-    lhs = full(Base.size(rhs), arr_type(val))
+    ::typeof(-), val::V, rhs::NDArray{T}
+) where {T, V <: ARITHMETIC_TYPES}
+    lhs = full(Base.size(rhs), T)
     return -(lhs, rhs)
 end
 
-function Base.Broadcast.broadcasted(::typeof(-), lhs::NDArray, rhs::NDArray)
+function Base.Broadcast.broadcasted(::typeof(-), lhs::NDArray{T}, rhs::NDArray{T}) where T
     return -(lhs, rhs)
 end
 
@@ -508,27 +511,29 @@ lhs - rhs
 ```
 """
 
-function Base.:*(val::Scalar, arr::NDArray)
-    return nda_multiply_scalar(arr, val)
+
+function Base.:*(val::V, arr::NDArray{T}) where {T, V <: ARITHMETIC_TYPES}
+    P = __my_promote_type(V, T)
+    return nda_multiply_scalar(maybe_promote_arr(arr, P), P(val))
 end
 
-function Base.:*(arr::NDArray, val::Scalar)
+function Base.:*(arr::NDArray{T}, val::V) where {T, V <: ARITHMETIC_TYPES}
     return *(val, arr)
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(*), arr::NDArray, val::Scalar
-)
+    ::typeof(*), arr::NDArray{T}, val::V
+) where {T, V <: ARITHMETIC_TYPES}
     return *(val, arr)
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(*), val::Scalar, arr::NDArray
-)
+    ::typeof(*), val::V, arr::NDArray{T}
+) where {T, V <: ARITHMETIC_TYPES}
     return *(val, arr)
 end
 
-function Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray, rhs::NDArray)
+function Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray{T}, rhs::NDArray{T}) where T
     return *(lhs, rhs)
 end
 
@@ -544,15 +549,14 @@ arr = cuNumeric.ones(2, 2)
 arr / 2
 ```
 """
-function Base.:/(arr::NDArray, val::Scalar)
-    # throw(ErrorException("[/] is not supported yet"))
-    return nda_multiply_scalar(arr, Float64(1 / val))
+function Base.:/(arr::NDArray{T}, val::V) where {T, V <: ARITHMETIC_TYPES}
+    throw(ErrorException("[/] is not supported yet"))
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(/), arr::NDArray, val::Scalar
-)
-    return nda_multiply_scalar(arr, Float64(1 / val))
+    ::typeof(/), arr::NDArray{T}, val::V
+) where {T, V <: Union{Float16, Float32, Float64}}
+    return nda_multiply_scalar(arr, V(1 / val))
 end
 
 @doc"""
@@ -567,10 +571,11 @@ arr = cuNumeric.ones(2, 2)
 ```
 """
 function Base.Broadcast.broadcasted(
-    ::typeof(/), val::Scalar, arr::NDArray
-)
+    ::typeof(/), val::V, arr::NDArray{T}
+) where {T, V <: ARITHMETIC_TYPES}
     return throw(ErrorException("element wise [val ./ NDArray] is not supported yet"))
 end
+
 
 @doc"""
     Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray, rhs::NDArray)
@@ -585,9 +590,10 @@ C = A ./ B
 typeof(C)
 ```
 """
-function Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray, rhs::NDArray)
+function Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray{T}, rhs::NDArray{T}) where T
     return /(lhs, rhs)
 end
+
 
 #* Can't overload += in Julia, this should be called by .+= 
 #* to maintain some semblence native Julia array syntax
@@ -646,7 +652,7 @@ out = cuNumeric.zeros(2, 2)
 LinearAlgebra.mul!(out, a, b)
 ```
 """
-function LinearAlgebra.mul!(out::NDArray{T, 2}, arr1::NDArray{T, 2}, arr2::NDArray{T, 2})
+function LinearAlgebra.mul!(out::NDArray{T, 2}, arr1::NDArray{T, 2}, arr2::NDArray{T, 2}) where T
     #! TODO: Support type promotion
     return nda_three_dot_arg(arr1, arr2, out)
 end

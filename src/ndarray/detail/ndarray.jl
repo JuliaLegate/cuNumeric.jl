@@ -11,11 +11,18 @@ end
 const NDArray_t = Ptr{Cvoid}
 
 # destroy
-nda_destroy_array(arr::NDArray_t) = ccall((:nda_destroy_array, libnda),
-    Cvoid, (NDArray_t,), arr)
+nda_destroy_array(ptr::NDArray_t) = ccall((:nda_destroy_array, libnda),
+    Cvoid, (NDArray_t,), ptr)
 
-nda_nbytes(arr::NDArray_t) = ccall((:nda_nbytes, libnda),
-    Int64, (NDArray_t,), arr)
+nda_nbytes(ptr::NDArray_t) = ccall((:nda_nbytes, libnda),
+    Int64, (NDArray_t,), ptr)
+
+function get_julia_type(ptr::NDArray_t) 
+    type_code = ccall((:nda_array_type_code, libnda), Int32, (NDArray_t,), ptr)
+    return Legate.code_type_map[type_code]
+end
+
+get_n_dim(ptr::NDArray_t) = ccall((:nda_array_dim, libnda), Int32, (NDArray_t,), ptr)
 
 @doc"""
 **Internal API**
@@ -27,13 +34,10 @@ Finalizer calls `nda_destroy_array` to clean up the underlying Legate array when
 mutable struct NDArray{T,N}
     ptr::NDArray_t
     nbytes::Int64
-    function NDArray(ptr::NDArray_t)
+    function NDArray(ptr::NDArray_t; T = get_julia_type(ptr), n_dim = get_n_dim(ptr))
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
-        type_code = ccall((:nda_array_type_code, libnda), Int32, (NDArray_t,), ptr)
-        julia_type = Legate.code_type_map[type_code]
-        n_dim = ccall((:nda_array_dim, libnda), Int32, (NDArray_t,), ptr)
-        handle = new{julia_type, n_dim}(ptr, nbytes)
+        handle = new{T, n_dim}(ptr, nbytes)
         finalizer(handle) do h
             cuNumeric.nda_destroy_array(h.ptr)
             cuNumeric.register_free!(h.nbytes)
@@ -42,28 +46,35 @@ mutable struct NDArray{T,N}
     end
 end
 
+function NDArray(value::T) where T
+    type = Legate.to_legate_type(T)
+    ptr = ccall((:nda_from_scalar, libnda),
+        NDArray_t, (Legate.LegateTypeAllocated, Ptr{Cvoid}),
+        type, Ref(value))
+    return NDArray(ptr, T = T, n_dim = 1)
+end
+
 Base.Broadcast.broadcastable(v::NDArray) = v
 const Scalar = Union{Float32,Float64,Int64,Int32}
 
 # construction 
-function nda_zeros_array(shape::Vector{UInt64}; type::Union{Nothing,Type{T}}=nothing) where {T}
-    dim = Int32(length(shape))
-    legate_type = Legate.to_legate_type(isnothing(type) ? Float64 : type)
+function nda_zeros_array(shape::Vector{UInt64}, ::Type{T}) where {T}
+    n_dim = Int32(length(shape))
+    legate_type = Legate.to_legate_type(T)
     ptr = ccall((:nda_zeros_array, libnda),
         NDArray_t, (Int32, Ptr{UInt64}, Legate.LegateTypeAllocated),
-        dim, shape, legate_type)
-    return NDArray(ptr)
+        n_dim, shape, legate_type)
+    return NDArray(ptr; T = T, n_dim = n_dim)
 end
 
 function nda_full_array(shape::Vector{UInt64}, value::T) where {T}
     dim = Int32(length(shape))
     type = Legate.to_legate_type(T)
-    val = Ref(value)
 
     ptr = ccall((:nda_full_array, libnda),
         NDArray_t,
         (Int32, Ptr{UInt64}, Legate.LegateTypeAllocated, Ptr{Cvoid}),
-        dim, shape, type, val)
+        dim, shape, type, Ref(value))
 
     return NDArray(ptr)
 end
