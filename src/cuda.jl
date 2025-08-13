@@ -5,7 +5,8 @@ const KERNEL_OFFSET = sizeof(CUDA.KernelState)
 
 # cuNumeric.jl init will call this
 function set_kernel_state_size()
-    cuNumeric.register_kernel_state_size(UInt64(KERNEL_OFFSET))
+    # cuNumeric.register_kernel_state_size(UInt64(KERNEL_OFFSET))
+    return nothing
 end
 
 function ndarray_to_cuda_dummy_arr(arg)
@@ -33,12 +34,12 @@ function map_ndarray_cuda_types(args...)
     return tuple(converted...)
 end
 
-function __to_stdvec_u32(v)
-    sv = CxxWrap.StdVector{UInt32}()
-    for x in v
-        push!(sv, UInt32(x))
+function to_stdvec(::Type{T}, vec) where {T}
+    stdvec = CxxWrap.StdVector{T}()
+    for x in vec
+        push!(stdvec, T(x))
     end
-    return sv
+    return stdvec
 end
 
 struct CUDATask
@@ -62,7 +63,7 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
     end
 
     cuNumeric.new_task(
-        kernel.func, __to_stdvec_u32(blocks), __to_stdvec_u32(threads), input_vec, output_vec,
+        kernel.func, to_stdvec(UInt32, blocks), to_stdvec(UInt32, threads), input_vec, output_vec,
         scalar_vec,
     )
 end
