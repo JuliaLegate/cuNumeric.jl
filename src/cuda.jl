@@ -91,16 +91,15 @@ and return a `CUDATask` object for later launch.
 # Description
 This macro automates the process of:
 1. Inferring the CUDA argument types for the given `args` using 
-   [`map_ndarray_cuda_types`](@ref cuNumeric.map_ndarray_cuda_types).
-2. Using [`CUDA.code_ptx`](@ref) to compile the specified GPU kernel 
+   `map_ndarray_cuda_types`.
+2. Using `CUDA.code_ptx` to compile the specified GPU kernel 
    (`f`) into raw PTX text for the inferred types.
 3. Extracting the kernel's function symbol name from the PTX using 
-   [`extract_kernel_name`](@ref cuNumeric.extract_kernel_name).
+   `extract_kernel_name`.
 4. Registering the compiled PTX and kernel name with the Legate runtime 
-   via [`ptx_task`](@ref cuNumeric.ptx_task), making it available for GPU execution.
-5. Returning a [`CUDATask`](@ref cuNumeric.CUDATask) struct that stores 
-   the kernel name and type signature, which can be used to configure 
-   and launch the kernel later.
+   via `ptx_task`, making it available for GPU execution.
+5. Returning a `CUDATask` struct that stores the kernel name and type signature,
+   which can be used to configure and launch the kernel later.
 
 # Notes
 - The `args...` are not executed; they are used solely for type inference.
@@ -140,7 +139,7 @@ end
 Launch a GPU kernel (previously registered via [`@cuda_task`](@ref))  through the Legate runtime.
 
 # Keywords
-- `task` — A [`CUDATask`](@ref cuNumeric.CUDATask) object, typically returned by [`@cuda_task`](@ref). 
+- `task` — A `CUDATask` object, typically returned by [`@cuda_task`](@ref). 
 - `blocks`  — Tuple or single element specifying the CUDA grid dimensions. Defaults to `(1,)`.
 - `threads` — Tuple or single element specifying the CUDA block dimensions. Defaults to `(256,)`.
 - `inputs`  — Tuple or single element of input NDArray objects.
@@ -150,7 +149,7 @@ Launch a GPU kernel (previously registered via [`@cuda_task`](@ref))  through th
 # Description
 The `@launch` macro validates the provided keywords, ensuring only 
 the allowed set (`:task`, `:blocks`, `:threads`, `:inputs`, `:outputs`, `:scalars`) 
-are present. It then expands to a call to [`cuNumeric.launch`](@ref), 
+are present. It then expands to a call to `cuNumeric.launch`, 
 passing the given arguments to the Legate runtime for execution.
 
 This macro is meant to provide a concise, declarative syntax for 
