@@ -1,99 +1,185 @@
 name: CI
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build instead'
+        required: false
+        default: ''
+      mark_as_latest:
+        description: 'Mark as latest'
+        type: boolean
+        required: false
+        default: false
   push:
+    paths:
+      - 'src/**'
+      - 'wrapper/src/**'
+      - 'scripts/**'
+      - 'Dockerfile'
+      - 'deps/build.jl'
+      - '.github/workflows/ci.yml'
+    tags:
+      - 'v*'
     branches:
       - main
   pull_request:
-
+    paths:
+      - 'src/**'
+      - 'wrapper/src/**'
+      - 'scripts/**'
+      - 'Dockerfile'
+      - 'deps/build.jl'
+      - '.github/workflows/ci.yml'
 jobs:
-  test:
-    name : Julia ${{ matrix.version }} - ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+  push_to_registry:
+    name: Container for ${{ matrix.platform }} - Julia ${{ matrix.julia }} - CUDA ${{ matrix.cuda }}
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
     strategy:
-      fail-fast: false
       matrix:
-        version:
-          - '1.10'
-          - '1.11'
-        os:
-          - ubuntu-22.04
-        arch:
-          - x64
+        # julia: ["1.10", "1.11"]
+        julia: ["1.11"] # 1.10 will break
+        cuda: ["12.4"]
+        platform: ["linux/amd64"]
+        os: ["ubuntu-22.04"]
+        user: ["50020:50020"]
+
+    runs-on: [self-hosted, linux, x64]
+    # runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout source code
+      - name: Check out the repo
         uses: actions/checkout@v4
 
-      - name: Install Julia 
-        uses: julia-actions/setup-julia@v1
+      - name: Get package spec
+        id: pkg
+        run: |
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            echo "ref=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            echo "name=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "ref=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "ref=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "name=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_type }}" == "branch" ]]; then
+            echo "ref=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "ref=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "name=dev" >> $GITHUB_OUTPUT
+          fi
+
+          VERSION=$(grep "^version = " Project.toml | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Get CUDA major version
+        id: cuda
+        run: |
+          CUDA_MAJOR=$(echo "${{ matrix.cuda }}" | cut -d'.' -f1)
+          CUDA_MINOR=$(echo "${{ matrix.cuda }}" | cut -d'.' -f2)
+          echo "major=${CUDA_MAJOR}"
+          echo "minor=${CUDA_MINOR}"
+          echo "major=${CUDA_MAJOR}" >> $GITHUB_OUTPUT
+          echo "minor=${CUDA_MINOR}" >> $GITHUB_OUTPUT
+
+
+      - name: Set CPU target
+        id: cpu_target
+        run: |
+          if [[ "${{ matrix.platform }}" == "linux/amd64" ]]; then
+            echo "target=generic;sandybridge,-xsaveopt,clone_all;haswell,-rdrnd,base(1)" >> $GITHUB_OUTPUT
+          elif [[ "${{ matrix.platform }}" == "linux/arm64" ]]; then
+            echo "target=generic;cortex-a57;thunderx2t99;carmel,clone_all;apple-m1,base(3);neoverse-512tvb,base(3)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Log in to registry
+        uses: docker/login-action@v3
         with:
-          version: ${{ matrix.version }}
-          arch: ${{ matrix.arch }}
-      - uses: julia-actions/cache@v2
-      - name: Install CUDA and NCCL
-        run: |
-          wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb --no-check-certificate
-          sudo dpkg -i cuda-keyring_1.1-1_all.deb
-          sudo apt-get update
-          sudo apt-get -y install cuda-toolkit-12-4
-          wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
-          sudo dpkg -i cuda-keyring_1.1-1_all.deb && \
-          sudo apt-get update
-      - name: Pre-setup
-        run: |
-            julia --project=@. -e 'using Pkg; Pkg.add("MPICH_jll"); Pkg.add("OpenSSL_jll")'
-      - name: Install Dependencies
-        env: 
-          LD_LIBRARY_PATH: "$(julia --project=@. -e 'using OpenSSL_jll; print(OpenSSL_jll.artifact_dir)')/lib:$(julia --project=@. -e 'using MPICH_jll; print(MPICH_jll.artifact_dir)')/lib:$LD_LIBRARY_PATH"
-          JULIA_NUM_THREADS: auto
-          LEGATE_DEVELOP_MODE: 1
-          JULIA_NCCL_PATH: "/usr/lib/x86_64-linux-gnu/"
-          PATH: /usr/local/cuda/bin/:$PATH
-        run: |
-          julia -t 2 -e '
-          using Pkg;
-          Pkg.activate(".");
-          Pkg.rm("Legate");  # Critical step
-          Pkg.add(url="https://github.com/JuliaLegate/Legate.jl", rev="main");
-          Pkg.build(verbose = true);
-          ' 
-      - name: Run Tests
-        env: 
-          LEGATE_AUTO_CONFIG: 0
-          LEGATE_SHOW_CONFIG: 1
-          LEGATE_CONFIG: "--logging 2"
-        run: |
-          echo "LEGATE_AUTO_CONFIG = $LEGATE_AUTO_CONFIG"
-          echo "LEGATE_SHOW_CONFIG = $LEGATE_SHOW_CONFIG"
-          echo "LEGATE_CONFIG = $LEGATE_CONFIG"  
-          julia -e 'using Pkg; Pkg.activate("."); Pkg.test();'
-      - uses: julia-actions/julia-processcoverage@v1
-      - uses: codecov/codecov-action@v5
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          slug: JuliaLegate/cuNumeric.jl
-  docs:
-    name : Documentation
-    permissions:
-      actions: write
-      contents: write
-      pull-requests: read
-      statuses: write
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v2
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+              type=raw,value=${{ steps.pkg.outputs.name }}-julia${{ matrix.julia }}-cuda${{ steps.cuda.outputs.major }}.${{ steps.cuda.outputs.minor }}
+              type=raw,value=${{ steps.pkg.outputs.name }},enable=${{ matrix.default == true && (github.ref_type == 'tag' || inputs.tag != '') }}
+              type=raw,value=latest,enable=${{ matrix.default == true && (github.ref_type == 'tag' || (inputs.tag != '' && inputs.mark_as_latest)) }}
+              type=raw,value=dev,enable=${{ matrix.default == true && github.ref_type == 'branch' && inputs.tag == '' }}
+          labels: |
+              org.opencontainers.image.version=${{ steps.pkg.outputs.version }}
+
+      - name: Save tag to file
+        run: |
+          echo "${{ steps.meta.outputs.tags }}" | cut -d',' -f1 > image_tag.txt
+
+      - name: Upload tag artifact
+        uses: actions/upload-artifact@v4
         with:
-          version: '1'
-      - uses: julia-actions/cache@v2
-      - name: Install docs dependencies
-        run: julia --project=docs/ -e 'using Pkg; Pkg.instantiate()'
-      - name: Build and deploy docs
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # If authenticating with GitHub Actions token
-          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }} # If authenticating with SSH deploy key
-        run: julia --project=docs/ docs/make.jl
+          name: docker-tag
+          path: image_tag.txt
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        
+      - name: Cache Docker layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: docker-${{ matrix.platform }}-julia-${{ matrix.julia }}-cuda-${{ matrix.cuda }}-${{ github.sha }}
+          restore-keys: |
+            docker-${{ matrix.platform }}-julia-${{ matrix.julia }}-cuda-${{ matrix.cuda }}-
+            docker-${{ matrix.platform }}-julia-${{ matrix.julia }}-
+            docker-${{ matrix.platform }}-
 
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          file: Dockerfile
+          load: true
+          push: false
+          provenance: false # the build fetches the repo again, so provenance tracking is not useful
+          platforms: ${{ matrix.platform }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            JULIA_VERSION=${{ matrix.julia }}
+            CUDA_MAJOR=${{ steps.cuda.outputs.major }}
+            CUDA_MINOR=${{ steps.cuda.outputs.minor }}
+            JULIA_CPU_TARGET=${{ steps.cpu_target.outputs.target }}
+            REF=${{ steps.pkg.outputs.ref }}
 
+      - name: Run tests in built image
+        run: |
+            docker run --rm -dit --name=${{ steps.pkg.outputs.ref }} ${{ steps.meta.outputs.tags }} > docker.log 2>&1
+            while ! docker ps --format '{{.Names}}' | grep -q ${{ steps.pkg.outputs.ref }}; do
+                sleep 0.5
+            done
+            echo "Running tests in container!"
+            docker exec -i ${{ steps.pkg.outputs.ref }} /bin/bash -c "source /etc/.env && /bin/bash /workspace/test_container.sh"
+            docker stop ${{ steps.pkg.outputs.ref }}
 
+      - name: Push image if tests pass
+        if: success()
+        run: |
+          docker push ${{ steps.meta.outputs.tags }}
+          docker image rm ${{ steps.meta.outputs.tags }}
 
+      # can happen if there is a failure to push
+      - name: Ensure image is removed (safety)
+        if: always()
+        run: |
+          if docker image inspect ${{ steps.meta.outputs.tags }} > /dev/null 2>&1; then
+            docker stop ${{ steps.pkg.outputs.ref }} || true
+            docker rm ${{ steps.pkg.outputs.ref }} || true
+            docker image rm ${{ steps.meta.outputs.tags }} || true
+          fi

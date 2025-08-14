@@ -1,23 +1,31 @@
-using Documenter
-# using cuNumeric
+using Documenter, DocumenterVitepress
+using cuNumeric
+using CNPreferences
 
 makedocs(;
     sitename="cuNumeric.jl",
     authors="Ethan Meitz and David Krasowska",
-    format=Documenter.HTML(; prettyurls=true),
+    format=MarkdownVitepress(;
+        repo="github.com/JuliaLegate/cuNumeric.jl",
+        devbranch="main",
+        devurl="dev",
+    ),
     pages=[
         "Home" => "index.md",
         "Build Options" => "install.md",
         "Examples" => "examples.md",
         "Performance Tips" => "perf.md",
         "Back End Details" => "usage.md",
-        "Benchmarking" => "benchmark.md",
+        "Benchmarks" => "benchmark_results.md",
+        "How to Benchmark" => "benchmark.md",
         "Public API" => "api.md",
     ],
 )
 
-deploydocs(
-    repo="github.com/JuliaLegate/cuNumeric.jl.git",
-    push_preview = true,
-    devbranch = "main",
+DocumenterVitepress.deploydocs(;
+    repo="github.com/JuliaLegate/cuNumeric.jl",
+    target=joinpath(@__DIR__, "build"),
+    branch="gh-pages",
+    devbranch="main",
+    push_preview=true,
 )

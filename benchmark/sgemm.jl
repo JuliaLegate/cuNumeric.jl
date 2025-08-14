@@ -1,26 +1,25 @@
-# using Pkg
-# Pkg.activate("../")
-
 using cuNumeric
 using LinearAlgebra
+using Printf
 
-function initialize_cunumeric(N)
-    A = cuNumeric.as_type(cuNumeric.rand(NDArray, N, N), LegateType(Float32))
-    B = cuNumeric.as_type(cuNumeric.rand(NDArray, N, N), LegateType(Float32))
+function initialize_cunumeric(N, M)
+    A = cuNumeric.as_type(cuNumeric.rand(NDArray, N, M), Float32)
+    B = cuNumeric.as_type(cuNumeric.rand(NDArray, M, N), Float32)
     C = cuNumeric.zeros(Float32, N, N)
+    GC.gc() # remove the intermediate FP64 arrays
     return A, B, C
 end
 
-function total_flops(N)
-    return N * N * ((2*N) - 1)
+function total_flops(N, M)
+    return N * N * ((2*M) - 1)
 end
 
-function total_space(N)
-    return 3 * (N^2) * sizeof(Float32)
+function total_space(N, M)
+    return 2 * (N*M) * sizeof(Float32) + (N*N) * sizeof(Float32)
 end
 
-function gemm_cunumeric(N, n_samples, n_warmup)
-    A, B, C = initialize_cunumeric(N)
+function gemm_cunumeric(N, M, n_samples, n_warmup)
+    A, B, C = initialize_cunumeric(N, M)
 
     start_time = nothing
     for idx in range(1, n_samples + n_warmup)
@@ -32,21 +31,26 @@ function gemm_cunumeric(N, n_samples, n_warmup)
     end
     total_time_μs = get_time_microseconds() - start_time
     mean_time_ms = total_time_μs / (n_samples * 1e3)
-    gflops = total_flops(N) / (mean_time_ms * 1e6) # GFLOP is 1e9
+    gflops = total_flops(N, M) / (mean_time_ms * 1e6) # GFLOP is 1e9
 
     return mean_time_ms, gflops
 end
 
-# not very generic but for now whatever
-N = parse(Int, ARGS[1])
-n_samples = parse(Int, ARGS[2])
-n_warmup = parse(Int, ARGS[3])
+gpus = parse(Int, ARGS[1])
+N = parse(Int, ARGS[2])
+M = parse(Int, ARGS[3])
+n_samples = parse(Int, ARGS[4])
+n_warmup = parse(Int, ARGS[5])
 
-@info "Running MATMUL benchmark on $(N)x$N matricies for $n_samples iterations, $(n_warmup) warmups"
+println(
+    "[cuNumeric]  MATMUL benchmark on $(N)x$(M) matricies for $(n_samples) iterations, $(n_warmup) warmups",
+)
 
-mean_time_ms, gflops = gemm_cunumeric(N, n_samples, n_warmup)
+mean_time_ms, gflops = gemm_cunumeric(N, M, n_samples, n_warmup)
 
-println("cuNumeric Mean Run Time: $(mean_time_ms) ms")
-println("cuNumeric FLOPS: $(gflops) GFLOPS")
+println("[cuNumeric]  Mean Run Time: $(mean_time_ms) ms")
+println("[cuNumeric]  FLOPS: $(gflops) GFLOPS")
 
-# ./run_benchmark.sh matmul.jl --cpus 10 --gpus 1 1000 25 5
+open("./gemm.csv", "a") do io
+    @printf(io, "%s,%d,%d,%d,%.6f,%.6f\n", "cunumeric", gpus, N, M, mean_time_ms, gflops)
+end
