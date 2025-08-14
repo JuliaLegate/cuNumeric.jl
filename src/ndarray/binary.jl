@@ -102,17 +102,15 @@ for (base_func, op_code) in binary_op_map
             return $(Symbol(base_func))(arr, NDArray(c))
         end
         
-        #! NOT ALL OPS ARE COMMUTATIVE!!! FIX THIS
         @inline function $(Symbol(base_func))(c::T, arr::NDArray{T}) where T
-            return $(Symbol(base_func))(arr, NDArray(c))
+            return $(Symbol(base_func))(NDArray(c), arr)
         end
 
         @inline function $(Symbol(base_func))(c::A, arr::NDArray{B}) where {A <: Number, B <: Number}
             T = __my_promote_type(A, B)
-            return $(Symbol(base_func))(maybe_promote_arr(arr, T), NDArray(T(c)))
+            return $(Symbol(base_func))(NDArray(T(c)), maybe_promote_arr(arr, T))
         end
 
-        #! NOT ALL OPS ARE COMMUTATIVE!!! FIX THIS
         @inline function $(Symbol(base_func))(arr::NDArray{B}, c::A) where {A <: Number, B <: Number}
             T = __my_promote_type(A, B)
             return $(Symbol(base_func))(maybe_promote_arr(arr, T), NDArray(T(c)))

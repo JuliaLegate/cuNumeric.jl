@@ -204,7 +204,7 @@ function nda_multiply_scalar(rhs1::NDArray{T, N}, value::T) where {T, N}
     return NDArray(ptr; T = T, n_dim = N)
 end
 
-function nda_add_scalar(rhs1::NDArray{T}, value::T) where {T, N}
+function nda_add_scalar(rhs1::NDArray{T, N}, value::T) where {T, N}
     type = Legate.to_legate_type(T)
 
     ptr = ccall((:nda_add_scalar, libnda),
