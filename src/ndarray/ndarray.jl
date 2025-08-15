@@ -420,24 +420,24 @@ lhs + rhs
 ```
 """
 
-function Base.:+(arr::NDArray{T}, val::V) where {T, V <: SCALAR_TYPES}
+function Base.:+(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_TYPES}
     P = __my_promote_type(V, T)
     return nda_add_scalar(maybe_promote_arr(arr, P), P(val))
 end
 
-function Base.:+(val::V, arr::NDArray{T}) where {T, V <: SCALAR_TYPES}
+function Base.:+(val::V, arr::NDArray{T}) where {T, V <: SUPPORTED_TYPES}
     return +(arr, val)
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(+), arr::NDArray{T}, val::V
-) where {T, V <: SCALAR_TYPES}
+) where {T, V <: SUPPORTED_TYPES}
     return +(arr, val)
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(+), val::V, arr::NDArray{T}
-) where {T, V <: SCALAR_TYPES}
+) where {T, V <: SUPPORTED_TYPES}
     return +(arr, val)
 end
 
@@ -465,22 +465,22 @@ lhs - 3
 lhs - rhs
 ```
 """
-function Base.:-(val::V, arr::NDArray{T}) where {T, V <: SCALAR_TYPES}
+function Base.:-(val::V, arr::NDArray{T}) where {T, V <: SUPPORTED_TYPES}
     return nda_multiply_scalar(arr, -val)
 end
 
-function Base.:-(arr::NDArray{T}, val::V) where {T, V <: SCALAR_TYPES}
+function Base.:-(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_TYPES}
     return +(arr, (-1*val))
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(-), arr::NDArray{T}, val::V
-) where {T, V <: SCALAR_TYPES}
+) where {T, V <: SUPPORTED_TYPES}
     return -(arr, val)
 end
 function Base.Broadcast.broadcasted(
     ::typeof(-), val::V, rhs::NDArray{T}
-) where {T, V <: SCALAR_TYPES}
+) where {T, V <: SUPPORTED_TYPES}
     lhs = full(Base.size(rhs), T)
     return -(lhs, rhs)
 end
@@ -510,24 +510,24 @@ lhs - rhs
 """
 
 
-function Base.:*(val::V, arr::NDArray{T}) where {T, V <: SCALAR_TYPES}
+function Base.:*(val::V, arr::NDArray{T}) where {T, V <: SUPPORTED_TYPES}
     P = __my_promote_type(V, T)
     return nda_multiply_scalar(maybe_promote_arr(arr, P), P(val))
 end
 
-function Base.:*(arr::NDArray{T}, val::V) where {T, V <: SCALAR_TYPES}
+function Base.:*(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_TYPES}
     return *(val, arr)
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(*), arr::NDArray{T}, val::V
-) where {T, V <: SCALAR_TYPES}
+) where {T, V <: SUPPORTED_TYPES}
     return *(val, arr)
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(*), val::V, arr::NDArray{T}
-) where {T, V <: SCALAR_TYPES}
+) where {T, V <: SUPPORTED_TYPES}
     return *(val, arr)
 end
 
@@ -547,7 +547,7 @@ arr = cuNumeric.ones(2, 2)
 arr / 2
 ```
 """
-function Base.:/(arr::NDArray{T}, val::V) where {T, V <: SCALAR_TYPES}
+function Base.:/(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_TYPES}
     throw(ErrorException("[/] is not supported yet"))
 end
 
@@ -570,7 +570,7 @@ arr = cuNumeric.ones(2, 2)
 """
 function Base.Broadcast.broadcasted(
     ::typeof(/), val::V, arr::NDArray{T}
-) where {T, V <: SCALAR_TYPES}
+) where {T, V <: SUPPORTED_TYPES}
     return throw(ErrorException("element wise [val ./ NDArray] is not supported yet"))
 end
 
