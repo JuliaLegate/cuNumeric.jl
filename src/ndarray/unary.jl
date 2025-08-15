@@ -102,9 +102,8 @@ function square end
 # Generate code for all unary operators
 for (base_func, op_code) in unary_op_map_no_args
     @eval begin
-        function $(Symbol(base_func))(input::NDArray)
-            out = cuNumeric.zeros(eltype(input), Base.size(input)) # not sure this is ok for performance
-            # empty = Legate.VectorScalar() # not sure this is ok for performanc
+        function $(Symbol(base_func))(input::NDArray{T}) where T
+            out = cuNumeric.zeros(T, Base.size(input)) #! not sure this is ok for performance
             return nda_unary_op(out, $(op_code), input)
         end
     end
