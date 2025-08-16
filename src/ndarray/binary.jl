@@ -57,7 +57,7 @@ global const binary_op_specific_return = Dict{Function, Tuple{BinaryOpCode, Data
     Base.:> => (cuNumeric.GREATER, Bool), #* ANNOYING TO TEST (no == for bools
     Base.:(>=) => (cuNumeric.GREATER_EQUAL, Bool), #* ANNOYING TO TEST (no == for bools
     # Base.:(!=) => (cuNumeric.NOT_EQUAL, Bool), #* DONT REALLY WANT ELEMENTWISE !=, RATHER HAVE REDUCTION
-    # Base.:(==) => (cuNumeric.EQUAL, Bool),  #* DONT REALLY WANT ELEMENTWISE ==, RATHER HAVE REDUCTION
+    # Base.:(==) => (cuNumeric.EQUAL, Bool),  #* This is elementwise .==, but non-broadcasted this is array_equal
 )
 
 # Functions which support only a subset of the supported types as input
