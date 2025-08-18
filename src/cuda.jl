@@ -12,18 +12,17 @@ end
 function ndarray_to_cuda_dummy_arr(arg)
     if isa(arg, NDArray)
         T = cuNumeric.eltype(arg)
-        # size = cuNumeric.size(arg)
-        return CUDA.zeros(T, 0)
+        D = cuNumeric.ndims(arg)
+        return CuDeviceArray{T,D,1}
     elseif Base.isbits(arg)
-        return arg
+        return typeof(arg)
     else
         error("Unsupported argument type: $(typeof(arg))")
     end
 end
 
 function map_ndarray_cuda_type(arg)
-    t = cuNumeric.ndarray_to_cuda_dummy_arr(arg)
-    return typeof(CUDA.cudaconvert(t))
+    return dum_arg = cuNumeric.ndarray_to_cuda_dummy_arr(arg)
 end
 
 function map_ndarray_cuda_types(args...)
@@ -121,7 +120,7 @@ macro cuda_task(call_expr)
         local _buf = IOBuffer()
         local _types = $cuNumeric.map_ndarray_cuda_types($(fargs...))
         # generate ptx using CUDA.jl 
-        CUDA.code_ptx(_buf, $fname, _types; raw=true, kernel=true)
+        CUDA.code_ptx(_buf, $fname, _types; raw=false, kernel=true)
 
         local _ptx = String(take!(_buf))
         local _func_name = cuNumeric.extract_kernel_name(_ptx)

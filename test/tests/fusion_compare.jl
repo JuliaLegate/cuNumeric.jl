@@ -17,7 +17,6 @@ function unfused_cunumeric(u, v, f, k)
             (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
         ) - (f+k)*v[2:(end - 1), 2:(end - 1)]
     )
-
     return F_u, F_v
 end
 
