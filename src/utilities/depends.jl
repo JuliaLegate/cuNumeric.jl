@@ -9,8 +9,7 @@ using Pkg
 using TOML
 
 using cupynumeric_jll
-# temporary until cunumeric_jl_wrapper_jll exists
-# using cunumeric_jl_wrapper_jll
+using cunumeric_jl_wrapper_jll
 using CUTENSOR_jll
 
 using LinearAlgebra

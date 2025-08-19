@@ -516,7 +516,7 @@ end
 function Base.Broadcast.broadcasted(
     ::typeof(-), val::V, rhs::NDArray{T}
 ) where {T, V <: SUPPORTED_TYPES}
-    lhs = full(Base.size(rhs), T)
+    lhs = full(size(rhs), val)
     return -(lhs, rhs)
 end
 
