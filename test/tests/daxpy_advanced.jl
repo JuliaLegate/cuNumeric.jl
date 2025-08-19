@@ -39,12 +39,12 @@ function daxpy_advanced()
     α = 56.6
 
     # base Julia arrays
-    x_cpu = Base.zeros(cuNumeric.DEFAULT_FLOAT, dims);
-    y_cpu = Base.zeros(cuNumeric.DEFAULT_FLOAT, dims);
+    x_cpu = Base.zeros(Float64, dims);
+    y_cpu = Base.zeros(Float64, dims);
 
     # cunumeric arrays
-    x = cuNumeric.zeros(cuNumeric.DEFAULT_FLOAT, dims)
-    y = cuNumeric.zeros(cuNumeric.DEFAULT_FLOAT, dims)
+    x = cuNumeric.zeros(Float64, dims)
+    y = cuNumeric.zeros(Float64, dims)
 
     @test cuNumeric.dim(x) == 2
     @test cuNumeric.dim(y) == 2
@@ -55,13 +55,13 @@ function daxpy_advanced()
     @test y == y_cpu
 
     # test fill with scalar of all elements of the NDArray
-    fill_value = cuNumeric.DEFAULT_FLOAT(4.23)
+    fill_value = Float64(4.23)
     x[:, :] = fill_value
 
     @test x == fill(fill_value, dims)
 
-    ones_array = cuNumeric.ones(cuNumeric.DEFAULT_FLOAT, dims)
-    ones_array_cpu = ones(cuNumeric.DEFAULT_FLOAT, dims)
+    ones_array = cuNumeric.ones(Float64, dims)
+    ones_array_cpu = ones(Float64, dims)
     @test ones_array == ones_array_cpu
 
     # create two random arrays
@@ -81,14 +81,14 @@ function daxpy_advanced()
     @test y_copy == y
 
     # assign elements to a new array
-    x_assign = cuNumeric.zeros(cuNumeric.DEFAULT_FLOAT, dims)
-    y_assign = cuNumeric.zeros(cuNumeric.DEFAULT_FLOAT, dims)
+    x_assign = cuNumeric.zeros(Float64, dims)
+    y_assign = cuNumeric.zeros(Float64, dims)
     cuNumeric.assign(x_assign, x)
     cuNumeric.assign(y_assign, y)
     # lets check that it didn't assign with zeros
     # this is a check ensuring we didn't mess up the argument order
-    @test x_assign != cuNumeric.zeros(cuNumeric.DEFAULT_FLOAT, dims)
-    @test y_assign != cuNumeric.zeros(cuNumeric.DEFAULT_FLOAT, dims)
+    @test x_assign != cuNumeric.zeros(Float64, dims)
+    @test y_assign != cuNumeric.zeros(Float64, dims)
     # check the assigned values
     @test x_assign == x
     @test y_assign == y

@@ -26,16 +26,16 @@
 =#
 function daxpy_basic()
     N = 100
-    α = cuNumeric.DEFAULT_FLOAT(56.6)
+    α = Float64(56.6)
     dims = (N, N)
 
     # Base julia arrays
-    x_cpu = rand(cuNumeric.DEFAULT_FLOAT, dims);
-    y_cpu = rand(cuNumeric.DEFAULT_FLOAT, dims);
+    x_cpu = rand(Float64, dims);
+    y_cpu = rand(Float64, dims);
 
     # cunumeric arrays
-    x = cuNumeric.zeros(cuNumeric.DEFAULT_FLOAT, dims)
-    y = cuNumeric.zeros(cuNumeric.DEFAULT_FLOAT, dims)
+    x = cuNumeric.zeros(Float64, dims)
+    y = cuNumeric.zeros(Float64, dims)
 
     # Initialize NDArrays with random values
     for i in 1:N

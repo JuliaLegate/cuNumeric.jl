@@ -102,13 +102,13 @@ for (base_func, op_code) in binary_op_map
     @eval begin
         
         # With same types, no promotion
-        @inline function $(Symbol(base_func))(rhs1::NDArray{T}, rhs2::NDArray{T}) where {T <: Number}
-            out = cuNumeric.zeros(T, promote_shape(Base.size(rhs1), Base.size(rhs2)))
+        @inline function $(Symbol(base_func))(rhs1::NDArray{T}, rhs2::NDArray{T}) where {T <: SUPPORTED_TYPES}
+            out = cuNumeric.zeros(T, promote_shape(size(rhs1), size(rhs2)))
             return nda_binary_op(out, $(op_code), rhs1, rhs2)
         end
 
         # # With un-matched types, promote to same type and call back to other function
-        @inline function $(Symbol(base_func))(rhs1::NDArray{A}, rhs2::NDArray{B}) where {A <: Number, B <: Number} 
+        @inline function $(Symbol(base_func))(rhs1::NDArray{A}, rhs2::NDArray{B}) where {A <: SUPPORTED_TYPES, B <: SUPPORTED_TYPES} 
             T = __my_promote_type(A, B)
             return  $(Symbol(base_func))(maybe_promote_arr(rhs1, T), maybe_promote_arr(rhs2, T))
         end
