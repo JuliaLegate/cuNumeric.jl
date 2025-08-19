@@ -407,8 +407,6 @@ Random.rand!(arr::NDArray{Float64}) = cuNumeric.nda_random(arr, 0)
 Random.rand(::Type{NDArray}, dims::Dims) = cuNumeric.nda_random_array(UInt64.(collect(dims)))
 Random.rand(::Type{NDArray}, dims::Int...) = cuNumeric.rand(NDArray, dims)
 
-Random.rand
-
 random(::Type{T}, dims::Dims) where {T} = cuNumeric.nda_random_array(UInt64.(collect(dims)))
 random(::Type{T}, dim::Int64) where {T} = cuNumeric.random(T, (dim,))
 random(dims::Dims, e::Type{T}) where {T} = cuNumeric.rand(e, dims)

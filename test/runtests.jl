@@ -21,7 +21,7 @@ using Test
 using cuNumeric
 using LinearAlgebra
 
-const DEFAULT_FLOAT_CPU = FLOAT64
+const DEFAULT_FLOAT_CPU = Float64
 
 include("tests/daxpy.jl")
 include("tests/daxpy_advanced.jl")
