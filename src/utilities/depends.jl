@@ -26,4 +26,4 @@ import Base: abs, angle, acos, acosh, asin, asinh, atan, atanh, cbrt,
     sinh, sqrt, tan, tanh, trunc, +, *, atan, &, |, ⊻, copysign,
     /, ==, ^, div, gcd, >, >=, hypot, isapprox, lcm, ldexp, <<,
     <, <=, !=, >>, all, any, argmax, argmin, maximum, minimum,
-    prod, sum, read, trues, falses
+    prod, sum, read, trues, falses, axes, view

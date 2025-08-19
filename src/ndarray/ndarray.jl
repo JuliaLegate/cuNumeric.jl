@@ -102,6 +102,8 @@ lastindex(arr)
 Base.firstindex(arr::NDArray, dim::Int) = 1
 Base.lastindex(arr::NDArray, dim::Int) = Base.size(arr, dim)
 Base.lastindex(arr::NDArray) = Base.size(arr, 1)
+Base.axes(arr::NDArray) = Base.OneTo.(size(arr))
+Base.view(arr::NDArray, inds...) = arr[inds...] # NDArray slices are views by default.
 
 Base.IndexStyle(::NDArray) = IndexCartesian()
 
@@ -352,8 +354,8 @@ function zeros(dims::Int...)
 end
 
 @doc"""
-    cuNumeric.ones([T=Float64,] dims::Int...)
-    cuNumeric.ones([T=Float64,] dims::Tuple)
+    cuNumeric.ones([T=Float32,] dims::Int...)
+    cuNumeric.ones([T=Float32,] dims::Tuple)
 
 Create an NDArray with element type `T`, of all zeros with size specified by `dims`.
 This function has the same signature as `Base.ones`, so be sure to call it as `cuNuermic.ones`.
@@ -747,7 +749,7 @@ a == c
 """
 function Base.:(==)(arr1::NDArray, arr2::NDArray)
     if (Base.size(arr1) != Base.size(arr2))
-        @warn "lhs has size $(Base.size(arr)) and rhs has size $(Base.size(arr2))!\n"
+        @warn "lhs has size $(Base.size(arr1)) and rhs has size $(Base.size(arr2))!\n"
         return false
     end
 

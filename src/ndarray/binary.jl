@@ -49,34 +49,34 @@ global const binary_op_map = Dict{Function,BinaryOpCode}(
 
 
 
-# Functions which allow any of the supported types as input
-# Last value in tuple is the return type
-global const binary_op_specific_return = Dict{Function, Tuple{BinaryOpCode, DataType}}(
-    Base.:(<) => (cuNumeric.LESS, Bool), #* ANNOYING TO TEST (no == for bools
-    Base.:(<=) => (cuNumeric.LESS_EQUAL, Bool),  #* ANNOYING TO TEST (no == for bools
-    Base.:(>) => (cuNumeric.GREATER, Bool), #* ANNOYING TO TEST (no == for bools
-    Base.:(>=) => (cuNumeric.GREATER_EQUAL, Bool), #* ANNOYING TO TEST (no == for bools
-    # Base.:(!=) => (cuNumeric.NOT_EQUAL, Bool), #* DONT REALLY WANT ELEMENTWISE !=, RATHER HAVE REDUCTION
-    # Base.:(==) => (cuNumeric.EQUAL, Bool),  #* This is elementwise .==, but non-broadcasted this is array_equal
-)
+# # Functions which allow any of the supported types as input
+# # Last value in tuple is the return type
+# global const binary_op_specific_return = Dict{Function, Tuple{BinaryOpCode, DataType}}(
+#     Base.:(<) => (cuNumeric.LESS, Bool), #* ANNOYING TO TEST (no == for bools
+#     Base.:(<=) => (cuNumeric.LESS_EQUAL, Bool),  #* ANNOYING TO TEST (no == for bools
+#     Base.:(>) => (cuNumeric.GREATER, Bool), #* ANNOYING TO TEST (no == for bools
+#     Base.:(>=) => (cuNumeric.GREATER_EQUAL, Bool), #* ANNOYING TO TEST (no == for bools
+#     # Base.:(!=) => (cuNumeric.NOT_EQUAL, Bool), #* DONT REALLY WANT ELEMENTWISE !=, RATHER HAVE REDUCTION
+#     # Base.:(==) => (cuNumeric.EQUAL, Bool),  #* This is elementwise .==, but non-broadcasted this is array_equal
+# )
 
-@enum OUTPUT_RULES same_size_float same_size_int same_as_input
+# @enum OUTPUT_RULES same_size_float same_size_int same_as_input
 
-# Functions which support only a subset of the supported types as input
-# Last value in the tuple is the return type
-global const binary_op_specific_input = Dict{Function, Tuple{BinaryOpCode, Type, Symbol}}(
-    Base.atan => (cuNumeric.ARCTAN2, SUPPORTED_NUMERIC_TYPES, :same_size_float), #technically Julia promotes Int32 inputs to FP64
-    Base.lcm => (cuNumeric.LCM, SUPPORTED_INT_TYPES, :same_as_input), 
-    Base.gcd => (cuNumeric.GCD, SUPPORTED_INT_TYPES, :same_as_input), 
-    # Base.:(&&) => (cuNumeric.LOGICAL_AND, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
-    # Base.:(||) => (cuNumeric.LOGICAL_OR, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
-    Base.xor  => (cuNumeric.LOGICAL_XOR, Bool, :same_as_input), 
-    Base.:⊻ => (cuNumeric.LOGICAL_XOR, Bool, :same_as_input),
-    Base.div => (cuNumeric.FLOOR_DIVIDE, SUPPORTED_NUMERIC_TYPES, :same_size_int),
-    Base.:(÷) => (cuNumeric.FLOOR_DIVIDE, SUPPORTED_NUMERIC_TYPES, :same_size_int),
-    # Base.:(>>) => (cuNumeric.RIGHT_SHIFT, Union{SUPPORTED_INT_TYPES, Bool}, :same_size_float) # bool input --> Int64 output in Julia
-    # Base.:(<<) => (cuNumeric.LEFT_SHIFT, Union{SUPPORTED_INT_TYPES, Bool}, :same_size_float) # bool input --> Int64 output in Julia
-)
+# # Functions which support only a subset of the supported types as input
+# # Last value in the tuple is the return type
+# global const binary_op_specific_input = Dict{Function, Tuple{BinaryOpCode, Type, Symbol}}(
+#     Base.atan => (cuNumeric.ARCTAN2, SUPPORTED_NUMERIC_TYPES, :same_size_float), #technically Julia promotes Int32 inputs to FP64
+#     Base.lcm => (cuNumeric.LCM, SUPPORTED_INT_TYPES, :same_as_input), 
+#     Base.gcd => (cuNumeric.GCD, SUPPORTED_INT_TYPES, :same_as_input), 
+#     # Base.:(&&) => (cuNumeric.LOGICAL_AND, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
+#     # Base.:(||) => (cuNumeric.LOGICAL_OR, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
+#     Base.xor  => (cuNumeric.LOGICAL_XOR, Bool, :same_as_input), 
+#     Base.:⊻ => (cuNumeric.LOGICAL_XOR, Bool, :same_as_input),
+#     Base.div => (cuNumeric.FLOOR_DIVIDE, SUPPORTED_NUMERIC_TYPES, :same_size_int),
+#     Base.:(÷) => (cuNumeric.FLOOR_DIVIDE, SUPPORTED_NUMERIC_TYPES, :same_size_int),
+#     # Base.:(>>) => (cuNumeric.RIGHT_SHIFT, Union{SUPPORTED_INT_TYPES, Bool}, :same_size_float) # bool input --> Int64 output in Julia
+#     # Base.:(<<) => (cuNumeric.LEFT_SHIFT, Union{SUPPORTED_INT_TYPES, Bool}, :same_size_float) # bool input --> Int64 output in Julia
+# )
 
 
 maybe_promote_arr(arr::NDArray{T}, ::Type{T}) where T = arr
@@ -103,7 +103,7 @@ for (base_func, op_code) in binary_op_map
         
         # With same types, no promotion
         @inline function $(Symbol(base_func))(rhs1::NDArray{T}, rhs2::NDArray{T}) where {T <: Number}
-            out = cuNumeric.zeros(T, Base.size(rhs1))
+            out = cuNumeric.zeros(T, promote_shape(Base.size(rhs1), Base.size(rhs2)))
             return nda_binary_op(out, $(op_code), rhs1, rhs2)
         end
 
