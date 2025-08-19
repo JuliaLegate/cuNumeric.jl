@@ -31,51 +31,106 @@ A .^ 2
 """
 global const binary_op_map = Dict{Function,BinaryOpCode}(
     Base.:+ => cuNumeric.ADD,
-    Base.atan => cuNumeric.ARCTAN2,
-    # Base.:& => cuNumeric.BITWISE_AND, #* ANNOYING TO TEST (no == for bools)
-    # Base.:| => cuNumeric.BITWISE_OR, #* ANNOYING TO TEST (no == for bools)
-    # Base.:⊻ => cuNumeric.BITWISE_XOR, #* ANNOYING TO TEST (no == for bools)
     # Base.copysign => cuNumeric.COPYSIGN, #* ANNOYING TO TEST 
     Base.:/ => cuNumeric.DIVIDE,
-    # Base.:(==) => cuNumeric.EQUAL,  #* DONT REALLY WANT ELEMENTWISE ==, RATHER HAVE REDUCTION
-    Base.:^ => cuNumeric.FLOAT_POWER, # diff from POWER?
-    Base.div => cuNumeric.FLOOR_DIVIDE,
+    # Base.:^ => cuNumeric.FLOAT_POWER, # DONT THINK THIS IS WHAT WE WANT
+    # Base.:^ => cuNumeric.POWER, #* HOW TO FIGURE OUT RETURN TYPE???
     #missing => cuNumeric.fmod, #same as mod in Julia?
-    # Base.gcd => cuNumeric.GCD, #* ANNOYING TO TEST (need ints)
-    # Base.:> => cuNumeric.GREATER, #* ANNOYING TO TEST (no == for bools
-    # Base.:(>=) => cuNumeric.GREATER_EQUAL, #* ANNOYING TO TEST (no == for bools
     Base.hypot => cuNumeric.HYPOT,
-    # Base.isapprox => cuNumeric.ISCLOSE, #* ANNOYING TO TEST (no == for bools
-    # Base.lcm => cuNumeric.LCM,  #* ANNOYING TO TEST (need ints)
-    # Base.ldexp => cuNumeric.LDEXP, #* ANNOYING TO TEST (need ints)
-    # Base.:(<<) => cuNumeric.LEFT_SHIFT,  #* ANNOYING TO TEST (no == for bools)
-    # Base.:(<) => cuNumeric.LESS, #* ANNOYING TO TEST (no == for bools
-    # Base.:(<=) => cuNumeric.LESS_EQUAL,  #* ANNOYING TO TEST (no == for bools
+    # Base.isapprox => cuNumeric.ISCLOSE, #* HANDLE rtol, atol kwargs!!!
+    # Base.ldexp => cuNumeric.LDEXP, #* LHS FLOATS, RHS INTS
     #missing => cuNumeric.LOGADDEXP,
     #missing => cuNumeric.LOGADDEXP2,
-    # Base.:&& => cuNumeric.LOGICAL_AND, # This returns bits?
-    # Base.:|| => cuNumeric.LOGICAL_OR, #This returns bits?
-    #missing  => cuNumeric.LOGICAL_XOR,
     #missing => cuNumeric.MAXIMUM, #elementwise max?
     #missing => cuNumeric.MINIMUM, #elementwise min?
     Base.:* => cuNumeric.MULTIPLY, #elementwise product? == .* in Julia
     #missing => cuNumeric.NEXTAFTER,
-    # Base.:(!=) => cuNumeric.NOT_EQUAL, #* DONT REALLY WANT ELEMENTWISE !=, RATHER HAVE REDUCTION
-    #Base.:^ => cuNumeric.POWER,
-    # Base.:(>>) => cuNumeric.RIGHT_SHIFT, #* ANNOYING TO TEST (no == for bools)
     Base.:(-) => cuNumeric.SUBTRACT)
+
+
+
+# # Functions which allow any of the supported types as input
+# # Last value in tuple is the return type
+# global const binary_op_specific_return = Dict{Function, Tuple{BinaryOpCode, DataType}}(
+#     Base.:(<) => (cuNumeric.LESS, Bool), #* ANNOYING TO TEST (no == for bools
+#     Base.:(<=) => (cuNumeric.LESS_EQUAL, Bool),  #* ANNOYING TO TEST (no == for bools
+#     Base.:(>) => (cuNumeric.GREATER, Bool), #* ANNOYING TO TEST (no == for bools
+#     Base.:(>=) => (cuNumeric.GREATER_EQUAL, Bool), #* ANNOYING TO TEST (no == for bools
+#     # Base.:(!=) => (cuNumeric.NOT_EQUAL, Bool), #* DONT REALLY WANT ELEMENTWISE !=, RATHER HAVE REDUCTION
+#     # Base.:(==) => (cuNumeric.EQUAL, Bool),  #* This is elementwise .==, but non-broadcasted this is array_equal
+# )
+
+# @enum OUTPUT_RULES same_size_float same_size_int same_as_input
+
+# # Functions which support only a subset of the supported types as input
+# # Last value in the tuple is the return type
+# global const binary_op_specific_input = Dict{Function, Tuple{BinaryOpCode, Type, Symbol}}(
+#     Base.atan => (cuNumeric.ARCTAN2, SUPPORTED_NUMERIC_TYPES, :same_size_float), #technically Julia promotes Int32 inputs to FP64
+#     Base.lcm => (cuNumeric.LCM, SUPPORTED_INT_TYPES, :same_as_input), 
+#     Base.gcd => (cuNumeric.GCD, SUPPORTED_INT_TYPES, :same_as_input), 
+#     # Base.:(&&) => (cuNumeric.LOGICAL_AND, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
+#     # Base.:(||) => (cuNumeric.LOGICAL_OR, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
+#     Base.xor  => (cuNumeric.LOGICAL_XOR, Bool, :same_as_input), 
+#     Base.:⊻ => (cuNumeric.LOGICAL_XOR, Bool, :same_as_input),
+#     Base.div => (cuNumeric.FLOOR_DIVIDE, SUPPORTED_NUMERIC_TYPES, :same_size_int),
+#     Base.:(÷) => (cuNumeric.FLOOR_DIVIDE, SUPPORTED_NUMERIC_TYPES, :same_size_int),
+#     # Base.:(>>) => (cuNumeric.RIGHT_SHIFT, Union{SUPPORTED_INT_TYPES, Bool}, :same_size_float) # bool input --> Int64 output in Julia
+#     # Base.:(<<) => (cuNumeric.LEFT_SHIFT, Union{SUPPORTED_INT_TYPES, Bool}, :same_size_float) # bool input --> Int64 output in Julia
+# )
+
+
+maybe_promote_arr(arr::NDArray{T}, ::Type{T}) where T = arr
+maybe_promote_arr(arr::NDArray{T}, ::Type{S}) where {T,S} = as_type(arr, S)
+
+smaller_type(::Type{A}, ::Type{B}) where {A,B} = ifelse(sizeof(A) < sizeof(B), A, B)
+same_size(::Type{A}, ::Type{B}) where {A,B} = sizeof(A) == sizeof(B)
+
+function __my_promote_type(::Type{A}, ::Type{B}) where {A, B}
+    T = promote_type(A, B)
+    same_size(A, B) && return T
+    S = smaller_type(A, B)
+    S != T && error("Detected promotion from $S to larger type, $T")
+    return T
+end
 
 #* THIS SORT OF BREAKS WHAT A JULIA USER MIGHT EXPECT
 #* WILL AUTOMATICALLY BROADCAST OVER ARRAY INSTEAD OF REQUIRING `.()` call sytax
 #* NEED TO IMPLEMENT BROADCASTING INTERFACE
 # Generate code for all binary operations.
 for (base_func, op_code) in binary_op_map
+    # Definitions and type promotion rules
     @eval begin
-        function $(Symbol(base_func))(rhs1::NDArray, rhs2::NDArray)
-            #* what happens if rhs1 and rhs2 have different types but are compatible?
-            out = cuNumeric.zeros(cuNumeric.eltype(rhs1), Base.size(rhs1)) # not sure this is ok for performance
+        
+        # With same types, no promotion
+        @inline function $(Symbol(base_func))(rhs1::NDArray{T}, rhs2::NDArray{T}) where {T <: SUPPORTED_TYPES}
+            out = cuNumeric.zeros(T, promote_shape(size(rhs1), size(rhs2)))
             return nda_binary_op(out, $(op_code), rhs1, rhs2)
         end
+
+        # # With un-matched types, promote to same type and call back to other function
+        @inline function $(Symbol(base_func))(rhs1::NDArray{A}, rhs2::NDArray{B}) where {A <: SUPPORTED_TYPES, B <: SUPPORTED_TYPES} 
+            T = __my_promote_type(A, B)
+            return  $(Symbol(base_func))(maybe_promote_arr(rhs1, T), maybe_promote_arr(rhs2, T))
+        end
+
+        # @inline function $(Symbol(base_func))(arr::NDArray{T}, c::T) where T
+        #     return $(Symbol(base_func))(arr, NDArray(c))
+        # end
+        
+        # @inline function $(Symbol(base_func))(c::T, arr::NDArray{T}) where T
+        #     return $(Symbol(base_func))(NDArray(c), arr)
+        # end
+
+        # @inline function $(Symbol(base_func))(c::A, arr::NDArray{B}) where {A <: Number, B <: Number}
+        #     T = __my_promote_type(A, B)
+        #     return $(Symbol(base_func))(NDArray(T(c)), maybe_promote_arr(arr, T))
+        # end
+
+        # @inline function $(Symbol(base_func))(arr::NDArray{B}, c::A) where {A <: Number, B <: Number}
+        #     T = __my_promote_type(A, B)
+        #     return $(Symbol(base_func))(maybe_promote_arr(arr, T), NDArray(T(c)))
+        # end
+
     end
 end
 

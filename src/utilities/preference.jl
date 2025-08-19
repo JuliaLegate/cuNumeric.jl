@@ -63,7 +63,7 @@ function find_preferences()
 
     # if developer mode
     if mode == CNPreferences.MODE_JLL
-        cunumeric_wrapper_lib = cunumeric_wrapper_jll_local_branch_install(pkg_root)
+        cunumeric_wrapper_lib = joinpath(cunumeric_jl_wrapper_jll.artifact_dir, "lib")
     elseif mode == CNPreferences.MODE_DEVELOPER
         use_cupynumeric_jll = load_preference(
             CNPreferences, "use_cupynumeric_jll", CNPreferences.DEVEL_DEFAULT_JLL_CONFIG

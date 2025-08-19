@@ -31,8 +31,8 @@ function sgemm(max_diff)
     B_cpu = rand(FT, dims);
 
     # cunumeric arrays
-    A = cuNumeric.zeros(dims)
-    B = cuNumeric.zeros(dims)
+    A = cuNumeric.zeros(Float64, dims)
+    B = cuNumeric.zeros(Float64, dims)
 
     # Initialize NDArrays with random values
     # used in Julia arrays
