@@ -278,15 +278,47 @@ cuNumeric.full((2, 3), 7.5)
 cuNumeric.full(4, 0)
 ```
 """
-function full(dims::Dims{N}, val::T) where {T,N}
-    shape = UInt64.(collect(dims))
+function full(dims::Dims, val::T) where {T <: SUPPORTED_TYPES}
+    shape = collect(UInt64, dims)
     return nda_full_array(shape, val)
 end
 
-function full(dim::Int, val::T) where {T}
+function full(dim::Int, val::T) where {T <: SUPPORTED_TYPES}
     shape = UInt64[dim]
     return nda_full_array(shape, val)
 end
+
+@doc"""
+    cuNumeric.trues(dims::Tuple, val)
+    cuNumeric.trues(dim::Int, val)
+    cuNumeric.trues(dims::Int...)
+
+Create an `NDArray` filled with the true, with the shape specified by `dims`.
+
+# Examples
+```@repl
+cuNumeric.trues(2, 3)
+```
+"""
+# trues(dim::Int) = cuNumeric.full(dim, true)
+# trues(dims::Dims) = cuNumeric.full(dims, true)
+# trues(dims::Int...) = cuNumeric.full(dims, true)
+
+@doc"""
+    cuNumeric.falses(dims::Tuple, val)
+    cuNumeric.falses(dim::Int, val)
+    cuNumeric.falses(dims::Int...)
+
+Create an `NDArray` filled with the false, with the shape specified by `dims`.
+
+# Examples
+```@repl
+cuNumeric.falses(2, 3)
+```
+"""
+# falses(dim::Int) = cuNumeric.full(dim, false)
+# falses(dims::Dims) = cuNumeric.full(dims, false)
+# falses(dims::Int...) = cuNumeric.full(dims, false)
 
 @doc"""
     cuNumeric.zeros([T=Float32,] dims::Int...)
@@ -302,16 +334,16 @@ cuNumeric.zeros(Float64, 3)
 cuNumeric.zeros(Int32, (2,3))
 ```
 """
-function zeros(::Type{T}, dims::Dims{N}) where {N,T}
-    shape = UInt64.(collect(dims))
+function zeros(::Type{T}, dims::Dims) where {T <: SUPPORTED_TYPES}
+    shape = collect(UInt64, dims)
     return nda_zeros_array(shape, T)
 end
 
-function zeros(::Type{T}, dims::Int...) where {T}
+function zeros(::Type{T}, dims::Int...) where {T <: SUPPORTED_TYPES}
     return zeros(T, dims)
 end
 
-function zeros(dims::Dims{N}) where {N}
+function zeros(dims::Dims)
     return zeros(DEFAULT_FLOAT, dims)
 end
 
@@ -342,11 +374,11 @@ function ones(::Type{T}, dims::Int...) where {T}
 end
 
 function ones(dims::Dims{N}) where {N}
-    return ones(Float64, dims)
+    return ones(DEFAULT_FLOAT, dims)
 end
 
 function ones(dims::Int...)
-    return ones(Float64, dims)
+    return ones(DEFAULT_FLOAT, dims)
 end
 
 @doc"""
@@ -510,24 +542,24 @@ lhs - rhs
 """
 
 
-function Base.:*(val::V, arr::NDArray{T}) where {T, V <: SUPPORTED_TYPES}
+function Base.:*(val::V, arr::NDArray{T}) where {T, V <: SUPPORTED_NUMERIC_TYPES}
     P = __my_promote_type(V, T)
     return nda_multiply_scalar(maybe_promote_arr(arr, P), P(val))
 end
 
-function Base.:*(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_TYPES}
+function Base.:*(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_NUMERIC_TYPES}
     return *(val, arr)
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(*), arr::NDArray{T}, val::V
-) where {T, V <: SUPPORTED_TYPES}
+) where {T, V <: SUPPORTED_NUMERIC_TYPES}
     return *(val, arr)
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(*), val::V, arr::NDArray{T}
-) where {T, V <: SUPPORTED_TYPES}
+) where {T, V <: SUPPORTED_NUMERIC_TYPES}
     return *(val, arr)
 end
 
@@ -547,7 +579,7 @@ arr = cuNumeric.ones(2, 2)
 arr / 2
 ```
 """
-function Base.:/(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_TYPES}
+function Base.:/(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_NUMERIC_TYPES}
     throw(ErrorException("[/] is not supported yet"))
 end
 
@@ -570,7 +602,7 @@ arr = cuNumeric.ones(2, 2)
 """
 function Base.Broadcast.broadcasted(
     ::typeof(/), val::V, arr::NDArray{T}
-) where {T, V <: SUPPORTED_TYPES}
+) where {T, V <: SUPPORTED_NUMERIC_TYPES}
     return throw(ErrorException("element wise [val ./ NDArray] is not supported yet"))
 end
 

@@ -10,14 +10,11 @@ CUTENSOR_jll = "35b6c64b-1ee1-5834-92a3-3f624899209a"
 CodecZlib = "944b1d66-785c-5afd-91f1-9de20f533193"
 CxxWrap = "1f15a43c-97ca-5a2a-ae31-89f07a497df4"
 Downloads = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
-HDF5_jll = "0234f1f7-429e-5d53-9886-15a909be8d59"
 JuliaFormatter = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
 Legate = "1238f2cf-6593-4d60-9aca-2f5364e49909"
 LegatePreferences = "8028f36a-2b64-49e9-aa04-2d0933fd2ed9"
 Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
-MPICH_jll = "7cb0a576-ebde-5e09-9194-50597f1243b4"
-NCCL_jll = "4d6d38e4-5b87-5e63-912a-873ff2d649b7"
 OpenBLAS32_jll = "656ef2d0-ae68-5445-9ca0-591084a874a2"
 OpenSSL_jll = "458c3c95-2e84-50aa-8efc-19380b2a3a95"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
@@ -28,11 +25,6 @@ Tar = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
 cupynumeric_jll = "2862d674-414d-5b0b-a494-b21f8deca547"
 libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
 
-[sources]
-CNPreferences = {rev = "main", subdir = "lib/CNPreferences", url = "https://github.com/JuliaLegate/cuNumeric.jl"}
-Legate = {rev = "main", url = "https://github.com/JuliaLegate/Legate.jl"}
-LegatePreferences = {rev = "main", subdir = "lib/LegatePreferences", url = "https://github.com/JuliaLegate/Legate.jl"}
-
 [compat]
 CUDA_Driver_jll = "0.12.1"
 CxxWrap = "0.17"
@@ -40,3 +32,8 @@ Legate = "25.5.0"
 LegatePreferences = "0.1.0"
 cupynumeric_jll = "25.5.0"
 julia = "1.11"
+
+[sources.Legate]
+rev = "main"
+url = "https://github.com/JuliaLegate/Legate.jl"
+

@@ -46,7 +46,7 @@ mutable struct NDArray{T,N}
     end
 end
 
-function NDArray(value::T) where {T <: SCALAR_TYPES}
+function NDArray(value::T) where {T <: SUPPORTED_TYPES}
     type = Legate.to_legate_type(T)
     ptr = ccall((:nda_from_scalar, libnda),
         NDArray_t, (Legate.LegateTypeAllocated, Ptr{Cvoid}),

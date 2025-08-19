@@ -54,22 +54,24 @@ global const binary_op_map = Dict{Function,BinaryOpCode}(
 global const binary_op_specific_return = Dict{Function, Tuple{BinaryOpCode, DataType}}(
     Base.:(<) => (cuNumeric.LESS, Bool), #* ANNOYING TO TEST (no == for bools
     Base.:(<=) => (cuNumeric.LESS_EQUAL, Bool),  #* ANNOYING TO TEST (no == for bools
-    Base.:> => (cuNumeric.GREATER, Bool), #* ANNOYING TO TEST (no == for bools
+    Base.:(>) => (cuNumeric.GREATER, Bool), #* ANNOYING TO TEST (no == for bools
     Base.:(>=) => (cuNumeric.GREATER_EQUAL, Bool), #* ANNOYING TO TEST (no == for bools
     # Base.:(!=) => (cuNumeric.NOT_EQUAL, Bool), #* DONT REALLY WANT ELEMENTWISE !=, RATHER HAVE REDUCTION
     # Base.:(==) => (cuNumeric.EQUAL, Bool),  #* This is elementwise .==, but non-broadcasted this is array_equal
 )
 
+@enum OUTPUT_RULES same_size_float same_size_int same_as_input
+
 # Functions which support only a subset of the supported types as input
 # Last value in the tuple is the return type
-global const binary_op_specific_input = Dict{Function, Tuple{BinaryOpCode, DataType, Symbol}}(
+global const binary_op_specific_input = Dict{Function, Tuple{BinaryOpCode, Type, Symbol}}(
     Base.atan => (cuNumeric.ARCTAN2, SUPPORTED_NUMERIC_TYPES, :same_size_float), #technically Julia promotes Int32 inputs to FP64
     Base.lcm => (cuNumeric.LCM, SUPPORTED_INT_TYPES, :same_as_input), 
     Base.gcd => (cuNumeric.GCD, SUPPORTED_INT_TYPES, :same_as_input), 
-    Base.:&& => (cuNumeric.LOGICAL_AND, Bool, :Bool),
-    Base.:|| => (cuNumeric.LOGICAL_OR, Bool, :Bool),
-    Base.xor  => (cuNumeric.LOGICAL_XOR, Bool, :Bool), 
-    Base.:⊻ => (cuNumeric.LOGICAL_XOR, Bool, :Bool),
+    # Base.:(&&) => (cuNumeric.LOGICAL_AND, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
+    # Base.:(||) => (cuNumeric.LOGICAL_OR, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
+    Base.xor  => (cuNumeric.LOGICAL_XOR, Bool, :same_as_input), 
+    Base.:⊻ => (cuNumeric.LOGICAL_XOR, Bool, :same_as_input),
     Base.div => (cuNumeric.FLOOR_DIVIDE, SUPPORTED_NUMERIC_TYPES, :same_size_int),
     Base.:(÷) => (cuNumeric.FLOOR_DIVIDE, SUPPORTED_NUMERIC_TYPES, :same_size_int),
     # Base.:(>>) => (cuNumeric.RIGHT_SHIFT, Union{SUPPORTED_INT_TYPES, Bool}, :same_size_float) # bool input --> Int64 output in Julia
