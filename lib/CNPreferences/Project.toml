@@ -7,9 +7,7 @@ version = "0.1.0"
 LegatePreferences = "8028f36a-2b64-49e9-aa04-2d0933fd2ed9"
 Preferences = "21216c6a-2e73-6563-6e65-726566657250"
 
-[sources]
-LegatePreferences = {url = "https://github.com/JuliaLegate/Legate.jl", rev = "main", subdir = "lib/LegatePreferences"}
-
 [compat]
 LegatePreferences = "0.1.0"
 Preferences = "1.4.3"
+julia = "1.10"

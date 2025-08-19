@@ -25,15 +25,15 @@ Tar = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
 cupynumeric_jll = "2862d674-414d-5b0b-a494-b21f8deca547"
 libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
 
+[sources]
+Legate = {rev = "main", url = "https://github.com/JuliaLegate/Legate.jl"}
+
 [compat]
 CUDA_Driver_jll = "0.12.1"
 CxxWrap = "0.17"
 Legate = "25.5.0"
+CNPreferences = "0.1.0"
 LegatePreferences = "0.1.0"
 cupynumeric_jll = "25.5.0"
 julia = "1.11"
-
-[sources.Legate]
-rev = "main"
-url = "https://github.com/JuliaLegate/Legate.jl"
 
