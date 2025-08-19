@@ -120,6 +120,22 @@ end
         @test cuNumeric.compare(julia_res, cunumeric_res, max_diff)
         @test cuNumeric.compare(julia_res, cunumeric_res2, max_diff)
     end
+
+    @testset "Type and Shape Promotion" begin
+        cunumeric_arr3 = cuNumeric.zeros(Float32, N)
+        cunumeric_int64 = cuNumeric.zeros(Int64, N)
+        cunumeric_int32 = cuNumeric.zeros(Int32, N)
+        cunumeric_arr5 = cuNumeric.zeros(Float64, N, N)
+
+
+        @test_throws "Detected promotion" cunumeric_arr3 + cunumeric_arr1
+        @test_throws "Detected promotion" map(+, cunumeric_arr3, cunumeric_arr1)
+        @test_throws DimensionMismatch cunumeric_arr1 + cunumeric_arr5
+        @test_throws DimensionMismatch cunumeric_arr1 / cunumeric_arr5
+
+        @test cunumeric_arr1 == cunumeric_int64 + cunumeric_arr1
+
+    end
 end
 
 @testset verbose = true "Slicing Tests" begin
