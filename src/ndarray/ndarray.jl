@@ -102,6 +102,8 @@ lastindex(arr)
 Base.firstindex(arr::NDArray, dim::Int) = 1
 Base.lastindex(arr::NDArray, dim::Int) = Base.size(arr, dim)
 Base.lastindex(arr::NDArray) = Base.size(arr, 1)
+
+
 Base.axes(arr::NDArray) = Base.OneTo.(size(arr))
 Base.view(arr::NDArray, inds...) = arr[inds...] # NDArray slices are views by default.
 
@@ -152,11 +154,13 @@ Array(A)
  """
 ##### REGULAR ARRAY INDEXING ####
 function Base.getindex(arr::NDArray{T}, idxs::Vararg{Int,N}) where {T,N}
+    @warn "Scalar indexing" #TODO Automate this
     acc = NDArrayAccessor{T,N}()
     return read(acc, arr.ptr, to_cpp_index(idxs))
 end
 
 function Base.setindex!(arr::NDArray{T}, value::T, idxs::Vararg{Int,N}) where {T<:Number, N}
+    @warn "Scalar indexing" #TODO Automate this
     acc = NDArrayAccessor{T,N}()
     write(acc, arr.ptr, to_cpp_index(idxs), value)
 end
@@ -164,37 +168,37 @@ end
 #### START OF SLICING ####
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::Int64)
     s = nda_get_slice(lhs, slice_array((0, Base.size(lhs, 1)), (j-1, j)))
-    nda_assign(s, rhs);
+    copyto!(s, rhs);
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Int64, j::Colon)
     s = nda_get_slice(lhs, slice_array((i-1, i)))
-    nda_assign(s, rhs);
+    copyto!(s, rhs);
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::Colon)
     s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (0, Base.size(lhs, 2))))
-    nda_assign(s, rhs)
+    copyto!(s, rhs)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::UnitRange)
     s = nda_get_slice(lhs, slice_array((0, Base.size(lhs, 1)), (first(j) - 1, last(j))))
-    nda_assign(s, rhs)
+    copyto!(s, rhs)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::Int64)
     s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (j-1, j)))
-    nda_assign(s, rhs)
+    copyto!(s, rhs)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Int64, j::UnitRange)
     s = nda_get_slice(lhs, slice_array((i-1, i), (first(j) - 1, last(j))))
-    nda_assign(s, rhs)
+    copyto!(s, rhs)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::UnitRange)
     s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (first(j) - 1, last(j))))
-    nda_assign(s, rhs)
+    copyto!(s, rhs)
 end
 
 function Base.getindex(arr::NDArray, i::Colon, j::Int64)
@@ -437,195 +441,195 @@ function reshape(arr::NDArray, i::Int64; copy::Bool=false)
     return copy ? copy(reshaped) : reshaped
 end
 
-@doc"""
-    Base.:+(arr::NDArray, val::Number)
-    Base.:+(val::Number, arr::NDArray)
-    Base.:+(lhs::NDArray, rhs::NDArray)
+# @doc"""
+#     Base.:+(arr::NDArray, val::Number)
+#     Base.:+(val::Number, arr::NDArray)
+#     Base.:+(lhs::NDArray, rhs::NDArray)
 
-Add a scalar `val` to every element in the `NDArray` `arr`, or perform element-wise addition between two NDArrays,
-returning a new `NDArray`.
+# Add a scalar `val` to every element in the `NDArray` `arr`, or perform element-wise addition between two NDArrays,
+# returning a new `NDArray`.
 
-Broadcasting is supported to enable element-wise addition between `NDArray` and scalars or between two NDArrays.
+# Broadcasting is supported to enable element-wise addition between `NDArray` and scalars or between two NDArrays.
 
-# Examples
-```@repl
-lhs + 3
-3 + rhs
-lhs + rhs
-```
-"""
+# # Examples
+# ```@repl
+# lhs + 3
+# 3 + rhs
+# lhs + rhs
+# ```
+# """
 
-function Base.:+(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_TYPES}
-    P = __my_promote_type(V, T)
-    return nda_add_scalar(maybe_promote_arr(arr, P), P(val))
-end
+# function Base.:+(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_TYPES}
+#     P = __my_promote_type(V, T)
+#     return nda_add_scalar(maybe_promote_arr(arr, P), P(val))
+# end
 
-function Base.:+(val::V, arr::NDArray{T}) where {T, V <: SUPPORTED_TYPES}
-    return +(arr, val)
-end
+# function Base.:+(val::V, arr::NDArray{T}) where {T, V <: SUPPORTED_TYPES}
+#     return +(arr, val)
+# end
 
-function Base.Broadcast.broadcasted(
-    ::typeof(+), arr::NDArray{T}, val::V
-) where {T, V <: SUPPORTED_TYPES}
-    return +(arr, val)
-end
+# function Base.Broadcast.broadcasted(
+#     ::typeof(+), arr::NDArray{T}, val::V
+# ) where {T, V <: SUPPORTED_TYPES}
+#     return +(arr, val)
+# end
 
-function Base.Broadcast.broadcasted(
-    ::typeof(+), val::V, arr::NDArray{T}
-) where {T, V <: SUPPORTED_TYPES}
-    return +(arr, val)
-end
+# function Base.Broadcast.broadcasted(
+#     ::typeof(+), val::V, arr::NDArray{T}
+# ) where {T, V <: SUPPORTED_TYPES}
+#     return +(arr, val)
+# end
 
-function Base.Broadcast.broadcasted(::typeof(+), lhs::NDArray{T}, rhs::NDArray{T}) where T
-    return +(lhs, rhs)
-end
+# function Base.Broadcast.broadcasted(::typeof(+), lhs::NDArray{T}, rhs::NDArray{T}) where T
+#     return +(lhs, rhs)
+# end
 
-@doc"""
-    Base.:-(val::Number, arr::NDArray)
-    Base.:-(arr::NDArray, val::Number)
-    Base.:-(lhs::NDArray, rhs::NDArray)
+# @doc"""
+#     Base.:-(val::Number, arr::NDArray)
+#     Base.:-(arr::NDArray, val::Number)
+#     Base.:-(lhs::NDArray, rhs::NDArray)
 
-Perform subtraction involving an `NDArray` and a scalar or between two NDArrays. 
+# Perform subtraction involving an `NDArray` and a scalar or between two NDArrays. 
 
-- `val - arr` subtracts `val` by `arr`.
-- `arr - val` subtracts scalar `val` from each element of `arr`.
-- Element-wise subtraction is supported between two NDArrays.
+# - `val - arr` subtracts `val` by `arr`.
+# - `arr - val` subtracts scalar `val` from each element of `arr`.
+# - Element-wise subtraction is supported between two NDArrays.
 
-Broadcasting is also supported for these operations.
+# Broadcasting is also supported for these operations.
 
-# Examples
-```@repl
-lhs - 3
-3 - rhs
-lhs - rhs
-```
-"""
-function Base.:-(val::V, arr::NDArray{T}) where {T, V <: SUPPORTED_TYPES}
-    return nda_multiply_scalar(arr, -val)
-end
+# # Examples
+# ```@repl
+# lhs - 3
+# 3 - rhs
+# lhs - rhs
+# ```
+# """
+# function Base.:-(val::V, arr::NDArray{T}) where {T, V <: SUPPORTED_TYPES}
+#     return nda_multiply_scalar(arr, -val)
+# end
 
-function Base.:-(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_TYPES}
-    return +(arr, (-1*val))
-end
+# function Base.:-(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_TYPES}
+#     return +(arr, (-1*val))
+# end
 
-function Base.Broadcast.broadcasted(
-    ::typeof(-), arr::NDArray{T}, val::V
-) where {T, V <: SUPPORTED_TYPES}
-    return -(arr, val)
-end
-function Base.Broadcast.broadcasted(
-    ::typeof(-), val::V, rhs::NDArray{T}
-) where {T, V <: SUPPORTED_TYPES}
-    lhs = full(size(rhs), val)
-    return -(lhs, rhs)
-end
+# function Base.Broadcast.broadcasted(
+#     ::typeof(-), arr::NDArray{T}, val::V
+# ) where {T, V <: SUPPORTED_TYPES}
+#     return -(arr, val)
+# end
+# function Base.Broadcast.broadcasted(
+#     ::typeof(-), val::V, rhs::NDArray{T}
+# ) where {T, V <: SUPPORTED_TYPES}
+#     lhs = full(size(rhs), val)
+#     return -(lhs, rhs)
+# end
 
-function Base.Broadcast.broadcasted(::typeof(-), lhs::NDArray{T}, rhs::NDArray{T}) where T
-    return -(lhs, rhs)
-end
+# function Base.Broadcast.broadcasted(::typeof(-), lhs::NDArray{T}, rhs::NDArray{T}) where T
+#     return -(lhs, rhs)
+# end
 
-@doc"""
-    Base.:*(val::Number, arr::NDArray)
-    Base.:*(arr::NDArray, val::Number)
-    Base.Broadcast.broadcasted(::typeof(*), arr::NDArray, val::Number)
-    Base.Broadcast.broadcasted(::typeof(*), val::Number, arr::NDArray)
-    Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray, rhs::NDArray)
+# @doc"""
+#     Base.:*(val::Number, arr::NDArray)
+#     Base.:*(arr::NDArray, val::Number)
+#     Base.Broadcast.broadcasted(::typeof(*), arr::NDArray, val::Number)
+#     Base.Broadcast.broadcasted(::typeof(*), val::Number, arr::NDArray)
+#     Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray, rhs::NDArray)
 
-Multiply an `NDArray` by a scalar or perform element-wise multiplication between NDArrays.
+# Multiply an `NDArray` by a scalar or perform element-wise multiplication between NDArrays.
 
-- Scalar multiplication supports types: `Float32`, `Float64`, `Int32`, `Int64`.
-- Broadcasting works seamlessly with scalars and NDArrays.
+# - Scalar multiplication supports types: `Float32`, `Float64`, `Int32`, `Int64`.
+# - Broadcasting works seamlessly with scalars and NDArrays.
 
-# Examples
-```@repl
-lhs * 3
-2 * rhs
-lhs - rhs
-```
-"""
-
-
-function Base.:*(val::V, arr::NDArray{T}) where {T, V <: SUPPORTED_NUMERIC_TYPES}
-    P = __my_promote_type(V, T)
-    return nda_multiply_scalar(maybe_promote_arr(arr, P), P(val))
-end
-
-function Base.:*(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_NUMERIC_TYPES}
-    return *(val, arr)
-end
-
-function Base.Broadcast.broadcasted(
-    ::typeof(*), arr::NDArray{T}, val::V
-) where {T, V <: SUPPORTED_NUMERIC_TYPES}
-    return *(val, arr)
-end
-
-function Base.Broadcast.broadcasted(
-    ::typeof(*), val::V, arr::NDArray{T}
-) where {T, V <: SUPPORTED_NUMERIC_TYPES}
-    return *(val, arr)
-end
-
-function Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray{T}, rhs::NDArray{T}) where T
-    return *(lhs, rhs)
-end
-
-@doc"""
-    Base.:/(arr::NDArray, val::Scalar)
-    Base.Broadcast.broadcasted(::typeof(/), arr::NDArray, val::Scalar)
-
-Returns the element-wise multiplication of `arr` by the scalar reciprocal `1 / val`.
-
-# Examples
-```@repl
-arr = cuNumeric.ones(2, 2)
-arr / 2
-```
-"""
-function Base.:/(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_NUMERIC_TYPES}
-    throw(ErrorException("[/] is not supported yet"))
-end
-
-function Base.Broadcast.broadcasted(
-    ::typeof(/), arr::NDArray{T}, val::V
-) where {T, V <: Union{Float16, Float32, Float64}}
-    return nda_multiply_scalar(arr, V(1 / val))
-end
-
-@doc"""
-    Base.Broadcast.broadcasted(::typeof(/), val::Scalar, arr::NDArray)
-
-Throws an error since element-wise division of a scalar by an NDArray is not supported yet.
-
-# Examples
-```@repl
-arr = cuNumeric.ones(2, 2)
-# 2 ./ arr # ERROR
-```
-"""
-function Base.Broadcast.broadcasted(
-    ::typeof(/), val::V, arr::NDArray{T}
-) where {T, V <: SUPPORTED_NUMERIC_TYPES}
-    return throw(ErrorException("element wise [val ./ NDArray] is not supported yet"))
-end
+# # Examples
+# ```@repl
+# lhs * 3
+# 2 * rhs
+# lhs - rhs
+# ```
+# """
 
 
-@doc"""
-    Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray, rhs::NDArray)
+# function Base.:*(val::V, arr::NDArray{T}) where {T, V <: SUPPORTED_NUMERIC_TYPES}
+#     P = __my_promote_type(V, T)
+#     return nda_multiply_scalar(maybe_promote_arr(arr, P), P(val))
+# end
 
-Perform element-wise division of two NDArrays.
+# function Base.:*(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_NUMERIC_TYPES}
+#     return *(val, arr)
+# end
 
-# Examples
-```@repl
-A = cuNumeric.rand(2, 2)
-B = cuNumeric.ones(2, 2)
-C = A ./ B
-typeof(C)
-```
-"""
-function Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray{T}, rhs::NDArray{T}) where T
-    return /(lhs, rhs)
-end
+# function Base.Broadcast.broadcasted(
+#     ::typeof(*), arr::NDArray{T}, val::V
+# ) where {T, V <: SUPPORTED_NUMERIC_TYPES}
+#     return *(val, arr)
+# end
+
+# function Base.Broadcast.broadcasted(
+#     ::typeof(*), val::V, arr::NDArray{T}
+# ) where {T, V <: SUPPORTED_NUMERIC_TYPES}
+#     return *(val, arr)
+# end
+
+# function Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray{T}, rhs::NDArray{T}) where T
+#     return *(lhs, rhs)
+# end
+
+# @doc"""
+#     Base.:/(arr::NDArray, val::Scalar)
+#     Base.Broadcast.broadcasted(::typeof(/), arr::NDArray, val::Scalar)
+
+# Returns the element-wise multiplication of `arr` by the scalar reciprocal `1 / val`.
+
+# # Examples
+# ```@repl
+# arr = cuNumeric.ones(2, 2)
+# arr / 2
+# ```
+# """
+# function Base.:/(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_NUMERIC_TYPES}
+#     throw(ErrorException("[/] is not supported yet"))
+# end
+
+# function Base.Broadcast.broadcasted(
+#     ::typeof(/), arr::NDArray{T}, val::V
+# ) where {T, V <: Union{Float16, Float32, Float64}}
+#     return nda_multiply_scalar(arr, V(1 / val))
+# end
+
+# @doc"""
+#     Base.Broadcast.broadcasted(::typeof(/), val::Scalar, arr::NDArray)
+
+# Throws an error since element-wise division of a scalar by an NDArray is not supported yet.
+
+# # Examples
+# ```@repl
+# arr = cuNumeric.ones(2, 2)
+# # 2 ./ arr # ERROR
+# ```
+# """
+# function Base.Broadcast.broadcasted(
+#     ::typeof(/), val::V, arr::NDArray{T}
+# ) where {T, V <: SUPPORTED_NUMERIC_TYPES}
+#     return throw(ErrorException("element wise [val ./ NDArray] is not supported yet"))
+# end
+
+
+# @doc"""
+#     Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray, rhs::NDArray)
+
+# Perform element-wise division of two NDArrays.
+
+# # Examples
+# ```@repl
+# A = cuNumeric.rand(2, 2)
+# B = cuNumeric.ones(2, 2)
+# C = A ./ B
+# typeof(C)
+# ```
+# """
+# function Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray{T}, rhs::NDArray{T}) where T
+#     return /(lhs, rhs)
+# end
 
 
 #* Can't overload += in Julia, this should be called by .+= 
@@ -719,11 +723,11 @@ Both arrays must have the same shape.
 ```@repl
 a = cuNumeric.zeros(2, 2)
 b = cuNumeric.ones(2, 2)
-cuNumeric.assign(a, b);
+copyto!(a, b);
 a[1,1]
 ```
 """
-assign(arr::NDArray, other::NDArray) = nda_assign(arr, other)
+Base.copyto!(arr::NDArray{T,N}, other::NDArray{T,N}) where {T,N} = nda_assign(arr, other)
 
 @doc"""
     ==(arr1::NDArray, arr2::NDArray)

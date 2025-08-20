@@ -136,6 +136,13 @@ end
         @test cunumeric_arr1 == cunumeric_int64 + cunumeric_arr1
 
     end
+
+    @testset "Copy-To" begin
+        a = cuNumeric.zeros(2, 2)
+        b = cuNumeric.ones(2, 2)
+        copyto!(a, b);
+        @test a == b
+    end
 end
 
 @testset verbose = true "Slicing Tests" begin

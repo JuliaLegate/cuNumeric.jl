@@ -46,6 +46,7 @@ mutable struct NDArray{T,N}
     end
 end
 
+#* SHOULD THE DIM ON THIS BE 0??
 function NDArray(value::T) where {T <: SUPPORTED_TYPES}
     type = Legate.to_legate_type(T)
     ptr = ccall((:nda_from_scalar, libnda),
@@ -53,8 +54,6 @@ function NDArray(value::T) where {T <: SUPPORTED_TYPES}
         type, Ref(value))
     return NDArray(ptr, T = T, n_dim = 1)
 end
-
-Base.Broadcast.broadcastable(v::NDArray) = v
 
 # construction 
 function nda_zeros_array(shape::Vector{UInt64}, ::Type{T}) where {T}
