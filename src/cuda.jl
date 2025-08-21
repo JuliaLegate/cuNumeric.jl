@@ -9,7 +9,7 @@ function set_kernel_state_size()
     return nothing
 end
 
-function ndarray_to_cuda_dummy_arr(arg)
+function map_ndarray_cuda_type(arg)
     if isa(arg, NDArray)
         T = cuNumeric.eltype(arg)
         D = cuNumeric.ndims(arg)
@@ -19,10 +19,6 @@ function ndarray_to_cuda_dummy_arr(arg)
     else
         error("Unsupported argument type: $(typeof(arg))")
     end
-end
-
-function map_ndarray_cuda_type(arg)
-    return dum_arg = cuNumeric.ndarray_to_cuda_dummy_arr(arg)
 end
 
 function map_ndarray_cuda_types(args...)
