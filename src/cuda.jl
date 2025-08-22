@@ -1,52 +1,40 @@
 using CUDA
 using Random
 
-function __get_types_from_dummy(args...)
-    types = Any[]
-    for arg in args
-        push!(types, typeof(CUDA.cudaconvert(arg)))
-    end
-    return tuple(types...)
+const KERNEL_OFFSET = sizeof(CUDA.KernelState)
+
+# cuNumeric.jl init will call this
+function set_kernel_state_size()
+    # cuNumeric.register_kernel_state_size(UInt64(KERNEL_OFFSET))
+    return nothing
 end
 
-function __dummy_args_for_ptx(args...)
-    converted = Any[]
-    for arg in args
-        push!(converted, cuNumeric.__convert_arg(arg))
-    end
-    return tuple(converted...)
-end
-
-function __convert_arg(arg)
+function map_ndarray_cuda_type(arg)
     if isa(arg, NDArray)
         T = cuNumeric.eltype(arg)
-        # size = cuNumeric.size(arg)
-        return CUDA.zeros(T, 1)
+        D = cuNumeric.ndims(arg)
+        return CuDeviceArray{T,D,1}
     elseif Base.isbits(arg)
-        return arg
+        return typeof(arg)
     else
         error("Unsupported argument type: $(typeof(arg))")
     end
 end
 
-function __tuple_set(args...)
-    state = args[1]
-    types = args[2]
-
-    t = Any[]
-    push!(t, state)
-    for ty in types.parameters
-        push!(t, ty)
+function map_ndarray_cuda_types(args...)
+    converted = Any[]
+    for arg in args
+        push!(converted, cuNumeric.map_ndarray_cuda_type(arg))
     end
-    return tuple(t...)
+    return tuple(converted...)
 end
 
-function __to_stdvec_u32(v)
-    sv = CxxWrap.StdVector{UInt32}()
-    for x in v
-        push!(sv, UInt32(x))
+function to_stdvec(::Type{T}, vec) where {T}
+    stdvec = CxxWrap.StdVector{T}()
+    for x in vec
+        push!(stdvec, T(x))
     end
-    return sv
+    return stdvec
 end
 
 struct CUDATask
@@ -54,24 +42,50 @@ struct CUDATask
     argtypes::NTuple{N,Type} where {N}
 end
 
+function check_sz(arr, prev_size; update=false)
+    sz = cuNumeric.size(arr)
+    if prev_size != nothing
+        # currently require all ndarray inputs to be equal
+        alligned_equal_size = sz == prev_size
+        @assert alligned_equal_size "[CUDA.jl tasking] We only support equally size input/output NDArrays."
+
+        # TODO: maybe we should auto update the size?
+        # However, cuNumeric.resize is not a thing
+        # if update && !alligned_equal_size
+        #     @warn "sz output is now $prev_size"
+        #     cuNumeric.resize(arr, prev_size)
+        # else   
+        #     @assert alligned_equal_size
+        # end
+    end
+
+    return sz
+end
+
 function Launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
     outputs::Tuple{Vararg{cuNumeric.NDArray}}, scalars::Tuple{Vararg{Any}}; blocks, threads)
     input_vec = cuNumeric.VectorNDArray()
+
+    prev_size = nothing
     for arr in inputs
         cuNumeric.push_back(input_vec, CxxRef{cuNumeric.CN_NDArray}(arr.ptr))
+        prev_size = check_sz(arr, prev_size)
     end
+
     output_vec = cuNumeric.VectorNDArray()
     for arr in outputs
         cuNumeric.push_back(output_vec, CxxRef{cuNumeric.CN_NDArray}(arr.ptr))
+        prev_size = check_sz(arr, prev_size)
     end
+
     scalar_vec = Legate.VectorScalar()
     for s in scalars
         Legate.push_back(scalar_vec, Legate.Scalar(s))
     end
 
     cuNumeric.new_task(
-        kernel.func, __to_stdvec_u32(blocks), __to_stdvec_u32(threads), input_vec, output_vec,
-        scalar_vec
+        kernel.func, to_stdvec(UInt32, blocks), to_stdvec(UInt32, threads), input_vec, output_vec,
+        scalar_vec,
     )
 end
 
@@ -84,26 +98,99 @@ function launch(kernel::CUDATask, inputs, outputs, scalars; blocks, threads)
         threads=isa(threads, Tuple) ? threads : (threads,),
     )
 end
+"""
+    @cuda_task(f(args...))
 
+Compile a Julia GPU kernel to PTX, register it with the Legate runtime, 
+and return a `CUDATask` object for later launch.
+
+# Arguments
+- `f` — The name of the Julia CUDA.jl GPU kernel function to compile.
+- `args...` — Example arguments to the kernel, used to determine the 
+  argument type signature when generating PTX.
+
+# Description
+This macro automates the process of:
+1. Inferring the CUDA argument types for the given `args` using 
+   `map_ndarray_cuda_types`.
+2. Using `CUDA.code_ptx` to compile the specified GPU kernel 
+   (`f`) into raw PTX text for the inferred types.
+3. Extracting the kernel's function symbol name from the PTX using 
+   `extract_kernel_name`.
+4. Registering the compiled PTX and kernel name with the Legate runtime 
+   via `ptx_task`, making it available for GPU execution.
+5. Returning a `CUDATask` struct that stores the kernel name and type signature,
+   which can be used to configure and launch the kernel later.
+
+# Notes
+- The `args...` are not executed; they are used solely for type inference.
+- This macro is intended for use with the Legate runtime and 
+  assumes a CUDA context is available.
+- Make sure your kernel code is GPU-compatible and does not rely on 
+  unsupported Julia features.
+
+# Example
+```julia
+mytask = @cuda_task my_kernel(A, B, C)
+```
+"""
 macro cuda_task(call_expr)
     fname = call_expr.args[1]
     fargs = call_expr.args[2:end]
 
     esc(quote
         local _buf = IOBuffer()
-        local _dummy = $cuNumeric.__dummy_args_for_ptx($(fargs...))
-        # Create the PTX in runtime with actual values
-        CUDA.@device_code_ptx io=_buf CUDA.@cuda launch=false $fname((_dummy...))
+        local _types = $cuNumeric.map_ndarray_cuda_types($(fargs...))
+        # generate ptx using CUDA.jl 
+        CUDA.code_ptx(_buf, $fname, _types; raw=false, kernel=true)
 
         local _ptx = String(take!(_buf))
         local _func_name = cuNumeric.extract_kernel_name(_ptx)
-        local _func = cuNumeric.ptx_task(_ptx, _func_name)
-        local _types = cuNumeric.__get_types_from_dummy(_dummy)
 
+        # issue ptx_task within legate runtime to register cufunction ptr with cucontext
+        cuNumeric.ptx_task(_ptx, _func_name)
+
+        # create a CUDAtask that stores some info for a launch config
         cuNumeric.CUDATask(_func_name, _types)
     end)
 end
+"""
+    @launch(; task, blocks=(1,), threads=(256,), inputs=(), outputs=(), scalars=())
 
+Launch a GPU kernel (previously registered via [`@cuda_task`](@ref))  through the Legate runtime.
+
+# Keywords
+- `task` — A `CUDATask` object, typically returned by [`@cuda_task`](@ref). 
+- `blocks`  — Tuple or single element specifying the CUDA grid dimensions. Defaults to `(1,)`.
+- `threads` — Tuple or single element specifying the CUDA block dimensions. Defaults to `(256,)`.
+- `inputs`  — Tuple or single element of input NDArray objects.
+- `outputs` — Tuple or single element of output NDArray objects.
+- `scalars` — Tuple or single element of scalar values.
+
+# Description
+The `@launch` macro validates the provided keywords, ensuring only 
+the allowed set (`:task`, `:blocks`, `:threads`, `:inputs`, `:outputs`, `:scalars`) 
+are present. It then expands to a call to `cuNumeric.launch`, 
+passing the given arguments to the Legate runtime for execution.
+
+This macro is meant to provide a concise, declarative syntax for 
+launching GPU kernels, separating kernel compilation (via `@cuda_task`) 
+from execution configuration.
+
+# Notes
+- `task` **must** be a kernel registered with the runtime, usually from `@cuda_task`.
+- All keyword arguments must be specified as assignments, e.g. `blocks=(2,2)` not positional arguments.
+- Defaults are chosen for single-block, 256-thread 1D launches.
+- The macro escapes its body so that the values of inputs/outputs/scalars are captured 
+  from the surrounding scope at macro expansion time.
+
+# Example
+```julia
+mytask = @cuda_task my_kernel(A, B, C)
+
+@launch task=mytask blocks=(8,8) threads=(32,32) inputs=(A, B) outputs=(C)
+```
+"""
 macro launch(args...)
     allowed_keys = Set([:task, :blocks, :threads, :inputs, :outputs, :scalars])
     kwargs = Dict{Symbol,Any}()
