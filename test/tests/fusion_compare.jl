@@ -57,8 +57,10 @@ function run_fused_cunumeric(N, u, v)
     threads2d = (16, 16)  # 16*16 = 256 threads per block
     blocks = (cld(N, threads2d[1]), cld(N, threads2d[2]))
 
-    F_u = cuNumeric.zeros(Float32, (N-2, N-2))
-    F_v = cuNumeric.zeros(Float32, (N-2, N-2))
+    ## TODO support any size relation of inputs and output allignments
+    # in our current impl, inputs and outputs have to be the same size
+    F_u = cuNumeric.zeros(Float32, (N, N))
+    F_v = cuNumeric.zeros(Float32, (N, N))
 
     f = 0.03f0
     k = 0.06f0
@@ -69,7 +71,8 @@ function run_fused_cunumeric(N, u, v)
         UInt32(N), f, k
     )
 
-    return F_u, F_v
+    # resize input
+    return F_u[1:(end - 2), 1:(end - 2)], F_v[1:(end - 2), 1:(end - 2)]
 end
 
 function run_fused_baseline(N, u, v)
@@ -105,39 +108,24 @@ function run_unfused_baseline(N, u, v)
     return F_u, F_v
 end
 
-function fusion_test(; N=16, atol=1.0f-6, rtol=1.0f-6)
-    u = cuNumeric.random(Float32, (N, N))
-    v = cuNumeric.random(Float32, (N, N))
+function fusion_test(; N=1024, atol=1.0f-6, rtol=1.0f-6)
+    u = cuNumeric.as_type(cuNumeric.random(Float32, (N, N)), Float32)
+    v = cuNumeric.as_type(cuNumeric.random(Float64, (N, N)), Float32)
 
     # using CUDA
-    # u_base = CUDA.rand(Float32, (N, N))
-    # v_base = CUDA.rand(Float32, (N, N))
-    # Fu_base_fused, Fv_base_fused = run_fused_baseline(N, u_base, v_base)
-    # Fu_base_unfused, Fv_base_unfused = run_unfused_baseline(N, u_base, v_base)
-    # CUDA.synchronize()
-    # @test isapprox(Fu_base_fused, Fu_base_unfused; atol=atol, rtol=rtol)
-    # @test isapprox(Fv_base_fused, Fv_base_unfused; atol=atol, rtol=rtol)
+    u_base = CUDA.rand(Float32, (N, N))
+    v_base = CUDA.rand(Float32, (N, N))
+    Fu_base_fused, Fv_base_fused = run_fused_baseline(N, u_base, v_base)
+    Fu_base_unfused, Fv_base_unfused = run_unfused_baseline(N, u_base, v_base)
+    CUDA.synchronize()
+    @test isapprox(Fu_base_fused, Fu_base_unfused; atol=atol, rtol=rtol)
+    @test isapprox(Fv_base_fused, Fv_base_unfused; atol=atol, rtol=rtol)
 
     # using cuNumeric
     Fu_fused, Fv_fused = run_fused_cunumeric(N, u, v)
-    # cuNumeric.gpu_sync()
     Fu_unfused, Fv_unfused = run_unfused_cunumeric(N, u, v)
-    # cuNumeric.gpu_sync()
-
-    # @assert Fu_fused == Fu_unfused
-    # @assert Fv_fused == Fv_unfused
-
-    # trying to debug why the above fails
-    cpu_Fu_fused = Fu_fused[:, :]
-    cpu_Fv_fused = Fv_fused[:, :]
-
-    print(cpu_Fu_fused)
-
-    cpu_Fu_unfused = Fu_unfused[:, :]
-    cpu_Fv_unfused = Fv_unfused[:, :]
-
-    @test isapprox(cpu_Fu_fused, cpu_Fu_unfused; atol=atol, rtol=rtol)
-    @test isapprox(cpu_Fv_fused, cpu_Fv_unfused; atol=atol, rtol=rtol)
+    @test isapprox(Fu_fused, Fu_unfused; atol=atol, rtol=rtol)
+    @test isapprox(Fv_fused, Fv_unfused; atol=atol, rtol=rtol)
 end
 
 fusion_test()

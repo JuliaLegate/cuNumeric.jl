@@ -42,16 +42,42 @@ struct CUDATask
     argtypes::NTuple{N,Type} where {N}
 end
 
+function check_sz(arr, prev_size; update=false)
+    sz = cuNumeric.size(arr)
+    if prev_size != nothing
+        # currently require all ndarray inputs to be equal
+        alligned_equal_size = sz == prev_size
+        @assert alligned_equal_size "[CUDA.jl tasking] We only support equally size input/output NDArrays."
+
+        # TODO: maybe we should auto update the size?
+        # However, cuNumeric.resize is not a thing
+        # if update && !alligned_equal_size
+        #     @warn "sz output is now $prev_size"
+        #     cuNumeric.resize(arr, prev_size)
+        # else   
+        #     @assert alligned_equal_size
+        # end
+    end
+
+    return sz
+end
+
 function Launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
     outputs::Tuple{Vararg{cuNumeric.NDArray}}, scalars::Tuple{Vararg{Any}}; blocks, threads)
     input_vec = cuNumeric.VectorNDArray()
+
+    prev_size = nothing
     for arr in inputs
         cuNumeric.push_back(input_vec, CxxRef{cuNumeric.CN_NDArray}(arr.ptr))
+        prev_size = check_sz(arr, prev_size)
     end
+
     output_vec = cuNumeric.VectorNDArray()
     for arr in outputs
         cuNumeric.push_back(output_vec, CxxRef{cuNumeric.CN_NDArray}(arr.ptr))
+        prev_size = check_sz(arr, prev_size)
     end
+
     scalar_vec = Legate.VectorScalar()
     for s in scalars
         Legate.push_back(scalar_vec, Legate.Scalar(s))
