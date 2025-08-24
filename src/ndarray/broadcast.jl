@@ -89,6 +89,7 @@ end
 
 # Recursion base case
 __materialize(x::NDArray) = x
+__materialize(x::Number) = NDArray(x)
 
 function __materialize(bc::Broadcasted{<:NDArrayStyle})
     bc = Base.Broadcast.instantiate(bc)
