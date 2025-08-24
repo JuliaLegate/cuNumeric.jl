@@ -29,25 +29,28 @@ div.(A, B)
 A .^ 2
 ```
 """
-global const binary_op_map = Dict{Function,BinaryOpCode}(
-    Base.:+ => cuNumeric.ADD,
-    # Base.copysign => cuNumeric.COPYSIGN, #* ANNOYING TO TEST 
-    Base.:/ => cuNumeric.DIVIDE,
-    # Base.:^ => cuNumeric.FLOAT_POWER, # DONT THINK THIS IS WHAT WE WANT
-    # Base.:^ => cuNumeric.POWER, #* HOW TO FIGURE OUT RETURN TYPE???
-    #missing => cuNumeric.fmod, #same as mod in Julia?
-    Base.hypot => cuNumeric.HYPOT,
-    # Base.isapprox => cuNumeric.ISCLOSE, #* HANDLE rtol, atol kwargs!!!
-    # Base.ldexp => cuNumeric.LDEXP, #* LHS FLOATS, RHS INTS
-    #missing => cuNumeric.LOGADDEXP,
-    #missing => cuNumeric.LOGADDEXP2,
-    #missing => cuNumeric.MAXIMUM, #elementwise max?
-    #missing => cuNumeric.MINIMUM, #elementwise min?
-    Base.:* => cuNumeric.MULTIPLY, #elementwise product? == .* in Julia
-    #missing => cuNumeric.NEXTAFTER,
-    Base.:(-) => cuNumeric.SUBTRACT)
+# global const binary_op_map = Dict{Function,BinaryOpCode}(
+#     Base.:+ => cuNumeric.ADD,
+#     # Base.copysign => cuNumeric.COPYSIGN, #* ANNOYING TO TEST 
+#     Base.:/ => cuNumeric.DIVIDE,
+#     # Base.:^ => cuNumeric.FLOAT_POWER, # DONT THINK THIS IS WHAT WE WANT
+#     # Base.:^ => cuNumeric.POWER, #* HOW TO FIGURE OUT RETURN TYPE???
+#     #missing => cuNumeric.fmod, #same as mod in Julia?
+#     Base.hypot => cuNumeric.HYPOT,
+#     # Base.isapprox => cuNumeric.ISCLOSE, #* HANDLE rtol, atol kwargs!!!
+#     # Base.ldexp => cuNumeric.LDEXP, #* LHS FLOATS, RHS INTS
+#     #missing => cuNumeric.LOGADDEXP,
+#     #missing => cuNumeric.LOGADDEXP2,
+#     #missing => cuNumeric.MAXIMUM, #elementwise max?
+#     #missing => cuNumeric.MINIMUM, #elementwise min?
+#     Base.:* => cuNumeric.MULTIPLY, #elementwise product? == .* in Julia
+#     #missing => cuNumeric.NEXTAFTER,
+#     Base.:(-) => cuNumeric.SUBTRACT)
 
-
+global const binary_op_map = Dict{Function,Tuple{BinaryOpCode, Symbol}}(
+    Base.:+ => (cuNumeric.ADD, :__binop_elwise_add),
+    Base.:* => (cuNumeric.MULTIPLY, :__binop_elwise_mul)
+)
 
 # # Functions which allow any of the supported types as input
 # # Last value in tuple is the return type
@@ -79,39 +82,27 @@ global const binary_op_map = Dict{Function,BinaryOpCode}(
 # )
 
 
-maybe_promote_arr(arr::NDArray{T}, ::Type{T}) where T = arr
-maybe_promote_arr(arr::NDArray{T}, ::Type{S}) where {T,S} = as_type(arr, S)
-
-smaller_type(::Type{A}, ::Type{B}) where {A,B} = ifelse(sizeof(A) < sizeof(B), A, B)
-same_size(::Type{A}, ::Type{B}) where {A,B} = sizeof(A) == sizeof(B)
-
-function __my_promote_type(::Type{A}, ::Type{B}) where {A, B}
-    T = promote_type(A, B)
-    same_size(A, B) && return T
-    S = smaller_type(A, B)
-    S != T && error("Detected promotion from $S to larger type, $T")
-    return T
-end
-
-#* THIS SORT OF BREAKS WHAT A JULIA USER MIGHT EXPECT
-#* WILL AUTOMATICALLY BROADCAST OVER ARRAY INSTEAD OF REQUIRING `.()` call sytax
-#* NEED TO IMPLEMENT BROADCASTING INTERFACE
-# Generate code for all binary operations.
-for (base_func, op_code) in binary_op_map
+# Generate hidden functions for all binary operations.
+for (_, (op_code, hidden_name)) in binary_op_map
     # Definitions and type promotion rules
     @eval begin
-        
-        # With same types, no promotion
-        @inline function $(Symbol(base_func))(rhs1::NDArray{T}, rhs2::NDArray{T}) where {T <: SUPPORTED_TYPES}
-            out = cuNumeric.zeros(T, promote_shape(size(rhs1), size(rhs2)))
+
+        @inline function $(Symbol(hidden_name))(rhs1::NDArray{T}, rhs2::NDArray{T}) where {T <: SUPPORTED_TYPES}
+            out = cuNumeric.zeros(T, size(rhs1)) # wrap cupynumeric broadcast_shape function??
             return nda_binary_op(out, $(op_code), rhs1, rhs2)
         end
+        
+        # With same types, no promotion
+        # @inline function $(Symbol(base_func))(rhs1::NDArray{T}, rhs2::NDArray{T}) where {T <: SUPPORTED_TYPES}
+        #     out = cuNumeric.zeros(T, promote_shape(size(rhs1), size(rhs2)))
+        #     return nda_binary_op(out, $(op_code), rhs1, rhs2)
+        # end
 
-        # # With un-matched types, promote to same type and call back to other function
-        @inline function $(Symbol(base_func))(rhs1::NDArray{A}, rhs2::NDArray{B}) where {A <: SUPPORTED_TYPES, B <: SUPPORTED_TYPES} 
-            T = __my_promote_type(A, B)
-            return  $(Symbol(base_func))(maybe_promote_arr(rhs1, T), maybe_promote_arr(rhs2, T))
-        end
+        # # # With un-matched types, promote to same type and call back to other function
+        # @inline function $(Symbol(base_func))(rhs1::NDArray{A}, rhs2::NDArray{B}) where {A <: SUPPORTED_TYPES, B <: SUPPORTED_TYPES} 
+        #     T = __my_promote_type(A, B)
+        #     return  $(Symbol(base_func))(maybe_promote_arr(rhs1, T), maybe_promote_arr(rhs2, T))
+        # end
 
         # @inline function $(Symbol(base_func))(arr::NDArray{T}, c::T) where T
         #     return $(Symbol(base_func))(arr, NDArray(c))
