@@ -47,14 +47,17 @@ A .^ 2
 #     #missing => cuNumeric.NEXTAFTER,
 #     Base.:(-) => cuNumeric.SUBTRACT)
 
-global const binary_op_map = Dict{Function, BinaryOpCode}(
+# Binary ops which are equivalent to Julia's broadcast syntax
+global const broadcasted_binary_op_map = Dict{Function, BinaryOpCode}(
     Base.:+ => cuNumeric.ADD,
     Base.:/ => cuNumeric.DIVIDE,
-    Base.:* => cuNumeric.MULTIPLY, 
+    Base.:* => cuNumeric.MULTIPLY,  #* ALSO DEFINE TO CALL mul!
     Base.:(-) => cuNumeric.SUBTRACT,
-    Base.:^ => cuNumeric.POWER,
+    Base.:(^) => cuNumeric.POWER, #* BREAKS FOR INTEGER POWERS
     # Base.:^ => cuNumeric.FLOAT_POWER, # DONT THINK THIS IS WHAT WE WANT
-    Base.hypot = cuNumeric.HYPOT,
+    Base.hypot => cuNumeric.HYPOT,
+    Base.max => cuNumeric.MAXIMUM,
+    Base.min => cuNumeric.MINIMUM,
 )
 
 
@@ -88,13 +91,12 @@ global const binary_op_map = Dict{Function, BinaryOpCode}(
 # )
 
 
-# Generate hidden functions for all binary operations.
-for (_, (op_code, hidden_name)) in binary_op_map
+# Generate hidden broadcast functions for binary ops
+for (julia_fn, op_code) in broadcasted_binary_op_map
     # Definitions and type promotion rules
     @eval begin
 
-        @inline function $(Symbol(hidden_name))(rhs1::NDArray{T}, rhs2::NDArray{T}) where {T <: SUPPORTED_TYPES}
-            out = cuNumeric.zeros(T, size(rhs1)) # wrap cupynumeric broadcast_shape function??
+        @inline function __broadcast(f::typeof($(julia_fn)), out::NDArray, rhs1::NDArray{T}, rhs2::NDArray{T}) where {T <: SUPPORTED_TYPES}
             return nda_binary_op(out, $(op_code), rhs1, rhs2)
         end
         
@@ -135,7 +137,7 @@ end
 # their operation whereas the generated functions should technically
 # only broadcast when the .() syntax is used
 function Base.map(f::Function, arr1::NDArray, arr2::NDArray)
-    return f(arr1, arr2) # Will try to call one of the functions generated above
+    return f.(arr1, arr2) # Will try to call one of the functions generated above
 end
 
 # function Base.map!(f::Function, dest::NDArray, arr1::NDArray, arr2::NDArray)

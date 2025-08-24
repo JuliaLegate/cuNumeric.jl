@@ -37,22 +37,42 @@ Base.similar(arr::NDArray, ::Type{T}) where T = similar(arr, T, size(arr))
 Base.similar(::Type{NDArray{T}}, axes) where T = cuNumeric.zeros(T, Base.to_shape.(axes))
 Base.similar(bc::Broadcasted{NDArrayStyle{N}}, ::Type{ElType}) where {N, ElType} = similar(NDArray{ElType}, axes(bc))
 
+
+"""
+For type promotion we follow Julia's rules, except when they would
+result in promotion to a double-precision type (Float64, Int64, ComplexF64).
+In these cases we throw an error, to avoid unintentional performance 
+degredation on GPU. Double precision is still supported, but the user
+must ensure all operations are explicitly typed to use double precision.
+"""
+
 maybe_promote_arr(arr::NDArray{T}, ::Type{T}) where T = arr
 maybe_promote_arr(arr::NDArray{T}, ::Type{S}) where {T,S} = as_type(arr, S)
 
 smaller_type(::Type{A}, ::Type{B}) where {A,B} = ifelse(sizeof(A) < sizeof(B), A, B)
-same_size(::Type{A}, ::Type{B}) where {A,B} = sizeof(A) == sizeof(B)
 
-__my_promote_type(::Type{Tuple{A, B}}) where {A,B} = __my_promote_type(A, B)
+const DOUBLE_PRECISION_TYPES = Union{Float64, Int64, ComplexF64}
 
-function __my_promote_type(::Type{A}, ::Type{B}) where {A, B}
-    T = promote_type(A, B)
-    same_size(A, B) && return T
-    S = smaller_type(A, B)
-    S != T && error("Detected promotion from $S to larger type, $T")
+promoting_to_double(::Type{A}, ::Type{B}) where {A <: DOUBLE_PRECISION_TYPES, B <: DOUBLE_PRECISION_TYPES} = false
+promoting_to_double(::Type{A}, ::Type{B}) where {A <: DOUBLE_PRECISION_TYPES, B} = true
+promoting_to_double(::Type{A}, ::Type{B}) where {A, B <: DOUBLE_PRECISION_TYPES} = true
+promoting_to_double(::Type{A}, ::Type{B}) where {A,B} = false
+
+__checked_promote_op(op, ::Type{Tuple{A}}) where A = __checked_promote_op(op, A)
+__checked_promote_op(op, ::Type{Tuple{A, B}}) where {A,B} = __checked_promote_op(op, A, B)
+
+function __checked_promote_op(op, ::Type{A}) where A
+    T = Base.promote_op(op, A)
+    promoting_to_double(A, T) && error("Detected promotion from $A to double type, $T for operation $op")
     return T
 end
 
+function __checked_promote_op(op, ::Type{A}, ::Type{B}) where {A, B}
+    T = Base.promote_op(op, A, B)
+    S = smaller_type(A, B)
+    promoting_to_double(S, T) && error("Detected promotion from $S to double type, $T for operation $op")
+    return T
+end
 
 function __broadcast(f::Function, _, args...)
     error(
@@ -64,18 +84,6 @@ function __broadcast(f::Function, _, args...)
     )
 end
 
-@inline function __broadcast(f::typeof(+), out::NDArray{T}, rhs1::NDArray{T}, rhs2::NDArray{T}) where {T <: SUPPORTED_TYPES}
-    return nda_binary_op(out, cuNumeric.ADD, rhs1, rhs2)
-end
-
-@inline function __broadcast(f::typeof(*), out::NDArray{T}, rhs1::NDArray{T}, rhs2::NDArray{T}) where {T <: SUPPORTED_TYPES}
-    return nda_binary_op(out, cuNumeric.MULTIPLY, rhs1, rhs2)
-end
-
-@inline function __broadcast(f::typeof(Base.sin), out::NDArray{T}, arr::NDArray{T}) where {T <: SUPPORTED_TYPES}
-    return nda_unary_op(out, cuNumeric.SIN, arr)
-end
-
 function Base.Broadcast.materialize(bc::Broadcasted{<:NDArrayStyle})
 
     ElType = Broadcast.combine_eltypes(bc.f, bc.args)
@@ -84,12 +92,17 @@ function Base.Broadcast.materialize(bc::Broadcasted{<:NDArrayStyle})
     end
 
     #* This be the place to inject kernel fusion via CUDA.jl
+    #* Use the function in Base.Broadcast.flatten(bc).
+    #* How can we check all the funcs in this expr 
+    #* are supported by CUDA?
+    println(bc)
     return unravel_broadcast_tree(bc)
 end
 
 # Recursion base cases
 __materialize(x::NDArray) = x
 __materialize(x::Number) = NDArray(x)
+__materialize(x) = error("Cannot broadcast NDArray with: $(typeof(x))")
 
 function __materialize(bc::Broadcasted{<:NDArrayStyle})
     bc = Base.Broadcast.instantiate(bc)
@@ -105,12 +118,13 @@ function unravel_broadcast_tree(bc::Broadcasted)
     materialized_args = __materialize.(bc.args)
 
     # Handle type promotion
-    eltypes = Base.Broadcast.eltypes(bc.args)
-    T = __my_promote_type(eltypes)
-    in_args = maybe_promote_arr.(materialized_args, T)
+    eltypes = Base.Broadcast.eltypes(bc.args) 
+    T_OUT = __checked_promote_op(bc.f, eltypes) # type of output array
+    T_IN = promote_type(eltypes.parameters...) # type input arrays are promoted to
+    in_args = maybe_promote_arr.(materialized_args, T_IN)
 
     # Allocate output array of proper size/type
-    out = similar(NDArray{T}, axes(bc))
+    out = similar(NDArray{T_OUT}, axes(bc))
 
     # If the operation, "bc.f",  is supported by cuNumeric, this
     # dispatches to a function calling the C-API. 

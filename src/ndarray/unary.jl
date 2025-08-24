@@ -79,7 +79,7 @@ global const unary_op_map_no_args = Dict{Union{Function,Symbol},UnaryOpCode}(
     Base.log2 => cuNumeric.LOG2,
     # Base.:! => cuNumeric.LOGICAL_NOT, #* makes testing annoying
     # Base.modf => cuNumeric.MODF, #* makes testing annoying
-    Base.:- => cuNumeric.NEGATIVE,
+    Base.:- => cuNumeric.NEGATIVE, #* NEED TO IMPLEMENT AS NON-BROADCASTING AS WELL
     #missing => cuNumeric.POSITIVE, #What is this even for
     Base.rad2deg => cuNumeric.RAD2DEG,
     # Base.sign => cuNumeric.SIGN, #* makes testing annoying
@@ -99,11 +99,10 @@ Elementwise square of each element in `arr`.
 """
 function square end
 
-# Generate code for all unary operators
-for (base_func, op_code) in unary_op_map_no_args
+# Generate hidden broadcasted version of unary ops.
+for (julia_fn, op_code) in unary_op_map_no_args
     @eval begin
-        function $(Symbol(base_func))(input::NDArray{T}) where T
-            out = cuNumeric.zeros(T, Base.size(input)) #! not sure this is ok for performance
+        function __broadcast(f::typeof($julia_fn), out::NDArray, input::NDArray{T}) where {T <: SUPPORTED_TYPES}
             return nda_unary_op(out, $(op_code), input)
         end
     end
@@ -200,7 +199,7 @@ end
 #* TODO Overload broadcasting to just call this
 #* e.g. sin.(ndarray) should call this or the proper generated func
 function Base.map(f::Function, arr::NDArray)
-    return f(arr) # Will try to call one of the functions generated above
+    return f.(arr) # Will try to call one of the functions generated above
 end
 
 # function get_unary_op(f::Function)
