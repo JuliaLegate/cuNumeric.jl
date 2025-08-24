@@ -9,7 +9,7 @@ Base.BroadcastStyle(::Type{<:NDArray{<:Any, N}}) where N = NDArrayStyle{N}()
 Base.BroadcastStyle(::NDArrayStyle{N}, ::NDArrayStyle{M}) where {N,M} = NDArrayStyle{max(N,M)}()
 
 _nd_forbid_mix() = throw(ArgumentError(
-    "Broadcast between NDArray and regular arrays is not supported. " *
+    "Broadcast between NDArray and other array types is not supported. " *
     "Convert explicitly to a single array type before broadcasting."
 ))
 
@@ -47,7 +47,11 @@ must ensure all operations are explicitly typed to use double precision.
 """
 
 maybe_promote_arr(arr::NDArray{T}, ::Type{T}) where T = arr
-maybe_promote_arr(arr::NDArray{T}, ::Type{S}) where {T,S} = as_type(arr, S)
+maybe_promote_arr(arr::NDArray{T}, ::Type{S}) where {T, S} = as_type(arr, S)
+
+# kinda hacky, but lets us support weird cases like broadcasted literal_pow
+maybe_promote_arr(::Base.RefValue{typeof(^)}, ::Type{T}) where T = typeof(Base.:(^))
+maybe_promote_arr(::Base.RefValue{Val{V}}, ::Type{T}) where {T, V} = Val{V}
 
 smaller_type(::Type{A}, ::Type{B}) where {A,B} = ifelse(sizeof(A) < sizeof(B), A, B)
 
@@ -61,18 +65,35 @@ promoting_to_double(::Type{A}, ::Type{B}) where {A,B} = false
 __checked_promote_op(op, ::Type{Tuple{A}}) where A = __checked_promote_op(op, A)
 __checked_promote_op(op, ::Type{Tuple{A, B}}) where {A,B} = __checked_promote_op(op, A, B)
 
-function __checked_promote_op(op, ::Type{A}) where A
+# Special case for NDArray to literal integer powers
+# Julia treats these special to optimize things like x ^ 2 and x ^ -1
+@inline function __checked_promote_op(op::typeof(Base.literal_pow), ::Type{Tuple{_, ARR_TYPE, Val{POWER}}}) where {_, ARR_TYPE, POWER} 
+    return __checked_promote_op(Base.:(^), ARR_TYPE, typeof(POWER))
+end
+
+@inline function __checked_promote_op(op, ::Type{A}) where A
     T = Base.promote_op(op, A)
     promoting_to_double(A, T) && error("Detected promotion from $A to double type, $T for operation $op")
     return T
 end
 
-function __checked_promote_op(op, ::Type{A}, ::Type{B}) where {A, B}
+@inline function __checked_promote_op(op, ::Type{A}, ::Type{B}) where {A, B}
     T = Base.promote_op(op, A, B)
     S = smaller_type(A, B)
     promoting_to_double(S, T) && error("Detected promotion from $S to double type, $T for operation $op")
     return T
 end
+
+@inline function __my_promote_type(::Type{A}, ::Type{B}) where {A,B}
+    T = promote_type(A, B)
+    S = smaller_type(A, B)
+    promoting_to_double(S, T) && error("Detected promotion from $S to double type, $T")
+    return T
+end
+
+# Support broadcastign with literal integer powers
+__my_promote_type2(::Type{typeof(^)}, ::Type{A}, ::Type{Val{V}}) where {A, V} = promote_type(A, typeof(V))
+__my_promote_type2(::Type{A}, ::Type{B}) where {A, B} = promote_type(A, B)
 
 function __broadcast(f::Function, _, args...)
     error(
@@ -85,7 +106,6 @@ function __broadcast(f::Function, _, args...)
 end
 
 function Base.Broadcast.materialize(bc::Broadcasted{<:NDArrayStyle})
-
     ElType = Broadcast.combine_eltypes(bc.f, bc.args)
     if ElType == Union{} || !Base.allocatedinline(ElType)
         error("Cannot broadcast over types: $(eltype.(bc.args))")
@@ -102,12 +122,21 @@ end
 # Recursion base cases
 __materialize(x::NDArray) = x
 __materialize(x::Number) = NDArray(x)
-__materialize(x) = error("Cannot broadcast NDArray with: $(typeof(x))")
+
+# These two are necessary to handle integer powers
+__materialize(x::Base.RefValue{typeof(^)}) = x
+__materialize(x::Base.RefValue{Val{-1}}) = x # enables specialized reciprocal definition
+__materialize(x::Base.RefValue{Val{2}}) = x # enables specialized square definition
+__materialize(x::Base.RefValue{Val{V}}) where V = NDArray(V) # Use binary_op POWER for other literal powers
+
+# Catch unknown things...
+__materialize(x) = error("Unrecognized leaf in broadcast expression: $(x)")
 
 function __materialize(bc::Broadcasted{<:NDArrayStyle})
     bc = Base.Broadcast.instantiate(bc)
     unravel_broadcast_tree(bc)
 end
+
 
 function unravel_broadcast_tree(bc::Broadcasted)
     
@@ -120,8 +149,7 @@ function unravel_broadcast_tree(bc::Broadcasted)
     # Handle type promotion
     eltypes = Base.Broadcast.eltypes(bc.args) 
     T_OUT = __checked_promote_op(bc.f, eltypes) # type of output array
-    #! BNREAKS FOR SIN WITH INT
-    T_IN = promote_type(eltypes.parameters...) # type input arrays are promoted to
+    T_IN = __my_promote_type2(eltypes.parameters...) # type input arrays are promoted to
     in_args = maybe_promote_arr.(materialized_args, T_IN)
 
     # Allocate output array of proper size/type
@@ -133,4 +161,11 @@ function unravel_broadcast_tree(bc::Broadcasted)
     # the Julia function and assumes the user defined a function
     # composed of supported operations. 
     return __broadcast(bc.f, out, in_args...)
+end
+
+# Support .= 
+function Base.copyto!(dest::NDArray, bc::Broadcasted{<:NDArrayStyle})
+    #! Any way to avoid the extra NDArray allocation? 
+    #! materialize also allocates an output array.
+    return copyto!(dest, Base.Broadcast.materialize(bc))
 end

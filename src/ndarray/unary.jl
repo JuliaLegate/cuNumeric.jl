@@ -92,6 +92,7 @@ global const unary_op_map_no_args = Dict(
     #missing => cuNumeric.POSITIVE, #What is this even for
     # Base.sign => cuNumeric.SIGN, #* makes testing annoying
     # Base.signbit => cuNumeric.SIGNBIT, #* makes testing annoying
+    #RECIPROCAL  = cuNumeric.CUPYNUMERIC_UOP_RECIPROCAL # define with -1 powers
 )
 
 
@@ -120,7 +121,7 @@ end
 # Generate hidden broadcasted version of unary ops.
 for (julia_fn, op_code) in unary_op_map_no_args
     @eval begin
-        function __broadcast(f::typeof($julia_fn), out::NDArray, input::NDArray{T}) where {T <: SUPPORTED_TYPES}
+        @inline  function __broadcast(f::typeof($julia_fn), out::NDArray, input::NDArray{T}) where {T <: SUPPORTED_TYPES}
             return nda_unary_op(out, $(op_code), input)
         end
     end
@@ -131,11 +132,11 @@ end
 # the input is integer, we first promote the input to float.
 for (julia_fn, op_code) in floaty_unary_ops_no_args
     @eval begin
-        function __broadcast(f::typeof($julia_fn), out::NDArray{T}, input::NDArray{T}) where T
+        @inline  function __broadcast(f::typeof($julia_fn), out::NDArray{T}, input::NDArray{T}) where T
             return nda_unary_op(out, $(op_code), input)
         end
 
-        function __broadcast(f::typeof($julia_fn), out::NDArray{A}, input::NDArray{B}) where {A <: SUPPORTED_FLOAT_TYPES, B <: SUPPORTED_INT_TYPES}
+        @inline  function __broadcast(f::typeof($julia_fn), out::NDArray{A}, input::NDArray{B}) where {A <: SUPPORTED_FLOAT_TYPES, B <: SUPPORTED_INT_TYPES}
             return __broadcast(f, out, maybe_promote_arr(input, A))
         end
     end
@@ -205,16 +206,16 @@ global const unary_reduction_map = Dict{Function,UnaryRedCode}(
     Base.prod => cuNumeric.PROD,
     Base.sum => cuNumeric.SUM,
     #missing => cuNumeric.SUM_SQUARES,
-    #missing => cuNumeric.VARIANCE
+    #missing => cuNumeric.VARIANCE # requires StatsBase.
 )
 
 # #*TODO HOW TO GET THESE ACTING ON CERTAIN DIMS
 # Generate code for all unary reductions.
 for (base_func, op_code) in unary_reduction_map
     @eval begin
-        function $(Symbol(base_func))(input::NDArray)
+        function $(Symbol(base_func))(input::NDArray{T}) where {T <: SUPPORTED_TYPES}
             #* WILL BREAK NOT ALL REDUCTIONS HAVE SAME TYPE AS INPUT
-            out = cuNumeric.zeros(eltype(input), 1) # not sure this is ok for performance
+            out = cuNumeric.zeros(T, 1) #! RETURN 0D ARRAY?
             return nda_unary_reduction(out, $(op_code), input)
         end
     end

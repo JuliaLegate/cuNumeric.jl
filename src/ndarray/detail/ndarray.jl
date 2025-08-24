@@ -212,7 +212,7 @@ function nda_add_scalar(rhs1::NDArray{T, N}, value::T) where {T, N}
     return NDArray(ptr; T = T, n_dim = N)
 end
 
-function nda_three_dot_arg(rhs1::NDArray, rhs2::NDArray, out::NDArray)
+function nda_three_dot_arg(rhs1::NDArray{T}, rhs2::NDArray{T}, out::NDArray{T}) where T
     ccall((:nda_three_dot_arg, libnda),
         Cvoid, (NDArray_t, NDArray_t, NDArray_t),
         rhs1.ptr, rhs2.ptr, out.ptr)

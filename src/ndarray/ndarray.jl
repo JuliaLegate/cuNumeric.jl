@@ -109,6 +109,11 @@ Base.view(arr::NDArray, inds...) = arr[inds...] # NDArray slices are views by de
 
 Base.IndexStyle(::NDArray) = IndexCartesian()
 
+# function Base.show(io::IO, arr::NDArray{T, 0}) where T
+#     dim = Base.size(arr)
+#     print(io, "NDArray of $(T)s, Dim: $(dim)")
+# end
+
 function Base.show(io::IO, arr::NDArray{T}) where T
     dim = Base.size(arr)
     print(io, "NDArray of $(T)s, Dim: $(dim)")
@@ -442,68 +447,6 @@ function reshape(arr::NDArray, i::Int64; copy::Bool=false)
 end
 
 
-#* Can't overload += in Julia, this should be called by .+= 
-#* to maintain some semblence native Julia array syntax
-# See https://docs.julialang.org/en/v1/manual/interfaces/#extending-in-place-broadcast-2
-
-@doc"""
-    add!(out::NDArray, arr1::NDArray, arr2::NDArray)
-
-Compute element-wise addition of `arr1` and `arr2` storing the result in `out`.
-
-This is an in-place operation and is used to support `.+=` style syntax.
-
-# Examples
-```@repl
-a = cuNumeric.ones(2, 2)
-b = cuNumeric.ones(2, 2)
-out = similar(a)
-add!(out, a, b)
-```
-"""
-function add!(out::NDArray, arr1::NDArray, arr2::NDArray)
-    return nda_add(arr1, arr2, out)
-end
-
-@doc"""
-    multiply!(out::NDArray, arr1::NDArray, arr2::NDArray)
-
-Compute element-wise multiplication of `arr1` and `arr2`, storing the result in `out`.
-
-This function performs the operation in-place, modifying `out`.
-
-# Examples
-```@repl
-a = cuNumeric.ones(2, 2)
-b = cuNumeric.ones(2, 2)
-out = similar(a)
-multiply!(out, a, b)
-```
-"""
-function multiply!(out::NDArray, arr1::NDArray, arr2::NDArray)
-    return nda_multiply(arr1, arr2, out)
-end
-
-@doc"""
-    LinearAlgebra.mul!(out::NDArray, arr1::NDArray, arr2::NDArray)
-
-Compute the matrix multiplication (dot product) of `arr1` and `arr2`, storing the result in `out`.
-
-This function performs the operation in-place, modifying `out`.
-
-# Examples
-```@repl
-a = cuNumeric.ones(2, 3)
-b = cuNumeric.ones(3, 2)
-out = cuNumeric.zeros(2, 2)
-LinearAlgebra.mul!(out, a, b)
-```
-"""
-function LinearAlgebra.mul!(out::NDArray{T, 2}, arr1::NDArray{T, 2}, arr2::NDArray{T, 2}) where T
-    #! TODO: Support type promotion
-    return nda_three_dot_arg(arr1, arr2, out)
-end
-
 @doc"""
     Base.copy(arr::NDArray)
 
@@ -522,7 +465,7 @@ function Base.copy(arr::NDArray)
 end
 
 @doc"""
-    assign(arr::NDArray, other::NDArray)
+    copyto!(arr::NDArray, other::NDArray)
 
 Assign the contents of `other` to `arr` element-wise.
 
