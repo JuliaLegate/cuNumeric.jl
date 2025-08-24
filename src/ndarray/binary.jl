@@ -47,10 +47,16 @@ A .^ 2
 #     #missing => cuNumeric.NEXTAFTER,
 #     Base.:(-) => cuNumeric.SUBTRACT)
 
-global const binary_op_map = Dict{Function,Tuple{BinaryOpCode, Symbol}}(
-    Base.:+ => (cuNumeric.ADD, :__binop_elwise_add),
-    Base.:* => (cuNumeric.MULTIPLY, :__binop_elwise_mul)
+global const binary_op_map = Dict{Function, BinaryOpCode}(
+    Base.:+ => cuNumeric.ADD,
+    Base.:/ => cuNumeric.DIVIDE,
+    Base.:* => cuNumeric.MULTIPLY, 
+    Base.:(-) => cuNumeric.SUBTRACT,
+    Base.:^ => cuNumeric.POWER,
+    # Base.:^ => cuNumeric.FLOAT_POWER, # DONT THINK THIS IS WHAT WE WANT
+    Base.hypot = cuNumeric.HYPOT,
 )
+
 
 # # Functions which allow any of the supported types as input
 # # Last value in tuple is the return type
