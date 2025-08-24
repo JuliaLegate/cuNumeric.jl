@@ -54,7 +54,15 @@ function __my_promote_type(::Type{A}, ::Type{B}) where {A, B}
 end
 
 
-__maybe_apply(f::Function, args...) = f(args...)
+function __maybe_apply(f::Function, _, args...)
+    error(
+        """
+        cuNumeric.jl does not support broadcasting user-defined functions yet. Please re-define \
+        functions to match supported patterns. For example g(x) = x + 1 could be re-defined as \
+        broadcast_g(x::NDArray) = x .+ 1. This can make the intention of code opaque to the reader, \
+        but it is necessary until support is added."""
+    )
+end
 
 @inline function __maybe_apply(f::typeof(+), out::NDArray{T}, rhs1::NDArray{T}, rhs2::NDArray{T}) where {T <: SUPPORTED_TYPES}
     return nda_binary_op(out, cuNumeric.ADD, rhs1, rhs2)
