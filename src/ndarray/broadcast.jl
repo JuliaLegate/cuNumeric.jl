@@ -95,7 +95,7 @@ function Base.Broadcast.materialize(bc::Broadcasted{<:NDArrayStyle})
     #* Use the function in Base.Broadcast.flatten(bc).
     #* How can we check all the funcs in this expr 
     #* are supported by CUDA?
-    println(bc)
+
     return unravel_broadcast_tree(bc)
 end
 
@@ -120,6 +120,7 @@ function unravel_broadcast_tree(bc::Broadcasted)
     # Handle type promotion
     eltypes = Base.Broadcast.eltypes(bc.args) 
     T_OUT = __checked_promote_op(bc.f, eltypes) # type of output array
+    #! BNREAKS FOR SIN WITH INT
     T_IN = promote_type(eltypes.parameters...) # type input arrays are promoted to
     in_args = maybe_promote_arr.(materialized_args, T_IN)
 

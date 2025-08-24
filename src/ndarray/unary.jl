@@ -48,62 +48,95 @@ log.(A .+ 1)
 square(A)
 ```
 """
-global const unary_op_map_no_args = Dict{Union{Function,Symbol},UnaryOpCode}(
+global const floaty_unary_ops_no_args = Dict{Function, UnaryOpCode}(
     Base.abs => cuNumeric.ABSOLUTE,
     Base.acos => cuNumeric.ARCCOS,
-    # Base.acosh => cuNumeric.ARCCOSH, #* makes testing annoying
+    Base.acosh => cuNumeric.ARCCOSH,
     Base.asin => cuNumeric.ARCSIN,
     Base.asinh => cuNumeric.ARCSINH,
     Base.atan => cuNumeric.ARCTAN,
     Base.atanh => cuNumeric.ARCTANH,
     Base.cbrt => cuNumeric.CBRT,
-    Base.conj => cuNumeric.CONJ,
-    # missing => cuNumeric.COPY, # SAME AS ASSIGN DONT NEED, OR COULD HARD CODE TO USE
     Base.cos => cuNumeric.COS,
     Base.cosh => cuNumeric.COSH,
     Base.deg2rad => cuNumeric.DEG2RAD,
     Base.exp => cuNumeric.EXP,
     Base.exp2 => cuNumeric.EXP2,
     Base.expm1 => cuNumeric.EXPM1,
-    Base.floor => cuNumeric.FLOOR,
-    # Base.frexp => cuNumeric.FREXP, #* makes testing annoying
-    #missing => cuNumeric.GETARG, #not in numpy?
-    # Base.imag => cuNumeric.IMAG, #* makes testing annoying
-    #missing => cuNumerit.INVERT, # 1/x or inv(A)?
-    # Base.isfinite => cuNumeric.ISFINITE, #* makes testing annoying
-    # Base.isinf => cuNumeric.ISINF, #* makes testing annoying
-    # Base.isnan => cuNumeric.ISNAN, #* makes testing annoying
     Base.log => cuNumeric.LOG,
     Base.log10 => cuNumeric.LOG10,
     Base.log1p => cuNumeric.LOG1P,
     Base.log2 => cuNumeric.LOG2,
-    # Base.:! => cuNumeric.LOGICAL_NOT, #* makes testing annoying
-    # Base.modf => cuNumeric.MODF, #* makes testing annoying
-    Base.:- => cuNumeric.NEGATIVE, #* NEED TO IMPLEMENT AS NON-BROADCASTING AS WELL
-    #missing => cuNumeric.POSITIVE, #What is this even for
     Base.rad2deg => cuNumeric.RAD2DEG,
-    # Base.sign => cuNumeric.SIGN, #* makes testing annoying
-    # Base.signbit => cuNumeric.SIGNBIT, #* makes testing annoying
     Base.sin => cuNumeric.SIN,
     Base.sinh => cuNumeric.SINH,
     Base.sqrt => cuNumeric.SQRT,  # HAS SPECIAL MEANING FOR MATRIX
-    :square => cuNumeric.SQUARE,
     Base.tan => cuNumeric.TAN,
     Base.tanh => cuNumeric.TANH,
 )
+
+global const unary_op_map_no_args = Dict(
+    Base.abs => cuNumeric.ABSOLUTE,
+    Base.conj => cuNumeric.CONJ,
+    Base.floor => cuNumeric.FLOOR,
+    Base.:(-) => cuNumeric.NEGATIVE,
+    # Base.frexp => cuNumeric.FREXP, #* makes testing annoying
+    #missing => cuNumeric.GETARG, #not in numpy?
+    # Base.imag => cuNumeric.IMAG, #* makes testing annoying
+    #missing => cuNumerit.INVERT, # no bitwise not in julia?
+    # Base.isfinite => cuNumeric.ISFINITE, #* makes testing annoying
+    # Base.isinf => cuNumeric.ISINF, #* makes testing annoying
+    # Base.isnan => cuNumeric.ISNAN, #* makes testing annoying
+    # Base.:! => cuNumeric.LOGICAL_NOT, #* makes testing annoying
+    # Base.modf => cuNumeric.MODF, #* makes testing annoying
+    #missing => cuNumeric.POSITIVE, #What is this even for
+    # Base.sign => cuNumeric.SIGN, #* makes testing annoying
+    # Base.signbit => cuNumeric.SIGNBIT, #* makes testing annoying
+)
+
+
+### SPECIAL CASES ###
+
+# Non-broadcasted version of negation
+function Base.:(-)(input::NDArray{T}) where {T <: SUPPORTED_TYPES}
+    out = cuNumeric.zeros(T, size(input))
+    return nda_unary_op(out, cuNumeric.NEGATIVE, input)
+end
+
+function Base.sqrt(input::NDArray{T,2}) where {T <: SUPPORTED_TYPES}
+    error("cuNumeric.jl does not support matrix square root.")
+end
 
 @doc"""
     square(arr::NDArray)
 
 Elementwise square of each element in `arr`. 
 """
-function square end
+function square(input::NDArray{T}) where {T <: SUPPORTED_TYPES}
+    out = cuNumeric.zeros(T, size(input))
+    return nda_unary_op(out, cuNumeric.SQUARE, input)
+end
 
 # Generate hidden broadcasted version of unary ops.
 for (julia_fn, op_code) in unary_op_map_no_args
     @eval begin
         function __broadcast(f::typeof($julia_fn), out::NDArray, input::NDArray{T}) where {T <: SUPPORTED_TYPES}
             return nda_unary_op(out, $(op_code), input)
+        end
+    end
+end
+
+# Some functions always return floats even when given integers
+# in the case where the output is determined to be float, but 
+# the input is integer, we first promote the input to float.
+for (julia_fn, op_code) in floaty_unary_ops_no_args
+    @eval begin
+        function __broadcast(f::typeof($julia_fn), out::NDArray{T}, input::NDArray{T}) where T
+            return nda_unary_op(out, $(op_code), input)
+        end
+
+        function __broadcast(f::typeof($julia_fn), out::NDArray{A}, input::NDArray{B}) where {A <: SUPPORTED_FLOAT_TYPES, B <: SUPPORTED_INT_TYPES}
+            return __broadcast(f, out, maybe_promote_arr(input, A))
         end
     end
 end
