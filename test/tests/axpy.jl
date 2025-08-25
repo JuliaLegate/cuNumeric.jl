@@ -24,30 +24,32 @@
     --          shows both [i, j] and [(i, j)] working
     -- NDArray addition and multiplication
 =#
-function daxpy_basic()
+function axpy_basic()
+
     N = 100
-    α = Float64(56.6)
-    dims = (N, N)
+    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)
+        α = T(56.6)
+        dims = (N, N)
 
-    # Base julia arrays
-    x_cpu = rand(Float64, dims);
-    y_cpu = rand(Float64, dims);
+        # Base julia arrays
+        x_cpu = rand(T, dims);
+        y_cpu = rand(T, dims);
 
-    # cunumeric arrays
-    x = cuNumeric.zeros(Float64, dims)
-    y = cuNumeric.zeros(Float64, dims)
+        # cunumeric arrays
+        x = cuNumeric.zeros(T, dims)
+        y = cuNumeric.zeros(T, dims)
 
-    # Initialize NDArrays with random values
-    for i in 1:N
-        for j in 1:N
-            # set cunumeric.jl arrays
-            x[i, j] = x_cpu[i, j]
-            y[i, j] = y_cpu[i, j]
+        # Initialize NDArrays with same random values as julia arrays
+        for i in 1:N
+            for j in 1:N
+                x[i, j] = x_cpu[i, j]
+                y[i, j] = y_cpu[i, j]
+            end
         end
-    end
 
-    result = α * x + y
-    result_cpu = α .* x_cpu .+ y_cpu
-    @test result == result_cpu
-    @test result_cpu == result
+        result = α .* x .+ y
+        result_cpu = α .* x_cpu .+ y_cpu
+        @test cuNumeric.compare(result, result_cpu, atol(T), rtol(T))
+        @test cuNumeric.compare(result_cpu, result, atol(T), rtol(T))
+    end
 end

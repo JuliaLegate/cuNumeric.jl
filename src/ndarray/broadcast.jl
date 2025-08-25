@@ -49,7 +49,7 @@ must ensure all operations are explicitly typed to use double precision.
 maybe_promote_arr(arr::NDArray{T}, ::Type{T}) where T = arr
 maybe_promote_arr(arr::NDArray{T}, ::Type{S}) where {T, S} = as_type(arr, S)
 
-# kinda hacky, but lets us support weird cases like broadcasted literal_pow
+# kinda hacky, but lets us support weird cases like broadcasting literal_pow
 maybe_promote_arr(::Base.RefValue{typeof(^)}, ::Type{T}) where T = typeof(Base.:(^))
 maybe_promote_arr(::Base.RefValue{Val{V}}, ::Type{T}) where {T, V} = Val{V}
 
@@ -94,6 +94,7 @@ end
 # Support broadcastign with literal integer powers
 __my_promote_type2(::Type{typeof(^)}, ::Type{A}, ::Type{Val{V}}) where {A, V} = promote_type(A, typeof(V))
 __my_promote_type2(::Type{A}, ::Type{B}) where {A, B} = promote_type(A, B)
+__my_promote_type2(::Type{A}) where A = A
 
 function __broadcast(f::Function, _, args...)
     error(
@@ -123,7 +124,7 @@ end
 __materialize(x::NDArray) = x
 __materialize(x::Number) = NDArray(x)
 
-# These two are necessary to handle integer powers
+# These are necessary to handle integer powers
 __materialize(x::Base.RefValue{typeof(^)}) = x
 __materialize(x::Base.RefValue{Val{-1}}) = x # enables specialized reciprocal definition
 __materialize(x::Base.RefValue{Val{2}}) = x # enables specialized square definition

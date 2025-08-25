@@ -17,6 +17,41 @@
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 
+
+@doc"""
+    Base.copy(arr::NDArray)
+
+Create and return a deep copy of the given `NDArray`.
+
+# Examples
+```@repl
+a = cuNumeric.ones(2, 2)
+b = copy(a)
+b === a
+b[1,1] == a[1,1]
+```
+"""
+Base.copy(arr::NDArray) = nda_copy(arr)
+
+
+@doc"""
+    copyto!(arr::NDArray, other::NDArray)
+
+Assign the contents of `other` to `arr` element-wise.
+
+This function overwrites the data in `arr` with the values from `other`.  
+Both arrays must have the same shape.
+
+# Examples
+```@repl
+a = cuNumeric.zeros(2, 2)
+b = cuNumeric.ones(2, 2)
+copyto!(a, b);
+a[1,1]
+```
+"""
+Base.copyto!(arr::NDArray{T,N}, other::NDArray{T,N}) where {T,N} = nda_assign(arr, other)
+
 @doc"""
     as_type(arr::NDArray, t::Type{T}) where {T}
 
@@ -35,7 +70,12 @@ arr = cuNumeric.rand(4, 5);
 as_type(arr, Float32)
 ```
 """
-as_type(arr::NDArray, t::Type{T}) where {T} = nda_astype(arr, t)
+as_type(arr::NDArray, ::Type{T}) where T = nda_astype(arr, T)::NDArray{T}
+
+Base.convert(::Type{<:NDArray{T}}, a::A) where {T, A} = NDArray(T(a))::NDArray{T}
+Base.convert(::Type{T}, a::T) where {T <: NDArray} = a
+Base.convert(::Type{NDArray{T}}, a::NDArray) where {T} = as_type(copy(a), T)
+Base.convert(::Type{NDArray{T,N}}, a::NDArray{<:Any,N}) where {T,N} = as_type(copy(a), T)
 
 #### ARRAY/INDEXING INTERFACE ####
 # https://docs.julialang.org/en/v1/manual/interfaces/#Indexing
@@ -311,9 +351,9 @@ Create an `NDArray` filled with the true, with the shape specified by `dims`.
 cuNumeric.trues(2, 3)
 ```
 """
-# trues(dim::Int) = cuNumeric.full(dim, true)
-# trues(dims::Dims) = cuNumeric.full(dims, true)
-# trues(dims::Int...) = cuNumeric.full(dims, true)
+trues(dim::Int) = cuNumeric.full(dim, true)
+trues(dims::Dims) = cuNumeric.full(dims, true)
+trues(dims::Int...) = cuNumeric.full(dims, true)
 
 @doc"""
     cuNumeric.falses(dims::Tuple, val)
@@ -327,9 +367,9 @@ Create an `NDArray` filled with the false, with the shape specified by `dims`.
 cuNumeric.falses(2, 3)
 ```
 """
-# falses(dim::Int) = cuNumeric.full(dim, false)
-# falses(dims::Dims) = cuNumeric.full(dims, false)
-# falses(dims::Int...) = cuNumeric.full(dims, false)
+falses(dim::Int) = cuNumeric.full(dim, false)
+falses(dims::Dims) = cuNumeric.full(dims, false)
+falses(dims::Int...) = cuNumeric.full(dims, false)
 
 @doc"""
     cuNumeric.zeros([T=Float32,] dims::Int...)
@@ -446,41 +486,6 @@ function reshape(arr::NDArray, i::Int64; copy::Bool=false)
     return copy ? copy(reshaped) : reshaped
 end
 
-
-@doc"""
-    Base.copy(arr::NDArray)
-
-Create and return a deep copy of the given `NDArray`.
-
-# Examples
-```@repl
-a = cuNumeric.ones(2, 2)
-b = copy(a)
-b === a
-b[1,1] == a[1,1]
-```
-"""
-function Base.copy(arr::NDArray)
-    return nda_copy(arr)
-end
-
-@doc"""
-    copyto!(arr::NDArray, other::NDArray)
-
-Assign the contents of `other` to `arr` element-wise.
-
-This function overwrites the data in `arr` with the values from `other`.  
-Both arrays must have the same shape.
-
-# Examples
-```@repl
-a = cuNumeric.zeros(2, 2)
-b = cuNumeric.ones(2, 2)
-copyto!(a, b);
-a[1,1]
-```
-"""
-Base.copyto!(arr::NDArray{T,N}, other::NDArray{T,N}) where {T,N} = nda_assign(arr, other)
 
 @doc"""
     ==(arr1::NDArray, arr2::NDArray)
@@ -602,13 +607,14 @@ isapprox(julia_arr, arr2)
 ```
 """
 function Base.isapprox(julia_array::AbstractArray, arr::NDArray; atol=0, rtol=0)
-    return compare(julia_array, arr, atol)
+    #! REPLCE THIS WITH BIN_OP isapprox
+    return compare(julia_array, arr, atol, rtol)
 end
 
 function Base.isapprox(arr::NDArray, julia_array::AbstractArray; atol=0, rtol=0)
-    return compare(julia_array, arr, atol)
+    return compare(julia_array, arr, atol, rtol)
 end
 
 function Base.isapprox(arr::NDArray, arr2::NDArray; atol=0, rtol=0)
-    return compare(arr, arr2, atol)
+    return compare(arr, arr2, atol, rtol)
 end

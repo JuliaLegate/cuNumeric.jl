@@ -4,7 +4,7 @@ export square
 Supported Unary Operations
 ===========================
 
-The following unary operations are supported and can be applied directly to `NDArray` values:
+The following unary operations are supported and can be broadcast over `NDArray`:
 
   - `abs`
   - `acos`
@@ -30,22 +30,19 @@ The following unary operations are supported and can be applied directly to `NDA
   - `sin`
   - `sinh`
   - `sqrt`
-  - `square`
   - `tan`
   - `tanh`
 
-These operations are applied elementwise by default and follow standard Julia semantics.
 
 Examples
 --------
 
 ```julia
-A = NDArray(randn(Float32, 3, 3))
+A = cuNumeric.ones(Float32, 3, 3)
 
-abs(A)
+abs.(A)
 log.(A .+ 1)
--sqrt(abs(A))
-square(A)
+-sqrt.(abs.(A))
 ```
 """
 global const floaty_unary_ops_no_args = Dict{Function, UnaryOpCode}(
@@ -108,15 +105,27 @@ function Base.sqrt(input::NDArray{T,2}) where {T <: SUPPORTED_TYPES}
     error("cuNumeric.jl does not support matrix square root.")
 end
 
-@doc"""
-    square(arr::NDArray)
-
-Elementwise square of each element in `arr`. 
-"""
-function square(input::NDArray{T}) where {T <: SUPPORTED_TYPES}
-    out = cuNumeric.zeros(T, size(input))
+# technically unary op
+@inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, ::Type{Val{2}}) where {T <: SUPPORTED_TYPES}
     return nda_unary_op(out, cuNumeric.SQUARE, input)
 end
+
+# technically unary op
+@inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, ::Type{Val{-1}}) where {T <: SUPPORTED_TYPES}
+    return nda_unary_op(out, cuNumeric.RECIPROCAL, input)
+end
+
+
+#! NEEDS TO SUPPORT inv and ^ -1
+# @inline function literal_pow(::typeof(^), A::NDArray{T, 2}, ::Val{-1}) where T
+#     println("HERE")
+#     #! CAN WE ADD OPTIMIZATION FOR DIAGONAL MATRIX???
+#     LinearAlgebra.checksquare(A)
+#     out = cuNumeric.zeros(T, size(A))
+#     error("Matrix inverse not supported yet")
+#     # return nda_matrix_power(out, A, -1)
+# end
+
 
 # Generate hidden broadcasted version of unary ops.
 for (julia_fn, op_code) in unary_op_map_no_args

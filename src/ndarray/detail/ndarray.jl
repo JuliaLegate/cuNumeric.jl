@@ -346,7 +346,7 @@ Emits warnings when array sizes or element types differ.
 - Checks element type compatibility for `NDArray` vs Julia array.
 - Iterates over elements using `CartesianIndices` to compare element-wise difference.
 """
-function compare(julia_array::AbstractArray, arr::NDArray, max_diff)
+function compare(julia_array::AbstractArray, arr::NDArray, atol::Real, rtol::Real)
     if (shape(arr) != Base.size(julia_array))
         @warn "NDArray has shape $(shape(arr)) and Julia array has shape $(Base.size(julia_array))!\n"
         return false
@@ -358,7 +358,8 @@ function compare(julia_array::AbstractArray, arr::NDArray, max_diff)
     end
 
     for CI in CartesianIndices(julia_array)
-        if abs(julia_array[CI] - arr[Tuple(CI)...]) > max_diff
+        x = julia_array[CI]; y = arr[Tuple(CI)...]
+        if !isapprox(x, y; atol = atol, rtol = rtol)
             return false
         end
     end
@@ -367,11 +368,11 @@ function compare(julia_array::AbstractArray, arr::NDArray, max_diff)
     return true
 end
 
-function compare(arr::NDArray, julia_array::AbstractArray, max_diff)
-    return compare(julia_array, arr, max_diff)
+function compare(arr::NDArray, julia_array::AbstractArray, atol::Real, rtol::Real)
+    return compare(julia_array, arr, atol, rtol)
 end
 
-function compare(arr::NDArray, arr2::NDArray, max_diff)
+function compare(arr::NDArray, arr2::NDArray, atol::Real, rtol::Real)
     if (shape(arr) != shape(arr2))
         @warn "NDArray LHS has shape $(shape(arr)) and NDArray RHS has shape $(shape(arr2))!\n"
         return false
@@ -379,7 +380,8 @@ function compare(arr::NDArray, arr2::NDArray, max_diff)
 
     dims = shape(arr)
     for CI in CartesianIndices(dims)
-        if abs(arr2[Tuple(CI)...] - arr[Tuple(CI)...]) > max_diff
+        x = arr[Tuple(CI)...]; y = arr2[Tuple(CI)...]
+        if !isapprox(x, y; atol = atol, rtol = rtol)
             return false
         end
     end

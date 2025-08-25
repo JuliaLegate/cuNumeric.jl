@@ -18,11 +18,6 @@ import LinearAlgebra: mul!
 using Random
 import Random: rand, rand!
 
-import Base: abs, angle, acos, acosh, asin, asinh, atan, atanh, cbrt,
-    ceil, clamp, conj, cos, cosh, cosh, deg2rad, exp, exp2, expm1,
-    floor, frexp, imag, isfinite, isinf, isnan, log, log10,
-    log1p, log2, !, modf, -, rad2deg, sign, signbit, sin,
-    sinh, sqrt, tan, tanh, trunc, +, *, atan, &, |, ⊻, copysign,
-    /, ==, ^, div, gcd, >, >=, hypot, isapprox, lcm, ldexp, <<,
-    <, <=, !=, >>, all, any, argmax, argmin, maximum, minimum,
-    prod, sum, read, trues, falses, axes, view, copyto!
+import Base: axes, convert, copy, copyto!, inv, isfinite, sqrt,
+          -, +, *, ==, !=, isapprox, read, view, maximum, minimum, 
+          prod, sum

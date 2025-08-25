@@ -23,6 +23,17 @@ using LinearAlgebra
 
 const DEFAULT_FLOAT_CPU = Float64
 
+rtol(::Type{Float16}) = 1e-2
+rtol(::Type{Float32}) = 1e-5
+rtol(::Type{Float64}) = 1e-12
+rtol(::Type{I}) where {I<:Integer} = rtol(float(I))
+atol(::Type{Float16}) = 1e-3
+atol(::Type{Float32}) = 1e-8
+atol(::Type{Float64}) = 1e-15
+atol(::Type{I}) where {I<:Integer} = atol(float(I))
+rtol(::Type{Complex{T}}) where {T} = rtol(T)
+atol(::Type{Complex{T}}) where {T} = atol(T)
+
 include("tests/daxpy.jl")
 include("tests/daxpy_advanced.jl")
 include("tests/elementwise.jl")
@@ -30,8 +41,8 @@ include("tests/slicing.jl")
 include("tests/sgemm.jl")
 # include("tests/custom_cuda.jl")
 
-@testset verbose = true "DAXPY" begin
-    @testset daxpy_basic()
+@testset verbose = true "AXPY" begin
+    @testset axpy_basic()
     @testset daxpy_advanced()
 end
 
@@ -49,49 +60,42 @@ end
 #*TODO TEST VARIANT OVER DIMS
 @testset verbose = true "Unary Ops w/o Args" begin
     N = 100
-    max_diff = 1e-13
 
-    # Make input arrays we can re-use
-    julia_arr = rand(Float64, N)
-    julia_res = zeros(Float64, size(julia_arr))
-    cunumeric_arr = cuNumeric.zeros(Float64, N)
-    for i in 1:N
-        cunumeric_arr[i] = julia_arr[i]
-    end
+    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
 
-    ## GENERATE TEST ON RANDOM FLOAT64s FOR EACH UNARY OP
-    @testset for func in keys(cuNumeric.unary_op_map_no_args)
-
-        # TODO Custom functions don't have a Julia equivalent
-        # so we cannot test them.
-        if func isa Symbol
-            continue
+        # Make input arrays we can re-use
+        julia_arr = rand(T, N)
+        julia_res = zeros(T, size(julia_arr))
+        cunumeric_arr = cuNumeric.zeros(T, N)
+        for i in 1:N
+            cunumeric_arr[i] = julia_arr[i]
         end
 
-        cunumeric_res = func(cunumeric_arr)
-        cunumeric_res2 = map(func, cunumeric_arr)
-        julia_res .= func.(julia_arr)
-        @test cuNumeric.compare(julia_res, cunumeric_res, max_diff)
-        @test cuNumeric.compare(julia_res, cunumeric_res2, max_diff)
+        @testset for func in keys(cuNumeric.unary_op_map_no_args)
+            cunumeric_res = func.(cunumeric_arr)
+            cunumeric_res2 = map(func, cunumeric_arr)
+            julia_res .= func.(julia_arr)
+            @test cuNumeric.compare(julia_res, cunumeric_res, atol(T), rtol(T))
+            @test cuNumeric.compare(julia_res, cunumeric_res2, atol(T), rtol(T))
+        end
     end
 end
 
 @testset verbose = true "Unary Reductions" begin
     N = 100
-    max_diff = 1e-13
 
-    # Make input arrays we can re-use
-    julia_arr = rand(Float64, N)
-    cunumeric_arr = cuNumeric.zeros(Float64, N)
-    for i in 1:N
-        cunumeric_arr[i] = julia_arr[i]
-    end
+    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
+        julia_arr = rand(T, N)
+        cunumeric_arr = cuNumeric.zeros(T, N)
+        for i in 1:N
+            cunumeric_arr[i] = julia_arr[i]
+        end
 
-    ## GENERATE TEST ON RANDOM FLOAT64s FOR EACH UNARY OP
-    @testset for reduction in keys(cuNumeric.unary_reduction_map)
-        cunumeric_res = reduction(cunumeric_arr)
-        julia_res = reduction(julia_arr)
-        @test cuNumeric.compare([julia_res], cunumeric_res, max_diff)
+        @testset for reduction in keys(cuNumeric.unary_reduction_map)
+            cunumeric_res = reduction(cunumeric_arr)
+            julia_res = reduction(julia_arr)
+            @test cuNumeric.compare([julia_res], cunumeric_res, atol(T), rtol(T))
+        end
     end
 end
 

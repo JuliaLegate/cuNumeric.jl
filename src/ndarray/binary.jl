@@ -29,23 +29,15 @@ div.(A, B)
 A .^ 2
 ```
 """
-# global const binary_op_map = Dict{Function,BinaryOpCode}(
-#     Base.:+ => cuNumeric.ADD,
+
+# Still missing:
 #     # Base.copysign => cuNumeric.COPYSIGN, #* ANNOYING TO TEST 
-#     Base.:/ => cuNumeric.DIVIDE,
-#     # Base.:^ => cuNumeric.FLOAT_POWER, # DONT THINK THIS IS WHAT WE WANT
-#     # Base.:^ => cuNumeric.POWER, #* HOW TO FIGURE OUT RETURN TYPE???
 #     #missing => cuNumeric.fmod, #same as mod in Julia?
-#     Base.hypot => cuNumeric.HYPOT,
 #     # Base.isapprox => cuNumeric.ISCLOSE, #* HANDLE rtol, atol kwargs!!!
 #     # Base.ldexp => cuNumeric.LDEXP, #* LHS FLOATS, RHS INTS
 #     #missing => cuNumeric.LOGADDEXP,
 #     #missing => cuNumeric.LOGADDEXP2,
-#     #missing => cuNumeric.MAXIMUM, #elementwise max?
-#     #missing => cuNumeric.MINIMUM, #elementwise min?
-#     Base.:* => cuNumeric.MULTIPLY, #elementwise product? == .* in Julia
 #     #missing => cuNumeric.NEXTAFTER,
-#     Base.:(-) => cuNumeric.SUBTRACT)
 
 # Binary ops which are equivalent to Julia's broadcast syntax
 global const broadcasted_binary_op_map = Dict{Function, BinaryOpCode}(
@@ -53,8 +45,7 @@ global const broadcasted_binary_op_map = Dict{Function, BinaryOpCode}(
     Base.:/ => cuNumeric.DIVIDE,
     Base.:* => cuNumeric.MULTIPLY, 
     Base.:(-) => cuNumeric.SUBTRACT,
-    Base.literal_pow => cuNumeric.POWER,
-    Base.:(^) => cuNumeric.POWER, #* BREAKS FOR INTEGER POWERS
+    Base.:(^) => cuNumeric.POWER,
     # Base.:^ => cuNumeric.FLOAT_POWER, # DONT THINK THIS IS WHAT WE WANT
     Base.hypot => cuNumeric.HYPOT,
     Base.max => cuNumeric.MAXIMUM,
@@ -128,31 +119,21 @@ for (julia_fn, op_code) in broadcasted_binary_op_map
 end
 
 
-function Base.:(==)(lhs::NDArray{A}, rhs::NDArray{B}) where {A,B}
-    error("Not implemented yet")
-    #! REPLACE WITH ARRAY_EQUAL ONCE THAT IS WRAPPED
-    #! or explicit call to nda_binary_reduction
-end
+# function Base.:(==)(lhs::NDArray{A}, rhs::NDArray{B}) where {A,B}
+#     error("Not implemented yet")
+#     #! REPLACE WITH ARRAY_EQUAL ONCE THAT IS WRAPPED
+#     #! or explicit call to nda_binary_reduction
+# end
 
-function Base.:(!=)(lhs::NDArray{A}, rhs::NDArray{B}) where {A,B}
-    error("Not implemented yet")
-    #! REPLACE WITH ARRAY_EQUAL ONCE THAT IS WRAPPED
-    #! or explicit call to nda_binary_reduction
-end
+# function Base.:(!=)(lhs::NDArray{A}, rhs::NDArray{B}) where {A,B}
+#     error("Not implemented yet")
+#     #! REPLACE WITH ARRAY_EQUAL ONCE THAT IS WRAPPED
+#     #! or explicit call to nda_binary_reduction
+# end
 
-
+# Specializations for 2 and -1 in unary.jl
 @inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, power::NDArray{T}) where {T <: SUPPORTED_TYPES}
     return nda_binary_op(out, cuNumeric.POWER, input, power)
-end
-
-# technically unary op
-@inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, ::Type{Val{2}}) where {T <: SUPPORTED_TYPES}
-    return nda_unary_op(out, cuNumeric.SQUARE, input)
-end
-
-# technically unary op
-@inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, ::Type{Val{-1}}) where {T <: SUPPORTED_TYPES}
-    return nda_unary_op(out, cuNumeric.RECIPROCAL, input)
 end
 
 
