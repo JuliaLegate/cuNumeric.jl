@@ -111,7 +111,7 @@ function daxpy_advanced()
     @test x_cpu_1D == x_1d
     @test y_cpu_1D == y_1d
 
-    result = α * x + y
+    result = α .* x .+ y
 
     # check results 
     @test result == (α * x_cpu + y_cpu)

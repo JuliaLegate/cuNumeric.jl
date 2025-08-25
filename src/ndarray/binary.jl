@@ -29,36 +29,35 @@ div.(A, B)
 A .^ 2
 ```
 """
-global const binary_op_map = Dict{Function,BinaryOpCode}(
+
+# Still missing:
+#     # Base.copysign => cuNumeric.COPYSIGN, #* ANNOYING TO TEST 
+#     #missing => cuNumeric.fmod, #same as mod in Julia?
+#     # Base.isapprox => cuNumeric.ISCLOSE, #* HANDLE rtol, atol kwargs!!!
+#     # Base.ldexp => cuNumeric.LDEXP, #* LHS FLOATS, RHS INTS
+#     #missing => cuNumeric.LOGADDEXP,
+#     #missing => cuNumeric.LOGADDEXP2,
+#     #missing => cuNumeric.NEXTAFTER,
+
+# Binary ops which are equivalent to Julia's broadcast syntax
+global const broadcasted_binary_op_map = Dict{Function, BinaryOpCode}(
     Base.:+ => cuNumeric.ADD,
-    # Base.copysign => cuNumeric.COPYSIGN, #* ANNOYING TO TEST 
     Base.:/ => cuNumeric.DIVIDE,
+    Base.:* => cuNumeric.MULTIPLY, 
+    Base.:(-) => cuNumeric.SUBTRACT,
+    Base.:(^) => cuNumeric.POWER,
     # Base.:^ => cuNumeric.FLOAT_POWER, # DONT THINK THIS IS WHAT WE WANT
-    # Base.:^ => cuNumeric.POWER, #* HOW TO FIGURE OUT RETURN TYPE???
-    #missing => cuNumeric.fmod, #same as mod in Julia?
     Base.hypot => cuNumeric.HYPOT,
-    # Base.isapprox => cuNumeric.ISCLOSE, #* HANDLE rtol, atol kwargs!!!
-    # Base.ldexp => cuNumeric.LDEXP, #* LHS FLOATS, RHS INTS
-    #missing => cuNumeric.LOGADDEXP,
-    #missing => cuNumeric.LOGADDEXP2,
-    #missing => cuNumeric.MAXIMUM, #elementwise max?
-    #missing => cuNumeric.MINIMUM, #elementwise min?
-    Base.:* => cuNumeric.MULTIPLY, #elementwise product? == .* in Julia
-    #missing => cuNumeric.NEXTAFTER,
-    Base.:(-) => cuNumeric.SUBTRACT)
+    Base.max => cuNumeric.MAXIMUM,
+    Base.min => cuNumeric.MINIMUM,
+    Base.:(<) => cuNumeric.LESS, #* Julia also has non-broadcasted versions required `isless`
+    Base.:(<=) => cuNumeric.LESS_EQUAL,  #* Julia also has non-broadcasted versions required `isless`
+    Base.:(>) => cuNumeric.GREATER, #* Julia also has non-broadcasted versions required `isless`
+    Base.:(>=) => cuNumeric.GREATER_EQUAL, #* Julia also has non-broadcasted versions required `isless`
+    # Base.:(!=) => (cuNumeric.NOT_EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION)
+    # Base.:(==) => (cuNumeric.EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION)
+)
 
-
-
-# # Functions which allow any of the supported types as input
-# # Last value in tuple is the return type
-# global const binary_op_specific_return = Dict{Function, Tuple{BinaryOpCode, DataType}}(
-#     Base.:(<) => (cuNumeric.LESS, Bool), #* ANNOYING TO TEST (no == for bools
-#     Base.:(<=) => (cuNumeric.LESS_EQUAL, Bool),  #* ANNOYING TO TEST (no == for bools
-#     Base.:(>) => (cuNumeric.GREATER, Bool), #* ANNOYING TO TEST (no == for bools
-#     Base.:(>=) => (cuNumeric.GREATER_EQUAL, Bool), #* ANNOYING TO TEST (no == for bools
-#     # Base.:(!=) => (cuNumeric.NOT_EQUAL, Bool), #* DONT REALLY WANT ELEMENTWISE !=, RATHER HAVE REDUCTION
-#     # Base.:(==) => (cuNumeric.EQUAL, Bool),  #* This is elementwise .==, but non-broadcasted this is array_equal
-# )
 
 # @enum OUTPUT_RULES same_size_float same_size_int same_as_input
 
@@ -79,66 +78,70 @@ global const binary_op_map = Dict{Function,BinaryOpCode}(
 # )
 
 
-maybe_promote_arr(arr::NDArray{T}, ::Type{T}) where T = arr
-maybe_promote_arr(arr::NDArray{T}, ::Type{S}) where {T,S} = as_type(arr, S)
+## SPECIAL CASES ##
 
-smaller_type(::Type{A}, ::Type{B}) where {A,B} = ifelse(sizeof(A) < sizeof(B), A, B)
-same_size(::Type{A}, ::Type{B}) where {A,B} = sizeof(A) == sizeof(B)
-
-function __my_promote_type(::Type{A}, ::Type{B}) where {A, B}
-    T = promote_type(A, B)
-    same_size(A, B) && return T
-    S = smaller_type(A, B)
-    S != T && error("Detected promotion from $S to larger type, $T")
-    return T
+#! WHY CAN I NOT CALL THIS??
+function Base.:(*)(rhs1::NDArray{A, 2}, rhs2::NDArray{B, 2}) where {A <: SUPPORTED_TYPES, B <: SUPPORTED_TYPES}
+    T = __my_promote_type(A, B)
+    out = cuNumeric.zeros(T, (size(rhs1, 1), size(rhs2, 2)))
+    return nda_three_dot_arg(maybe_promote_arr(rhs1, T), maybe_promote_arr(rhs2, T), out)
 end
 
-#* THIS SORT OF BREAKS WHAT A JULIA USER MIGHT EXPECT
-#* WILL AUTOMATICALLY BROADCAST OVER ARRAY INSTEAD OF REQUIRING `.()` call sytax
-#* NEED TO IMPLEMENT BROADCASTING INTERFACE
-# Generate code for all binary operations.
-for (base_func, op_code) in binary_op_map
-    # Definitions and type promotion rules
+@doc"""
+    LinearAlgebra.mul!(out::NDArray, arr1::NDArray, arr2::NDArray)
+
+Compute the matrix multiplication of `arr1` and `arr2`, storing the result in `out`.
+
+This function performs the operation in-place, modifying `out`.
+
+# Examples
+```@repl
+a = cuNumeric.ones(2, 3)
+b = cuNumeric.ones(3, 2)
+out = cuNumeric.zeros(2, 2)
+LinearAlgebra.mul!(out, a, b)
+```
+"""
+
+#! WHY CAN I NOT CALL THIS??
+#! will probably crash horribly if input is Floats and output is Ints
+function LinearAlgebra.mul!(out::NDArray{T, 2}, rhs1::NDArray{A, 2}, rhs2::NDArray{B, 2}) where {T, A, B}
+    return nda_three_dot_arg(maybe_promote_arr(rhs1, T), maybe_promote_arr(rhs2, T), out)
+end
+
+# Generate hidden broadcast functions for binary ops
+for (julia_fn, op_code) in broadcasted_binary_op_map
     @eval begin
-        
-        # With same types, no promotion
-        @inline function $(Symbol(base_func))(rhs1::NDArray{T}, rhs2::NDArray{T}) where {T <: SUPPORTED_TYPES}
-            out = cuNumeric.zeros(T, promote_shape(size(rhs1), size(rhs2)))
+        @inline function __broadcast(f::typeof($(julia_fn)), out::NDArray, rhs1::NDArray{T}, rhs2::NDArray{T}) where {T <: SUPPORTED_TYPES}
             return nda_binary_op(out, $(op_code), rhs1, rhs2)
         end
-
-        # # With un-matched types, promote to same type and call back to other function
-        @inline function $(Symbol(base_func))(rhs1::NDArray{A}, rhs2::NDArray{B}) where {A <: SUPPORTED_TYPES, B <: SUPPORTED_TYPES} 
-            T = __my_promote_type(A, B)
-            return  $(Symbol(base_func))(maybe_promote_arr(rhs1, T), maybe_promote_arr(rhs2, T))
-        end
-
-        # @inline function $(Symbol(base_func))(arr::NDArray{T}, c::T) where T
-        #     return $(Symbol(base_func))(arr, NDArray(c))
-        # end
-        
-        # @inline function $(Symbol(base_func))(c::T, arr::NDArray{T}) where T
-        #     return $(Symbol(base_func))(NDArray(c), arr)
-        # end
-
-        # @inline function $(Symbol(base_func))(c::A, arr::NDArray{B}) where {A <: Number, B <: Number}
-        #     T = __my_promote_type(A, B)
-        #     return $(Symbol(base_func))(NDArray(T(c)), maybe_promote_arr(arr, T))
-        # end
-
-        # @inline function $(Symbol(base_func))(arr::NDArray{B}, c::A) where {A <: Number, B <: Number}
-        #     T = __my_promote_type(A, B)
-        #     return $(Symbol(base_func))(maybe_promote_arr(arr, T), NDArray(T(c)))
-        # end
-
     end
 end
+
+
+# function Base.:(==)(lhs::NDArray{A}, rhs::NDArray{B}) where {A,B}
+#     error("Not implemented yet")
+#     #! REPLACE WITH ARRAY_EQUAL ONCE THAT IS WRAPPED
+#     #! or explicit call to nda_binary_reduction
+# end
+
+# function Base.:(!=)(lhs::NDArray{A}, rhs::NDArray{B}) where {A,B}
+#     error("Not implemented yet")
+#     #! REPLACE WITH ARRAY_EQUAL ONCE THAT IS WRAPPED
+#     #! or explicit call to nda_binary_reduction
+# end
+
+# Specializations for 2 and -1 in unary.jl
+@inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, power::NDArray{T}) where {T <: SUPPORTED_TYPES}
+    return nda_binary_op(out, cuNumeric.POWER, input, power)
+end
+
 
 # This is more "Julian" since a user expects map to broadcast
 # their operation whereas the generated functions should technically
 # only broadcast when the .() syntax is used
 function Base.map(f::Function, arr1::NDArray, arr2::NDArray)
-    return f(arr1, arr2) # Will try to call one of the functions generated above
+    return f.(arr1, arr2) # Will try to call one of the functions generated above
 end
 
 # function Base.map!(f::Function, dest::NDArray, arr1::NDArray, arr2::NDArray)

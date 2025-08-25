@@ -73,6 +73,7 @@ include("ndarray/detail/ndarray.jl")
 include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
+include("ndarray/broadcast.jl")
 
 # Custom CUDA.jl kernel integration
 include("cuda.jl")

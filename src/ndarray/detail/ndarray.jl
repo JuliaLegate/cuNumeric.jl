@@ -46,6 +46,7 @@ mutable struct NDArray{T,N}
     end
 end
 
+#* SHOULD THE DIM ON THIS BE 0??
 function NDArray(value::T) where {T <: SUPPORTED_TYPES}
     type = Legate.to_legate_type(T)
     ptr = ccall((:nda_from_scalar, libnda),
@@ -53,8 +54,6 @@ function NDArray(value::T) where {T <: SUPPORTED_TYPES}
         type, Ref(value))
     return NDArray(ptr, T = T, n_dim = 1)
 end
-
-Base.Broadcast.broadcastable(v::NDArray) = v
 
 # construction 
 function nda_zeros_array(shape::Vector{UInt64}, ::Type{T}) where {T}
@@ -213,7 +212,7 @@ function nda_add_scalar(rhs1::NDArray{T, N}, value::T) where {T, N}
     return NDArray(ptr; T = T, n_dim = N)
 end
 
-function nda_three_dot_arg(rhs1::NDArray, rhs2::NDArray, out::NDArray)
+function nda_three_dot_arg(rhs1::NDArray{T}, rhs2::NDArray{T}, out::NDArray{T}) where T
     ccall((:nda_three_dot_arg, libnda),
         Cvoid, (NDArray_t, NDArray_t, NDArray_t),
         rhs1.ptr, rhs2.ptr, out.ptr)
@@ -347,7 +346,7 @@ Emits warnings when array sizes or element types differ.
 - Checks element type compatibility for `NDArray` vs Julia array.
 - Iterates over elements using `CartesianIndices` to compare element-wise difference.
 """
-function compare(julia_array::AbstractArray, arr::NDArray, max_diff)
+function compare(julia_array::AbstractArray, arr::NDArray, atol::Real, rtol::Real)
     if (shape(arr) != Base.size(julia_array))
         @warn "NDArray has shape $(shape(arr)) and Julia array has shape $(Base.size(julia_array))!\n"
         return false
@@ -359,7 +358,8 @@ function compare(julia_array::AbstractArray, arr::NDArray, max_diff)
     end
 
     for CI in CartesianIndices(julia_array)
-        if abs(julia_array[CI] - arr[Tuple(CI)...]) > max_diff
+        x = julia_array[CI]; y = arr[Tuple(CI)...]
+        if !isapprox(x, y; atol = atol, rtol = rtol)
             return false
         end
     end
@@ -368,11 +368,11 @@ function compare(julia_array::AbstractArray, arr::NDArray, max_diff)
     return true
 end
 
-function compare(arr::NDArray, julia_array::AbstractArray, max_diff)
-    return compare(julia_array, arr, max_diff)
+function compare(arr::NDArray, julia_array::AbstractArray, atol::Real, rtol::Real)
+    return compare(julia_array, arr, atol, rtol)
 end
 
-function compare(arr::NDArray, arr2::NDArray, max_diff)
+function compare(arr::NDArray, arr2::NDArray, atol::Real, rtol::Real)
     if (shape(arr) != shape(arr2))
         @warn "NDArray LHS has shape $(shape(arr)) and NDArray RHS has shape $(shape(arr2))!\n"
         return false
@@ -380,7 +380,8 @@ function compare(arr::NDArray, arr2::NDArray, max_diff)
 
     dims = shape(arr)
     for CI in CartesianIndices(dims)
-        if abs(arr2[Tuple(CI)...] - arr[Tuple(CI)...]) > max_diff
+        x = arr[Tuple(CI)...]; y = arr2[Tuple(CI)...]
+        if !isapprox(x, y; atol = atol, rtol = rtol)
             return false
         end
     end
