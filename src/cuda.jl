@@ -5,8 +5,7 @@ const KERNEL_OFFSET = sizeof(CUDA.KernelState)
 
 # cuNumeric.jl init will call this
 function set_kernel_state_size()
-    # cuNumeric.register_kernel_state_size(UInt64(KERNEL_OFFSET))
-    return nothing
+    cuNumeric.register_kernel_state_size(UInt64(KERNEL_OFFSET))
 end
 
 function map_ndarray_cuda_type(arg)
@@ -67,47 +66,51 @@ function add_padding(arr::NDArray, dims::Dims{N}; copy=false) where {N}
     new.padding = nothing
 end
 
-function add_padding(arr::NDArray, i::Int64)
-    resize(arr, (i,))
+function add_padding(arr::NDArray, i::Int64; copy=false)
+    add_padding(arr, (i,); copy=copy)
 end
 
-function check_sz!(arr, prev_size; copy=false)
+function check_sz!(arr, maxshape; copy=false)
     sz = cuNumeric.size(arr)
-    if prev_size != nothing
+    if maxshape != nothing
         # currently require all ndarray inputs to be equal
-        alligned_equal_size = sz == prev_size
-        cuNumeric.add_padding(arr, prev_size; copy)
-        new_size = padded_shape(arr)
-        @warn "[Padding Added] $sz output is now $new_size"
-        return new_size
+        alligned_equal_size = sz == maxshape
+        if !alligned_equal_size
+            cuNumeric.add_padding(arr, maxshape; copy=copy)
+            new_size = padded_shape(arr)
+            @warn "[Padding Added] $sz output is now $new_size"
+        end
     end
-    return sz
 end
 
-function check_sz(arr, prev_size)
+function check_sz(arr, maxshape)
     sz = cuNumeric.size(arr)
-    if prev_size != nothing
+    if maxshape != nothing
         # currently require all ndarray inputs to be equal
-        alligned_equal_size = sz == prev_size
+        alligned_equal_size = sz == maxshape
         @assert alligned_equal_size
     end
-
-    return sz
 end
 
 function Launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
     outputs::Tuple{Vararg{cuNumeric.NDArray}}, scalars::Tuple{Vararg{Any}}; blocks, threads)
     input_vec = cuNumeric.VectorNDArray()
 
-    prev_size = nothing
+    # we find the largest input/output. Everything gets auto alligned on this.
+    ndarrays = vcat(inputs..., outputs...)
+    mx = findmax(arr -> arr.nbytes, ndarrays) # returns (nbytes, position)
+    max_size = mx[1] # first elem nbytes
+    max_shape = size(ndarrays[mx[2]]) # second elem max position
+    @assert !isnothing(max_shape)
+
     for arr in inputs
-        prev_size = check_sz!(arr, prev_size; copy=true)
+        check_sz!(arr, max_shape; copy=true)
         cuNumeric.push_back(input_vec, CxxRef{cuNumeric.CN_NDArray}(arr.ptr))
     end
 
     output_vec = cuNumeric.VectorNDArray()
     for arr in outputs
-        prev_size = check_sz!(arr, prev_size; copy=false)
+        check_sz!(arr, max_shape; copy=false)
         cuNumeric.push_back(output_vec, CxxRef{cuNumeric.CN_NDArray}(arr.ptr))
     end
 
