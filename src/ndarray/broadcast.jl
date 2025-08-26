@@ -43,7 +43,8 @@ For type promotion we follow Julia's rules, except when they would
 result in promotion to a double-precision type (Float64, Int64, ComplexF64).
 In these cases we throw an error, to avoid unintentional performance 
 degredation on GPU. Double precision is still supported, but the user
-must ensure all operations are explicitly typed to use double precision.
+must ensure all operations are explicitly typed to use double precision
+or must explicitly allow promotion to double with @allowdouble or allowdouble().
 """
 
 maybe_promote_arr(arr::NDArray{T}, ::Type{T}) where T = arr
@@ -73,21 +74,21 @@ end
 
 @inline function __checked_promote_op(op, ::Type{A}) where A
     T = Base.promote_op(op, A)
-    promoting_to_double(A, T) && error("Detected promotion from $A to double type, $T for operation $op")
+    promoting_to_double(A, T) && assertdouble(op, A, T)
     return T
 end
 
 @inline function __checked_promote_op(op, ::Type{A}, ::Type{B}) where {A, B}
     T = Base.promote_op(op, A, B)
     S = smaller_type(A, B)
-    promoting_to_double(S, T) && error("Detected promotion from $S to double type, $T for operation $op")
+    promoting_to_double(S, T) && assertdouble(op, A, T)
     return T
 end
 
 @inline function __my_promote_type(::Type{A}, ::Type{B}) where {A,B}
     T = promote_type(A, B)
     S = smaller_type(A, B)
-    promoting_to_double(S, T) && error("Detected promotion from $S to double type, $T")
+    promoting_to_double(S, T) && assertdouble(op, A, T)
     return T
 end
 

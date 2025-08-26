@@ -74,6 +74,9 @@ as_type(arr::NDArray, ::Type{T}) where T = nda_astype(arr, T)::NDArray{T}
 
 Base.convert(::Type{<:NDArray{T}}, a::A) where {T, A} = NDArray(T(a))::NDArray{T}
 Base.convert(::Type{T}, a::T) where {T <: NDArray} = a
+
+#! NEED TO THROW ERROR ON PROMOTION TO DOUBLE PRECISION??
+#! ADD MECHANISM LIKE @allowscalar, @allowdouble ??
 Base.convert(::Type{NDArray{T}}, a::NDArray) where {T} = as_type(copy(a), T)
 Base.convert(::Type{NDArray{T,N}}, a::NDArray{<:Any,N}) where {T,N} = as_type(copy(a), T)
 
@@ -199,13 +202,13 @@ Array(A)
  """
 ##### REGULAR ARRAY INDEXING ####
 function Base.getindex(arr::NDArray{T}, idxs::Vararg{Int,N}) where {T,N}
-    @warn "Scalar indexing" #TODO Automate this
+    assertscalar("getindex")
     acc = NDArrayAccessor{T,N}()
     return read(acc, arr.ptr, to_cpp_index(idxs))
 end
 
 function Base.setindex!(arr::NDArray{T}, value::T, idxs::Vararg{Int,N}) where {T<:Number, N}
-    @warn "Scalar indexing" #TODO Automate this
+    assertscalar("setindex!")
     acc = NDArrayAccessor{T,N}()
     write(acc, arr.ptr, to_cpp_index(idxs), value)
 end

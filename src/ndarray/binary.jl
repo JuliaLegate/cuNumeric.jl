@@ -87,6 +87,12 @@ function Base.:(*)(rhs1::NDArray{A, 2}, rhs2::NDArray{B, 2}) where {A <: SUPPORT
     return nda_three_dot_arg(maybe_promote_arr(rhs1, T), maybe_promote_arr(rhs2, T), out)
 end
 
+function Base.:(*)(rhs1::NDArray{A, 2}, rhs2::NDArray{A, 2}) where A
+    T = __my_promote_type(A, B)
+    out = cuNumeric.zeros(T, (size(rhs1, 1), size(rhs2, 2)))
+    return nda_three_dot_arg(maybe_promote_arr(rhs1, T), maybe_promote_arr(rhs2, T), out)
+end
+
 @doc"""
     LinearAlgebra.mul!(out::NDArray, arr1::NDArray, arr2::NDArray)
 

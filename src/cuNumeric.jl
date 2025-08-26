@@ -66,6 +66,9 @@ preload_libs() # for precompilation
 # custom GC
 include("memory.jl")
 
+# allowscalar and allowdouble
+include("warnings.jl")
+
 # NDArray internal
 include("ndarray/detail/ndarray.jl")
 
