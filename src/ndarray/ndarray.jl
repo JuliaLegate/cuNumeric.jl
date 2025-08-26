@@ -105,18 +105,37 @@ Base.lastindex(arr::NDArray) = Base.size(arr, 1)
 
 Base.IndexStyle(::NDArray) = IndexCartesian()
 
-function Base.show(io::IO, arr::NDArray)
+function Base.show(io::IO, arr::NDArray; elems=false)
     T = eltype(arr)
     dim = Base.size(arr)
     print(io, "NDArray of $(T)s, Dim: $(dim)")
+    if elems # print all elems of array
+        dims = shape(arr)
+        print(io, "[")
+        indxs = CartesianIndices(dims)
+        lastidx = last(indxs)
+        for CI in indxs
+            print(io, "$(arr[Tuple(CI)...])")
+            if CI != lastidx
+                print(io, ", ")
+            end
+        end
+        print(io, "]")
+    end
 end
 
-function Base.show(io::IO, ::MIME"text/plain", arr::NDArray)
-    T = eltype(arr)
-    dim = Base.size(arr)
-    print(io, "NDArray of $(T)s, Dim: $(dim)")
+function Base.show(io::IO, ::MIME"text/plain", arr::NDArray; elems=false)
+    Base.show(io, arr; elems=elems)
 end
 
+function Base.print(arr::NDArray; elems=false)
+    Base.show(stdout, arr; elems=elems)
+end
+
+function Base.println(arr::NDArray; elems=false)
+    Base.show(stdout, arr; elems=elems)
+    print("\n")
+end
 #### ARRAY INDEXING AND SLICES ####
 
 @doc"""
@@ -321,6 +340,10 @@ end
 
 function zeros(dims::Int...)
     return zeros(Float64, dims)
+end
+
+function zeros_like(arr::NDArray)
+    return zeros(eltype(arr), Base.size(arr))
 end
 
 @doc"""

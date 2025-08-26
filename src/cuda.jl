@@ -42,21 +42,54 @@ struct CUDATask
     argtypes::NTuple{N,Type} where {N}
 end
 
-function check_sz(arr, prev_size; update=false)
+function add_padding(arr::NDArray, dims::Dims{N}; copy=false) where {N}
+    old_size = size(arr)
+
+    @assert all(dims .>= old_size) "newdims must be ≥ current dims elementwise"
+    new = ones(eltype(arr), dims)
+
+    if copy # due to being an input. we don't need to copy outputs
+        indices = ntuple(d -> 1:old_size[d], length(old_size))
+        assign(new[indices...], arr)
+    end
+
+    nda_destroy_array(arr.ptr)
+    register_free!(arr.nbytes)
+
+    # update pointer & update metadata
+    arr.ptr = new.ptr
+    arr.nbytes = new.nbytes
+    arr.padding = old_size # remember the prior (before the padding)
+
+    # julia GC will call finalizer, but we manually cleaned it
+    new.ptr = Ptr{Cvoid}(0)
+    new.nbytes = 0
+    new.padding = nothing
+end
+
+function add_padding(arr::NDArray, i::Int64)
+    resize(arr, (i,))
+end
+
+function check_sz!(arr, prev_size; copy=false)
     sz = cuNumeric.size(arr)
     if prev_size != nothing
         # currently require all ndarray inputs to be equal
         alligned_equal_size = sz == prev_size
-        @assert alligned_equal_size "[CUDA.jl tasking] We only support equally size input/output NDArrays."
+        cuNumeric.add_padding(arr, prev_size; copy)
+        new_size = padded_shape(arr)
+        @warn "[Padding Added] $sz output is now $new_size"
+        return new_size
+    end
+    return sz
+end
 
-        # TODO: maybe we should auto update the size?
-        # However, cuNumeric.resize is not a thing
-        # if update && !alligned_equal_size
-        #     @warn "sz output is now $prev_size"
-        #     cuNumeric.resize(arr, prev_size)
-        # else   
-        #     @assert alligned_equal_size
-        # end
+function check_sz(arr, prev_size)
+    sz = cuNumeric.size(arr)
+    if prev_size != nothing
+        # currently require all ndarray inputs to be equal
+        alligned_equal_size = sz == prev_size
+        @assert alligned_equal_size
     end
 
     return sz
@@ -68,14 +101,14 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
 
     prev_size = nothing
     for arr in inputs
+        prev_size = check_sz!(arr, prev_size; copy=true)
         cuNumeric.push_back(input_vec, CxxRef{cuNumeric.CN_NDArray}(arr.ptr))
-        prev_size = check_sz(arr, prev_size)
     end
 
     output_vec = cuNumeric.VectorNDArray()
     for arr in outputs
+        prev_size = check_sz!(arr, prev_size; copy=false)
         cuNumeric.push_back(output_vec, CxxRef{cuNumeric.CN_NDArray}(arr.ptr))
-        prev_size = check_sz(arr, prev_size)
     end
 
     scalar_vec = Legate.VectorScalar()

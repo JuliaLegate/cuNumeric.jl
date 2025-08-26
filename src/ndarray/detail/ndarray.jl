@@ -27,10 +27,12 @@ Finalizer calls `nda_destroy_array` to clean up the underlying Legate array when
 mutable struct NDArray
     ptr::NDArray_t
     nbytes::Int64
+    padding::Union{Nothing,NTuple{N,Int}} where {N}
+
     function NDArray(ptr::NDArray_t)
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
-        handle = new(ptr, nbytes)
+        handle = new(ptr, nbytes, nothing)
         finalizer(handle) do h
             cuNumeric.nda_destroy_array(h.ptr)
             cuNumeric.register_free!(h.nbytes)
@@ -308,13 +310,27 @@ function slice_array(slices::Vararg{Tuple{Union{Int,Nothing},Union{Int,Nothing}}
 end
 
 @doc"""
+    padded_shape(arr::NDArray)
+
+**Internal API**
+
+Return the size of the given `NDArray`. This will include the padded size.
+"""
+padded_shape(arr::NDArray) = Tuple(Int.(cuNumeric.nda_array_shape(arr)))
+
+@doc"""
     shape(arr::NDArray)
 
 **Internal API**
 
 Return the size of the given `NDArray`.
 """
-shape(arr::NDArray) = Tuple(Int.(cuNumeric.nda_array_shape(arr)))
+function shape(arr::NDArray)
+    if !isnothing(arr.padding)
+        return arr.padding
+    end
+    return cuNumeric.padded_shape(arr)
+end
 
 @doc"""
     compare(x, y, max_diff)
