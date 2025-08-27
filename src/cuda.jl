@@ -45,7 +45,7 @@ function add_padding(arr::NDArray, dims::Dims{N}; copy=false) where {N}
     old_size = size(arr)
 
     @assert all(dims .>= old_size) "newdims must be ≥ current dims elementwise"
-    new = ones(eltype(arr), dims)
+    new = zeros(eltype(arr), dims)
 
     if copy # due to being an input. we don't need to copy outputs
         indices = ntuple(d -> 1:old_size[d], length(old_size))
