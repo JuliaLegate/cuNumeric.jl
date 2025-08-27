@@ -105,7 +105,7 @@ function run_unfused_baseline(N, u, v)
     return F_u, F_v
 end
 
-function fusion_test(; N=16, atol=1.0f-6, rtol=1.0f-6)
+function fusion_test(; N=1024, atol=1.0f-6, rtol=1.0f-6)
     u = cuNumeric.as_type(cuNumeric.random(Float32, (N, N)), Float32)
     v = cuNumeric.as_type(cuNumeric.random(Float32, (N, N)), Float32)
 
