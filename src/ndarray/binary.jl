@@ -84,13 +84,13 @@ global const broadcasted_binary_op_map = Dict{Function, BinaryOpCode}(
 function Base.:(*)(rhs1::NDArray{A, 2}, rhs2::NDArray{B, 2}) where {A <: SUPPORTED_TYPES, B <: SUPPORTED_TYPES}
     T = __my_promote_type(A, B)
     out = cuNumeric.zeros(T, (size(rhs1, 1), size(rhs2, 2)))
-    return nda_three_dot_arg(maybe_promote_arr(rhs1, T), maybe_promote_arr(rhs2, T), out)
+    return nda_three_dot_arg(checked_promote_arr(rhs1, T), checked_promote_arr(rhs2, T), out)
 end
 
 function Base.:(*)(rhs1::NDArray{A, 2}, rhs2::NDArray{A, 2}) where A
     T = __my_promote_type(A, B)
     out = cuNumeric.zeros(T, (size(rhs1, 1), size(rhs2, 2)))
-    return nda_three_dot_arg(maybe_promote_arr(rhs1, T), maybe_promote_arr(rhs2, T), out)
+    return nda_three_dot_arg(checked_promote_arr(rhs1, T), checked_promote_arr(rhs2, T), out)
 end
 
 @doc"""
@@ -112,7 +112,7 @@ LinearAlgebra.mul!(out, a, b)
 #! WHY CAN I NOT CALL THIS??
 #! will probably crash horribly if input is Floats and output is Ints
 function LinearAlgebra.mul!(out::NDArray{T, 2}, rhs1::NDArray{A, 2}, rhs2::NDArray{B, 2}) where {T, A, B}
-    return nda_three_dot_arg(maybe_promote_arr(rhs1, T), maybe_promote_arr(rhs2, T), out)
+    return nda_three_dot_arg(checked_promote_arr(rhs1, T), checked_promote_arr(rhs2, T), out)
 end
 
 # Generate hidden broadcast functions for binary ops

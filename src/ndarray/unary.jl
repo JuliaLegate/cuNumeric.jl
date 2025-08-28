@@ -146,7 +146,7 @@ for (julia_fn, op_code) in floaty_unary_ops_no_args
         end
 
         @inline  function __broadcast(f::typeof($julia_fn), out::NDArray{A}, input::NDArray{B}) where {A <: SUPPORTED_FLOAT_TYPES, B <: SUPPORTED_INT_TYPES}
-            return __broadcast(f, out, maybe_promote_arr(input, A))
+            return __broadcast(f, out, checked_promote_arr(input, A))
         end
     end
 end

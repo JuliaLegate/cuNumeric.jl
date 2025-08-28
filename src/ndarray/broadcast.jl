@@ -38,30 +38,22 @@ Base.similar(::Type{NDArray{T}}, axes) where T = cuNumeric.zeros(T, Base.to_shap
 Base.similar(bc::Broadcasted{NDArrayStyle{N}}, ::Type{ElType}) where {N, ElType} = similar(NDArray{ElType}, axes(bc))
 
 
-"""
-For type promotion we follow Julia's rules, except when they would
-result in promotion to a double-precision type (Float64, Int64, ComplexF64).
-In these cases we throw an error, to avoid unintentional performance 
-degredation on GPU. Double precision is still supported, but the user
-must ensure all operations are explicitly typed to use double precision
-or must explicitly allow promotion to double with @allowdouble or allowdouble().
-"""
+smaller_type(::Type{A}, ::Type{B}) where {A,B} = ifelse(sizeof(A) < sizeof(B), A, B)
+is_wider_type(::Type{A}, ::Type{B}) where {A,B} = sizeof(A) > sizeof(B)
 
-maybe_promote_arr(arr::NDArray{T}, ::Type{T}) where T = arr
-maybe_promote_arr(arr::NDArray{T}, ::Type{S}) where {T, S} = as_type(arr, S)
+checked_promote_arr(arr::NDArray{T}, ::Type{T}) where T = arr
+
+function checked_promote_arr(arr::NDArray{T}, ::Type{S}) where {T, S}
+    is_wider_type(S, T) && assertpromotion(promote_type, A, T)
+    return as_type(arr, S)
+end
+
+unchecked_promote_arr(arr::NDArray{T}, ::Type{T}) where T = arr
+unchecked_promote_arr(arr::NDArray{T}, ::Type{S}) where {T,S} = as_type(arr, S)
 
 # kinda hacky, but lets us support weird cases like broadcasting literal_pow
-maybe_promote_arr(::Base.RefValue{typeof(^)}, ::Type{T}) where T = typeof(Base.:(^))
-maybe_promote_arr(::Base.RefValue{Val{V}}, ::Type{T}) where {T, V} = Val{V}
-
-smaller_type(::Type{A}, ::Type{B}) where {A,B} = ifelse(sizeof(A) < sizeof(B), A, B)
-
-const DOUBLE_PRECISION_TYPES = Union{Float64, Int64, ComplexF64}
-
-promoting_to_double(::Type{A}, ::Type{B}) where {A <: DOUBLE_PRECISION_TYPES, B <: DOUBLE_PRECISION_TYPES} = false
-promoting_to_double(::Type{A}, ::Type{B}) where {A <: DOUBLE_PRECISION_TYPES, B} = true
-promoting_to_double(::Type{A}, ::Type{B}) where {A, B <: DOUBLE_PRECISION_TYPES} = true
-promoting_to_double(::Type{A}, ::Type{B}) where {A,B} = false
+unchecked_promote_arr(::Base.RefValue{typeof(^)}, ::Type{T}) where T = typeof(Base.:(^))
+unchecked_promote_arr(::Base.RefValue{Val{V}}, ::Type{T}) where {T, V} = Val{V}
 
 __checked_promote_op(op, ::Type{Tuple{A}}) where A = __checked_promote_op(op, A)
 __checked_promote_op(op, ::Type{Tuple{A, B}}) where {A,B} = __checked_promote_op(op, A, B)
@@ -74,28 +66,39 @@ end
 
 @inline function __checked_promote_op(op, ::Type{A}) where A
     T = Base.promote_op(op, A)
-    promoting_to_double(A, T) && assertdouble(op, A, T)
+    is_wider_type(T, A) && assertpromotion(op, A, T)
+    return T
+end
+
+@inline function __checked_promote_op(op, ::Type{A}, ::Type{A}) where A
+    T = Base.promote_op(op, A, A)
+    is_wider_type(T, A) && assertpromotion(op, A, T)
     return T
 end
 
 @inline function __checked_promote_op(op, ::Type{A}, ::Type{B}) where {A, B}
     T = Base.promote_op(op, A, B)
     S = smaller_type(A, B)
-    promoting_to_double(S, T) && assertdouble(op, A, T)
+    is_wider_type(T, S) && assertpromotion(op, S, T)
     return T
 end
+
+__my_promote_type(::Type{A}) where A = A
+__my_promote_type(::Type{A}, ::Type{A}) where A = A
+
+# For literal powers which are often Int64, do not check for promotion to double
+# The result of promote_op with a literal integer power is always the base type
+# Base.promote_op(^, Float32, Int64) == Float32
+# Base.promote_op(^, Int32, Int64) == Int32
+__my_promote_type(::Type{typeof(^)}, ::Type{A}, ::Type{Val{V}}) where {A, V} = promote_type(A, typeof(V))
 
 @inline function __my_promote_type(::Type{A}, ::Type{B}) where {A,B}
     T = promote_type(A, B)
     S = smaller_type(A, B)
-    promoting_to_double(S, T) && assertdouble(op, A, T)
+    is_wider_type(T, S) && assertpromotion(promote_type, S, T)
     return T
 end
 
-# Support broadcastign with literal integer powers
-__my_promote_type2(::Type{typeof(^)}, ::Type{A}, ::Type{Val{V}}) where {A, V} = promote_type(A, typeof(V))
-__my_promote_type2(::Type{A}, ::Type{B}) where {A, B} = promote_type(A, B)
-__my_promote_type2(::Type{A}) where A = A
 
 function __broadcast(f::Function, _, args...)
     error(
@@ -151,8 +154,8 @@ function unravel_broadcast_tree(bc::Broadcasted)
     # Handle type promotion
     eltypes = Base.Broadcast.eltypes(bc.args) 
     T_OUT = __checked_promote_op(bc.f, eltypes) # type of output array
-    T_IN = __my_promote_type2(eltypes.parameters...) # type input arrays are promoted to
-    in_args = maybe_promote_arr.(materialized_args, T_IN)
+    T_IN = __my_promote_type(eltypes.parameters...) # type input arrays are promoted to
+    in_args = unchecked_promote_arr.(materialized_args, T_IN)
 
     # Allocate output array of proper size/type
     out = similar(NDArray{T_OUT}, axes(bc))
@@ -169,5 +172,7 @@ end
 function Base.copyto!(dest::NDArray, bc::Broadcasted{<:NDArrayStyle})
     #! Any way to avoid the extra NDArray allocation? 
     #! materialize also allocates an output array.
+
+    # CALL MOVE ASSIGNMENT ONTO SELF
     return copyto!(dest, Base.Broadcast.materialize(bc))
 end

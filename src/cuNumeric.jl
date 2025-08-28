@@ -73,10 +73,10 @@ include("warnings.jl")
 include("ndarray/detail/ndarray.jl")
 
 # NDArray interface
+include("ndarray/broadcast.jl")
 include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
-include("ndarray/broadcast.jl")
 
 # Custom CUDA.jl kernel integration
 include("cuda.jl")

@@ -1,14 +1,14 @@
 ### THE SCALAR INDEXING LOGIC IS COPIED FROM GPUArrays.jl ###
 
-export allowdouble, @allowdouble, assertdouble, allowscalar, @allowscalar, assertscalar
+export allowpromotion, @allowpromotion, assertpromotion, allowscalar, @allowscalar, assertscalar
 
-@enum DoublePromotion PromotionAllowed PromotionWarn PromotionWarned PromotionDisallowed
+@enum ImplicitPromotion PromotionAllowed PromotionWarn PromotionWarned PromotionDisallowed
 @enum ScalarIndexing ScalarAllowed ScalarWarn ScalarWarned ScalarDisallowed
 
 # if the user explicitly calls allowscalar, use that setting for all new tasks
 # XXX: use context variables to inherit the parent task's setting, once available.
 const requested_scalar_indexing = Ref{Union{Nothing,ScalarIndexing}}(nothing)
-const requested_double_promotion = Ref{Union{Nothing,DoublePromotion}}(nothing)
+const requested_implicit_promotion = Ref{Union{Nothing,ImplicitPromotion}}(nothing)
 
 
 const _repl_frontend_task = Ref{Union{Nothing,Missing,Task}}()
@@ -48,27 +48,8 @@ end
     end
 end
 
-@noinline function default_double_promotion()
-    if isinteractive()
-        # try to detect the REPL
-        repl_task = repl_frontend_task()
-        if repl_task isa Task
-            if repl_task === current_task()
-                # we always allow scalar iteration on the REPL's frontend task,
-                # where we often trigger scalar indexing by displaying GPU objects.
-                PromotionAllowed
-            else
-                PromotionDisallowed
-            end
-        else
-            # we couldn't detect a REPL in this interactive session, so default to a warning
-            PromotionWarn
-        end
-    else
-        # non-interactively, we always disallow Promotion iteration
-        PromotionDisallowed
-    end
-end
+default_implicit_promotion() = PromotionDisallowed
+
 
 """
     assertscalar(op::String)
@@ -96,28 +77,28 @@ function assertscalar(op::String)
 end
 
 """
-    assertdouble(op)
+    assertpromotion(op)
 
-Assert that a certain operation `op` performs promotion to double. If this is not allowed, an
-error will be thrown ([`allowdouble`](@ref)).
+Assert that a certain operation `op` performs promotion to a wider type. If this is not allowed, an
+error will be thrown ([`assertpromotion`](@ref)).
 """
-function assertdouble(op, ::Type{FROM}, ::Type{TO}) where {FROM, TO}
-    behavior = get(task_local_storage(), :DoublePromotion, nothing)
+function assertpromotion(op, ::Type{FROM}, ::Type{TO}) where {FROM, TO}
+    behavior = get(task_local_storage(), :ImplicitPromotion, nothing)
     if behavior === nothing
-        behavior = requested_double_promotion[]
+        behavior = requested_implicit_promotion[]
         if behavior === nothing
-            behavior = default_double_promotion()
+            behavior = default_implicit_promotion()
         end
-        task_local_storage(:DoublePromotion, behavior)
+        task_local_storage(:ImplicitPromotion, behavior)
     end
 
-    behavior = behavior::DoublePromotion
+    behavior = behavior::ImplicitPromotion
     if behavior === PromotionAllowed
         # fast path
         return
     end
 
-    _assertdouble(op, behavior, FROM, TO)
+    _assertpromotion(op, behavior, FROM, TO)
 end
 
 @noinline function _assertscalar(op, behavior)
@@ -131,12 +112,12 @@ end
     return
 end
 
-@noinline function _assertdouble(op, behavior, ::Type{FROM}, ::Type{TO}) where {FROM, TO}
+@noinline function _assertpromotion(op, behavior, ::Type{FROM}, ::Type{TO}) where {FROM, TO}
     if behavior == PromotionDisallowed
         errordouble(op, FROM, TO)
     elseif behavior == PromotionWarn
         warndouble(op, FROM, TO)
-        task_local_storage(:DoublePromotion, PromotionWarned)
+        task_local_storage(:ImplicitPromotion, PromotionWarned)
     end
 
     return
@@ -151,15 +132,13 @@ function scalardesc(op)
               to enable scalar iteration globally or for the operations in question."""
 end
 
-function doubledesc(op, ::Type{FROM}, ::Type{TO}) where {FROM, TO}
+function promotiondesc(op, ::Type{FROM}, ::Type{TO}) where {FROM, TO}
     desc = """Invocation of $op resulted in implicit promotion of an NDArray from $(FROM) to 
-              double precision: $(TO). This is typically caused by mixing NDArrays or literals 
-              with different precision. Double precision typically slow on GPU and promotion
-              to double precision was probably unintended and should be avoided.
+              wider type: $(TO). This is typically caused by mixing NDArrays or literals 
+              with different precision. This can cause extra copies of data and is slow.
 
-              If you want to allow promotion to double precision, use `allowdouble` or `allowdouble`
-              to enable promotion to double globally or for the operations in question. If all
-              operations start in double precision no errors or warnings will trigger."""
+              If you want to allow implicit promotion to wider types, use `allowpromotion` or `@allowpromotion`
+              to enable implicit promotion."""
 end
 
 @noinline function warnscalar(op)
@@ -169,8 +148,8 @@ end
 end
 
 @noinline function warnsdouble(op, ::Type{FROM}, ::Type{TO}) where {FROM, TO}
-    desc = doubledesc(op, FROM, TO)
-    @warn("""Promotiong data to double precision on task $(current_task()).
+    desc = promotiondesc(op, FROM, TO)
+    @warn("""Promotiong data to wider type on task $(current_task()).
              $desc""")
 end
 
@@ -181,8 +160,8 @@ end
 end
 
 @noinline function errordouble(op, ::Type{FROM}, ::Type{TO}) where {FROM, TO}
-    desc = doubledesc(op, FROM, TO)
-    error("""Implicit promotion to double precision is disallowed.
+    desc = promotiondesc(op, FROM, TO)
+    error("""Implicit promotion to wider type is disallowed.
              $desc""")
 end
 
@@ -225,30 +204,30 @@ function allowscalar(allow::Bool=true)
 end
 
 """
-    allowdouble([true])
-    allowdouble([true]) do
+    allowpromotion([true])
+    allowpromotion([true]) do
         ...
     end
 
 Use this function to allow or disallow promotion to double precision, either globally or for the
 duration of the do block.
 
-See also: [`@allowdouble`](@ref).
+See also: [`@allowpromotion`](@ref).
 """
-allowdouble
+allowpromotion
 
-function allowdouble(f::Base.Callable)
-    task_local_storage(f, :DoublePromotion, PromotionAllowed)
+function allowpromotion(f::Base.Callable)
+    task_local_storage(f, :ImplicitPromotion, PromotionAllowed)
 end
 
-function allowdouble(allow::Bool=true)
+function allowpromotion(allow::Bool=true)
     if allow
-        @warn """It's not recommended to use allowdouble([true]) to allow promotion to double precision.
-                 Instead, use `allowdouble() do end` or `@allowdouble` to denote exactly which operations can convert to double precision.""" maxlog=1
+        @warn """It's not recommended to use allowpromotion([true]) to allow promotion to double precision.
+                 Instead, use `allowpromotion() do end` or `@allowpromotion` to denote exactly which operations can convert to double precision.""" maxlog=1
     end
     setting = allow ? PromotionAllowed : PromotionDisallowed
-    task_local_storage(:DoublePromotion, setting)
-    requested_double_promotion[] = setting
+    task_local_storage(:ImplicitPromotion, setting)
+    requested_implicit_promotion[] = setting
     return
 end
 
@@ -272,20 +251,20 @@ macro allowscalar(ex)
 end
 
 """
-    @allowdouble() begin
+    @allowpromotion() begin
         # code that can use scalar indexing
     end
 
 Denote which operations can use scalar indexing.
 
-See also: [`allowdouble`](@ref).
+See also: [`allowpromotion`](@ref).
 """
-macro allowdouble(ex)
+macro allowpromotion(ex)
     quote
-        local tls_value = get(task_local_storage(), :DoublePromotion, nothing)
-        task_local_storage(:DoublePromotion, PromotionAllowed)
+        local tls_value = get(task_local_storage(), :ImplicitPromotion, nothing)
+        task_local_storage(:ImplicitPromotion, PromotionAllowed)
         @__tryfinally($(esc(ex)),
-                      isnothing(tls_value) ? delete!(task_local_storage(), :DoublePromotion)
-                                           : task_local_storage(:DoublePromotion, tls_value))
+                      isnothing(tls_value) ? delete!(task_local_storage(), :ImplicitPromotion)
+                                           : task_local_storage(:ImplicitPromotion, tls_value))
     end
 end
