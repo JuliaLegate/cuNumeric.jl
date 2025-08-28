@@ -229,6 +229,13 @@ function nda_dot(rhs1::NDArray, rhs2::NDArray)
     return NDArray(ptr)
 end
 
+# return underlying logical store to the NDArray obj
+function get_store(arr::NDArray)
+    cxx_ptr = CxxWrap.CxxPtr{cuNumeric.CN_NDArray}(arr.ptr)
+    store = _get_store(cxx_ptr)
+    return CxxWrap.CxxRef(store)
+end
+
 @doc"""
     to_cpp_index(idx::Dims{N}, int_type::Type=UInt64) where {N}
 

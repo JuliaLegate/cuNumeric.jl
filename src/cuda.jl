@@ -92,9 +92,29 @@ function check_sz(arr, maxshape)
     end
 end
 
+# allignment contrainsts are transitive.
+# we can allign all the inputs and then alligns all the outputs
+# then allign one input with one output
+# This reduces the need for a cartesian product.
+function add_default_alignment(
+    task::Legate.AutoTask, inputs::Vector{Legate.Variable}, outputs::Vector{Legate.Variable}
+)
+    # Align all inputs to the first input
+    for i in 2:length(inputs)
+        Legate.add_constraint(task, Legate.align(inputs[i], inputs[1]))
+    end
+    # Align all outputs to the first output
+    for i in 2:length(outputs)
+        Legate.add_constraint(task, Legate.align(outputs[i], outputs[1]))
+    end
+    # Align first output with first input
+    if !isempty(inputs) && !isempty(outputs)
+        Legate.add_constraint(task, Legate.align(outputs[1], inputs[1]))
+    end
+end
+
 function Launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
     outputs::Tuple{Vararg{cuNumeric.NDArray}}, scalars::Tuple{Vararg{Any}}; blocks, threads)
-    input_vec = cuNumeric.VectorNDArray()
 
     # we find the largest input/output. Everything gets auto alligned on this.
     ndarrays = vcat(inputs..., outputs...)
@@ -103,26 +123,37 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
     max_shape = size(ndarrays[mx[2]]) # second elem max position
     @assert !isnothing(max_shape)
 
+    rt = Legate.get_runtime()
+    lib = cuNumeric.get_lib()
+    taskid = cuNumeric.get_run_ptx_task_id()
+    task = Legate.create_auto_task(rt, lib, taskid)
+
+    input_vars = Vector{Legate.Variable}()
     for arr in inputs
         check_sz!(arr, max_shape; copy=true)
-        cuNumeric.push_back(input_vec, CxxRef{cuNumeric.CN_NDArray}(arr.ptr))
+        store = cuNumeric.get_store(arr)
+        p = Legate.add_input(task, store)
+        push!(input_vars, p)
     end
 
-    output_vec = cuNumeric.VectorNDArray()
+    output_vars = Vector{Legate.Variable}()
     for arr in outputs
         check_sz!(arr, max_shape; copy=false)
-        cuNumeric.push_back(output_vec, CxxRef{cuNumeric.CN_NDArray}(arr.ptr))
+        store = cuNumeric.get_store(arr)
+        p = Legate.add_output(task, store)
+        push!(output_vars, p)
     end
 
-    scalar_vec = Legate.VectorScalar()
+    Legate.add_scalar(task, Legate.string_to_scalar(kernel.func))
+    cuNumeric.add_xyz_scalars(task, to_stdvec(UInt32, blocks))  # bx,by,bz 1,2,3
+    cuNumeric.add_xyz_scalars(task, to_stdvec(UInt32, threads)) # tx,ty,tz 4,5,6
+
     for s in scalars
-        Legate.push_back(scalar_vec, Legate.Scalar(s))
+        Legate.add_scalar(task, Legate.Scalar(s)) # 7+ -> ARG_OFFSET
     end
 
-    cuNumeric.new_task(
-        kernel.func, to_stdvec(UInt32, blocks), to_stdvec(UInt32, threads), input_vec, output_vec,
-        scalar_vec,
-    )
+    cuNumeric.add_default_alignment(task, input_vars, output_vars)
+    Legate.submit_auto_task(rt, task)
 end
 
 function launch(kernel::CUDATask, inputs, outputs, scalars; blocks, threads)
@@ -134,6 +165,20 @@ function launch(kernel::CUDATask, inputs, outputs, scalars; blocks, threads)
         threads=isa(threads, Tuple) ? threads : (threads,),
     )
 end
+
+function ptx_task(ptx::String, kernel_name)
+    rt = Legate.get_runtime()
+    lib = cuNumeric.get_lib() # grab lib of legate app
+    # this taskid is directly tied to cpp code in our setup
+    taskid = cuNumeric.get_load_ptx_task_id()
+
+    task = Legate.create_auto_task(rt, lib, taskid)
+    # assign task arguments
+    Legate.add_scalar(task, Legate.string_to_scalar(ptx))
+    Legate.add_scalar(task, Legate.string_to_scalar(kernel_name))
+    Legate.submit_auto_task(rt, task)
+end
+
 """
     @cuda_task(f(args...))
 
