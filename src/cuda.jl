@@ -4,6 +4,7 @@ using Random
 const KERNEL_OFFSET = sizeof(CUDA.KernelState)
 
 # cuNumeric.jl init will call this
+# kernel_state is the first ARG in the generated PTX in CUDA.jl
 function set_kernel_state_size()
     cuNumeric.register_kernel_state_size(UInt64(KERNEL_OFFSET))
 end
@@ -116,7 +117,7 @@ end
 function Launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
     outputs::Tuple{Vararg{cuNumeric.NDArray}}, scalars::Tuple{Vararg{Any}}; blocks, threads)
 
-    # we find the largest input/output. Everything gets auto alligned on this.
+    # we find the largest input/output.
     ndarrays = vcat(inputs..., outputs...)
     mx = findmax(arr -> arr.nbytes, ndarrays) # returns (nbytes, position)
     max_size = mx[1] # first elem nbytes
@@ -125,7 +126,7 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
 
     rt = Legate.get_runtime()
     lib = cuNumeric.get_lib()
-    taskid = cuNumeric.get_run_ptx_task_id()
+    taskid = cuNumeric.RUN_PTX
     task = Legate.create_auto_task(rt, lib, taskid)
 
     input_vars = Vector{Legate.Variable}()
@@ -144,14 +145,17 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{cuNumeric.NDArray}},
         push!(output_vars, p)
     end
 
-    Legate.add_scalar(task, Legate.string_to_scalar(kernel.func))
+    # next 3 lines are reserved scalars in the RUN_PTX task
+    Legate.add_scalar(task, Legate.string_to_scalar(kernel.func)) # 0
     cuNumeric.add_xyz_scalars(task, to_stdvec(UInt32, blocks))  # bx,by,bz 1,2,3
     cuNumeric.add_xyz_scalars(task, to_stdvec(UInt32, threads)) # tx,ty,tz 4,5,6
 
+    # any user defined scalars in the launch macro
     for s in scalars
         Legate.add_scalar(task, Legate.Scalar(s)) # 7+ -> ARG_OFFSET
     end
 
+    # all inputs are alligned with all outputs
     cuNumeric.add_default_alignment(task, input_vars, output_vars)
     Legate.submit_auto_task(rt, task)
 end
@@ -170,8 +174,7 @@ function ptx_task(ptx::String, kernel_name)
     rt = Legate.get_runtime()
     lib = cuNumeric.get_lib() # grab lib of legate app
     # this taskid is directly tied to cpp code in our setup
-    taskid = cuNumeric.get_load_ptx_task_id()
-
+    taskid = cuNumeric.LOAD_PTX
     task = Legate.create_auto_task(rt, lib, taskid)
     # assign task arguments
     Legate.add_scalar(task, Legate.string_to_scalar(ptx))
@@ -223,7 +226,7 @@ macro cuda_task(call_expr)
         local _buf = IOBuffer()
         local _types = $cuNumeric.map_ndarray_cuda_types($(fargs...))
         # generate ptx using CUDA.jl 
-        CUDA.code_ptx(_buf, $fname, _types; raw=false, kernel=true)
+        CUDA.code_ptx(_buf, $fname, _types; raw=true, kernel=true)
 
         local _ptx = String(take!(_buf))
         local _func_name = cuNumeric.extract_kernel_name(_ptx)
