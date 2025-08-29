@@ -23,6 +23,8 @@
 using cuNumeric
 using CUDA
 import CUDA: i32
+using Test
+
 
 function kernel_add(a, b, c, N)
     i = (blockIdx().x - 1i32) * blockDim().x + threadIdx().x
@@ -71,7 +73,7 @@ function binaryop(max_diff)
         N
     )
 
-    @assert cuNumeric.compare(c, c_cpu, max_diff)
+    @test cuNumeric.compare(c, c_cpu, max_diff)
 
     for i in 1:N
         b[i] = a[i] * c[i]
@@ -82,7 +84,7 @@ function binaryop(max_diff)
         N
     )
 
-    @assert cuNumeric.compare(b, b_cpu, max_diff)
+    @test cuNumeric.compare(b, b_cpu, max_diff)
 end
 
 function kernel_sin(a, b, N)
@@ -118,7 +120,7 @@ function unaryop(max_diff)
     # TODO explore getting inplace ops working. 
     cuNumeric.@launch task=task threads=threads blocks=blocks inputs=a outputs=b scalars=UInt32(N)
 
-    @assert cuNumeric.compare(b, b_cpu, max_diff)
+    @test cuNumeric.compare(b, b_cpu, max_diff)
 end
 
 unaryop(Float32(1e-4))
