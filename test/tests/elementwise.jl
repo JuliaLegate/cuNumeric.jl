@@ -26,11 +26,11 @@ function elementwise()
     N = 100
     dims = (N, N)
 
-    arrA = cuNumeric.ones(dims)
+    arrA = cuNumeric.ones(Float64, dims)
     arrA_cpu = ones(dims)
     @test arrA == arrA_cpu
 
-    arrB = cuNumeric.ones(dims)
+    arrB = cuNumeric.ones(Float64, dims)
     arrB_cpu = ones(dims)
     @test arrB == arrB_cpu
 
@@ -43,7 +43,7 @@ function elementwise()
     @test arrA == arrA_cpu
     @test arrB == arrB_cpu
 
-    result = cuNumeric.zeros(dims)
+    result = cuNumeric.zeros(Float64, dims)
     result_cpu = zeros(dims)
     @test result == result_cpu
 

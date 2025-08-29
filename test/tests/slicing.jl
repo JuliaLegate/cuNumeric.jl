@@ -41,8 +41,8 @@ function slicing(max_diff)
     FT = Float64
     args = Params()
 
-    u = cuNumeric.zeros(dims)
-    v = cuNumeric.zeros(dims)
+    u = cuNumeric.zeros(Float64, dims)
+    v = cuNumeric.zeros(Float64, dims)
 
     u_cpu = rand(FT, dims);
     v_cpu = rand(FT, dims);
@@ -54,8 +54,8 @@ function slicing(max_diff)
         end
     end
 
-    u_new = cuNumeric.zeros(dims)
-    v_new = cuNumeric.zeros(dims)
+    u_new = cuNumeric.zeros(Float64, dims)
+    v_new = cuNumeric.zeros(Float64, dims)
 
     u_new_cpu = zeros(dims)
     v_new_cpu = zeros(dims)

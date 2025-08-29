@@ -24,6 +24,14 @@ include("utilities/wrapper_download.jl")
 
 const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.05.00"]
 
+const DEFAULT_FLOAT = Float32
+const SUPPORTED_INT_TYPES = Union{Int32,Int64}
+const SUPPORTED_FLOAT_TYPES = Union{Float32,Float64}
+const SUPPORTED_NUMERIC_TYPES = Union{SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES}
+const SUPPORTED_TYPES = Union{SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES,Bool} #* TODO Test UInt, Complex
+
+# const MAX_DIM = 6 # idk what we compiled?
+
 function preload_libs()
     libs = [
         joinpath(OpenBLAS32_jll.artifact_dir, "lib", "libopenblas.so"), # required for libcupynumeric.so

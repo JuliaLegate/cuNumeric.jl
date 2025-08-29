@@ -56,8 +56,8 @@ ndims(arr)
 ```
 """
 
-dim(arr::NDArray) = Int(cuNumeric.nda_array_dim(arr))
-Base.ndims(arr::NDArray) = Int(cuNumeric.nda_array_dim(arr))
+dim(::NDArray{T,N}) where {T,N} = N
+Base.ndims(::NDArray{T,N}) where {T,N} = N
 @doc"""
     Base.size(arr::NDArray)
     Base.size(arr::NDArray, dim::Int)
@@ -102,11 +102,12 @@ lastindex(arr)
 Base.firstindex(arr::NDArray, dim::Int) = 1
 Base.lastindex(arr::NDArray, dim::Int) = Base.size(arr, dim)
 Base.lastindex(arr::NDArray) = Base.size(arr, 1)
+Base.axes(arr::NDArray) = Base.OneTo.(size(arr))
+Base.view(arr::NDArray, inds...) = arr[inds...] # NDArray slices are views by default.
 
 Base.IndexStyle(::NDArray) = IndexCartesian()
 
-function Base.show(io::IO, arr::NDArray; elems=false)
-    T = eltype(arr)
+function Base.show(io::IO, arr::NDArray{T}) where {T}
     dim = Base.size(arr)
     print(io, "NDArray of $(T)s, Dim: $(dim)")
     if elems # print all elems of array
@@ -124,7 +125,7 @@ function Base.show(io::IO, arr::NDArray; elems=false)
     end
 end
 
-function Base.show(io::IO, ::MIME"text/plain", arr::NDArray; elems=false)
+function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T}; elems=false) where {T}
     Base.show(io, arr; elems=elems)
 end
 
@@ -170,13 +171,12 @@ Array(A)
 ```
  """
 ##### REGULAR ARRAY INDEXING ####
-function Base.getindex(arr::NDArray, idxs::Vararg{Int,N}) where {N}
-    T = eltype(arr)
+function Base.getindex(arr::NDArray{T}, idxs::Vararg{Int,N}) where {T,N}
     acc = NDArrayAccessor{T,N}()
     return read(acc, arr.ptr, to_cpp_index(idxs))
 end
 
-function Base.setindex!(arr::NDArray, value::T, idxs::Vararg{Int,N}) where {T<:Number,N}
+function Base.setindex!(arr::NDArray{T}, value::T, idxs::Vararg{Int,N}) where {T<:Number,N}
     acc = NDArrayAccessor{T,N}()
     write(acc, arr.ptr, to_cpp_index(idxs), value)
 end
@@ -260,9 +260,8 @@ end
 # USED TO CONVERT NDArray to Julia Array
 # Long term probably be a named function since we allocate
 # whole new array in here. Not exactly what I expect form []
-function Base.getindex(arr::NDArray, c::Vararg{Colon,N}) where {N}
+function Base.getindex(arr::NDArray{T}, c::Vararg{Colon,N}) where {T,N}
     arr_dims = Int.(cuNumeric.nda_array_shape(arr))
-    T = eltype(arr)
     julia_array = Base.zeros(T, arr_dims...)
 
     for CI in CartesianIndices(julia_array)
@@ -301,45 +300,77 @@ cuNumeric.full((2, 3), 7.5)
 cuNumeric.full(4, 0)
 ```
 """
-function full(dims::Dims{N}, val::T) where {T,N}
-    shape = UInt64.(collect(dims))
+function full(dims::Dims, val::T) where {T<:SUPPORTED_TYPES}
+    shape = collect(UInt64, dims)
     return nda_full_array(shape, val)
 end
 
-function full(dim::Int, val::T) where {T}
+function full(dim::Int, val::T) where {T<:SUPPORTED_TYPES}
     shape = UInt64[dim]
     return nda_full_array(shape, val)
 end
 
 @doc"""
-    cuNumeric.zeros([T=Float64,] dims::Int...)
-    cuNumeric.zeros([T=Float64,] dims::Tuple)
+    cuNumeric.trues(dims::Tuple, val)
+    cuNumeric.trues(dim::Int, val)
+    cuNumeric.trues(dims::Int...)
+
+Create an `NDArray` filled with the true, with the shape specified by `dims`.
+
+# Examples
+```@repl
+cuNumeric.trues(2, 3)
+```
+"""
+# trues(dim::Int) = cuNumeric.full(dim, true)
+# trues(dims::Dims) = cuNumeric.full(dims, true)
+# trues(dims::Int...) = cuNumeric.full(dims, true)
+
+@doc"""
+    cuNumeric.falses(dims::Tuple, val)
+    cuNumeric.falses(dim::Int, val)
+    cuNumeric.falses(dims::Int...)
+
+Create an `NDArray` filled with the false, with the shape specified by `dims`.
+
+# Examples
+```@repl
+cuNumeric.falses(2, 3)
+```
+"""
+# falses(dim::Int) = cuNumeric.full(dim, false)
+# falses(dims::Dims) = cuNumeric.full(dims, false)
+# falses(dims::Int...) = cuNumeric.full(dims, false)
+
+@doc"""
+    cuNumeric.zeros([T=Float32,] dims::Int...)
+    cuNumeric.zeros([T=Float32,] dims::Tuple)
 
 Create an NDArray with element type `T`, of all zeros with size specified by `dims`.
-This function mirrors the signature of `Base.zeros`, and defaults to `Float64` when the type is omitted.
+This function mirrors the signature of `Base.zeros`, and defaults to `Float32` when the type is omitted.
 
 # Examples
 ```@repl
 cuNumeric.zeros(2, 2)
-cuNumeric.zeros(Float32, 3)
+cuNumeric.zeros(Float64, 3)
 cuNumeric.zeros(Int32, (2,3))
 ```
 """
-function zeros(::Type{T}, dims::Dims{N}) where {N,T}
-    shape = UInt64.(collect(dims))
-    return nda_zeros_array(shape; type=T)
+function zeros(::Type{T}, dims::Dims) where {T<:SUPPORTED_TYPES}
+    shape = collect(UInt64, dims)
+    return nda_zeros_array(shape, T)
 end
 
-function zeros(::Type{T}, dims::Int...) where {T}
+function zeros(::Type{T}, dims::Int...) where {T<:SUPPORTED_TYPES}
     return zeros(T, dims)
 end
 
-function zeros(dims::Dims{N}) where {N}
-    return zeros(Float64, dims)
+function zeros(dims::Dims)
+    return zeros(DEFAULT_FLOAT, dims)
 end
 
 function zeros(dims::Int...)
-    return zeros(Float64, dims)
+    return zeros(DEFAULT_FLOAT, dims)
 end
 
 function zeros_like(arr::NDArray)
@@ -347,8 +378,8 @@ function zeros_like(arr::NDArray)
 end
 
 @doc"""
-    cuNumeric.ones([T=Float64,] dims::Int...)
-    cuNumeric.ones([T=Float64,] dims::Tuple)
+    cuNumeric.ones([T=Float32,] dims::Int...)
+    cuNumeric.ones([T=Float32,] dims::Tuple)
 
 Create an NDArray with element type `T`, of all zeros with size specified by `dims`.
 This function has the same signature as `Base.ones`, so be sure to call it as `cuNuermic.ones`.
@@ -369,11 +400,11 @@ function ones(::Type{T}, dims::Int...) where {T}
 end
 
 function ones(dims::Dims{N}) where {N}
-    return ones(Float64, dims)
+    return ones(DEFAULT_FLOAT, dims)
 end
 
 function ones(dims::Int...)
-    return ones(Float64, dims)
+    return ones(DEFAULT_FLOAT, dims)
 end
 
 @doc"""
@@ -396,7 +427,7 @@ cuNumeric.rand(NDArray, (4, 1))
 A = cuNumeric.zeros(2, 2); cuNumeric.rand!(A)
 ```
 """
-Random.rand!(arr::NDArray) = cuNumeric.nda_random(arr, 0)
+Random.rand!(arr::NDArray{Float64}) = cuNumeric.nda_random(arr, 0)
 Random.rand(::Type{NDArray}, dims::Dims) = cuNumeric.nda_random_array(UInt64.(collect(dims)))
 Random.rand(::Type{NDArray}, dims::Int...) = cuNumeric.rand(NDArray, dims)
 
@@ -404,6 +435,7 @@ random(::Type{T}, dims::Dims) where {T} = cuNumeric.nda_random_array(UInt64.(col
 random(::Type{T}, dim::Int64) where {T} = cuNumeric.random(T, (dim,))
 random(dims::Dims, e::Type{T}) where {T} = cuNumeric.rand(e, dims)
 random(arr::NDArray, code::Int64) = cuNumeric.nda_random(arr, code)
+
 #### OPERATIONS ####
 @doc"""
     reshape(arr::NDArray, dims::Dims{N}; copy::Bool = false) where {N}
@@ -447,26 +479,28 @@ lhs + rhs
 ```
 """
 
-function Base.:+(arr::NDArray, val::Scalar)
-    return nda_add_scalar(arr, val)
+function Base.:+(arr::NDArray{T}, val::V) where {T,V<:SUPPORTED_TYPES}
+    P = __my_promote_type(V, T)
+    return nda_add_scalar(maybe_promote_arr(arr, P), P(val))
 end
-function Base.:+(val::Scalar, arr::NDArray)
+
+function Base.:+(val::V, arr::NDArray{T}) where {T,V<:SUPPORTED_TYPES}
     return +(arr, val)
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(+), arr::NDArray, val::Scalar
-)
+    ::typeof(+), arr::NDArray{T}, val::V
+) where {T,V<:SUPPORTED_TYPES}
     return +(arr, val)
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(+), val::Scalar, arr::NDArray
-)
+    ::typeof(+), val::V, arr::NDArray{T}
+) where {T,V<:SUPPORTED_TYPES}
     return +(arr, val)
 end
 
-function Base.Broadcast.broadcasted(::typeof(+), lhs::NDArray, rhs::NDArray)
+function Base.Broadcast.broadcasted(::typeof(+), lhs::NDArray{T}, rhs::NDArray{T}) where {T}
     return +(lhs, rhs)
 end
 
@@ -490,28 +524,27 @@ lhs - 3
 lhs - rhs
 ```
 """
-function Base.:-(val::Scalar, arr::NDArray)
-    return nda_add_scalar(-arr, val)
+function Base.:-(val::V, arr::NDArray{T}) where {T,V<:SUPPORTED_TYPES}
+    return nda_multiply_scalar(arr, -val)
 end
 
-function Base.:-(arr::NDArray, val::Scalar)
+function Base.:-(arr::NDArray{T}, val::V) where {T,V<:SUPPORTED_TYPES}
     return +(arr, (-1*val))
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(-), arr::NDArray, val::Scalar
-)
+    ::typeof(-), arr::NDArray{T}, val::V
+) where {T,V<:SUPPORTED_TYPES}
     return -(arr, val)
 end
 function Base.Broadcast.broadcasted(
-    ::typeof(-), val::Scalar, rhs::NDArray
-)
-    arr_type = eltype(rhs) # match the arr type
-    lhs = full(Base.size(rhs), arr_type(val))
+    ::typeof(-), val::V, rhs::NDArray{T}
+) where {T,V<:SUPPORTED_TYPES}
+    lhs = full(size(rhs), val)
     return -(lhs, rhs)
 end
 
-function Base.Broadcast.broadcasted(::typeof(-), lhs::NDArray, rhs::NDArray)
+function Base.Broadcast.broadcasted(::typeof(-), lhs::NDArray{T}, rhs::NDArray{T}) where {T}
     return -(lhs, rhs)
 end
 
@@ -535,27 +568,28 @@ lhs - rhs
 ```
 """
 
-function Base.:*(val::Scalar, arr::NDArray)
-    return nda_multiply_scalar(arr, val)
+function Base.:*(val::V, arr::NDArray{T}) where {T,V<:SUPPORTED_NUMERIC_TYPES}
+    P = __my_promote_type(V, T)
+    return nda_multiply_scalar(maybe_promote_arr(arr, P), P(val))
 end
 
-function Base.:*(arr::NDArray, val::Scalar)
+function Base.:*(arr::NDArray{T}, val::V) where {T,V<:SUPPORTED_NUMERIC_TYPES}
     return *(val, arr)
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(*), arr::NDArray, val::Scalar
-)
+    ::typeof(*), arr::NDArray{T}, val::V
+) where {T,V<:SUPPORTED_NUMERIC_TYPES}
     return *(val, arr)
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(*), val::Scalar, arr::NDArray
-)
+    ::typeof(*), val::V, arr::NDArray{T}
+) where {T,V<:SUPPORTED_NUMERIC_TYPES}
     return *(val, arr)
 end
 
-function Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray, rhs::NDArray)
+function Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray{T}, rhs::NDArray{T}) where {T}
     return *(lhs, rhs)
 end
 
@@ -571,15 +605,14 @@ arr = cuNumeric.ones(2, 2)
 arr / 2
 ```
 """
-function Base.:/(arr::NDArray, val::Scalar)
-    # throw(ErrorException("[/] is not supported yet"))
-    return nda_multiply_scalar(arr, Float64(1 / val))
+function Base.:/(arr::NDArray{T}, val::V) where {T,V<:SUPPORTED_NUMERIC_TYPES}
+    throw(ErrorException("[/] is not supported yet"))
 end
 
 function Base.Broadcast.broadcasted(
-    ::typeof(/), arr::NDArray, val::Scalar
-)
-    return nda_multiply_scalar(arr, Float64(1 / val))
+    ::typeof(/), arr::NDArray{T}, val::V
+) where {T,V<:Union{Float16,Float32,Float64}}
+    return nda_multiply_scalar(arr, V(1 / val))
 end
 
 @doc"""
@@ -594,8 +627,8 @@ arr = cuNumeric.ones(2, 2)
 ```
 """
 function Base.Broadcast.broadcasted(
-    ::typeof(/), val::Scalar, arr::NDArray
-)
+    ::typeof(/), val::V, arr::NDArray{T}
+) where {T,V<:SUPPORTED_NUMERIC_TYPES}
     return throw(ErrorException("element wise [val ./ NDArray] is not supported yet"))
 end
 
@@ -612,7 +645,7 @@ C = A ./ B
 typeof(C)
 ```
 """
-function Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray, rhs::NDArray)
+function Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray{T}, rhs::NDArray{T}) where {T}
     return /(lhs, rhs)
 end
 
@@ -673,7 +706,8 @@ out = cuNumeric.zeros(2, 2)
 LinearAlgebra.mul!(out, a, b)
 ```
 """
-function LinearAlgebra.mul!(out::NDArray, arr1::NDArray, arr2::NDArray)
+function LinearAlgebra.mul!(out::NDArray{T,2}, arr1::NDArray{T,2}, arr2::NDArray{T,2}) where {T}
+    #! TODO: Support type promotion
     return nda_three_dot_arg(arr1, arr2, out)
 end
 
@@ -737,7 +771,7 @@ a == c
 """
 function Base.:(==)(arr1::NDArray, arr2::NDArray)
     if (Base.size(arr1) != Base.size(arr2))
-        @warn "lhs has size $(Base.size(arr)) and rhs has size $(Base.size(arr2))!\n"
+        @warn "lhs has size $(Base.size(arr1)) and rhs has size $(Base.size(arr2))!\n"
         return false
     end
 
