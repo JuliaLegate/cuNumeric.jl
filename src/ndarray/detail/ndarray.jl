@@ -17,7 +17,7 @@ nda_destroy_array(ptr::NDArray_t) = ccall((:nda_destroy_array, libnda),
 nda_nbytes(ptr::NDArray_t) = ccall((:nda_nbytes, libnda),
     Int64, (NDArray_t,), ptr)
 
-function get_julia_type(ptr::NDArray_t) 
+function get_julia_type(ptr::NDArray_t)
     type_code = ccall((:nda_array_type_code, libnda), Int32, (NDArray_t,), ptr)
     return Legate.code_type_map[type_code]
 end
@@ -34,10 +34,12 @@ Finalizer calls `nda_destroy_array` to clean up the underlying Legate array when
 mutable struct NDArray{T,N}
     ptr::NDArray_t
     nbytes::Int64
-    function NDArray(ptr::NDArray_t; T = get_julia_type(ptr), n_dim = get_n_dim(ptr))
+    padding::Union{Nothing,NTuple{N,Int}} where {N}
+
+    function NDArray(ptr::NDArray_t; T=get_julia_type(ptr), n_dim=get_n_dim(ptr))
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
-        handle = new{T, n_dim}(ptr, nbytes)
+        handle = new{T,n_dim}(ptr, nbytes, nothing)
         finalizer(handle) do h
             cuNumeric.nda_destroy_array(h.ptr)
             cuNumeric.register_free!(h.nbytes)
@@ -46,12 +48,12 @@ mutable struct NDArray{T,N}
     end
 end
 
-function NDArray(value::T) where {T <: SUPPORTED_TYPES}
+function NDArray(value::T) where {T<:SUPPORTED_TYPES}
     type = Legate.to_legate_type(T)
     ptr = ccall((:nda_from_scalar, libnda),
         NDArray_t, (Legate.LegateTypeAllocated, Ptr{Cvoid}),
         type, Ref(value))
-    return NDArray(ptr, T = T, n_dim = 1)
+    return NDArray(ptr; T=T, n_dim=1)
 end
 
 Base.Broadcast.broadcastable(v::NDArray) = v
@@ -63,7 +65,7 @@ function nda_zeros_array(shape::Vector{UInt64}, ::Type{T}) where {T}
     ptr = ccall((:nda_zeros_array, libnda),
         NDArray_t, (Int32, Ptr{UInt64}, Legate.LegateTypeAllocated),
         n_dim, shape, legate_type)
-    return NDArray(ptr; T = T, n_dim = n_dim)
+    return NDArray(ptr; T=T, n_dim=n_dim)
 end
 
 function nda_full_array(shape::Vector{UInt64}, value::T) where {T}
@@ -75,7 +77,7 @@ function nda_full_array(shape::Vector{UInt64}, value::T) where {T}
         (Int32, Ptr{UInt64}, Legate.LegateTypeAllocated, Ptr{Cvoid}),
         n_dim, shape, type, Ref(value))
 
-    return NDArray(ptr; T = T, n_dim = n_dim)
+    return NDArray(ptr; T=T, n_dim=n_dim)
 end
 
 function nda_random(arr::NDArray, gen_code)
@@ -89,14 +91,14 @@ function nda_random_array(shape::Vector{UInt64})
     ptr = ccall((:nda_random_array, libnda),
         NDArray_t, (Int32, Ptr{UInt64}),
         n_dim, shape)
-    return NDArray(ptr; n_dim = n_dim)
+    return NDArray(ptr; n_dim=n_dim)
 end
 
 function nda_get_slice(arr::NDArray{T,N}, slices::Vector{Slice}) where {T,N}
     ptr = ccall((:nda_get_slice, libnda),
         NDArray_t, (NDArray_t, Ptr{Slice}, Cint),
         arr.ptr, pointer(slices), length(slices))
-    return NDArray(ptr; T = T, n_dim = N)
+    return NDArray(ptr; T=T, n_dim=N)
 end
 
 # queries
@@ -119,21 +121,21 @@ function nda_array_shape(arr::NDArray)
 end
 
 # modify
-function nda_reshape_array(arr::NDArray{T}, newshape::Vector{UInt64}) where T
+function nda_reshape_array(arr::NDArray{T}, newshape::Vector{UInt64}) where {T}
     n_dim = Int32(length(newshape))
     ptr = ccall((:nda_reshape_array, libnda),
         NDArray_t, (NDArray_t, Int32, Ptr{UInt64}),
         arr.ptr, n_dim, newshape)
-    return NDArray(ptr; T = T, n_dim = n_dim)
+    return NDArray(ptr; T=T, n_dim=n_dim)
 end
 
-function nda_astype(arr::NDArray{OLD_T, N}, ::Type{NEW_T}) where {OLD_T, NEW_T, N}
+function nda_astype(arr::NDArray{OLD_T,N}, ::Type{NEW_T}) where {OLD_T,NEW_T,N}
     type = Legate.to_legate_type(NEW_T)
     ptr = ccall((:nda_astype, libnda),
         NDArray_t,
         (NDArray_t, Legate.LegateTypeAllocated),
         arr.ptr, type)
-    return NDArray(ptr; T = NEW_T, n_dim = N)
+    return NDArray(ptr; T=NEW_T, n_dim=N)
 end
 
 function nda_fill_array(arr::NDArray{T}, value::T) where {T}
@@ -146,7 +148,7 @@ function nda_fill_array(arr::NDArray{T}, value::T) where {T}
 end
 
 #! probably should be copyto!
-function nda_assign(arr::NDArray{T}, other::NDArray{T}) where T
+function nda_assign(arr::NDArray{T}, other::NDArray{T}) where {T}
     ccall((:nda_assign, libnda),
         Cvoid, (NDArray_t, NDArray_t),
         arr.ptr, other.ptr)
@@ -195,22 +197,22 @@ function nda_add(rhs1::NDArray, rhs2::NDArray, out::NDArray)
     return out
 end
 
-function nda_multiply_scalar(rhs1::NDArray{T, N}, value::T) where {T, N}
+function nda_multiply_scalar(rhs1::NDArray{T,N}, value::T) where {T,N}
     type = Legate.to_legate_type(T)
 
     ptr = ccall((:nda_multiply_scalar, libnda),
         NDArray_t, (NDArray_t, Legate.LegateTypeAllocated, Ptr{Cvoid}),
         rhs1.ptr, type, Ref(value))
-    return NDArray(ptr; T = T, n_dim = N)
+    return NDArray(ptr; T=T, n_dim=N)
 end
 
-function nda_add_scalar(rhs1::NDArray{T, N}, value::T) where {T, N}
+function nda_add_scalar(rhs1::NDArray{T,N}, value::T) where {T,N}
     type = Legate.to_legate_type(T)
 
     ptr = ccall((:nda_add_scalar, libnda),
         NDArray_t, (NDArray_t, Legate.LegateTypeAllocated, Ptr{Cvoid}),
         rhs1.ptr, type, Ref(value))
-    return NDArray(ptr; T = T, n_dim = N)
+    return NDArray(ptr; T=T, n_dim=N)
 end
 
 function nda_three_dot_arg(rhs1::NDArray, rhs2::NDArray, out::NDArray)
@@ -225,6 +227,13 @@ function nda_dot(rhs1::NDArray, rhs2::NDArray)
         NDArray_t, (NDArray_t, NDArray_t),
         rhs1.ptr, rhs2.ptr)
     return NDArray(ptr)
+end
+
+# return underlying logical store to the NDArray obj
+function get_store(arr::NDArray)
+    cxx_ptr = CxxWrap.CxxPtr{cuNumeric.CN_NDArray}(arr.ptr)
+    store = _get_store(cxx_ptr)
+    return CxxWrap.CxxRef(store)
 end
 
 @doc"""
@@ -308,13 +317,27 @@ function slice_array(slices::Vararg{Tuple{Union{Int,Nothing},Union{Int,Nothing}}
 end
 
 @doc"""
+    padded_shape(arr::NDArray)
+
+**Internal API**
+
+Return the size of the given `NDArray`. This will include the padded size.
+"""
+padded_shape(arr::NDArray) = Tuple(Int.(cuNumeric.nda_array_shape(arr)))
+
+@doc"""
     shape(arr::NDArray)
 
 **Internal API**
 
 Return the size of the given `NDArray`.
 """
-shape(arr::NDArray) = Tuple(Int.(cuNumeric.nda_array_shape(arr)))
+function shape(arr::NDArray)
+    if !isnothing(arr.padding)
+        return arr.padding
+    end
+    return cuNumeric.padded_shape(arr)
+end
 
 @doc"""
     compare(x, y, max_diff)

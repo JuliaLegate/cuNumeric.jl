@@ -47,8 +47,6 @@ global const binary_op_map = Dict{Function,BinaryOpCode}(
     #missing => cuNumeric.NEXTAFTER,
     Base.:(-) => cuNumeric.SUBTRACT)
 
-
-
 # # Functions which allow any of the supported types as input
 # # Last value in tuple is the return type
 # global const binary_op_specific_return = Dict{Function, Tuple{BinaryOpCode, DataType}}(
@@ -78,14 +76,13 @@ global const binary_op_map = Dict{Function,BinaryOpCode}(
 #     # Base.:(<<) => (cuNumeric.LEFT_SHIFT, Union{SUPPORTED_INT_TYPES, Bool}, :same_size_float) # bool input --> Int64 output in Julia
 # )
 
-
-maybe_promote_arr(arr::NDArray{T}, ::Type{T}) where T = arr
+maybe_promote_arr(arr::NDArray{T}, ::Type{T}) where {T} = arr
 maybe_promote_arr(arr::NDArray{T}, ::Type{S}) where {T,S} = as_type(arr, S)
 
 smaller_type(::Type{A}, ::Type{B}) where {A,B} = ifelse(sizeof(A) < sizeof(B), A, B)
 same_size(::Type{A}, ::Type{B}) where {A,B} = sizeof(A) == sizeof(B)
 
-function __my_promote_type(::Type{A}, ::Type{B}) where {A, B}
+function __my_promote_type(::Type{A}, ::Type{B}) where {A,B}
     T = promote_type(A, B)
     same_size(A, B) && return T
     S = smaller_type(A, B)
@@ -100,23 +97,27 @@ end
 for (base_func, op_code) in binary_op_map
     # Definitions and type promotion rules
     @eval begin
-        
+
         # With same types, no promotion
-        @inline function $(Symbol(base_func))(rhs1::NDArray{T}, rhs2::NDArray{T}) where {T <: SUPPORTED_TYPES}
+        @inline function $(Symbol(base_func))(
+            rhs1::NDArray{T}, rhs2::NDArray{T}
+        ) where {T<:SUPPORTED_TYPES}
             out = cuNumeric.zeros(T, promote_shape(size(rhs1), size(rhs2)))
             return nda_binary_op(out, $(op_code), rhs1, rhs2)
         end
 
         # # With un-matched types, promote to same type and call back to other function
-        @inline function $(Symbol(base_func))(rhs1::NDArray{A}, rhs2::NDArray{B}) where {A <: SUPPORTED_TYPES, B <: SUPPORTED_TYPES} 
+        @inline function $(Symbol(base_func))(
+            rhs1::NDArray{A}, rhs2::NDArray{B}
+        ) where {A<:SUPPORTED_TYPES,B<:SUPPORTED_TYPES}
             T = __my_promote_type(A, B)
-            return  $(Symbol(base_func))(maybe_promote_arr(rhs1, T), maybe_promote_arr(rhs2, T))
+            return $(Symbol(base_func))(maybe_promote_arr(rhs1, T), maybe_promote_arr(rhs2, T))
         end
 
         # @inline function $(Symbol(base_func))(arr::NDArray{T}, c::T) where T
         #     return $(Symbol(base_func))(arr, NDArray(c))
         # end
-        
+
         # @inline function $(Symbol(base_func))(c::T, arr::NDArray{T}) where T
         #     return $(Symbol(base_func))(NDArray(c), arr)
         # end
