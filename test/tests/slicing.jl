@@ -47,7 +47,7 @@ function slicing(max_diff)
     u_cpu = rand(FT, dims);
     v_cpu = rand(FT, dims);
 
-    for i in 1:N
+    @allowscalar for i in 1:N
         for j in 1:N
             u[i, j] = Float64(u_cpu[i, j])
             v[i, j] = Float64(v_cpu[i, j])

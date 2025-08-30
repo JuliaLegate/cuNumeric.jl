@@ -56,7 +56,7 @@ function daxpy_advanced()
 
     # test fill with scalar of all elements of the NDArray
     fill_value = Float64(4.23)
-    x[:, :] = fill_value
+    @allowscalar x[:, :] = fill_value
 
     @test x == fill(fill_value, dims)
 
@@ -106,8 +106,10 @@ function daxpy_advanced()
     @test ndims(y_1d) == 1
 
     # set all the elements of each NDArray to the CPU 1D array equivalent
-    x_cpu_1D = x_1d[:]
-    y_cpu_1D = y_1d[:]
+    allowscalar() do
+        x_cpu_1D = x_1d[:]
+        y_cpu_1D = y_1d[:]
+    end
     @test x_cpu_1D == x_1d
     @test y_cpu_1D == y_1d
 

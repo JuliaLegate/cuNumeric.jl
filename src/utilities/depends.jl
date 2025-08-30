@@ -18,6 +18,5 @@ import LinearAlgebra: mul!
 using Random
 import Random: rand, rand!
 
-import Base: axes, convert, copy, copyto!, inv, isfinite, sqrt,
-          -, +, *, ==, !=, isapprox, read, view, maximum, minimum, 
-          prod, sum
+import Base: axes, convert, copy, copyto!, inv, isfinite, sqrt, -, +, *, ==, !=, 
+            isapprox, read, view, maximum, minimum, prod, sum

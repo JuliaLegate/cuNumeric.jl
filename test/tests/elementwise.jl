@@ -37,8 +37,10 @@ function elementwise()
     cuNumeric.random(arrA, seed)
     cuNumeric.random(arrB, seed)
 
-    arrA_cpu = arrA[:, :]
-    arrB_cpu = arrB[:, :]
+    allowscalar() do
+        arrA_cpu = arrA[:, :]
+        arrB_cpu = arrB[:, :]
+    end
 
     @test arrA == arrA_cpu
     @test arrB == arrB_cpu

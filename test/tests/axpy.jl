@@ -40,7 +40,7 @@ function axpy_basic()
         y = cuNumeric.zeros(T, dims)
 
         # Initialize NDArrays with same random values as julia arrays
-        for i in 1:N
+        @allowscalar for i in 1:N
             for j in 1:N
                 x[i, j] = x_cpu[i, j]
                 y[i, j] = y_cpu[i, j]
@@ -49,7 +49,9 @@ function axpy_basic()
 
         result = α .* x .+ y
         result_cpu = α .* x_cpu .+ y_cpu
-        @test cuNumeric.compare(result, result_cpu, atol(T), rtol(T))
-        @test cuNumeric.compare(result_cpu, result, atol(T), rtol(T))
+        allowscalar() do
+            @test cuNumeric.compare(result, result_cpu, atol(T), rtol(T))
+            @test cuNumeric.compare(result_cpu, result, atol(T), rtol(T))
+        end
     end
 end

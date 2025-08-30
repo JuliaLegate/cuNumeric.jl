@@ -55,6 +55,14 @@ function NDArray(value::T) where {T <: SUPPORTED_TYPES}
     return NDArray(ptr, T = T, n_dim = 1)
 end
 
+function make_0D(value::T) where {T <: SUPPORTED_TYPES}
+    type = Legate.to_legate_type(T)
+    ptr = ccall((:nda_from_scalar_0D, libnda),
+        NDArray_t, (Legate.LegateTypeAllocated, Ptr{Cvoid}),
+        type, Ref(value))
+    return NDArray(ptr, T = T, n_dim = 0)
+end
+
 # construction 
 function nda_zeros_array(shape::Vector{UInt64}, ::Type{T}) where {T}
     n_dim = Int32(length(shape))
@@ -144,7 +152,6 @@ function nda_fill_array(arr::NDArray{T}, value::T) where {T}
     return nothing
 end
 
-#! probably should be copyto!
 function nda_assign(arr::NDArray{T}, other::NDArray{T}) where T
     ccall((:nda_assign, libnda),
         Cvoid, (NDArray_t, NDArray_t),
@@ -156,6 +163,15 @@ function nda_copy(arr::NDArray)
         NDArray_t, (NDArray_t,),
         arr.ptr)
     return NDArray(ptr)
+end
+
+# src will be unused after this
+function nda_move(dst::NDArray{T,N}, src::NDArray{T,N}) where {T,N}
+    ccall((:nda_move, libnda),
+        Cvoid, (NDArray_t, NDArray_t),
+        dst.ptr, src.ptr)
+    
+    #! FLAG GC THAT WE CAN DELETE src???
 end
 
 # operations 

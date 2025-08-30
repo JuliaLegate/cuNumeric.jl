@@ -6,14 +6,16 @@ Supported Unary Operations
 
 The following unary operations are supported and can be broadcast over `NDArray`:
 
+  - `-` (negation)
+  - `!` (logical not)
   - `abs`
   - `acos`
+  - `acosh`
   - `asin`
   - `asinh`
   - `atan`
   - `atanh`
   - `cbrt`
-  - `conj`
   - `cos`
   - `cosh`
   - `deg2rad`
@@ -21,18 +23,24 @@ The following unary operations are supported and can be broadcast over `NDArray`
   - `exp2`
   - `expm1`
   - `floor`
+  - `isfinite`
   - `log`
   - `log10`
   - `log1p`
   - `log2`
-  - `-` (negation)
   - `rad2deg`
+  - `sign`
+  - `signbit`
   - `sin`
   - `sinh`
   - `sqrt`
   - `tan`
   - `tanh`
 
+Differences
+-----------
+- The `acosh` function in Julia will error on inputs outside of the domain (x >= 1)
+    but cuNumeric.jl will return NaN.
 
 Examples
 --------
@@ -72,24 +80,23 @@ global const floaty_unary_ops_no_args = Dict{Function, UnaryOpCode}(
     Base.tanh => cuNumeric.TANH,
 )
 
-global const unary_op_map_no_args = Dict(
+global const unary_op_map_no_args = Dict{Function, UnaryOpCode}(
     Base.abs => cuNumeric.ABSOLUTE,
-    Base.conj => cuNumeric.CONJ,
+    # Base.conj => cuNumeric.CONJ, #! NEED TO SUPPORT COMPLEX TYPES FIRST
     Base.floor => cuNumeric.FLOOR,
     Base.:(-) => cuNumeric.NEGATIVE,
-    # Base.frexp => cuNumeric.FREXP, #* makes testing annoying
+    # Base.frexp => cuNumeric.FREXP, #* annoying returns tuple
     #missing => cuNumeric.GETARG, #not in numpy?
-    # Base.imag => cuNumeric.IMAG, #* makes testing annoying
+    # Base.imag => cuNumeric.IMAG, #! NEED TO SUPPORT COMPLEX TYPES FIRST
     #missing => cuNumerit.INVERT, # no bitwise not in julia?
-    # Base.isfinite => cuNumeric.ISFINITE, #* makes testing annoying
-    # Base.isinf => cuNumeric.ISINF, #* makes testing annoying
-    # Base.isnan => cuNumeric.ISNAN, #* makes testing annoying
-    # Base.:! => cuNumeric.LOGICAL_NOT, #* makes testing annoying
-    # Base.modf => cuNumeric.MODF, #* makes testing annoying
+    Base.isfinite => cuNumeric.ISFINITE,
+    # Base.isinf => cuNumeric.ISINF, #* dont feel like looking into this rn
+    # Base.isnan => cuNumeric.ISNAN, #* dont feel like looking into this rn
+    Base.:! => cuNumeric.LOGICAL_NOT, 
+    # Base.modf => cuNumeric.MODF, #* annoying returns tuple
     #missing => cuNumeric.POSITIVE, #What is this even for
-    # Base.sign => cuNumeric.SIGN, #* makes testing annoying
-    # Base.signbit => cuNumeric.SIGNBIT, #* makes testing annoying
-    #RECIPROCAL  = cuNumeric.CUPYNUMERIC_UOP_RECIPROCAL # define with -1 powers
+    Base.sign => cuNumeric.SIGN, 
+    Base.signbit => cuNumeric.SIGNBIT, 
 )
 
 

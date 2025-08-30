@@ -36,7 +36,7 @@ function sgemm(max_diff)
 
     # Initialize NDArrays with random values
     # used in Julia arrays
-    for i in 1:N
+    @allowscalar for i in 1:N
         for j in 1:N
             A[i, j] = Float64(A_cpu[i, j])
             B[i, j] = Float64(B_cpu[i, j])

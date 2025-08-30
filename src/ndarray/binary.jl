@@ -55,27 +55,19 @@ global const broadcasted_binary_op_map = Dict{Function, BinaryOpCode}(
     Base.:(>) => cuNumeric.GREATER, #* Julia also has non-broadcasted versions required `isless`
     Base.:(>=) => cuNumeric.GREATER_EQUAL, #* Julia also has non-broadcasted versions required `isless`
     # Base.:(!=) => (cuNumeric.NOT_EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION)
-    # Base.:(==) => (cuNumeric.EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION)
+    # Base.:(==) => (cuNumeric.EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION),
+    Base.atan => cuNumeric.ARCTAN2,
+    Base.lcm => cuNumeric.LCM,
+    Base.gcd => cuNumeric.GCD,
+    Base.xor => cuNumeric.LOGICAL_XOR,
+    Base.:⊻ => cuNumeric.LOGICAL_XOR,
+    Base.div => cuNumeric.FLOOR_DIVIDE,
+    Base.:(÷) => cuNumeric.FLOOR_DIVIDE,
+    Base.:(>>) => cuNumeric.RIGHT_SHIFT,
+    Base.:(<<) => cuNumeric.LEFT_SHIFT,
+    # Base.:(&&) => (cuNumeric.LOGICAL_AND, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
+    # Base.:(||) => (cuNumeric.LOGICAL_OR, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
 )
-
-
-# @enum OUTPUT_RULES same_size_float same_size_int same_as_input
-
-# # Functions which support only a subset of the supported types as input
-# # Last value in the tuple is the return type
-# global const binary_op_specific_input = Dict{Function, Tuple{BinaryOpCode, Type, Symbol}}(
-#     Base.atan => (cuNumeric.ARCTAN2, SUPPORTED_NUMERIC_TYPES, :same_size_float), #technically Julia promotes Int32 inputs to FP64
-#     Base.lcm => (cuNumeric.LCM, SUPPORTED_INT_TYPES, :same_as_input), 
-#     Base.gcd => (cuNumeric.GCD, SUPPORTED_INT_TYPES, :same_as_input), 
-#     # Base.:(&&) => (cuNumeric.LOGICAL_AND, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
-#     # Base.:(||) => (cuNumeric.LOGICAL_OR, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
-#     Base.xor  => (cuNumeric.LOGICAL_XOR, Bool, :same_as_input), 
-#     Base.:⊻ => (cuNumeric.LOGICAL_XOR, Bool, :same_as_input),
-#     Base.div => (cuNumeric.FLOOR_DIVIDE, SUPPORTED_NUMERIC_TYPES, :same_size_int),
-#     Base.:(÷) => (cuNumeric.FLOOR_DIVIDE, SUPPORTED_NUMERIC_TYPES, :same_size_int),
-#     # Base.:(>>) => (cuNumeric.RIGHT_SHIFT, Union{SUPPORTED_INT_TYPES, Bool}, :same_size_float) # bool input --> Int64 output in Julia
-#     # Base.:(<<) => (cuNumeric.LEFT_SHIFT, Union{SUPPORTED_INT_TYPES, Bool}, :same_size_float) # bool input --> Int64 output in Julia
-# )
 
 
 ## SPECIAL CASES ##
@@ -87,11 +79,12 @@ function Base.:(*)(rhs1::NDArray{A, 2}, rhs2::NDArray{B, 2}) where {A <: SUPPORT
     return nda_three_dot_arg(checked_promote_arr(rhs1, T), checked_promote_arr(rhs2, T), out)
 end
 
-function Base.:(*)(rhs1::NDArray{A, 2}, rhs2::NDArray{A, 2}) where A
-    T = __my_promote_type(A, B)
-    out = cuNumeric.zeros(T, (size(rhs1, 1), size(rhs2, 2)))
-    return nda_three_dot_arg(checked_promote_arr(rhs1, T), checked_promote_arr(rhs2, T), out)
-end
+#! think this is ambiguous
+# function Base.:(*)(rhs1::NDArray{A, 2}, rhs2::NDArray{A, 2}) where A
+#     T = __my_promote_type(A, B)
+#     out = cuNumeric.zeros(T, (size(rhs1, 1), size(rhs2, 2)))
+#     return nda_three_dot_arg(checked_promote_arr(rhs1, T), checked_promote_arr(rhs2, T), out)
+# end
 
 @doc"""
     LinearAlgebra.mul!(out::NDArray, arr1::NDArray, arr2::NDArray)
