@@ -4,16 +4,18 @@ export square
 Supported Unary Operations
 ===========================
 
-The following unary operations are supported and can be applied directly to `NDArray` values:
+The following unary operations are supported and can be broadcast over `NDArray`:
 
+  - `-` (negation)
+  - `!` (logical not)
   - `abs`
   - `acos`
+  - `acosh`
   - `asin`
   - `asinh`
   - `atan`
   - `atanh`
   - `cbrt`
-  - `conj`
   - `cos`
   - `cosh`
   - `deg2rad`
@@ -21,90 +23,137 @@ The following unary operations are supported and can be applied directly to `NDA
   - `exp2`
   - `expm1`
   - `floor`
+  - `isfinite`
   - `log`
   - `log10`
   - `log1p`
   - `log2`
-  - `-` (negation)
   - `rad2deg`
+  - `sign`
+  - `signbit`
   - `sin`
   - `sinh`
   - `sqrt`
-  - `square`
   - `tan`
   - `tanh`
 
-These operations are applied elementwise by default and follow standard Julia semantics.
+Differences
+-----------
+- The `acosh` function in Julia will error on inputs outside of the domain (x >= 1)
+    but cuNumeric.jl will return NaN.
 
 Examples
 --------
 
 ```julia
-A = NDArray(randn(Float32, 3, 3))
+A = cuNumeric.ones(Float32, 3, 3)
 
-abs(A)
+abs.(A)
 log.(A .+ 1)
--sqrt(abs(A))
-square(A)
+-sqrt.(abs.(A))
 ```
 """
-global const unary_op_map_no_args = Dict{Union{Function,Symbol},UnaryOpCode}(
+global const floaty_unary_ops_no_args = Dict{Function, UnaryOpCode}(
     Base.abs => cuNumeric.ABSOLUTE,
     Base.acos => cuNumeric.ARCCOS,
-    # Base.acosh => cuNumeric.ARCCOSH, #* makes testing annoying
+    Base.acosh => cuNumeric.ARCCOSH,
     Base.asin => cuNumeric.ARCSIN,
     Base.asinh => cuNumeric.ARCSINH,
     Base.atan => cuNumeric.ARCTAN,
     Base.atanh => cuNumeric.ARCTANH,
     Base.cbrt => cuNumeric.CBRT,
-    Base.conj => cuNumeric.CONJ,
-    # missing => cuNumeric.COPY, # SAME AS ASSIGN DONT NEED, OR COULD HARD CODE TO USE
     Base.cos => cuNumeric.COS,
     Base.cosh => cuNumeric.COSH,
     Base.deg2rad => cuNumeric.DEG2RAD,
     Base.exp => cuNumeric.EXP,
     Base.exp2 => cuNumeric.EXP2,
     Base.expm1 => cuNumeric.EXPM1,
-    Base.floor => cuNumeric.FLOOR,
-    # Base.frexp => cuNumeric.FREXP, #* makes testing annoying
-    #missing => cuNumeric.GETARG, #not in numpy?
-    # Base.imag => cuNumeric.IMAG, #* makes testing annoying
-    #missing => cuNumerit.INVERT, # 1/x or inv(A)?
-    # Base.isfinite => cuNumeric.ISFINITE, #* makes testing annoying
-    # Base.isinf => cuNumeric.ISINF, #* makes testing annoying
-    # Base.isnan => cuNumeric.ISNAN, #* makes testing annoying
     Base.log => cuNumeric.LOG,
     Base.log10 => cuNumeric.LOG10,
     Base.log1p => cuNumeric.LOG1P,
     Base.log2 => cuNumeric.LOG2,
-    # Base.:! => cuNumeric.LOGICAL_NOT, #* makes testing annoying
-    # Base.modf => cuNumeric.MODF, #* makes testing annoying
-    Base.:- => cuNumeric.NEGATIVE,
-    #missing => cuNumeric.POSITIVE, #What is this even for
     Base.rad2deg => cuNumeric.RAD2DEG,
-    # Base.sign => cuNumeric.SIGN, #* makes testing annoying
-    # Base.signbit => cuNumeric.SIGNBIT, #* makes testing annoying
     Base.sin => cuNumeric.SIN,
     Base.sinh => cuNumeric.SINH,
     Base.sqrt => cuNumeric.SQRT,  # HAS SPECIAL MEANING FOR MATRIX
-    :square => cuNumeric.SQUARE,
     Base.tan => cuNumeric.TAN,
     Base.tanh => cuNumeric.TANH,
 )
 
-@doc"""
-    square(arr::NDArray)
+global const unary_op_map_no_args = Dict{Function, UnaryOpCode}(
+    Base.abs => cuNumeric.ABSOLUTE,
+    # Base.conj => cuNumeric.CONJ, #! NEED TO SUPPORT COMPLEX TYPES FIRST
+    Base.floor => cuNumeric.FLOOR,
+    Base.:(-) => cuNumeric.NEGATIVE,
+    # Base.frexp => cuNumeric.FREXP, #* annoying returns tuple
+    #missing => cuNumeric.GETARG, #not in numpy?
+    # Base.imag => cuNumeric.IMAG, #! NEED TO SUPPORT COMPLEX TYPES FIRST
+    #missing => cuNumerit.INVERT, # no bitwise not in julia?
+    Base.isfinite => cuNumeric.ISFINITE,
+    # Base.isinf => cuNumeric.ISINF, #* dont feel like looking into this rn
+    # Base.isnan => cuNumeric.ISNAN, #* dont feel like looking into this rn
+    Base.:! => cuNumeric.LOGICAL_NOT, 
+    # Base.modf => cuNumeric.MODF, #* annoying returns tuple
+    #missing => cuNumeric.POSITIVE, #What is this even for
+    Base.sign => cuNumeric.SIGN, 
+    Base.signbit => cuNumeric.SIGNBIT, 
+)
 
-Elementwise square of each element in `arr`. 
-"""
-function square end
 
-# Generate code for all unary operators
-for (base_func, op_code) in unary_op_map_no_args
+### SPECIAL CASES ###
+
+# Non-broadcasted version of negation
+function Base.:(-)(input::NDArray{T}) where {T <: SUPPORTED_TYPES}
+    out = cuNumeric.zeros(T, size(input))
+    return nda_unary_op(out, cuNumeric.NEGATIVE, input)
+end
+
+function Base.sqrt(input::NDArray{T,2}) where {T <: SUPPORTED_TYPES}
+    error("cuNumeric.jl does not support matrix square root.")
+end
+
+# technically unary op
+@inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, ::Type{Val{2}}) where {T <: SUPPORTED_TYPES}
+    return nda_unary_op(out, cuNumeric.SQUARE, input)
+end
+
+# technically unary op
+@inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, ::Type{Val{-1}}) where {T <: SUPPORTED_TYPES}
+    return nda_unary_op(out, cuNumeric.RECIPROCAL, input)
+end
+
+
+#! NEEDS TO SUPPORT inv and ^ -1
+# @inline function literal_pow(::typeof(^), A::NDArray{T, 2}, ::Val{-1}) where T
+#     println("HERE")
+#     #! CAN WE ADD OPTIMIZATION FOR DIAGONAL MATRIX???
+#     LinearAlgebra.checksquare(A)
+#     out = cuNumeric.zeros(T, size(A))
+#     error("Matrix inverse not supported yet")
+#     # return nda_matrix_power(out, A, -1)
+# end
+
+
+# Generate hidden broadcasted version of unary ops.
+for (julia_fn, op_code) in unary_op_map_no_args
     @eval begin
-        function $(Symbol(base_func))(input::NDArray{T}) where T
-            out = cuNumeric.zeros(T, Base.size(input)) #! not sure this is ok for performance
+        @inline  function __broadcast(f::typeof($julia_fn), out::NDArray, input::NDArray{T}) where {T <: SUPPORTED_TYPES}
             return nda_unary_op(out, $(op_code), input)
+        end
+    end
+end
+
+# Some functions always return floats even when given integers
+# in the case where the output is determined to be float, but 
+# the input is integer, we first promote the input to float.
+for (julia_fn, op_code) in floaty_unary_ops_no_args
+    @eval begin
+        @inline  function __broadcast(f::typeof($julia_fn), out::NDArray{T}, input::NDArray{T}) where T
+            return nda_unary_op(out, $(op_code), input)
+        end
+
+        @inline  function __broadcast(f::typeof($julia_fn), out::NDArray{A}, input::NDArray{B}) where {A <: SUPPORTED_FLOAT_TYPES, B <: SUPPORTED_INT_TYPES}
+            return __broadcast(f, out, checked_promote_arr(input, A))
         end
     end
 end
@@ -173,16 +222,16 @@ global const unary_reduction_map = Dict{Function,UnaryRedCode}(
     Base.prod => cuNumeric.PROD,
     Base.sum => cuNumeric.SUM,
     #missing => cuNumeric.SUM_SQUARES,
-    #missing => cuNumeric.VARIANCE
+    #missing => cuNumeric.VARIANCE # requires StatsBase.
 )
 
 # #*TODO HOW TO GET THESE ACTING ON CERTAIN DIMS
 # Generate code for all unary reductions.
 for (base_func, op_code) in unary_reduction_map
     @eval begin
-        function $(Symbol(base_func))(input::NDArray)
+        function $(Symbol(base_func))(input::NDArray{T}) where {T <: SUPPORTED_TYPES}
             #* WILL BREAK NOT ALL REDUCTIONS HAVE SAME TYPE AS INPUT
-            out = cuNumeric.zeros(eltype(input), 1) # not sure this is ok for performance
+            out = cuNumeric.zeros(T, 1) #! RETURN 0D ARRAY?
             return nda_unary_reduction(out, $(op_code), input)
         end
     end
@@ -200,7 +249,7 @@ end
 #* TODO Overload broadcasting to just call this
 #* e.g. sin.(ndarray) should call this or the proper generated func
 function Base.map(f::Function, arr::NDArray)
-    return f(arr) # Will try to call one of the functions generated above
+    return f.(arr) # Will try to call one of the functions generated above
 end
 
 # function get_unary_op(f::Function)

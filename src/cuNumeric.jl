@@ -19,6 +19,7 @@
 
 module cuNumeric
 
+
 include("utilities/depends.jl")
 include("utilities/wrapper_download.jl")
 
@@ -66,10 +67,14 @@ preload_libs() # for precompilation
 # custom GC
 include("memory.jl")
 
+# allowscalar and allowpromotion
+include("warnings.jl")
+
 # NDArray internal
 include("ndarray/detail/ndarray.jl")
 
 # NDArray interface
+include("ndarray/broadcast.jl")
 include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
