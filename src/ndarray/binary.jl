@@ -72,11 +72,46 @@ global const broadcasted_binary_op_map = Dict{Function, BinaryOpCode}(
 
 ## SPECIAL CASES ##
 
-#! WHY CAN I NOT CALL THIS??
-function Base.:(*)(rhs1::NDArray{A, 2}, rhs2::NDArray{B, 2}) where {A <: SUPPORTED_TYPES, B <: SUPPORTED_TYPES}
+# Do not need broadcast operation when same shape
+function Base.:(-)(rhs1::NDArray{A, N}, rhs2::NDArray{B, N}) where {A, B, N}
+    # technically should call promote_shape 
+    T = __my_promote_type(A, B)
+    out = cuNumeric.zeros(T, size(rhs1))
+    return nda_binary_op(out, cuNumeric.SUBTRACT, unchecked_promote_arr(rhs1, T), unchecked_promote_arr(rhs2, T))
+end
+
+# Do not need broadcast operation when same shape
+function Base.:(+)(rhs1::NDArray{A, N}, rhs2::NDArray{B,N}) where {A, B, N}
+    # technically should call promote_shape 
+    T = __my_promote_type(A, B)
+    out = cuNumeric.zeros(T, size(rhs1))
+    return nda_binary_op(out, cuNumeric.ADD, unchecked_promote_arr(rhs1, T), unchecked_promote_arr(rhs2, T))
+end
+
+function Base.:(*)(val::V, arr::NDArray{A}) where {A, V}
+    T = __my_promote_type(A, V)
+    out = cuNumeric.zeros(T, size(arr))
+    return nda_binary_op(out, cuNumeric.MULTIPLY, NDArray(T(val)), unchecked_promote_arr(arr, T))
+end
+
+function Base.:(*)(arr::NDArray{A}, val::V) where {A, V}
+    val * arr
+end
+
+function Base.:(*)(rhs1::NDArray{A, 2}, rhs2::NDArray{B, 2}) where {A, B}
+    size(rhs1, 2) == size(rhs2, 1) || throw(DimensionMismatch("Matrix dimensions incompatible: $(size(rhs1)) × $(size(rhs2))"))
     T = __my_promote_type(A, B)
     out = cuNumeric.zeros(T, (size(rhs1, 1), size(rhs2, 2)))
-    return nda_three_dot_arg(checked_promote_arr(rhs1, T), checked_promote_arr(rhs2, T), out)
+    return nda_three_dot_arg(unchecked_promote_arr(rhs1, T), unchecked_promote_arr(rhs2, T), out)
+end
+
+function Base.:(*)(rhs1::NDArray{Bool, 2}, rhs2::NDArray{Bool, 2})
+    throw(ArgumentError("cuNumeric.jl does not support matrix multiplication of two Boolean arrays"))
+end
+
+function Base.:(*)(rhs1::NDArray{<:Integer, 2}, rhs2::NDArray{<:Integer, 2})
+    #* this is a stupid.....
+    throw(ArgumentError("cuNumeric.jl does not support matrix multiplication of two Integer arrays"))
 end
 
 @doc"""
@@ -94,17 +129,31 @@ out = cuNumeric.zeros(2, 2)
 LinearAlgebra.mul!(out, a, b)
 ```
 """
-
-#! WHY CAN I NOT CALL THIS??
-#! will probably crash horribly if input is Floats and output is Ints
-function LinearAlgebra.mul!(out::NDArray{T, 2}, rhs1::NDArray{A, 2}, rhs2::NDArray{B, 2}) where {T, A, B}
+function LinearAlgebra.mul!(out::NDArray{T, 2}, rhs1::NDArray{A, 2}, rhs2::NDArray{B, 2}) where {T <: SUPPORTED_NUMERIC_TYPES, A, B}
+    #! This will probably need more checks once we support Complex number
+    size(rhs1, 2) == size(rhs2, 1) || throw(DimensionMismatch("Matrix dimensions incompatible: $(size(rhs1)) × $(size(rhs2))"))
+    (size(out, 1) == size(rhs1, 1) && size(out, 2) == size(rhs2, 2)) || throw(DimensionMismatch(
+        "mul! output is $(size(out)), but inputs would produce $(size(rhs1,1))×$(size(rhs2,2))"
+    ))
+    T_OUT = __my_promote_type(A, B)
+    ((T_OUT <: AbstractFloat) && (T <: Integer)) && throw(ArgumentError("mul! output has integer type $(T), but inputs promote to floating point type: $(T_OUT)"))
     return nda_three_dot_arg(checked_promote_arr(rhs1, T), checked_promote_arr(rhs2, T), out)
+end
+
+function LinearAlgebra.mul!(out::NDArray, rhs1::NDArray{Bool, 2}, rhs2::NDArray{Bool, 2})
+    #* Could just promote both inputs to Int32
+    throw(ArgumentError("cuNumeric.jl does not support matrix multiplication of two Boolean arrays"))
+end
+
+function LinearAlgebra.mul!(out::NDArray, rhs1::NDArray{<:Integer, 2}, rhs2::NDArray{<:Integer, 2})
+    #* this is a stupid.....
+    throw(ArgumentError("cuNumeric.jl does not support matrix multiplication of two Integer arrays"))
 end
 
 # Generate hidden broadcast functions for binary ops
 for (julia_fn, op_code) in broadcasted_binary_op_map
     @eval begin
-        @inline function __broadcast(f::typeof($(julia_fn)), out::NDArray, rhs1::NDArray{T}, rhs2::NDArray{T}) where {T <: SUPPORTED_TYPES}
+        @inline function __broadcast(f::typeof($(julia_fn)), out::NDArray, rhs1::NDArray{T}, rhs2::NDArray{T}) where T
             return nda_binary_op(out, $(op_code), rhs1, rhs2)
         end
     end

@@ -32,32 +32,39 @@ atol(::Type{I}) where {I<:Integer} = atol(float(I))
 rtol(::Type{Complex{T}}) where {T} = rtol(T)
 atol(::Type{Complex{T}}) where {T} = atol(T)
 
-include("tests/daxpy.jl")
-include("tests/daxpy_advanced.jl")
+include("tests/axpy.jl")
+include("tests/axpy_advanced.jl")
 include("tests/elementwise.jl")
 include("tests/slicing.jl")
-include("tests/sgemm.jl")
+include("tests/gemm.jl")
 # include("tests/custom_cuda.jl")
 
 @testset verbose = true "AXPY" begin
-    @testset axpy_basic()
-    @testset daxpy_advanced()
+    N = 100
+    @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)
+        @testset "basic" axpy_basic(T, N)
+        @testset "advanced" axpy_advanced(T, N)
+    end
 end
 
 @testset verbose = true "Operators" begin
     @testset elementwise()
 end
 
-@testset verbose = true "SGEMM" begin
-    max_diff = Float32(1e-4)
-    @warn "SGEMM has some precision issues, using tol $(max_diff) 🥲"
-    @testset sgemm(max_diff)
+@testset verbose = true "GEMM" begin
+    N = 50
+    M = 25
+    @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
+        @warn "SGEMM has some precision issues, using tol $(rtol(T)) 🥲"
+        gemm(N, M, T, rtol(T))
+    end
 end
 
 #*TODO ADD IN PLACE VARIANTS
 #*TODO TEST VARIANT OVER DIMS
 #* TODO TEST MULTI-DIMENSIONAL THINGS
 #* TODO TEST non-broadcast versions
+#* TEST INTEGER LITERAL POWERS
 @testset verbose = true "Unary Ops w/o Args" begin
     N = 100
 
@@ -147,6 +154,7 @@ end
     end
 end
 
+#* TODO TEST WITH SCALARS
 @testset verbose = true "Binary Ops" begin
     N = 100
 
@@ -172,8 +180,8 @@ end
             julia_res = func.(julia_arr1, julia_arr2)
             allowscalar() do
                 @test cuNumeric.compare(cunumeric_res, cunumeric_in_place, atol(T_OUT), rtol(T_OUT))
-                @test cuNumeric.compare(julia_res, cunumeric_res, max_diff, atol(T_OUT), rtol(T_OUT))
-                @test cuNumeric.compare(julia_res, cunumeric_res2, max_diff, atol(T_OUT), rtol(T_OUT))
+                @test cuNumeric.compare(julia_res, cunumeric_res, atol(T_OUT), rtol(T_OUT))
+                @test cuNumeric.compare(julia_res, cunumeric_res2, atol(T_OUT), rtol(T_OUT))
             end
         end
     end
@@ -185,12 +193,12 @@ end
         cunumeric_arr5 = cuNumeric.zeros(Float64, N, N)
 
 
-        @test_throws "Detected promotion" cunumeric_arr3 + cunumeric_arr1
-        @test_throws "Detected promotion" map(+, cunumeric_arr3, cunumeric_arr1)
-        @test_throws DimensionMismatch cunumeric_arr1 + cunumeric_arr5
-        @test_throws DimensionMismatch cunumeric_arr1 / cunumeric_arr5
+        @test_throws "Implicit promotion" cunumeric_arr3 .+ cunumeric_arr1
+        @test_throws "Implicit promotion" map(+, cunumeric_arr3, cunumeric_arr1)
+        @test_throws DimensionMismatch cunumeric_arr1 .+ cunumeric_arr5
+        @test_throws DimensionMismatch cunumeric_arr1 ./ cunumeric_arr5
 
-        @test cunumeric_arr1 == cunumeric_int64 + cunumeric_arr1
+        @test cunumeric_arr1 == cunumeric_int64 .+ cunumeric_arr1
 
     end
 

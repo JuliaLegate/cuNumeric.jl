@@ -44,7 +44,7 @@ is_wider_type(::Type{A}, ::Type{B}) where {A,B} = sizeof(A) > sizeof(B)
 checked_promote_arr(arr::NDArray{T}, ::Type{T}) where T = arr
 
 function checked_promote_arr(arr::NDArray{T}, ::Type{S}) where {T, S}
-    is_wider_type(S, T) && assertpromotion(promote_type, A, T)
+    is_wider_type(S, T) && assertpromotion(promote_type, T, S)
     return as_type(arr, S)
 end
 

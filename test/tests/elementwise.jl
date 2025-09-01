@@ -26,97 +26,90 @@ function elementwise()
     N = 100
     dims = (N, N)
 
-    arrA = cuNumeric.ones(Float64, dims)
-    arrA_cpu = ones(dims)
-    @test arrA == arrA_cpu
-
-    arrB = cuNumeric.ones(Float64, dims)
-    arrB_cpu = ones(dims)
-    @test arrB == arrB_cpu
-
-    cuNumeric.random(arrA, seed)
-    cuNumeric.random(arrB, seed)
-
     allowscalar() do
+        arrA = cuNumeric.ones(Float64, dims)
+        arrA_cpu = ones(dims)
+        @test arrA == arrA_cpu
+
+        arrB = cuNumeric.ones(Float64, dims)
+        arrB_cpu = ones(dims)
+        @test arrB == arrB_cpu
+
+        cuNumeric.random(arrA, seed)
+        cuNumeric.random(arrB, seed)
+
         arrA_cpu = arrA[:, :]
         arrB_cpu = arrB[:, :]
+
+        @test arrA == arrA_cpu
+        @test arrB == arrB_cpu
+
+        result = cuNumeric.zeros(Float64, dims)
+        result_cpu = zeros(dims)
+        @test result == result_cpu
+
+        # where the real testing starts
+        arrA = 13.74 .- arrA
+        arrA_cpu = 13.74 .- arrA_cpu
+        @test arrA == arrA_cpu
+
+        arrA = arrA .- 13.74
+        arrA_cpu = arrA_cpu .- 13.74
+        @test arrA == arrA_cpu
+
+        result = arrA .- arrB
+        result_cpu = arrA_cpu .- arrB_cpu
+        @test result == result_cpu
+
+        result = arrA - arrB
+        result_cpu = arrA_cpu - arrB_cpu
+        @test result == result_cpu
+
+        arrA = 332.59 .+ arrA
+        arrA_cpu = 332.59 .+ arrA_cpu
+        @test arrA == arrA_cpu
+
+        arrA = arrA .+ 332.59
+        arrA_cpu = arrA_cpu .+ 332.59
+        @test arrA == arrA_cpu
+
+        result = arrA .+ arrB
+        result_cpu = arrA_cpu .+ arrB_cpu
+        @test result == result_cpu
+
+        result = arrA + arrB
+        result_cpu = arrA_cpu + arrB_cpu
+        @test result == result_cpu
+
+        arrA = 1.3 ./ arrA 
+        arrA_cpu =  1.3 ./ arrA_cpu
+        @test arrA == arrA_cpu
+
+        arrA = arrA ./ 1.3
+        arrA_cpu = arrA_cpu ./ 1.3
+        @test arrA == arrA_cpu
+
+        result = arrA ./ arrB
+        result_cpu = arrA_cpu ./ arrB_cpu
+        @test result == result_cpu
+
+        arrA = 32.32 * arrA
+        arrA_cpu = 32.32 * arrA_cpu
+        @test arrA == arrA_cpu
+
+        arrA = arrA .* 32.32
+        arrA_cpu = arrA_cpu .* 32.32
+        @test arrA == arrA_cpu
+
+        result = arrA .* arrB
+        result_cpu = arrA_cpu .* arrB_cpu
+        @test result == result_cpu
+
+        operator(arrA, arrB)
+        operator(arrA_cpu, arrB_cpu)
+        @test arrA == arrA_cpu
+        @test arrB == arrB_cpu
     end
-
-    @test arrA == arrA_cpu
-    @test arrB == arrB_cpu
-
-    result = cuNumeric.zeros(Float64, dims)
-    result_cpu = zeros(dims)
-    @test result == result_cpu
-
-    # where the real testing starts
-    arrA = 13.74 .- arrA
-    arrA_cpu = 13.74 .- arrA_cpu
-    @test arrA == arrA_cpu
-
-    arrA = arrA .- 13.74
-    arrA_cpu = arrA_cpu .- 13.74
-    @test arrA == arrA_cpu
-
-    result = arrA .- arrB
-    result_cpu = arrA_cpu .- arrB_cpu
-    @test result == result_cpu
-
-    result = arrA - arrB
-    result_cpu = arrA_cpu - arrB_cpu
-    @test result == result_cpu
-
-    arrA = 332.59 .+ arrA
-    arrA_cpu = 332.59 .+ arrA_cpu
-    @test arrA == arrA_cpu
-
-    arrA = arrA .+ 332.59
-    arrA_cpu = arrA_cpu .+ 332.59
-    @test arrA == arrA_cpu
-
-    result = arrA .+ arrB
-    result_cpu = arrA_cpu .+ arrB_cpu
-    @test result == result_cpu
-
-    result = arrA + arrB
-    result_cpu = arrA_cpu + arrB_cpu
-    @test result == result_cpu
-
-    # # not supported yet
-    # arrA = 1.3 ./ arrA 
-    # arrA_cpu =  1.3 ./ arrA_cpu
-    # @test arrA == arrA_cpu
-
-    # don't understand why this is failing
-    # arrA = arrA ./ 1.3
-    # arrA_cpu = arrA_cpu ./ 1.3
-    # @test arrA == arrA_cpu
-
-    result = arrA ./ arrB
-    result_cpu = arrA_cpu ./ arrB_cpu
-    @test result == result_cpu
-
-    arrA = 32.32 * arrA
-    arrA_cpu = 32.32 * arrA_cpu
-    @test arrA == arrA_cpu
-
-    arrA = arrA .* 32.32
-    arrA_cpu = arrA_cpu .* 32.32
-    @test arrA == arrA_cpu
-
-    # currently our A * B impl is element wise
-    result = arrA * arrB
-    result_cpu = arrA_cpu .* arrB_cpu
-    @test result == result_cpu
-
-    result = arrA .* arrB
-    result_cpu = arrA_cpu .* arrB_cpu
-    @test result == result_cpu
-
-    operator(arrA, arrB)
-    operator(arrA_cpu, arrB_cpu)
-    @test arrA == arrA_cpu
-    @test arrB == arrB_cpu
 end
 
 function operator(u, v)

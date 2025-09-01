@@ -70,7 +70,9 @@ arr = cuNumeric.rand(4, 5);
 as_type(arr, Float32)
 ```
 """
-as_type(arr::NDArray, ::Type{T}) where T = nda_astype(arr, T)::NDArray{T}
+as_type(arr::NDArray{S, N}, ::Type{T}) where {S,T,N} = nda_astype(arr, T)::NDArray{T,N}
+as_type(arr::NDArray{T}, ::Type{T}) where T = arr
+
 
 # Base.convert(::Type{<:NDArray{T}}, a::A) where {T, A} = NDArray(T(a))::NDArray{T}
 # Base.convert(::Type{T}, a::T) where {T <: NDArray} = a
@@ -107,8 +109,8 @@ ndims(arr)
 ```
 """
 
-dim(::NDArray{T,N}) where {T,N} = N
-Base.ndims(::NDArray{T,N}) where {T,N} = N
+dim(::NDArray{T,N}) where {T,N} = N::Int
+Base.ndims(::NDArray{T,N}) where {T,N} = N::Int
 @doc"""
     Base.size(arr::NDArray)
     Base.size(arr::NDArray, dim::Int)
@@ -483,6 +485,8 @@ Random.rand(::Type{NDArray}, dims::Int...) = cuNumeric.rand(NDArray, dims)
 random(::Type{T}, dims::Dims) where {T} = cuNumeric.nda_random_array(UInt64.(collect(dims)))
 random(::Type{T}, dim::Int64) where {T} = cuNumeric.random(T, (dim,))
 random(dims::Dims, e::Type{T}) where {T} = cuNumeric.rand(e, dims)
+
+#! THIS SHOULD HAVE AN ! IT MODIFES THE INPUT
 random(arr::NDArray, code::Int64) = cuNumeric.nda_random(arr, code)
 
 #### OPERATIONS ####

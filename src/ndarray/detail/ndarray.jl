@@ -360,14 +360,9 @@ Emits warnings when array sizes or element types differ.
 - Checks element type compatibility for `NDArray` vs Julia array.
 - Iterates over elements using `CartesianIndices` to compare element-wise difference.
 """
-function compare(julia_array::AbstractArray{T}, arr::NDArray{T}, atol::Real, rtol::Real) where T
+function compare(julia_array::AbstractArray{T, N}, arr::NDArray{T, N}, atol::Real, rtol::Real) where {T,N}
     if (shape(arr) != Base.size(julia_array))
         @warn "NDArray has shape $(shape(arr)) and Julia array has shape $(Base.size(julia_array))!\n"
-        return false
-    end
-
-    if (eltype(arr) != eltype(julia_array))
-        @warn "NDArray has eltype $(eltype(arr)) and Julia array has eltype $(eltype(julia_array))!\n"
         return false
     end
 
@@ -382,11 +377,11 @@ function compare(julia_array::AbstractArray{T}, arr::NDArray{T}, atol::Real, rto
     return true
 end
 
-function compare(arr::NDArray{T}, julia_array::AbstractArray{T}, atol::Real, rtol::Real) where T
+function compare(arr::NDArray{T, N}, julia_array::AbstractArray{T, N}, atol::Real, rtol::Real) where {T,N}
     return compare(julia_array, arr, atol, rtol)
 end
 
-function compare(arr::NDArray{T}, arr2::NDArray{T}, atol::Real, rtol::Real) where T
+function compare(arr::NDArray{T, N}, arr2::NDArray{T, N}, atol::Real, rtol::Real) where {T,N}
     if (shape(arr) != shape(arr2))
         @warn "NDArray LHS has shape $(shape(arr)) and NDArray RHS has shape $(shape(arr2))!\n"
         return false
