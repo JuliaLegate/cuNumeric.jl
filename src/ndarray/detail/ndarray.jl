@@ -22,7 +22,7 @@ function get_julia_type(ptr::NDArray_t)
     return Legate.code_type_map[type_code]
 end
 
-get_n_dim(ptr::NDArray_t) = ccall((:nda_array_dim, libnda), Int32, (NDArray_t,), ptr)
+get_n_dim(ptr::NDArray_t) = Int(ccall((:nda_array_dim, libnda), Int32, (NDArray_t,), ptr))
 
 @doc"""
 **Internal API**
@@ -37,7 +37,7 @@ mutable struct NDArray{T,N}
     function NDArray(ptr::NDArray_t; T = get_julia_type(ptr), n_dim = get_n_dim(ptr))
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
-        handle = new{T, n_dim}(ptr, nbytes)
+        handle = new{T, Int(n_dim)}(ptr, nbytes)
         finalizer(handle) do h
             cuNumeric.nda_destroy_array(h.ptr)
             cuNumeric.register_free!(h.nbytes)
@@ -46,7 +46,6 @@ mutable struct NDArray{T,N}
     end
 end
 
-#* SHOULD THE DIM ON THIS BE 0??
 function NDArray(value::T) where {T <: SUPPORTED_TYPES}
     type = Legate.to_legate_type(T)
     ptr = ccall((:nda_from_scalar, libnda),
@@ -55,13 +54,13 @@ function NDArray(value::T) where {T <: SUPPORTED_TYPES}
     return NDArray(ptr, T = T, n_dim = 1)
 end
 
-function make_0D(value::T) where {T <: SUPPORTED_TYPES}
-    type = Legate.to_legate_type(T)
-    ptr = ccall((:nda_from_scalar_0D, libnda),
-        NDArray_t, (Legate.LegateTypeAllocated, Ptr{Cvoid}),
-        type, Ref(value))
-    return NDArray(ptr, T = T, n_dim = 0)
-end
+# function make_0D(value::T) where {T <: SUPPORTED_TYPES}
+#     type = Legate.to_legate_type(T)
+#     ptr = ccall((:nda_from_scalar_0D, libnda),
+#         NDArray_t, (Legate.LegateTypeAllocated, Ptr{Cvoid}),
+#         type, Ref(value))
+#     return NDArray(ptr, T = T, n_dim = 0)
+# end
 
 # construction 
 function nda_zeros_array(shape::Vector{UInt64}, ::Type{T}) where {T}
@@ -170,8 +169,10 @@ function nda_move(dst::NDArray{T,N}, src::NDArray{T,N}) where {T,N}
     ccall((:nda_move, libnda),
         Cvoid, (NDArray_t, NDArray_t),
         dst.ptr, src.ptr)
-    
-    #! FLAG GC THAT WE CAN DELETE src???
+
+    src.ptr = Ptr{Cvoid}(0)
+    src.nbytes = 0
+    register_free!(dst.nbytes)
 end
 
 # operations 
@@ -194,6 +195,13 @@ function nda_unary_reduction(out::NDArray, op_code::UnaryRedCode, input::NDArray
         Cvoid, (NDArray_t, UnaryRedCode, NDArray_t),
         out.ptr, op_code, input.ptr)
     return out
+end
+
+function nda_array_equal(rhs1::NDArray{T, N}, rhs2::NDArray{T,N}) where {T,N}
+    ptr = ccall((:nda_array_equal, libnda),
+        NDArray_t, (NDArray_t, NDArray_t),
+            rhs1.ptr, rhs2.ptr)
+    return NDArray(ptr; T = Bool, n_dim = 1)
 end
 
 function nda_multiply(rhs1::NDArray, rhs2::NDArray, out::NDArray)
@@ -264,16 +272,6 @@ Converts a single Julia 1-based index `d` to a zero-based C++ style index wrappe
 """
 to_cpp_index(d::Int64, int_type::Type=UInt64) = StdVector(int_type.([d - 1]))
 
-@doc"""
-    Base.eltype(arr::NDArray)
-
-**Internal API**
-
-Returns the element type of the `NDArray`.
-
-This method uses `nda_array_type_code` internally to map to the appropriate Julia element type.
-"""
-Base.eltype(arr::NDArray) = Legate.code_type_map[nda_array_type_code(arr)]
 
 @doc"""
     LegateType(T::Type)
@@ -362,7 +360,7 @@ Emits warnings when array sizes or element types differ.
 - Checks element type compatibility for `NDArray` vs Julia array.
 - Iterates over elements using `CartesianIndices` to compare element-wise difference.
 """
-function compare(julia_array::AbstractArray, arr::NDArray, atol::Real, rtol::Real)
+function compare(julia_array::AbstractArray{T}, arr::NDArray{T}, atol::Real, rtol::Real) where T
     if (shape(arr) != Base.size(julia_array))
         @warn "NDArray has shape $(shape(arr)) and Julia array has shape $(Base.size(julia_array))!\n"
         return false
@@ -384,11 +382,11 @@ function compare(julia_array::AbstractArray, arr::NDArray, atol::Real, rtol::Rea
     return true
 end
 
-function compare(arr::NDArray, julia_array::AbstractArray, atol::Real, rtol::Real)
+function compare(arr::NDArray{T}, julia_array::AbstractArray{T}, atol::Real, rtol::Real) where T
     return compare(julia_array, arr, atol, rtol)
 end
 
-function compare(arr::NDArray, arr2::NDArray, atol::Real, rtol::Real)
+function compare(arr::NDArray{T}, arr2::NDArray{T}, atol::Real, rtol::Real) where T
     if (shape(arr) != shape(arr2))
         @warn "NDArray LHS has shape $(shape(arr)) and NDArray RHS has shape $(shape(arr2))!\n"
         return false

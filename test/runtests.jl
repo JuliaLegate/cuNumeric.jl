@@ -56,6 +56,8 @@ end
 
 #*TODO ADD IN PLACE VARIANTS
 #*TODO TEST VARIANT OVER DIMS
+#* TODO TEST MULTI-DIMENSIONAL THINGS
+#* TODO TEST non-broadcast versions
 @testset verbose = true "Unary Ops w/o Args" begin
     N = 100
 
@@ -75,9 +77,9 @@ end
         end
     end
 
-    function test_conj()
-        #! once we support compelx numbers do this
-    end
+    # function test_conj()
+    #     #! once we support compelx numbers do this
+    # end
 
     @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
 
@@ -89,20 +91,39 @@ end
         end
 
         @testset for func in keys(cuNumeric.floaty_unary_ops_no_args)
-            # Julia throws error cause domain is 
-            # restricted to > 1
+            # Julia throws error cause domain is restricted to > 1
             func == Base.acosh && test_acosh(N, T)
 
+            T_OUT = Base.promote_op(func, T, T)
+            cunumeric_in_place = cuNumeric.zeros(T_OUT, N)
+
             cunumeric_res = func.(cunumeric_arr)
+            cunumeric_in_place .= func(cunumeric_arr)
             cunumeric_res2 = map(func, cunumeric_arr)
             julia_res = func.(julia_arr)
             allowscalar() do
-                @test cuNumeric.compare(julia_res, cunumeric_res, atol(T), rtol(T))
-                @test cuNumeric.compare(julia_res, cunumeric_res2, atol(T), rtol(T))
+                @test cuNumeric.compare(cunumeric_res, cunumeric_in_place, atol(T_OUT), rtol(T_OUT))
+                @test cuNumeric.compare(julia_res, cunumeric_res, atol(T_OUT), rtol(T_OUT))
+                @test cuNumeric.compare(julia_res, cunumeric_res2, atol(T_OUT), rtol(T_OUT))
             end
         end
 
-        #TODO more generic tests for unary_op_map_no_args
+        @testset for func in keys(cuNumeric.unary_op_map_no_args)
+
+            T_OUT = Base.promote_op(func, T, T)
+            cunumeric_in_place = cuNumeric.zeros(T_OUT, N)
+
+            cunumeric_res = func.(cunumeric_arr)
+            cunumeric_in_place .= func(cunumeric_arr)
+            cunumeric_res2 = map(func, cunumeric_arr)
+            julia_res = func.(julia_arr)
+            allowscalar() do
+                @test cuNumeric.compare(cunumeric_res, cunumeric_in_place, atol(T_OUT), rtol(T_OUT))
+                @test cuNumeric.compare(julia_res, cunumeric_res, atol(T_OUT), rtol(T_OUT))
+                @test cuNumeric.compare(julia_res, cunumeric_res2, atol(T_OUT), rtol(T_OUT))
+            end
+        end
+
     end
 end
 
@@ -126,31 +147,34 @@ end
     end
 end
 
-#*TODO ADD IN PLACE VARIANTS
 @testset verbose = true "Binary Ops" begin
     N = 100
-    max_diff = 1e-13
 
-    # Make input arrays we can re-use
-    julia_arr1 = rand(Float64, N)
-    julia_arr2 = rand(Float64, N)
-    julia_res = zeros(Float64, N)
+    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
+        # Make input arrays we can re-use
+        julia_arr1 = rand(T, N)
+        julia_arr2 = rand(T, N)
 
-    cunumeric_arr1 = cuNumeric.zeros(Float64, N)
-    cunumeric_arr2 = cuNumeric.zeros(Float64, N)
-    @allowscalar for i in 1:N
-        cunumeric_arr1[i] = julia_arr1[i]
-        cunumeric_arr2[i] = julia_arr2[i]
-    end
+        cunumeric_arr1 = cuNumeric.zeros(T, N)
+        cunumeric_arr2 = cuNumeric.zeros(T, N)
+        @allowscalar for i in 1:N
+            cunumeric_arr1[i] = julia_arr1[i]
+            cunumeric_arr2[i] = julia_arr2[i]
+        end
 
-    ## GENERATE TEST ON RANDOM FLOAT64s FOR EACH UNARY OP
-    @testset for func in keys(cuNumeric.binary_op_map)
-        cunumeric_res = func(cunumeric_arr1, cunumeric_arr2)
-        cunumeric_res2 = map(func, cunumeric_arr1, cunumeric_arr2)
-        julia_res .= func.(julia_arr1, julia_arr2)
-        allowscalar() do
-            @test cuNumeric.compare(julia_res, cunumeric_res, max_diff)
-            @test cuNumeric.compare(julia_res, cunumeric_res2, max_diff)
+        @testset for func in keys(cuNumeric.binary_op_map)
+            T_OUT = Base.promote_op(func, T, T)
+            cunumeric_in_place = cuNumeric.zeros(T_OUT, N)
+
+            cunumeric_res = func(cunumeric_arr1, cunumeric_arr2)
+            cunumeric_in_place .= func(cunumeric_arr1, cunumeric_arr2)
+            cunumeric_res2 = map(func, cunumeric_arr1, cunumeric_arr2)
+            julia_res = func.(julia_arr1, julia_arr2)
+            allowscalar() do
+                @test cuNumeric.compare(cunumeric_res, cunumeric_in_place, atol(T_OUT), rtol(T_OUT))
+                @test cuNumeric.compare(julia_res, cunumeric_res, max_diff, atol(T_OUT), rtol(T_OUT))
+                @test cuNumeric.compare(julia_res, cunumeric_res2, max_diff, atol(T_OUT), rtol(T_OUT))
+            end
         end
     end
 

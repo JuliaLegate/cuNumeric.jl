@@ -72,16 +72,24 @@ as_type(arr, Float32)
 """
 as_type(arr::NDArray, ::Type{T}) where T = nda_astype(arr, T)::NDArray{T}
 
-Base.convert(::Type{<:NDArray{T}}, a::A) where {T, A} = NDArray(T(a))::NDArray{T}
-Base.convert(::Type{T}, a::T) where {T <: NDArray} = a
+# Base.convert(::Type{<:NDArray{T}}, a::A) where {T, A} = NDArray(T(a))::NDArray{T}
+# Base.convert(::Type{T}, a::T) where {T <: NDArray} = a
 
-#! NEED TO THROW ERROR ON PROMOTION TO DOUBLE PRECISION??
-#! ADD MECHANISM LIKE @allowscalar, @allowdouble ??
-Base.convert(::Type{NDArray{T}}, a::NDArray) where {T} = as_type(copy(a), T)
-Base.convert(::Type{NDArray{T,N}}, a::NDArray{<:Any,N}) where {T,N} = as_type(copy(a), T)
+# #! NEED TO THROW ERROR ON PROMOTION TO DOUBLE PRECISION??
+# #! ADD MECHANISM LIKE @allowscalar, @allowdouble ??
+# Base.convert(::Type{NDArray{T}}, a::NDArray) where {T} = as_type(copy(a), T)
+# Base.convert(::Type{NDArray{T,N}}, a::NDArray{<:Any,N}) where {T,N} = as_type(copy(a), T)
 
 #### ARRAY/INDEXING INTERFACE ####
 # https://docs.julialang.org/en/v1/manual/interfaces/#Indexing
+
+@doc"""
+    Base.eltype(arr::NDArray)
+
+Returns the element type of the `NDArray`.
+"""
+Base.eltype(arr::NDArray{T}) where T = T
+
 @doc"""
     dim(arr::NDArray)
     Base.ndims(arr::NDArray)
@@ -201,15 +209,27 @@ Array(A)
 ```
  """
 ##### REGULAR ARRAY INDEXING ####
-function Base.getindex(arr::NDArray{T}, idxs::Vararg{Int,N}) where {T,N}
+function Base.getindex(arr::NDArray{T,N}, idxs::Vararg{Int,N}) where {T <: SUPPORTED_NUMERIC_TYPES, N}
     assertscalar("getindex")
     acc = NDArrayAccessor{T,N}()
     return read(acc, arr.ptr, to_cpp_index(idxs))
 end
 
-function Base.setindex!(arr::NDArray{T}, value::T, idxs::Vararg{Int,N}) where {T<:Number, N}
+function Base.getindex(arr::NDArray{Bool,N}, idxs::Vararg{Int,N}) where N
+    assertscalar("getindex")
+    acc = NDArrayAccessor{CxxWrap.CxxBool, N}()
+    return read(acc, arr.ptr, to_cpp_index(idxs))
+end
+
+function Base.setindex!(arr::NDArray{T}, value::T, idxs::Vararg{Int,N}) where {T <: SUPPORTED_NUMERIC_TYPES, N}
     assertscalar("setindex!")
     acc = NDArrayAccessor{T,N}()
+    write(acc, arr.ptr, to_cpp_index(idxs), value)
+end
+
+function Base.setindex!(arr::NDArray{Bool, N}, value::Bool, idxs::Vararg{Int,N}) where {N}
+    assertscalar("setindex!")
+    acc = NDArrayAccessor{CxxWrap.CxxBool, N}()
     write(acc, arr.ptr, to_cpp_index(idxs), value)
 end
 
@@ -293,6 +313,7 @@ end
 # Long term probably be a named function since we allocate
 # whole new array in here. Not exactly what I expect form []
 function Base.getindex(arr::NDArray{T}, c::Vararg{Colon,N}) where {T,N}
+    assertscalar("getindex")
     arr_dims = Int.(cuNumeric.nda_array_shape(arr))
     julia_array = Base.zeros(T, arr_dims...)
 
@@ -513,7 +534,9 @@ c = cuNumeric.zeros(2, 2)
 a == c
 ```
 """
-function Base.:(==)(arr1::NDArray, arr2::NDArray)
+function Base.:(==)(arr1::NDArray{T,N}, arr2::NDArray{T,N}) where {T,N}
+
+    # return nda_array_equal(arr1, arr2) #DOESNT RETURN SCALAR
     if (Base.size(arr1) != Base.size(arr2))
         @warn "lhs has size $(Base.size(arr1)) and rhs has size $(Base.size(arr2))!\n"
         return false
@@ -609,15 +632,15 @@ isapprox(arr1, julia_arr)
 isapprox(julia_arr, arr2)
 ```
 """
-function Base.isapprox(julia_array::AbstractArray, arr::NDArray; atol=0, rtol=0)
+function Base.isapprox(julia_array::AbstractArray{T}, arr::NDArray{T}; atol=0, rtol=0) where T
     #! REPLCE THIS WITH BIN_OP isapprox
     return compare(julia_array, arr, atol, rtol)
 end
 
-function Base.isapprox(arr::NDArray, julia_array::AbstractArray; atol=0, rtol=0)
+function Base.isapprox(arr::NDArray{T}, julia_array::AbstractArray{T}; atol=0, rtol=0) where T
     return compare(julia_array, arr, atol, rtol)
 end
 
-function Base.isapprox(arr::NDArray, arr2::NDArray; atol=0, rtol=0)
+function Base.isapprox(arr::NDArray{T}, arr2::NDArray{T}; atol=0, rtol=0) where T
     return compare(arr, arr2, atol, rtol)
 end

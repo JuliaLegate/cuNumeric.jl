@@ -79,10 +79,10 @@ include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
 
-# Custom CUDA.jl kernel integration
+# # Custom CUDA.jl kernel integration
 include("cuda.jl")
 
-# Utilities 
+# # Utilities 
 include("utilities/version.jl")
 include("util.jl")
 
@@ -134,4 +134,5 @@ function __init__()
     global cuNumeric_config_str = version_config_setup()
     cunumeric_setup(AA)
 end
-end
+
+end #module cuNumeric

@@ -65,7 +65,7 @@ global const broadcasted_binary_op_map = Dict{Function, BinaryOpCode}(
     Base.:(÷) => cuNumeric.FLOOR_DIVIDE,
     Base.:(>>) => cuNumeric.RIGHT_SHIFT,
     Base.:(<<) => cuNumeric.LEFT_SHIFT,
-    # Base.:(&&) => (cuNumeric.LOGICAL_AND, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
+    # Base.:(&&) => (cuNumeric.LOGICAL_AND, Bool, :same_as_input), #! CANNOT OVERLOAD WTF? (see Base.andand)
     # Base.:(||) => (cuNumeric.LOGICAL_OR, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
 )
 
@@ -78,13 +78,6 @@ function Base.:(*)(rhs1::NDArray{A, 2}, rhs2::NDArray{B, 2}) where {A <: SUPPORT
     out = cuNumeric.zeros(T, (size(rhs1, 1), size(rhs2, 2)))
     return nda_three_dot_arg(checked_promote_arr(rhs1, T), checked_promote_arr(rhs2, T), out)
 end
-
-#! think this is ambiguous
-# function Base.:(*)(rhs1::NDArray{A, 2}, rhs2::NDArray{A, 2}) where A
-#     T = __my_promote_type(A, B)
-#     out = cuNumeric.zeros(T, (size(rhs1, 1), size(rhs2, 2)))
-#     return nda_three_dot_arg(checked_promote_arr(rhs1, T), checked_promote_arr(rhs2, T), out)
-# end
 
 @doc"""
     LinearAlgebra.mul!(out::NDArray, arr1::NDArray, arr2::NDArray)
