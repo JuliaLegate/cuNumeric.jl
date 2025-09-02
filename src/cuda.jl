@@ -9,16 +9,13 @@ function set_kernel_state_size()
     cuNumeric.register_kernel_state_size(UInt64(KERNEL_OFFSET))
 end
 
-function map_ndarray_cuda_type(arg)
-    if isa(arg, NDArray)
-        T = cuNumeric.eltype(arg)
-        D = cuNumeric.ndims(arg)
-        return CuDeviceArray{T,D,1}
-    elseif Base.isbits(arg)
-        return typeof(arg)
-    else
-        error("Unsupported argument type: $(typeof(arg))")
-    end
+function map_ndarray_cuda_type(arg::NDArray{T,N}) where {T,N}
+    return CuDeviceArray{T,Int32(N),1}
+end
+
+function map_ndarray_cuda_type(arg::T) where {T}
+    Base.isbits(arg) || throw(ArgumentError("Unsupported argument type: $(typeof(arg))"))
+    return typeof(arg)
 end
 
 function map_ndarray_cuda_types(args...)
@@ -225,8 +222,9 @@ macro cuda_task(call_expr)
     esc(quote
         local _buf = IOBuffer()
         local _types = $cuNumeric.map_ndarray_cuda_types($(fargs...))
-        # generate ptx using CUDA.jl 
-        CUDA.code_ptx(_buf, $fname, _types; raw=true, kernel=true)
+        # generate ptx using CUDA.jl
+        println(_types)
+        CUDA.code_ptx(_buf, $fname, _types; raw=false, kernel=true)
 
         local _ptx = String(take!(_buf))
         local _func_name = cuNumeric.extract_kernel_name(_ptx)

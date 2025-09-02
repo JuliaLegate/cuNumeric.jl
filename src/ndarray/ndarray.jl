@@ -35,7 +35,9 @@ arr = cuNumeric.rand(4, 5);
 as_type(arr, Float32)
 ```
 """
-as_type(arr::NDArray, t::Type{T}) where {T} = nda_astype(arr, t)
+# as_type(arr::NDArray, t::Type{T}) where {T} = nda_astype(arr, t)
+as_type(arr::NDArray{S,N}, ::Type{T}) where {S,T,N} = nda_astype(arr, T)::NDArray{T,N}
+as_type(arr::NDArray{T}, ::Type{T}) where {T} = arr
 
 #### ARRAY/INDEXING INTERFACE ####
 # https://docs.julialang.org/en/v1/manual/interfaces/#Indexing
