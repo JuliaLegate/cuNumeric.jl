@@ -103,7 +103,7 @@ end
 function __broadcast(f::Function, _, args...)
     error(
         """
-        cuNumeric.jl does not support broadcasting user-defined functions yet. Please re-define \
+        Tried to broadcast $(f). cuNumeric.jl does not support broadcasting user-defined functions yet. Please re-define \
         functions to match supported patterns. For example g(x) = x + 1 could be re-defined as \
         broadcast_g(x::NDArray) = x .+ 1. This can make the intention of code opaque to the reader, \
         but it is necessary until support is added."""

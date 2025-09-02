@@ -32,11 +32,13 @@ atol(::Type{I}) where {I<:Integer} = atol(float(I))
 rtol(::Type{Complex{T}}) where {T} = rtol(T)
 atol(::Type{Complex{T}}) where {T} = atol(T)
 
+include("tests/util.jl")
 include("tests/axpy.jl")
 include("tests/axpy_advanced.jl")
 include("tests/elementwise.jl")
 include("tests/slicing.jl")
 include("tests/gemm.jl")
+include("tests/unary_tests.jl")
 # include("tests/custom_cuda.jl")
 
 @testset verbose = true "AXPY" begin
@@ -60,78 +62,23 @@ end
     end
 end
 
-#*TODO ADD IN PLACE VARIANTS
-#*TODO TEST VARIANT OVER DIMS
-#* TODO TEST MULTI-DIMENSIONAL THINGS
+#* TODO TEST VARIANT OVER DIMS
 #* TODO TEST non-broadcast versions
 #* TEST INTEGER LITERAL POWERS
 @testset verbose = true "Unary Ops w/o Args" begin
-    N = 100
+    N = 100 # keep as perfect square
 
-    function test_acosh(N, T)
-        julia_arr2 = rand(T, N)
-        cunumeric_arr2 = cuNumeric.zeros(T, N)
-        julia_arr2[julia_arr2 .< 1.0] = 1.0
-        @allowscalar for i in 1:N
-            cunumeric_arr2[i] = julia_arr2[i]
-        end
-        cunumeric_res = func.(cunumeric_arr2)
-        cunumeric_res2 = map(func, cunumeric_arr)
-        julia_res2 = func.(julia_arr)
-        allowscalar() do
-            @test cuNumeric.compare(julia_res, cunumeric_res, atol(T), rtol(T))
-            @test cuNumeric.compare(julia_res, cunumeric_res2, atol(T), rtol(T))
-        end
+    @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
+
+        allowpromotion(T == Bool || T == Int32)
+        test_unary_function_set(cuNumeric.floaty_unary_ops_no_args, T, N)        
+        
+        allowpromotion(T == Bool)  
+        test_unary_function_set(cuNumeric.unary_op_map_no_args, T, N)
+        
+        #!SPECIAL CASES (!, -, ^-1, ^2)
     end
 
-    # function test_conj()
-    #     #! once we support compelx numbers do this
-    # end
-
-    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
-
-        # Make input arrays we can re-use
-        julia_arr = rand(T, N)
-        cunumeric_arr = cuNumeric.zeros(T, N)
-        @allowscalar for i in 1:N
-            cunumeric_arr[i] = julia_arr[i]
-        end
-
-        @testset for func in keys(cuNumeric.floaty_unary_ops_no_args)
-            # Julia throws error cause domain is restricted to > 1
-            func == Base.acosh && test_acosh(N, T)
-
-            T_OUT = Base.promote_op(func, T, T)
-            cunumeric_in_place = cuNumeric.zeros(T_OUT, N)
-
-            cunumeric_res = func.(cunumeric_arr)
-            cunumeric_in_place .= func(cunumeric_arr)
-            cunumeric_res2 = map(func, cunumeric_arr)
-            julia_res = func.(julia_arr)
-            allowscalar() do
-                @test cuNumeric.compare(cunumeric_res, cunumeric_in_place, atol(T_OUT), rtol(T_OUT))
-                @test cuNumeric.compare(julia_res, cunumeric_res, atol(T_OUT), rtol(T_OUT))
-                @test cuNumeric.compare(julia_res, cunumeric_res2, atol(T_OUT), rtol(T_OUT))
-            end
-        end
-
-        @testset for func in keys(cuNumeric.unary_op_map_no_args)
-
-            T_OUT = Base.promote_op(func, T, T)
-            cunumeric_in_place = cuNumeric.zeros(T_OUT, N)
-
-            cunumeric_res = func.(cunumeric_arr)
-            cunumeric_in_place .= func(cunumeric_arr)
-            cunumeric_res2 = map(func, cunumeric_arr)
-            julia_res = func.(julia_arr)
-            allowscalar() do
-                @test cuNumeric.compare(cunumeric_res, cunumeric_in_place, atol(T_OUT), rtol(T_OUT))
-                @test cuNumeric.compare(julia_res, cunumeric_res, atol(T_OUT), rtol(T_OUT))
-                @test cuNumeric.compare(julia_res, cunumeric_res2, atol(T_OUT), rtol(T_OUT))
-            end
-        end
-
-    end
 end
 
 @testset verbose = true "Unary Reductions" begin

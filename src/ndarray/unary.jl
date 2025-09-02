@@ -54,7 +54,6 @@ log.(A .+ 1)
 ```
 """
 global const floaty_unary_ops_no_args = Dict{Function, UnaryOpCode}(
-    Base.abs => cuNumeric.ABSOLUTE,
     Base.acos => cuNumeric.ARCCOS,
     Base.acosh => cuNumeric.ARCCOSH,
     Base.asin => cuNumeric.ARCSIN,
@@ -83,42 +82,45 @@ global const floaty_unary_ops_no_args = Dict{Function, UnaryOpCode}(
 global const unary_op_map_no_args = Dict{Function, UnaryOpCode}(
     Base.abs => cuNumeric.ABSOLUTE,
     # Base.conj => cuNumeric.CONJ, #! NEED TO SUPPORT COMPLEX TYPES FIRST
-    Base.floor => cuNumeric.FLOOR,
     Base.:(-) => cuNumeric.NEGATIVE,
     # Base.frexp => cuNumeric.FREXP, #* annoying returns tuple
-    #missing => cuNumeric.GETARG, #not in numpy?
+    # missing => cuNumeric.GETARG, #not in numpy?
     # Base.imag => cuNumeric.IMAG, #! NEED TO SUPPORT COMPLEX TYPES FIRST
-    #missing => cuNumerit.INVERT, # no bitwise not in julia?
-    Base.isfinite => cuNumeric.ISFINITE,
-    # Base.isinf => cuNumeric.ISINF, #* dont feel like looking into this rn
-    # Base.isnan => cuNumeric.ISNAN, #* dont feel like looking into this rn
-    Base.:! => cuNumeric.LOGICAL_NOT, 
+    # missing => cuNumerit.INVERT, # no bitwise not in julia?
+    # Base.isfinite => cuNumeric.ISFINITE, #* dont feel like looking into Inf rn
+    # Base.isinf => cuNumeric.ISINF, #* dont feel like looking into Inf rn
+    # Base.isnan => cuNumeric.ISNAN, #* dont feel like looking into Inf rn
     # Base.modf => cuNumeric.MODF, #* annoying returns tuple
     #missing => cuNumeric.POSITIVE, #What is this even for
     Base.sign => cuNumeric.SIGN, 
-    Base.signbit => cuNumeric.SIGNBIT, 
+    # Base.signbit => cuNumeric.SIGNBIT, #! Doesnt support Bool, I do not feel like dealing with this right now...
 )
 
 
 ### SPECIAL CASES ###
 
 # Non-broadcasted version of negation
-function Base.:(-)(input::NDArray{T}) where {T <: SUPPORTED_TYPES}
+function Base.:(-)(input::NDArray{T}) where T
     out = cuNumeric.zeros(T, size(input))
     return nda_unary_op(out, cuNumeric.NEGATIVE, input)
 end
 
-function Base.sqrt(input::NDArray{T,2}) where {T <: SUPPORTED_TYPES}
+function Base.:(-)(input::NDArray{Bool})
+    throw(error(ArgumentError("cuNumeric.jl does not support negation (-) of Boolean NDArrays")))
+end
+
+
+function Base.sqrt(input::NDArray{T,2}) where T
     error("cuNumeric.jl does not support matrix square root.")
 end
 
 # technically unary op
-@inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, ::Type{Val{2}}) where {T <: SUPPORTED_TYPES}
+@inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, ::Type{Val{2}}) where T
     return nda_unary_op(out, cuNumeric.SQUARE, input)
 end
 
 # technically unary op
-@inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, ::Type{Val{-1}}) where {T <: SUPPORTED_TYPES}
+@inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, ::Type{Val{-1}}) where T
     return nda_unary_op(out, cuNumeric.RECIPROCAL, input)
 end
 
@@ -134,10 +136,15 @@ end
 # end
 
 
+# Only supported for Bools
+@inline function __broadcast(f::typeof(Base.:(!)), out::NDArray{Bool}, input::NDArray{Bool}) where T
+    return nda_unary_op(out, cuNumeric.LOGICAL_NOT, input)
+end
+
 # Generate hidden broadcasted version of unary ops.
 for (julia_fn, op_code) in unary_op_map_no_args
     @eval begin
-        @inline  function __broadcast(f::typeof($julia_fn), out::NDArray, input::NDArray{T}) where {T <: SUPPORTED_TYPES}
+        @inline  function __broadcast(f::typeof($julia_fn), out::NDArray{T}, input::NDArray{T}) where T
             return nda_unary_op(out, $(op_code), input)
         end
     end
@@ -152,7 +159,8 @@ for (julia_fn, op_code) in floaty_unary_ops_no_args
             return nda_unary_op(out, $(op_code), input)
         end
 
-        @inline  function __broadcast(f::typeof($julia_fn), out::NDArray{A}, input::NDArray{B}) where {A <: SUPPORTED_FLOAT_TYPES, B <: SUPPORTED_INT_TYPES}
+        # If input is not already float, promote to that
+        @inline  function __broadcast(f::typeof($julia_fn), out::NDArray{A}, input::NDArray{B}) where {A <: SUPPORTED_FLOAT_TYPES, B <: Union{SUPPORTED_INT_TYPES, Bool}}
             return __broadcast(f, out, checked_promote_arr(input, A))
         end
     end
@@ -162,6 +170,7 @@ end
 #     Base.angle => Int(cuNumeric.ANGLE),
 #     Base.ceil => Int(cuNumeric.CEIL), #* HAS EXTRA ARGS
 #     Base.clamp => Int(cuNumeric.CLIP), #* HAS EXTRA ARGS
+#     Base.floor => cuNumeric.FLOOR, #! Doesnt support Bool, I do not feel like dealing with this right now...
 #     Base.trunc => Int(cuNumeric.TRUNC)  #* HAS EXTRA ARGS
 #     missing => Int(cuNumeric.RINT), #figure out which version of round 
 #     missing => Int(cuNumeric.ROUND), #figure out which version of round
@@ -229,7 +238,7 @@ global const unary_reduction_map = Dict{Function,UnaryRedCode}(
 # Generate code for all unary reductions.
 for (base_func, op_code) in unary_reduction_map
     @eval begin
-        function $(Symbol(base_func))(input::NDArray{T}) where {T <: SUPPORTED_TYPES}
+        function $(Symbol(base_func))(input::NDArray{T}) where T
             #* WILL BREAK NOT ALL REDUCTIONS HAVE SAME TYPE AS INPUT
             out = cuNumeric.zeros(T, 1) #! RETURN 0D ARRAY?
             return nda_unary_reduction(out, $(op_code), input)
