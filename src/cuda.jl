@@ -9,22 +9,25 @@ function set_kernel_state_size()
     cuNumeric.register_kernel_state_size(UInt64(KERNEL_OFFSET))
 end
 
-function map_ndarray_cuda_type(arg::NDArray{T,N}) where {T,N}
-    return CuDeviceArray{T,Int32(N),1}
-end
+# ndarray_cuda_type(::NDArray{T,2}) where {T} = CuDeviceMatrix{T,1}
+# ndarray_cuda_type(::NDArray{T,N}) where {T,N} = CuDeviceArray{T,N,1}
 
-function map_ndarray_cuda_type(arg::T) where {T}
-    Base.isbits(arg) || throw(ArgumentError("Unsupported argument type: $(typeof(arg))"))
-    return typeof(arg)
-end
-
-function map_ndarray_cuda_types(args...)
-    converted = Any[]
-    for arg in args
-        push!(converted, cuNumeric.map_ndarray_cuda_type(arg))
+function ndarray_cuda_type(A::NDArray{T,N}) where {T,N}
+    if N == 1
+        CuDeviceVector{T,1}
+    elseif N == 2
+        CuDeviceMatrix{T,1}
+    else
+        CuDeviceArray{T,N,1}
     end
-    return tuple(converted...)
 end
+
+function ndarray_cuda_type(arg::T) where {T}
+    Base.isbits(arg) || throw(ArgumentError("Unsupported argument type: $(typeof(arg))"))
+    typeof(arg)
+end
+
+map_ndarray_cuda_types(args...) = tuple(map(ndarray_cuda_type, args)...)
 
 function to_stdvec(::Type{T}, vec) where {T}
     stdvec = CxxWrap.StdVector{T}()
@@ -223,7 +226,6 @@ macro cuda_task(call_expr)
         local _buf = IOBuffer()
         local _types = $cuNumeric.map_ndarray_cuda_types($(fargs...))
         # generate ptx using CUDA.jl
-        println(_types)
         CUDA.code_ptx(_buf, $fname, _types; raw=false, kernel=true)
 
         local _ptx = String(take!(_buf))

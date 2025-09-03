@@ -37,7 +37,7 @@ function unfused_cuda(u, v, f::Float32, k::Float32)
     return F_u, F_v
 end
 
-function fused_kernel(u, v, F_u, F_v, N::UInt32, f::Float32, k::Float32)
+function fused_kernel(u, v, F_u, F_v, N::Int32, f::Float32, k::Float32)
     i = (blockIdx().x - 1i32) * blockDim().x + threadIdx().x
     j = (blockIdx().y - 1i32) * blockDim().y + threadIdx().y
     if i <= N-2 && j <= N-2
@@ -63,10 +63,10 @@ function run_fused_cunumeric(N, u, v)
     f = 0.03f0
     k = 0.06f0
 
-    task = cuNumeric.@cuda_task fused_kernel(u, v, F_u, F_v, UInt32(N), f, k)
+    task = cuNumeric.@cuda_task fused_kernel(u, v, F_u, F_v, Int32(N), f, k)
 
     cuNumeric.@launch task=task threads=threads2d blocks=blocks inputs=(u, v) outputs=(F_u, F_v) scalars=(
-        UInt32(N), f, k
+        Int32(N), f, k
     )
 
     return F_u, F_v
@@ -82,7 +82,7 @@ function run_fused_baseline(N, u, v)
     f = 0.03f0
     k = 0.06f0
 
-    @cuda threads=threads2d blocks=blocks fused_kernel(u, v, F_u, F_v, UInt32(N), f, k)
+    @cuda threads=threads2d blocks=blocks fused_kernel(u, v, F_u, F_v, Int32(N), f, k)
 
     return F_u, F_v
 end
