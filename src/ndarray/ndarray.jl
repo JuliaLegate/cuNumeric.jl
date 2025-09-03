@@ -35,7 +35,9 @@ arr = cuNumeric.rand(4, 5);
 as_type(arr, Float32)
 ```
 """
-as_type(arr::NDArray, t::Type{T}) where {T} = nda_astype(arr, t)
+# as_type(arr::NDArray, t::Type{T}) where {T} = nda_astype(arr, t)
+as_type(arr::NDArray{S,N}, ::Type{T}) where {S,T,N} = nda_astype(arr, T)::NDArray{T,N}
+as_type(arr::NDArray{T}, ::Type{T}) where {T} = arr
 
 #### ARRAY/INDEXING INTERFACE ####
 # https://docs.julialang.org/en/v1/manual/interfaces/#Indexing
@@ -107,16 +109,36 @@ Base.view(arr::NDArray, inds...) = arr[inds...] # NDArray slices are views by de
 
 Base.IndexStyle(::NDArray) = IndexCartesian()
 
-function Base.show(io::IO, arr::NDArray{T}) where T
+function Base.show(io::IO, arr::NDArray{T}) where {T}
     dim = Base.size(arr)
     print(io, "NDArray of $(T)s, Dim: $(dim)")
+    if elems # print all elems of array
+        dims = shape(arr)
+        print(io, "[")
+        indxs = CartesianIndices(dims)
+        lastidx = last(indxs)
+        for CI in indxs
+            print(io, "$(arr[Tuple(CI)...])")
+            if CI != lastidx
+                print(io, ", ")
+            end
+        end
+        print(io, "]")
+    end
 end
 
-function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T}) where T
-    dim = Base.size(arr)
-    print(io, "NDArray of $(T)s, Dim: $(dim)")
+function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T}; elems=false) where {T}
+    Base.show(io, arr; elems=elems)
 end
 
+function Base.print(arr::NDArray; elems=false)
+    Base.show(stdout, arr; elems=elems)
+end
+
+function Base.println(arr::NDArray; elems=false)
+    Base.show(stdout, arr; elems=elems)
+    print("\n")
+end
 #### ARRAY INDEXING AND SLICES ####
 
 @doc"""
@@ -156,7 +178,7 @@ function Base.getindex(arr::NDArray{T}, idxs::Vararg{Int,N}) where {T,N}
     return read(acc, arr.ptr, to_cpp_index(idxs))
 end
 
-function Base.setindex!(arr::NDArray{T}, value::T, idxs::Vararg{Int,N}) where {T<:Number, N}
+function Base.setindex!(arr::NDArray{T}, value::T, idxs::Vararg{Int,N}) where {T<:Number,N}
     acc = NDArrayAccessor{T,N}()
     write(acc, arr.ptr, to_cpp_index(idxs), value)
 end
@@ -280,12 +302,12 @@ cuNumeric.full((2, 3), 7.5)
 cuNumeric.full(4, 0)
 ```
 """
-function full(dims::Dims, val::T) where {T <: SUPPORTED_TYPES}
+function full(dims::Dims, val::T) where {T<:SUPPORTED_TYPES}
     shape = collect(UInt64, dims)
     return nda_full_array(shape, val)
 end
 
-function full(dim::Int, val::T) where {T <: SUPPORTED_TYPES}
+function full(dim::Int, val::T) where {T<:SUPPORTED_TYPES}
     shape = UInt64[dim]
     return nda_full_array(shape, val)
 end
@@ -336,12 +358,12 @@ cuNumeric.zeros(Float64, 3)
 cuNumeric.zeros(Int32, (2,3))
 ```
 """
-function zeros(::Type{T}, dims::Dims) where {T <: SUPPORTED_TYPES}
+function zeros(::Type{T}, dims::Dims) where {T<:SUPPORTED_TYPES}
     shape = collect(UInt64, dims)
     return nda_zeros_array(shape, T)
 end
 
-function zeros(::Type{T}, dims::Int...) where {T <: SUPPORTED_TYPES}
+function zeros(::Type{T}, dims::Int...) where {T<:SUPPORTED_TYPES}
     return zeros(T, dims)
 end
 
@@ -351,6 +373,10 @@ end
 
 function zeros(dims::Int...)
     return zeros(DEFAULT_FLOAT, dims)
+end
+
+function zeros_like(arr::NDArray)
+    return zeros(eltype(arr), Base.size(arr))
 end
 
 @doc"""
@@ -455,28 +481,28 @@ lhs + rhs
 ```
 """
 
-function Base.:+(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_TYPES}
+function Base.:+(arr::NDArray{T}, val::V) where {T,V<:SUPPORTED_TYPES}
     P = __my_promote_type(V, T)
     return nda_add_scalar(maybe_promote_arr(arr, P), P(val))
 end
 
-function Base.:+(val::V, arr::NDArray{T}) where {T, V <: SUPPORTED_TYPES}
+function Base.:+(val::V, arr::NDArray{T}) where {T,V<:SUPPORTED_TYPES}
     return +(arr, val)
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(+), arr::NDArray{T}, val::V
-) where {T, V <: SUPPORTED_TYPES}
+) where {T,V<:SUPPORTED_TYPES}
     return +(arr, val)
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(+), val::V, arr::NDArray{T}
-) where {T, V <: SUPPORTED_TYPES}
+) where {T,V<:SUPPORTED_TYPES}
     return +(arr, val)
 end
 
-function Base.Broadcast.broadcasted(::typeof(+), lhs::NDArray{T}, rhs::NDArray{T}) where T
+function Base.Broadcast.broadcasted(::typeof(+), lhs::NDArray{T}, rhs::NDArray{T}) where {T}
     return +(lhs, rhs)
 end
 
@@ -500,27 +526,27 @@ lhs - 3
 lhs - rhs
 ```
 """
-function Base.:-(val::V, arr::NDArray{T}) where {T, V <: SUPPORTED_TYPES}
+function Base.:-(val::V, arr::NDArray{T}) where {T,V<:SUPPORTED_TYPES}
     return nda_multiply_scalar(arr, -val)
 end
 
-function Base.:-(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_TYPES}
+function Base.:-(arr::NDArray{T}, val::V) where {T,V<:SUPPORTED_TYPES}
     return +(arr, (-1*val))
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(-), arr::NDArray{T}, val::V
-) where {T, V <: SUPPORTED_TYPES}
+) where {T,V<:SUPPORTED_TYPES}
     return -(arr, val)
 end
 function Base.Broadcast.broadcasted(
     ::typeof(-), val::V, rhs::NDArray{T}
-) where {T, V <: SUPPORTED_TYPES}
+) where {T,V<:SUPPORTED_TYPES}
     lhs = full(size(rhs), val)
     return -(lhs, rhs)
 end
 
-function Base.Broadcast.broadcasted(::typeof(-), lhs::NDArray{T}, rhs::NDArray{T}) where T
+function Base.Broadcast.broadcasted(::typeof(-), lhs::NDArray{T}, rhs::NDArray{T}) where {T}
     return -(lhs, rhs)
 end
 
@@ -544,29 +570,28 @@ lhs - rhs
 ```
 """
 
-
-function Base.:*(val::V, arr::NDArray{T}) where {T, V <: SUPPORTED_NUMERIC_TYPES}
+function Base.:*(val::V, arr::NDArray{T}) where {T,V<:SUPPORTED_NUMERIC_TYPES}
     P = __my_promote_type(V, T)
     return nda_multiply_scalar(maybe_promote_arr(arr, P), P(val))
 end
 
-function Base.:*(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_NUMERIC_TYPES}
+function Base.:*(arr::NDArray{T}, val::V) where {T,V<:SUPPORTED_NUMERIC_TYPES}
     return *(val, arr)
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(*), arr::NDArray{T}, val::V
-) where {T, V <: SUPPORTED_NUMERIC_TYPES}
+) where {T,V<:SUPPORTED_NUMERIC_TYPES}
     return *(val, arr)
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(*), val::V, arr::NDArray{T}
-) where {T, V <: SUPPORTED_NUMERIC_TYPES}
+) where {T,V<:SUPPORTED_NUMERIC_TYPES}
     return *(val, arr)
 end
 
-function Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray{T}, rhs::NDArray{T}) where T
+function Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray{T}, rhs::NDArray{T}) where {T}
     return *(lhs, rhs)
 end
 
@@ -582,13 +607,13 @@ arr = cuNumeric.ones(2, 2)
 arr / 2
 ```
 """
-function Base.:/(arr::NDArray{T}, val::V) where {T, V <: SUPPORTED_NUMERIC_TYPES}
+function Base.:/(arr::NDArray{T}, val::V) where {T,V<:SUPPORTED_NUMERIC_TYPES}
     throw(ErrorException("[/] is not supported yet"))
 end
 
 function Base.Broadcast.broadcasted(
     ::typeof(/), arr::NDArray{T}, val::V
-) where {T, V <: Union{Float16, Float32, Float64}}
+) where {T,V<:Union{Float16,Float32,Float64}}
     return nda_multiply_scalar(arr, V(1 / val))
 end
 
@@ -605,10 +630,9 @@ arr = cuNumeric.ones(2, 2)
 """
 function Base.Broadcast.broadcasted(
     ::typeof(/), val::V, arr::NDArray{T}
-) where {T, V <: SUPPORTED_NUMERIC_TYPES}
+) where {T,V<:SUPPORTED_NUMERIC_TYPES}
     return throw(ErrorException("element wise [val ./ NDArray] is not supported yet"))
 end
-
 
 @doc"""
     Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray, rhs::NDArray)
@@ -623,10 +647,9 @@ C = A ./ B
 typeof(C)
 ```
 """
-function Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray{T}, rhs::NDArray{T}) where T
+function Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray{T}, rhs::NDArray{T}) where {T}
     return /(lhs, rhs)
 end
-
 
 #* Can't overload += in Julia, this should be called by .+= 
 #* to maintain some semblence native Julia array syntax
@@ -685,7 +708,7 @@ out = cuNumeric.zeros(2, 2)
 LinearAlgebra.mul!(out, a, b)
 ```
 """
-function LinearAlgebra.mul!(out::NDArray{T, 2}, arr1::NDArray{T, 2}, arr2::NDArray{T, 2}) where T
+function LinearAlgebra.mul!(out::NDArray{T,2}, arr1::NDArray{T,2}, arr2::NDArray{T,2}) where {T}
     #! TODO: Support type promotion
     return nda_three_dot_arg(arr1, arr2, out)
 end
