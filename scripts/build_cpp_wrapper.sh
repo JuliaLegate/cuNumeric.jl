@@ -67,13 +67,20 @@ fi
 
 echo $LEGATE_ROOT_DIR
 LEGION_CMAKE_DIR=$LEGATE_ROOT_DIR/share/Legion/cmake
-cmake -S $CUNUMERIC_WRAPPER_SOURCE -B $BUILD_DIR \
-    -D CMAKE_PREFIX_PATH="$CUPYNUMERIC_ROOT_DIR;$LEGION_CMAKE_DIR;$LEGATE_ROOT_DIR;" \
-    -D CUPYNUMERIC_PATH="$CUPYNUMERIC_ROOT_DIR" \
-    -D LEGATE_PATH=$LEGATE_ROOT_DIR \
-    -D HDF5_PATH=$HDF5_ROOT_DIR \
-    -D BLAS_LIBRARIES=$BLAS_LIB_DIR/libopenblas.so \
-    -D PROJECT_INSTALL_PATH=$INSTALL_DIR \
-    -D CMAKE_BUILD_TYPE=Release
-cmake --build $BUILD_DIR  --parallel $NTHREADS --verbose
-cmake --install $BUILD_DIR
+
+if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
+    echo "Configuring project..."
+    cmake -S "$CUNUMERIC_WRAPPER_SOURCE" -B "$BUILD_DIR" \
+        -D CMAKE_PREFIX_PATH="$CUPYNUMERIC_ROOT_DIR;$LEGION_CMAKE_DIR;$LEGATE_ROOT_DIR;" \
+        -D CUPYNUMERIC_PATH="$CUPYNUMERIC_ROOT_DIR" \
+        -D LEGATE_PATH="$LEGATE_ROOT_DIR" \
+        -D HDF5_PATH="$HDF5_ROOT_DIR" \
+        -D BLAS_LIBRARIES="$BLAS_LIB_DIR/libopenblas.so" \
+        -D PROJECT_INSTALL_PATH="$INSTALL_DIR" \
+        -D CMAKE_BUILD_TYPE=Release
+else
+    echo "Skipping configure (already done in $BUILD_DIR)"
+fi
+
+cmake --build "$BUILD_DIR" --parallel "$NTHREADS" --verbose
+cmake --install "$BUILD_DIR"

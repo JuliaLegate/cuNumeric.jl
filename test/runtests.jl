@@ -127,14 +127,12 @@ end
         cunumeric_int32 = cuNumeric.zeros(Int32, N)
         cunumeric_arr5 = cuNumeric.zeros(Float64, N, N)
 
-
         @test_throws "Detected promotion" cunumeric_arr3 + cunumeric_arr1
         @test_throws "Detected promotion" map(+, cunumeric_arr3, cunumeric_arr1)
         @test_throws DimensionMismatch cunumeric_arr1 + cunumeric_arr5
         @test_throws DimensionMismatch cunumeric_arr1 / cunumeric_arr5
 
         @test cunumeric_arr1 == cunumeric_int64 + cunumeric_arr1
-
     end
 end
 
