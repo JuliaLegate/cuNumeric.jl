@@ -94,12 +94,18 @@ function process_ndarray_scope(block)
         push!(body, stmt)
     end
 
+    # println(body)
+
+    println(assigned_vars)
+
     cleanup_calls = Expr[]
     for v in reverse(assigned_vars)
         push!(cleanup_calls, :(cuNumeric.nda_destroy_array($(v).ptr)))
         push!(cleanup_calls, :(cuNumeric.register_free!($(v).nbytes)))
     end
     push!(cleanup_calls, :(cuNumeric.maybe_collect()))
+
+    println(cleanup_calls)
 
     result = quote
         try
@@ -114,6 +120,9 @@ function process_ndarray_scope(block)
 end
 
 function is_ndarray_constructor(expr)
+    println(expr)
+    println(expr.head)
+    println(expr.args)
     return expr isa Expr && expr.head == :call && expr.args[1] == :NDArray
 end
 
