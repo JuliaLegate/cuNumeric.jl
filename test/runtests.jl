@@ -63,8 +63,6 @@ end
 end
 
 #* TODO TEST VARIANT OVER DIMS
-#* TODO TEST non-broadcast versions
-#* TEST INTEGER LITERAL POWERS
 @testset verbose = true "Unary Ops w/o Args" begin
     N = 100 # keep as perfect square
 
@@ -78,26 +76,50 @@ end
         
         #!SPECIAL CASES (!, -, ^-1, ^2)
     end
-
+    allowpromotion(false) # idk if this is necssary
 end
 
 @testset verbose = true "Unary Reductions" begin
     N = 100
 
-    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
+    @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
         julia_arr = rand(T, N)
         cunumeric_arr = cuNumeric.zeros(T, N)
         @allowscalar for i in 1:N
             cunumeric_arr[i] = julia_arr[i]
         end
 
-        @testset for reduction in keys(cuNumeric.unary_reduction_map)
+        @testset "$(reduction)" for reduction in keys(cuNumeric.unary_reduction_map)
+            # Catch edge cases:
+            if (T == Int32 || T == Bool) && (reduction == Base.sum)
+                @test_throws ArgumentError reduction(cunumeric_arr)
+                continue
+            end
+
+            if (T == Int32) && (reduction == Base.prod)
+                @test_throws ArgumentError reduction(cunumeric_arr)
+                continue
+            end
+
             cunumeric_res = reduction(cunumeric_arr)
             julia_res = reduction(julia_arr)
+
             allowscalar() do
                 @test cuNumeric.compare([julia_res], cunumeric_res, atol(T), rtol(T))
             end
         end
+    end
+
+    # Test things that only work on Booleans
+    julia_bools = rand(Bool, N)
+    cunumeric_bools = cuNumeric.zeros(Bool, N)
+
+    @allowscalar() do
+        for i in 1:N
+            cunumeric_bools[i] = julia_bools[i]
+        end
+        @test cuNumeric.compare([any(julia_bools)], any(cunumeric_bools), atol(Bool), rtol(Bool))
+        @test cuNumeric.compare([all(julia_bools)], all(cunumeric_bools), atol(Bool), rtol(Bool))
     end
 end
 
@@ -117,12 +139,12 @@ end
             cunumeric_arr2[i] = julia_arr2[i]
         end
 
-        @testset for func in keys(cuNumeric.binary_op_map)
+        @testset verbose = true "$func" for func in keys(cuNumeric.broadcasted_binary_op_map)
             T_OUT = Base.promote_op(func, T, T)
             cunumeric_in_place = cuNumeric.zeros(T_OUT, N)
 
-            cunumeric_res = func(cunumeric_arr1, cunumeric_arr2)
-            cunumeric_in_place .= func(cunumeric_arr1, cunumeric_arr2)
+            cunumeric_res = func.(cunumeric_arr1, cunumeric_arr2)
+            cunumeric_in_place .= func.(cunumeric_arr1, cunumeric_arr2)
             cunumeric_res2 = map(func, cunumeric_arr1, cunumeric_arr2)
             julia_res = func.(julia_arr1, julia_arr2)
             allowscalar() do
@@ -133,7 +155,10 @@ end
         end
     end
 
+    #! TODO SPECIAL CASES (^, ==, !=, etc.)
+
     @testset "Type and Shape Promotion" begin
+        cunumeric_arr1 = cuNumeric.zeros(Float64, N)
         cunumeric_arr3 = cuNumeric.zeros(Float32, N)
         cunumeric_int64 = cuNumeric.zeros(Int64, N)
         cunumeric_int32 = cuNumeric.zeros(Int32, N)
@@ -145,7 +170,9 @@ end
         @test_throws DimensionMismatch cunumeric_arr1 .+ cunumeric_arr5
         @test_throws DimensionMismatch cunumeric_arr1 ./ cunumeric_arr5
 
-        @test cunumeric_arr1 == cunumeric_int64 .+ cunumeric_arr1
+        allowscalar() do
+            @test cuNumeric.compare(cunumeric_arr1, cunumeric_int64 .+ cunumeric_arr1, atol(Float64), rtol(Float64))
+        end
 
     end
 

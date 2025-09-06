@@ -196,6 +196,8 @@ Supported Unary Reduction Operations
 
 The following unary reduction operations are supported and can be applied directly to `NDArray` values:
 
+  • `all`
+  • `any`
   • `maximum`
   • `minimum`
   • `prod`
@@ -208,19 +210,17 @@ Examples
 --------
 
 ```julia
-A = NDArray(randn(Float32, 3, 3))
+A = cuNumeric.ones(5)
 
 maximum(A)
 sum(A)
 ```
 """
 global const unary_reduction_map = Dict{Function,UnaryRedCode}(
-    # Base.all => cuNumeric.ALL, #* ANNOYING TO TEST
-    # Base.any => cuNumeric.ANY, #* ANNOYING TO TEST
     # Base.argmax => cuNumeric.ARGMAX, #* WILL BE OFF BY 1
     # Base.argmin => cuNumeric.ARGMIN, #* WILL BE OFF BY 1
     #missing => cuNumeric.CONTAINS, # strings or also integral types
-    #missing => cuNumeric.COUNT_NONZERO,
+    #missing => cuNumeric.COUNT_NONZERO, # Base.count(!Base.iszero, arr)
     Base.maximum => cuNumeric.MAX,
     Base.minimum => cuNumeric.MIN,
     #missing => cuNumeric.NANARGMAX,
@@ -231,46 +231,53 @@ global const unary_reduction_map = Dict{Function,UnaryRedCode}(
     Base.prod => cuNumeric.PROD,
     Base.sum => cuNumeric.SUM,
     #missing => cuNumeric.SUM_SQUARES,
-    #missing => cuNumeric.VARIANCE # requires StatsBase.
+    # StatsBase.var => cuNumeric.VARIANCE #! dies horribly?? wth
 )
 
+#! IT WOULD BE NICE IF THESE JUST RETURNED SCALARS WHEN APPROPRIATE
 # #*TODO HOW TO GET THESE ACTING ON CERTAIN DIMS
 # Generate code for all unary reductions.
 for (base_func, op_code) in unary_reduction_map
     @eval begin
         function $(Symbol(base_func))(input::NDArray{T}) where T
-            #* WILL BREAK NOT ALL REDUCTIONS HAVE SAME TYPE AS INPUT
-            out = cuNumeric.zeros(T, 1) #! RETURN 0D ARRAY?
+            T_OUT = Base.promote_op($base_func, Vector{T})
+            is_wider_type(T_OUT, T) && assertpromotion($base_func, T, T_OUT)
+            out = cuNumeric.zeros(T_OUT, 1) #! RETURN 0D ARRAY?
             return nda_unary_reduction(out, $(op_code), input)
         end
     end
 end
 
+function Base.sum(input::NDArray{T}) where {T <: Union{Bool, Int32}}
+    throw(ArgumentError("cuNumeric.jl does not support sum over $T"))
+end
+
+function Base.prod(input::NDArray{Int32})
+    throw(ArgumentError("cuNumeric.jl does not support prod over Int32"))
+end
+
+function Base.all(input::NDArray{Bool}) 
+    out = cuNumeric.zeros(Bool, 1)
+    return nda_unary_reduction(out, cuNumeric.ALL, input)
+end
+
+function Base.any(input::NDArray{Bool}) 
+    out = cuNumeric.zeros(Bool, 1)
+    return nda_unary_reduction(out, cuNumeric.ANY, input)
+end
+
+#! ONLY ADD ONCE REDUCTIONS RETURN A SCALAR
+# function StatsBase.mean(arr::NDArray{T}) where T
+#     return sum(arr) ./ prod(size(arr))
+# end
+
 # function Base.reduce(f::Function, arr::NDArray)
 #     return f(arr)
 # end
 
-#### PROVIDE A MORE "JULIAN" WAY OF DOING THINGS
-#### WHEN YOU CALL MAP YOU EXPECT BROADCASTING
-#### THIS HAS SOME EXTRA OVERHEAD THOUGH SINCE
-#### YOU HAVE TO LOOK UP THE OP CODE AND CHECK IF ITS VALID
 
 #* TODO Overload broadcasting to just call this
 #* e.g. sin.(ndarray) should call this or the proper generated func
 function Base.map(f::Function, arr::NDArray)
     return f.(arr) # Will try to call one of the functions generated above
 end
-
-# function get_unary_op(f::Function)
-#     if haskey(unary_op_map, f)
-#         return unary_op_map[f]
-#     else
-#         throw(KeyError("Unsupported unary operation : $(f)"))
-#     end
-# end
-
-# function Base.map(f::Function, arr::NDArray)
-#     out = cuNumeric.zeros(eltype(arr), size(arr)) # not sure this is ok for performance
-#     op_code = get_unary_op(f)
-#     return unary_op(out, op_code, arr)
-# end

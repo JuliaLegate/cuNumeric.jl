@@ -170,9 +170,7 @@ end
 
 # Support .= 
 function Base.copyto!(dest::NDArray, bc::Broadcasted{<:NDArrayStyle})
-    #! Any way to avoid the extra NDArray allocation? 
-    #! materialize also allocates an output array.
-
+    #! USE MOVE ASSIGNMENT TO AVOID COPY
     # CALL MOVE ASSIGNMENT ONTO SELF
     return copyto!(dest, Base.Broadcast.materialize(bc))
 end

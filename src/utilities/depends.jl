@@ -13,11 +13,15 @@ using cunumeric_jl_wrapper_jll
 using CUTENSOR_jll
 
 import Base: axes, convert, copy, copyto!, inv, isfinite, sqrt, -, +, *, ==, !=, 
-            isapprox, read, view, maximum, minimum, prod, sum, getindex, setindex!
+            isapprox, read, view, maximum, minimum, prod, sum, getindex, setindex!,
+            sum, prod
 
 using LinearAlgebra
 import LinearAlgebra: mul!
 
 using Random
 import Random: rand, rand!
+
+using StatsBase
+import StatsBase: var, mean
 

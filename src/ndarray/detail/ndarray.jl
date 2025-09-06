@@ -17,7 +17,7 @@ nda_destroy_array(ptr::NDArray_t) = ccall((:nda_destroy_array, libnda),
 nda_nbytes(ptr::NDArray_t) = ccall((:nda_nbytes, libnda),
     Int64, (NDArray_t,), ptr)
 
-function get_julia_type(ptr::NDArray_t) 
+function get_julia_type(ptr::NDArray_t)
     type_code = ccall((:nda_array_type_code, libnda), Int32, (NDArray_t,), ptr)
     return Legate.code_type_map[type_code]
 end
