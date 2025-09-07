@@ -12,9 +12,9 @@ function test_binary_operation(func, julia_arr1, julia_arr2, cunumeric_arr1, cun
     cunumeric_res2 = map(func, cunumeric_arr1, cunumeric_arr2)
     
     allowscalar() do
-        @test cuNumeric.compare(julia_res, cunumeric_in_place, atol(T_OUT), rtol(T_OUT))
-        @test cuNumeric.compare(julia_res, cunumeric_res, atol(T_OUT), rtol(T_OUT))
-        @test cuNumeric.compare(julia_res, cunumeric_res2, atol(T_OUT), rtol(T_OUT))
+        @test safe_compare(julia_res, cunumeric_in_place, atol(T_OUT), rtol(T_OUT))
+        @test safe_compare(julia_res, cunumeric_res, atol(T_OUT), rtol(T_OUT))
+        @test safe_compare(julia_res, cunumeric_res2, atol(T_OUT), rtol(T_OUT))
     end
 end
 

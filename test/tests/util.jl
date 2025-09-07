@@ -38,3 +38,37 @@ function make_cunumeric_arrays(julia_arrs_1D, julia_arrs_2D, T, N; count::Int = 
     
     return cunumeric_arrs..., cunumeric_arrs_2D...
 end
+
+function safe_isapprox(x, y, rtol, atol)
+    # Handle NaN
+    if isnan(x) && isnan(y)
+        return true
+    end
+    
+    # Handle Inf (must be same sign)
+    if isinf(x) && isinf(y)
+        return x === y
+    end
+    
+    # Handle mixed finite/non-finite
+    if isfinite(x) != isfinite(y)
+        return false
+    end
+    
+    return isapprox(x, y; rtol=rtol, atol=atol)
+end
+
+function safe_compare(x::AbstractArray{T}, y::NDArray{T}, rtol, atol) where T
+
+    for CI in CartesianIndices(x)
+        if !safe_isapprox(x[CI], y[Tuple(CI)...], rtol, atol)
+            return false
+        end
+    end
+    
+    return true
+end
+
+function safe_compare(x::NDArray{T}, y::AbstractArray{T}, rtol, atol) where T
+    return safe_compare(y, x)
+end

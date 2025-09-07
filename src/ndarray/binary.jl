@@ -220,7 +220,7 @@ end
 # This is more "Julian" since a user expects map to broadcast
 # their operation whereas the generated functions should technically
 # only broadcast when the .() syntax is used
-function Base.map(f::Function, arr1::NDArray{T,N}, arr2::NDArray{T,N}) where {T,N}
+function Base.map(f::Function, arr1::NDArray{A,N}, arr2::NDArray{B,N}) where {A,B,N}
     return f.(arr1, arr2) # Will try to call one of the functions generated above
 end
 

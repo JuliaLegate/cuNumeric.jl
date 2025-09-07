@@ -67,7 +67,7 @@ end
 @testset verbose = true "Unary Ops w/o Args" begin
     N = 100 # keep as perfect square
 
-    @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
+    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
 
         allowpromotion(T == Bool || T == Int32) do
             test_unary_function_set(cuNumeric.floaty_unary_ops_no_args, T, N)   
@@ -84,7 +84,7 @@ end
 @testset verbose = true "Unary Reductions" begin
     N = 100
 
-    @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
+    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
         julia_arr = rand(T, N)
         cunumeric_arr = cuNumeric.zeros(T, N)
         @allowscalar for i in 1:N
@@ -116,7 +116,7 @@ end
     julia_bools = rand(Bool, N)
     cunumeric_bools = cuNumeric.zeros(Bool, N)
 
-    @allowscalar() do
+    allowscalar() do
         for i in 1:N
             cunumeric_bools[i] = julia_bools[i]
         end
@@ -141,36 +141,41 @@ end
 
     #! TODO SPECIAL CASES (^, ==, !=, lcm, gcd, non-broadcast funcs etc.)
 
-    # @testset "Type and Shape Promotion" begin
-    #     cunumeric_arr1 = cuNumeric.zeros(Float64, N)
-    #     cunumeric_arr3 = cuNumeric.zeros(Float32, N)
-    #     cunumeric_int64 = cuNumeric.zeros(Int64, N)
-    #     cunumeric_int32 = cuNumeric.zeros(Int32, N)
-    #     cunumeric_arr5 = cuNumeric.zeros(Float64, N, N)
+    @testset "Type and Shape Promotion" begin
+        cunumeric_arr1 = cuNumeric.zeros(Float64, N)
+        cunumeric_arr3 = cuNumeric.zeros(Float32, N)
+        cunumeric_int64 = cuNumeric.zeros(Int64, N)
+        cunumeric_int32 = cuNumeric.zeros(Int32, N)
+        cunumeric_arr5 = cuNumeric.zeros(Float64, N - 1, N - 1)
 
 
-    #     @test_throws "Implicit promotion" cunumeric_arr3 .+ cunumeric_arr1
-    #     @test_throws "Implicit promotion" map(+, cunumeric_arr3, cunumeric_arr1)
-    #     @test_throws DimensionMismatch cunumeric_arr1 .+ cunumeric_arr5
-    #     @test_throws DimensionMismatch cunumeric_arr1 ./ cunumeric_arr5
+        @test_throws "Implicit promotion" cunumeric_arr3 .+ cunumeric_arr1
+        @test_throws "Implicit promotion" map(+, cunumeric_arr3, cunumeric_arr1)
+        @test_throws DimensionMismatch cunumeric_arr1 .+ cunumeric_arr5
+        @test_throws DimensionMismatch cunumeric_arr1 ./ cunumeric_arr5
 
-    #     allowscalar() do
-    #         @test cuNumeric.compare(cunumeric_arr1, cunumeric_int64 .+ cunumeric_arr1, atol(Float64), rtol(Float64))
-    #     end
+        allowscalar() do
+            @test cuNumeric.compare(cunumeric_arr1, cunumeric_int64 .+ cunumeric_arr1, atol(Float64), rtol(Float64))
+            r1 = @allowpromotion cunumeric_arr3 .+ cunumeric_arr1
+            r2 = @allowpromotion map(+, cunumeric_arr3, cunumeric_arr1)
+            @test cuNumeric.compare(r1, r2, atol(Float64), rtol(Float64))
+        end
 
-    # end
+    end
 
-    # @testset "Copy-To" begin
-    #     a = cuNumeric.zeros(2, 2)
-    #     b = cuNumeric.ones(2, 2)
-    #     copyto!(a, b);
-    #     @test @allowscalar a == b
-    # end
+    @testset "Copy-To" begin
+        a = cuNumeric.zeros(2, 2)
+        b = cuNumeric.ones(2, 2)
+        copyto!(a, b);
+        @test @allowscalar a == b
+    end
 end
 
 @testset verbose = true "Slicing Tests" begin
-    max_diff = Float64(1e-4)
-    @testset slicing(max_diff)
+    N = 100
+    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES) 
+        slicing(T, N)
+    end
 end
 
 # @testset verbose = true "CUDA Tests" begin
