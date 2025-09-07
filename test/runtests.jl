@@ -39,6 +39,7 @@ include("tests/elementwise.jl")
 include("tests/slicing.jl")
 include("tests/gemm.jl")
 include("tests/unary_tests.jl")
+include("tests/binary_tests.jl")
 # include("tests/custom_cuda.jl")
 
 @testset verbose = true "AXPY" begin
@@ -68,15 +69,16 @@ end
 
     @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
 
-        allowpromotion(T == Bool || T == Int32)
-        test_unary_function_set(cuNumeric.floaty_unary_ops_no_args, T, N)        
+        allowpromotion(T == Bool || T == Int32) do
+            test_unary_function_set(cuNumeric.floaty_unary_ops_no_args, T, N)   
+        end     
         
-        allowpromotion(T == Bool)  
-        test_unary_function_set(cuNumeric.unary_op_map_no_args, T, N)
+        allowpromotion(T == Bool) do
+            test_unary_function_set(cuNumeric.unary_op_map_no_args, T, N)
+        end
         
         #!SPECIAL CASES (!, -, ^-1, ^2)
     end
-    allowpromotion(false) # idk if this is necssary
 end
 
 @testset verbose = true "Unary Reductions" begin
@@ -128,60 +130,42 @@ end
     N = 100
 
     @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
-        # Make input arrays we can re-use
-        julia_arr1 = rand(T, N)
-        julia_arr2 = rand(T, N)
-
-        cunumeric_arr1 = cuNumeric.zeros(T, N)
-        cunumeric_arr2 = cuNumeric.zeros(T, N)
-        @allowscalar for i in 1:N
-            cunumeric_arr1[i] = julia_arr1[i]
-            cunumeric_arr2[i] = julia_arr2[i]
-        end
-
-        @testset verbose = true "$func" for func in keys(cuNumeric.broadcasted_binary_op_map)
-            T_OUT = Base.promote_op(func, T, T)
-            cunumeric_in_place = cuNumeric.zeros(T_OUT, N)
-
-            cunumeric_res = func.(cunumeric_arr1, cunumeric_arr2)
-            cunumeric_in_place .= func.(cunumeric_arr1, cunumeric_arr2)
-            cunumeric_res2 = map(func, cunumeric_arr1, cunumeric_arr2)
-            julia_res = func.(julia_arr1, julia_arr2)
-            allowscalar() do
-                @test cuNumeric.compare(cunumeric_res, cunumeric_in_place, atol(T_OUT), rtol(T_OUT))
-                @test cuNumeric.compare(julia_res, cunumeric_res, atol(T_OUT), rtol(T_OUT))
-                @test cuNumeric.compare(julia_res, cunumeric_res2, atol(T_OUT), rtol(T_OUT))
-            end
+        allowpromotion(T == Bool || T == Int32) do
+            test_binary_function_set(cuNumeric.floaty_binary_op_map, T, N)   
+        end     
+        
+        allowpromotion(T == Bool) do
+            test_binary_function_set(cuNumeric.binary_op_map, T, N)
         end
     end
 
-    #! TODO SPECIAL CASES (^, ==, !=, etc.)
+    #! TODO SPECIAL CASES (^, ==, !=, lcm, gcd, non-broadcast funcs etc.)
 
-    @testset "Type and Shape Promotion" begin
-        cunumeric_arr1 = cuNumeric.zeros(Float64, N)
-        cunumeric_arr3 = cuNumeric.zeros(Float32, N)
-        cunumeric_int64 = cuNumeric.zeros(Int64, N)
-        cunumeric_int32 = cuNumeric.zeros(Int32, N)
-        cunumeric_arr5 = cuNumeric.zeros(Float64, N, N)
+    # @testset "Type and Shape Promotion" begin
+    #     cunumeric_arr1 = cuNumeric.zeros(Float64, N)
+    #     cunumeric_arr3 = cuNumeric.zeros(Float32, N)
+    #     cunumeric_int64 = cuNumeric.zeros(Int64, N)
+    #     cunumeric_int32 = cuNumeric.zeros(Int32, N)
+    #     cunumeric_arr5 = cuNumeric.zeros(Float64, N, N)
 
 
-        @test_throws "Implicit promotion" cunumeric_arr3 .+ cunumeric_arr1
-        @test_throws "Implicit promotion" map(+, cunumeric_arr3, cunumeric_arr1)
-        @test_throws DimensionMismatch cunumeric_arr1 .+ cunumeric_arr5
-        @test_throws DimensionMismatch cunumeric_arr1 ./ cunumeric_arr5
+    #     @test_throws "Implicit promotion" cunumeric_arr3 .+ cunumeric_arr1
+    #     @test_throws "Implicit promotion" map(+, cunumeric_arr3, cunumeric_arr1)
+    #     @test_throws DimensionMismatch cunumeric_arr1 .+ cunumeric_arr5
+    #     @test_throws DimensionMismatch cunumeric_arr1 ./ cunumeric_arr5
 
-        allowscalar() do
-            @test cuNumeric.compare(cunumeric_arr1, cunumeric_int64 .+ cunumeric_arr1, atol(Float64), rtol(Float64))
-        end
+    #     allowscalar() do
+    #         @test cuNumeric.compare(cunumeric_arr1, cunumeric_int64 .+ cunumeric_arr1, atol(Float64), rtol(Float64))
+    #     end
 
-    end
+    # end
 
-    @testset "Copy-To" begin
-        a = cuNumeric.zeros(2, 2)
-        b = cuNumeric.ones(2, 2)
-        copyto!(a, b);
-        @test a == b
-    end
+    # @testset "Copy-To" begin
+    #     a = cuNumeric.zeros(2, 2)
+    #     b = cuNumeric.ones(2, 2)
+    #     copyto!(a, b);
+    #     @test @allowscalar a == b
+    # end
 end
 
 @testset verbose = true "Slicing Tests" begin

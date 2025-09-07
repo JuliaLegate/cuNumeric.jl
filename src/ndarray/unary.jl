@@ -137,7 +137,7 @@ end
 
 
 # Only supported for Bools
-@inline function __broadcast(f::typeof(Base.:(!)), out::NDArray{Bool}, input::NDArray{Bool}) where T
+@inline function __broadcast(f::typeof(Base.:(!)), out::NDArray{Bool}, input::NDArray{Bool})
     return nda_unary_op(out, cuNumeric.LOGICAL_NOT, input)
 end
 

@@ -10,30 +10,24 @@ const SPECIAL_DOMAINS = Dict(
 )
 
 
-function test_unary_operation(func, julia_arr, julia_arr_2D, cunumeric_arr, cunumeric_arr_2D, T)
+function test_unary_operation(func, julia_arr, cunumeric_arr, T)
     
     T_OUT = Base.promote_op(func, T)
     
     # Pre-allocate output arrays
-    cunumeric_in_place = cuNumeric.zeros(T_OUT, length(julia_arr))
-    cunumeric_in_place_2D = cuNumeric.zeros(T_OUT, size(julia_arr_2D)...)
+    cunumeric_in_place = cuNumeric.zeros(T_OUT, size(julia_arr)...)
     
     # Compute results using different methods
     julia_res = func.(julia_arr)
-    julia_res_2D = func.(julia_arr_2D)
     
     cunumeric_res = func.(cunumeric_arr)
-    cunumeric_res_2D = func.(cunumeric_arr_2D)
     cunumeric_in_place .= func.(cunumeric_arr)
-    cunumeric_in_place_2D .= func.(cunumeric_arr_2D)
     cunumeric_res2 = map(func, cunumeric_arr)
     
     allowscalar() do
         @test cuNumeric.compare(julia_res, cunumeric_in_place, atol(T_OUT), rtol(T_OUT))
         @test cuNumeric.compare(julia_res, cunumeric_res, atol(T_OUT), rtol(T_OUT))
         @test cuNumeric.compare(julia_res, cunumeric_res2, atol(T_OUT), rtol(T_OUT))
-        @test cuNumeric.compare(julia_res_2D, cunumeric_res_2D, atol(T_OUT), rtol(T_OUT))
-        @test cuNumeric.compare(julia_res_2D, cunumeric_in_place_2D, atol(T_OUT), rtol(T_OUT))
     end
 end
 
@@ -62,9 +56,9 @@ function test_unary_function_set(func_dict, T, N)
         skip && continue
 
         julia_arr_1D, julia_arr_2D = make_julia_arrays(T, N, domain_type)
-        cunumeric_arr, cunumeric_arr_2D = make_cunumeric_arrays(julia_arr_1D, julia_arr_2D, T)
+        cunumeric_arr_1D, cunumeric_arr_2D = make_cunumeric_arrays([julia_arr_1D], [julia_arr_2D], T, N)
         
-        test_unary_operation(func, julia_arr_1D, julia_arr_2D, 
-                                cunumeric_arr, cunumeric_arr_2D, T)
+        test_unary_operation(func, julia_arr_1D, cunumeric_arr_1D, T)
+        test_unary_operation(func, julia_arr_2D, cunumeric_arr_2D, T)
     end
 end

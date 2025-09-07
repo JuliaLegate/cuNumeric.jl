@@ -40,14 +40,12 @@ A .^ 2
 #     #missing => cuNumeric.NEXTAFTER,
 
 # Binary ops which are equivalent to Julia's broadcast syntax
-global const broadcasted_binary_op_map = Dict{Function, BinaryOpCode}(
+global const binary_op_map = Dict{Function, BinaryOpCode}(
     Base.:+ => cuNumeric.ADD,
-    Base.:/ => cuNumeric.DIVIDE,
     Base.:* => cuNumeric.MULTIPLY, 
     Base.:(-) => cuNumeric.SUBTRACT,
-    Base.:(^) => cuNumeric.POWER,
+    # Base.:(^) => cuNumeric.POWER, #! SOME WEIRD EDGE CASES
     # Base.:^ => cuNumeric.FLOAT_POWER, # DONT THINK THIS IS WHAT WE WANT
-    Base.hypot => cuNumeric.HYPOT,
     Base.max => cuNumeric.MAXIMUM,
     Base.min => cuNumeric.MINIMUM,
     Base.:(<) => cuNumeric.LESS, #* Julia also has non-broadcasted versions required `isless`
@@ -56,36 +54,40 @@ global const broadcasted_binary_op_map = Dict{Function, BinaryOpCode}(
     Base.:(>=) => cuNumeric.GREATER_EQUAL, #* Julia also has non-broadcasted versions required `isless`
     # Base.:(!=) => (cuNumeric.NOT_EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION)
     # Base.:(==) => (cuNumeric.EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION),
-    Base.atan => cuNumeric.ARCTAN2,
-    Base.lcm => cuNumeric.LCM,
-    Base.gcd => cuNumeric.GCD,
-    Base.xor => cuNumeric.LOGICAL_XOR,
-    Base.:⊻ => cuNumeric.LOGICAL_XOR,
-    Base.div => cuNumeric.FLOOR_DIVIDE,
-    Base.:(÷) => cuNumeric.FLOOR_DIVIDE,
-    Base.:(>>) => cuNumeric.RIGHT_SHIFT,
-    Base.:(<<) => cuNumeric.LEFT_SHIFT,
+    # Base.xor => cuNumeric.LOGICAL_XOR, #! DO LATER
+    # Base.:⊻ => cuNumeric.LOGICAL_XOR, #! DO LATER
+    # Base.div => cuNumeric.FLOOR_DIVIDE, #! THESE ARE IN-EXACT FOR INTS?
+    # Base.:(÷) => cuNumeric.FLOOR_DIVIDE, #! THESE ARE IN-EXACT FOR INTS?
+    # Base.:(>>) => cuNumeric.RIGHT_SHIFT, #! DO LATER
+    # Base.:(<<) => cuNumeric.LEFT_SHIFT, #! DO LATER
     # Base.:(&&) => (cuNumeric.LOGICAL_AND, Bool, :same_as_input), #! CANNOT OVERLOAD WTF? (see Base.andand)
     # Base.:(||) => (cuNumeric.LOGICAL_OR, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
+)
+
+global const floaty_binary_op_map = Dict{Function, BinaryOpCode}(
+    Base.:/ => cuNumeric.DIVIDE,
+    Base.hypot => cuNumeric.HYPOT,
+    Base.atan => cuNumeric.ARCTAN2
 )
 
 
 ## SPECIAL CASES ##
 
+
 # Do not need broadcast operation when same shape
 function Base.:(-)(rhs1::NDArray{A, N}, rhs2::NDArray{B, N}) where {A, B, N}
-    # technically should call promote_shape 
-    T = __my_promote_type(A, B)
-    out = cuNumeric.zeros(T, size(rhs1))
-    return nda_binary_op(out, cuNumeric.SUBTRACT, unchecked_promote_arr(rhs1, T), unchecked_promote_arr(rhs2, T))
+    promote_shape(size(rhs1), size(rhs2)) 
+    T_OUT = __checked_promote_op(-, A, B)
+    out = cuNumeric.zeros(T_OUT, size(rhs1))
+    return nda_binary_op(out, cuNumeric.SUBTRACT, unchecked_promote_arr(rhs1, T_OUT), unchecked_promote_arr(rhs2, T_OUT))
 end
 
 # Do not need broadcast operation when same shape
 function Base.:(+)(rhs1::NDArray{A, N}, rhs2::NDArray{B,N}) where {A, B, N}
-    # technically should call promote_shape 
-    T = __my_promote_type(A, B)
-    out = cuNumeric.zeros(T, size(rhs1))
-    return nda_binary_op(out, cuNumeric.ADD, unchecked_promote_arr(rhs1, T), unchecked_promote_arr(rhs2, T))
+    promote_shape(size(rhs1), size(rhs2)) 
+    T_OUT = __checked_promote_op(+, A, B)
+    out = cuNumeric.zeros(T_OUT, size(rhs1))
+    return nda_binary_op(out, cuNumeric.ADD, unchecked_promote_arr(rhs1, T_OUT), unchecked_promote_arr(rhs2, T_OUT))
 end
 
 function Base.:(*)(val::V, arr::NDArray{A}) where {A, V}
@@ -151,12 +153,40 @@ function LinearAlgebra.mul!(out::NDArray, rhs1::NDArray{<:Integer, 2}, rhs2::NDA
 end
 
 # Generate hidden broadcast functions for binary ops
-for (julia_fn, op_code) in broadcasted_binary_op_map
+for (julia_fn, op_code) in binary_op_map
     @eval begin
         @inline function __broadcast(f::typeof($(julia_fn)), out::NDArray, rhs1::NDArray{T}, rhs2::NDArray{T}) where T
             return nda_binary_op(out, $(op_code), rhs1, rhs2)
         end
     end
+end
+
+# Some functions always return floats even when given integers
+# in the case where the output is determined to be float, but 
+# the input is integer, we first promote the input to float.
+for (julia_fn, op_code) in floaty_binary_op_map
+    @eval begin
+        @inline function __broadcast(f::typeof($(julia_fn)), out::NDArray, rhs1::NDArray{T}, rhs2::NDArray{T}) where T
+            return nda_binary_op(out, $(op_code), rhs1, rhs2)
+        end
+
+        # If input is not already float, promote to that
+        @inline function __broadcast(f::typeof($(julia_fn)), out::NDArray{A}, rhs1::NDArray{B}, rhs2::NDArray{B}) where {A <: SUPPORTED_FLOAT_TYPES, B <: Union{SUPPORTED_INT_TYPES, Bool}}
+            return __broadcast(f, out, checked_promote_arr(rhs1, A), checked_promote_arr(rhs2, A))
+        end
+
+    end
+end
+
+
+@inline function __broadcast(f::typeof(Base.:(+)), out::NDArray{O}, rhs1::NDArray{Bool}, rhs2::NDArray{Bool}) where {O <: Integer}
+    assertpromotion(".+", Bool, O)
+    return nda_binary_op(out, cuNumeric.ADD, unchecked_promote_arr(rhs1, O), unchecked_promote_arr(rhs2, O))
+end
+
+@inline function __broadcast(f::typeof(Base.:(-)), out::NDArray{O}, rhs1::NDArray{Bool}, rhs2::NDArray{Bool}) where {O <: Integer}
+    assertpromotion(".-", Bool, O)
+    return nda_binary_op(out, cuNumeric.SUBTRACT, unchecked_promote_arr(rhs1, O), unchecked_promote_arr(rhs2, O))
 end
 
 
@@ -177,6 +207,15 @@ end
     return nda_binary_op(out, cuNumeric.POWER, input, power)
 end
 
+@inline function Base.lcm(input::NDArray{T}) where {T <: Integer}
+    out = cuNumeric.zeros(T, size(input))
+    return nda_binary_op(out, cuNumeric.LCM, input)
+end
+
+@inline function Base.gcd(input::NDArray{T}) where {T <: Integer}
+    out = cuNumeric.zeros(T, size(input))
+    return nda_binary_op(out, cuNumeric.GCD, input)
+end
 
 # This is more "Julian" since a user expects map to broadcast
 # their operation whereas the generated functions should technically

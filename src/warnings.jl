@@ -216,8 +216,10 @@ See also: [`@allowpromotion`](@ref).
 """
 allowpromotion
 
-function allowpromotion(f::Base.Callable)
-    task_local_storage(f, :ImplicitPromotion, PromotionAllowed)
+function allowpromotion(f::Base.Callable, allow::Bool=true)
+    setting = allow ? PromotionAllowed : PromotionDisallowed
+    task_local_storage(f, :ImplicitPromotion, setting)
+    return
 end
 
 function allowpromotion(allow::Bool=true)
