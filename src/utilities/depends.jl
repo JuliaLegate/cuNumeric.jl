@@ -9,8 +9,7 @@ using Pkg
 using TOML
 
 using cupynumeric_jll
-# temporary until cunumeric_jl_wrapper_jll exists
-# using cunumeric_jl_wrapper_jll
+using cunumeric_jl_wrapper_jll
 using CUTENSOR_jll
 
 using LinearAlgebra
@@ -26,4 +25,4 @@ import Base: abs, angle, acos, acosh, asin, asinh, atan, atanh, cbrt,
     sinh, sqrt, tan, tanh, trunc, +, *, atan, &, |, ⊻, copysign,
     /, ==, ^, div, gcd, >, >=, hypot, isapprox, lcm, ldexp, <<,
     <, <=, !=, >>, all, any, argmax, argmin, maximum, minimum,
-    prod, sum, read
+    prod, sum, read, trues, falses, axes, view

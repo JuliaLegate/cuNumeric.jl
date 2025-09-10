@@ -10,7 +10,15 @@ Depth = 2:2
 
 ```@autodocs
 Modules = [cuNumeric]
-Pages = ["cuNumeric.jl", "cuda.jl", "memory.jl", "util.jl", "ndarray/ndarray.jl", "ndarray/unary.jl", "ndarray/binary.jl"]
+Pages = ["cuNumeric.jl", "memory.jl", "util.jl", "ndarray/ndarray.jl", "ndarray/unary.jl", "ndarray/binary.jl"]
+```
+
+# CUDA.jl Tasking
+This section will detail how to use custom CUDA.jl kernels with the Legate runtime.
+
+```@autodocs
+Modules = [cuNumeric]
+Pages = ["cuda.jl"]
 ```
 
 # CNPreferences

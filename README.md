@@ -27,7 +27,7 @@ juliaup status
 julia --version
 ```
 
-If 1.10 is not your default, please set it to be the default. Other versions of Julia are untested.
+If 1.11 is not your default, please set it to be the default. Other versions of Julia are untested.
 ```bash
 juliaup default 1.11
 ```
