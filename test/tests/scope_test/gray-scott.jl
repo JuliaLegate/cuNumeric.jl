@@ -1,12 +1,12 @@
 using cuNumeric
 
 struct Params
-    dx::Float64
-    dt::Float64
-    c_u::Float64
-    c_v::Float64
-    f::Float64
-    k::Float64
+    dx::Float32
+    dt::Float32
+    c_u::Float32
+    c_v::Float32
+    f::Float32
+    k::Float32
 
     function Params(dx=1, c_u=1.0, c_v=0.3, f=0.03, k=0.06)
         new(dx, dx/5, c_u, c_v, f, k)
@@ -71,19 +71,19 @@ end
 function gray_scott()
     N = 2000
     dims = (N, N)
-    FT = Float64
+    FT = Float32
     args = Params()
 
     n_steps = 1000 # number of steps to take
     frame_interval = 200 # steps to take between making plots
 
-    u = cuNumeric.ones(dims)
-    v = cuNumeric.zeros(dims)
-    u_new = cuNumeric.zeros(dims)
-    v_new = cuNumeric.zeros(dims)
+    u = cuNumeric.ones(FT, dims)
+    v = cuNumeric.zeros(FT, dims)
+    u_new = cuNumeric.zeros(FT, dims)
+    v_new = cuNumeric.zeros(FT, dims)
 
-    u[1:150, 1:150] = cuNumeric.random(FT, (150, 150))
-    v[1:150, 1:150] = cuNumeric.random(FT, (150, 150))
+    u[1:150, 1:150] = cuNumeric.as_type(cuNumeric.rand(NDArray, (150, 150)), FT)
+    v[1:150, 1:150] = cuNumeric.as_type(cuNumeric.rand(NDArray, (150, 150)), FT)
 
     for n in 1:n_steps
         step(u, v, u_new, v_new, args)
