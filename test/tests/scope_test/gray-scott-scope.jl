@@ -68,6 +68,7 @@ function step(u, v, u_new, v_new, args::Params)
         v_new[1, :] = v[end - 1, :]
         v_new[end, :] = v[2, :]
     end
+    # println(j)
 end
 
 function gray_scott()
@@ -76,7 +77,7 @@ function gray_scott()
     FT = Float64
     args = Params()
 
-    n_steps = 1 # number of steps to take
+    n_steps = 2000 # number of steps to take
     frame_interval = 200 # steps to take between making plots
 
     u = cuNumeric.ones(dims)

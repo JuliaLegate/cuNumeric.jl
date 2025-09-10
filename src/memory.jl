@@ -1,4 +1,6 @@
 export @cunumeric
+
+using MacroTools
 using Base.Threads: Atomic, atomic_add!, atomic_sub!, atomic_xchg!
 
 query_device_memory() = ccall((:nda_query_device_memory, libnda),
@@ -67,6 +69,13 @@ function maybe_collect()
     return nothing
 end
 
+macro __tryfinally(ex, fin)
+    Expr(:tryfinally,
+        :($(esc(ex))),
+        :($(esc(fin))),
+    )
+end
+
 macro cunumeric(block)
     esc(process_ndarray_scope(block))
 end
@@ -86,61 +95,69 @@ function process_ndarray_scope(block)
     end
 
     # Otherwise, process and cache
-    assigned_vars = Symbol[]
+    assigned_vars = Set{Symbol}()
     body = Any[]
 
     for stmt in stmts
-        find_ndarray_assignments(stmt, assigned_vars)
+        stmt = find_ndarray_assignments(stmt, assigned_vars)
         push!(body, stmt)
     end
 
-    # println(body)
+    cleanup_exprs = []
 
-    println(assigned_vars)
-
-    cleanup_calls = Expr[]
-    for v in reverse(assigned_vars)
-        push!(cleanup_calls, :(cuNumeric.nda_destroy_array($(v).ptr)))
-        push!(cleanup_calls, :(cuNumeric.register_free!($(v).nbytes)))
+    for var in assigned_vars
+        push!(cleanup_exprs, :(cuNumeric.nda_destroy_array($var.ptr)))
+        push!(cleanup_exprs, :(cuNumeric.register_free!($var.nbytes)))
+        push!(cleanup_exprs, :($var.ptr = Ptr{Cvoid}(0)))
+        push!(cleanup_exprs, :($var.nbytes = 0))
     end
-    push!(cleanup_calls, :(cuNumeric.maybe_collect()))
-
-    println(cleanup_calls)
 
     result = quote
-        try
-            $(Expr(:block, body...))
-        finally
-            $(Expr(:block, cleanup_calls...))
-        end
+        cuNumeric.@__tryfinally($(Expr(:block, body...)),
+            $(Expr(:block, cleanup_exprs...)))
     end
 
     ndarray_scope_cache[h] = result
     return result
 end
 
-function is_ndarray_constructor(expr)
-    println(expr)
-    println(expr.head)
-    println(expr.args)
-    return expr isa Expr && expr.head == :call && expr.args[1] == :NDArray
-end
+function find_ndarray_assignments(ex, assigned_vars::Set{Symbol})
+    counter = Ref(0)
+    cache = Dict{Expr,Symbol}()
+    function rewrite(e)::Tuple{Any,Vector{Expr}}
+        if !(e isa Expr)
+            return e, Expr[]
+        end
 
-function find_ndarray_assignments(expr, assigned::Vector{Symbol})
-    if !(expr isa Expr)
-        return nothing
-    end
-
-    # Detect direct assignments like `x = NDArray(...)`
-    if expr.head == :(=)
-        lhs, rhs = expr.args
-        if lhs isa Symbol && is_ndarray_constructor(rhs)
-            push!(assigned, lhs)
+        if e.head == :(=)
+            lhs, rhs = e.args
+            if lhs isa Symbol
+                push!(assigned_vars, lhs)
+            end
+            new_rhs, temps = rewrite(rhs)
+            return Expr(:block, temps..., :($lhs = $new_rhs)), []
+        elseif e.head == :ref
+            if haskey(cache, e)
+                return cache[e], []
+            else
+                counter[] += 1
+                tmp = Symbol(:tmp, counter[])
+                cache[e] = tmp
+                push!(assigned_vars, tmp)
+                return tmp, [:($tmp = $e)]
+            end
+        else
+            new_args = Any[]
+            hoisted = Expr[]
+            for arg in e.args
+                new_arg, temps = rewrite(arg)
+                push!(new_args, new_arg)
+                append!(hoisted, temps)
+            end
+            return Expr(e.head, new_args...), hoisted
         end
     end
 
-    # Recurse into all subexpressions
-    for arg in expr.args
-        find_ndarray_assignments(arg, assigned)
-    end
+    new_ex, temps = rewrite(ex)
+    return Expr(:block, temps..., new_ex)
 end
