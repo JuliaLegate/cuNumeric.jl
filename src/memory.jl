@@ -108,9 +108,9 @@ function process_ndarray_scope(block)
 
     for var in assigned_vars
         push!(cleanup_exprs, :(cuNumeric.nda_destroy_array($var.ptr)))
-        push!(cleanup_exprs, :(cuNumeric.register_free!($var.nbytes)))
-        push!(cleanup_exprs, :($var.ptr = Ptr{Cvoid}(0)))
-        push!(cleanup_exprs, :($var.nbytes = 0))
+        # push!(cleanup_exprs, :(cuNumeric.register_free!($var.nbytes)))
+        # push!(cleanup_exprs, :($var.ptr = Ptr{Cvoid}(0)))
+        # push!(cleanup_exprs, :($var.nbytes = 0))
     end
 
     result = quote

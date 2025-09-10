@@ -14,7 +14,7 @@ struct Params
 end
 
 function step(u, v, u_new, v_new, args::Params)
-    @cunumeric begin
+    j = @macroexpand @cunumeric begin
         # calculate F_u and F_v functions
         # currently we don't have NDArray^x working yet. 
         F_u = (
@@ -68,6 +68,7 @@ function step(u, v, u_new, v_new, args::Params)
         v_new[1, :] = v[end - 1, :]
         v_new[end, :] = v[2, :]
     end
+    println(j)
 end
 
 function gray_scott()
