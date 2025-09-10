@@ -81,6 +81,7 @@ macro cunumeric(block)
 end
 
 const ndarray_scope_cache = Dict{UInt64,Expr}()
+const counter = Ref(0)
 
 function process_ndarray_scope(block)
     # Normalize block to list of statements
@@ -117,12 +118,12 @@ function process_ndarray_scope(block)
             $(Expr(:block, cleanup_exprs...)))
     end
 
+    counter[] = 0
     ndarray_scope_cache[h] = result
     return result
 end
 
 function find_ndarray_assignments(ex, assigned_vars::Set{Symbol})
-    counter = Ref(0)
     cache = Dict{Expr,Symbol}()
     function rewrite(e)::Tuple{Any,Vector{Expr}}
         if !(e isa Expr)
@@ -141,7 +142,7 @@ function find_ndarray_assignments(ex, assigned_vars::Set{Symbol})
                 return cache[e], []
             else
                 counter[] += 1
-                tmp = Symbol(:tmp, counter[])
+                tmp = Symbol(:tmp, counter[]) # make tmp1, tmp2, tmp3 ....
                 cache[e] = tmp
                 push!(assigned_vars, tmp)
                 return tmp, [:($tmp = $e)]
