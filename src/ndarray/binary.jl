@@ -9,9 +9,16 @@ The following binary operations are supported and can be applied elementwise to 
   • `*`
   • `/`
   • `^`
-  • `div`
+  • `<`
+  • `<=`
+  • `>`
+  • `>=`
+  • `==`
+  • `!=`
   • `atan` 
   • `hypot`
+  • `max`
+  • `min`
 
 These operations are applied elementwise by default and follow standard Julia semantics.
 
@@ -44,7 +51,7 @@ global const binary_op_map = Dict{Function, BinaryOpCode}(
     Base.:+ => cuNumeric.ADD,
     Base.:* => cuNumeric.MULTIPLY, 
     Base.:(-) => cuNumeric.SUBTRACT,
-    # Base.:(^) => cuNumeric.POWER, #! SOME WEIRD EDGE CASES
+    Base.:(^) => cuNumeric.POWER, #! SOME WEIRD EDGE CASES
     # Base.:^ => cuNumeric.FLOAT_POWER, # DONT THINK THIS IS WHAT WE WANT
     Base.max => cuNumeric.MAXIMUM,
     Base.min => cuNumeric.MINIMUM,
@@ -52,8 +59,8 @@ global const binary_op_map = Dict{Function, BinaryOpCode}(
     Base.:(<=) => cuNumeric.LESS_EQUAL,  #* Julia also has non-broadcasted versions required `isless`
     Base.:(>) => cuNumeric.GREATER, #* Julia also has non-broadcasted versions required `isless`
     Base.:(>=) => cuNumeric.GREATER_EQUAL, #* Julia also has non-broadcasted versions required `isless`
-    # Base.:(!=) => (cuNumeric.NOT_EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION)
-    # Base.:(==) => (cuNumeric.EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION),
+    Base.:(!=) => cuNumeric.NOT_EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION)
+    Base.:(==) => cuNumeric.EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION),
     # Base.xor => cuNumeric.LOGICAL_XOR, #! DO LATER
     # Base.:⊻ => cuNumeric.LOGICAL_XOR, #! DO LATER
     # Base.div => cuNumeric.FLOOR_DIVIDE, #! THESE ARE IN-EXACT FOR INTS?
@@ -206,6 +213,7 @@ end
 @inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, power::NDArray{T}) where T
     return nda_binary_op(out, cuNumeric.POWER, input, power)
 end
+
 
 @inline function Base.lcm(input::NDArray{T}) where {T <: Integer}
     out = cuNumeric.zeros(T, size(input))

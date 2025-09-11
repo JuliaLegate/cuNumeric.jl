@@ -36,6 +36,8 @@ The following unary operations are supported and can be broadcast over `NDArray`
   - `sqrt`
   - `tan`
   - `tanh`
+  - `^2`
+  - `^-1` or `inv`
 
 Differences
 -----------
@@ -114,13 +116,25 @@ function Base.sqrt(input::NDArray{T,2}) where T
     error("cuNumeric.jl does not support matrix square root.")
 end
 
-# technically unary op
-@inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, ::Type{Val{2}}) where T
+@inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray{O}, _, input::NDArray{T}, ::Type{Val{2}}) where {T,O}
     return nda_unary_op(out, cuNumeric.SQUARE, input)
 end
 
-# technically unary op
-@inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, ::Type{Val{-1}}) where T
+# function square end
+
+# Base.promote_op(::typeof(cuNumeric.square), ::Type{T}) where T = Base.promote_op(Base.:(^), T, Int64)
+# # Base._return_type(::typeof(cuNumeric.square), argT) = Base._return_type(Base.:(^), argT)
+
+# @inline function __broadcast(::typeof(cuNumeric.square), out::NDArray{O}, input::NDArray{T}) where {O, T}
+#     return nda_unary_op(out, cuNumeric.SQUARE, checked_promote_arr(input, O))
+# end
+
+# could also define for inv on single array
+@inline function __broadcast(::typeof(Base.literal_pow), out::NDArray{O}, _, input::NDArray{T}, ::Type{Val{-1}}) where {T,O}
+    return nda_unary_op(out, cuNumeric.RECIPROCAL, input)
+end
+
+@inline function __broadcast(::typeof(Base.inv), out::NDArray, input::NDArray)
     return nda_unary_op(out, cuNumeric.RECIPROCAL, input)
 end
 
@@ -242,27 +256,20 @@ for (base_func, op_code) in unary_reduction_map
         function $(Symbol(base_func))(input::NDArray{T}) where T
             T_OUT = Base.promote_op($base_func, Vector{T})
             is_wider_type(T_OUT, T) && assertpromotion($base_func, T, T_OUT)
-            out = cuNumeric.zeros(T_OUT, 1) #! RETURN 0D ARRAY?
-            return nda_unary_reduction(out, $(op_code), input)
+            out = cuNumeric.zeros(T_OUT) #0D result (not right if reducing along dims)
+            return nda_unary_reduction(out, $(op_code), unchecked_promote_arr(input, T_OUT))
         end
     end
 end
 
-function Base.sum(input::NDArray{T}) where {T <: Union{Bool, Int32}}
-    throw(ArgumentError("cuNumeric.jl does not support sum over $T"))
-end
-
-function Base.prod(input::NDArray{Int32})
-    throw(ArgumentError("cuNumeric.jl does not support prod over Int32"))
-end
 
 function Base.all(input::NDArray{Bool}) 
-    out = cuNumeric.zeros(Bool, 1)
+    out = cuNumeric.zeros(Bool)
     return nda_unary_reduction(out, cuNumeric.ALL, input)
 end
 
 function Base.any(input::NDArray{Bool}) 
-    out = cuNumeric.zeros(Bool, 1)
+    out = cuNumeric.zeros(Bool)
     return nda_unary_reduction(out, cuNumeric.ANY, input)
 end
 

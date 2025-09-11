@@ -60,7 +60,11 @@ __checked_promote_op(op, ::Type{Tuple{A, B}}) where {A,B} = __checked_promote_op
 
 # Special case for NDArray to literal integer powers
 # Julia treats these special to optimize things like x ^ 2 and x ^ -1
-@inline function __checked_promote_op(op::typeof(Base.literal_pow), ::Type{Tuple{_, ARR_TYPE, Val{POWER}}}) where {_, ARR_TYPE, POWER} 
+@inline function __checked_promote_op(f::typeof(Base.literal_pow), a::Type{Tuple{_, ARR_TYPE, Val{POWER}}}) where {_, ARR_TYPE, POWER} 
+    println("Here")
+    println(a)
+    println(__checked_promote_op(Base.:(^), ARR_TYPE, typeof(POWER)))
+    println(Base.promote_op(f, a))
     return __checked_promote_op(Base.:(^), ARR_TYPE, typeof(POWER))
 end
 
@@ -90,7 +94,7 @@ __my_promote_type(::Type{A}, ::Type{A}) where A = A
 # The result of promote_op with a literal integer power is always the base type
 # Base.promote_op(^, Float32, Int64) == Float32
 # Base.promote_op(^, Int32, Int64) == Int32
-__my_promote_type(::Type{typeof(^)}, ::Type{A}, ::Type{Val{V}}) where {A, V} = promote_type(A, typeof(V))
+__my_promote_type(::Type{typeof(^)}, ::Type{A}, ::Type{Val{V}}) where {A, V} = __checked_promote_op(Base.:(^), A, typeof(V))
 
 @inline function __my_promote_type(::Type{A}, ::Type{B}) where {A,B}
     T = promote_type(A, B)

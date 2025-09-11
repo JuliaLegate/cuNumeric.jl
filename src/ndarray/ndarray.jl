@@ -73,6 +73,48 @@ as_type(arr, Float32)
 as_type(arr::NDArray{S, N}, ::Type{T}) where {S,T,N} = nda_astype(arr, T)::NDArray{T,N}
 as_type(arr::NDArray{T}, ::Type{T}) where T = arr
 
+# conversion from NDArray to Base Julia array
+function (::Type{<:Array{A}})(arr::NDArray{B}) where {A,B}
+    assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
+    dims = Base.size(arr)
+    out = Base.zeros(A, dims)
+    for CI in CartesianIndices(dims)
+        out[CI] = A(arr[Tuple(CI)...])
+    end
+    return out
+end
+
+function (::Type{<:Array})(arr::NDArray{B}) where {B}
+    assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
+    dims = Base.size(arr)
+    out = Base.zeros(B, dims)
+    for CI in CartesianIndices(dims)
+        out[CI] = arr[Tuple(CI)...]
+    end
+    return out
+end
+
+# conversion from Base Julia array to NDArray
+function (::Type{<:NDArray{A}})(arr::Array{B}) where {A,B}
+    assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
+    dims = Base.size(arr)
+    out = Base.zeros(A, dims)
+    for CI in CartesianIndices(dims)
+        out[Tuple(CI)...] = A(arr[CI])
+    end
+    return out
+end
+
+function (::Type{<:NDArray})(arr::Array{B}) where {B}
+    assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
+    dims = Base.size(arr)
+    out = cuNumeric.zeros(B, dims)
+    for CI in CartesianIndices(dims)
+        out[Tuple(CI)...] = arr[CI]
+    end
+    return out
+end
+
 
 # Base.convert(::Type{<:NDArray{T}}, a::A) where {T, A} = NDArray(T(a))::NDArray{T}
 # Base.convert(::Type{T}, a::T) where {T <: NDArray} = a
@@ -162,10 +204,15 @@ Base.view(arr::NDArray, inds...) = arr[inds...] # NDArray slices are views by de
 
 Base.IndexStyle(::NDArray) = IndexCartesian()
 
-# function Base.show(io::IO, arr::NDArray{T, 0}) where T
-#     dim = Base.size(arr)
-#     print(io, "NDArray of $(T)s, Dim: $(dim)")
-# end
+function Base.show(io::IO, arr::NDArray{T, 0}) where T
+    println(io, "0-dimensional NDArray{$(T),0}")
+    print(io, arr[]) #! should I assert scalar??
+end
+
+function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T, 0}) where T
+    println(io, "0-dimensional NDArray{$(T),0}")
+    print(io, arr[]) #! should I assert scalar??
+end
 
 function Base.show(io::IO, arr::NDArray{T}) where T
     dim = Base.size(arr)
@@ -217,23 +264,52 @@ function Base.getindex(arr::NDArray{T,N}, idxs::Vararg{Int,N}) where {T <: SUPPO
     return read(acc, arr.ptr, to_cpp_index(idxs))
 end
 
+function Base.getindex(arr::NDArray{T,0}) where {T <: SUPPORTED_NUMERIC_TYPES}
+    assertscalar("getindex")
+    acc = NDArrayAccessor{T,1}()
+    zero_index = StdVector([UInt64(0)]) #! CAN I PREALLOCATE THIS SOMEHOW
+    return read(acc, arr.ptr, zero_index)
+end
+
 function Base.getindex(arr::NDArray{Bool,N}, idxs::Vararg{Int,N}) where N
     assertscalar("getindex")
     acc = NDArrayAccessor{CxxWrap.CxxBool, N}()
     return read(acc, arr.ptr, to_cpp_index(idxs))
 end
 
-function Base.setindex!(arr::NDArray{T}, value::T, idxs::Vararg{Int,N}) where {T <: SUPPORTED_NUMERIC_TYPES, N}
+function Base.getindex(arr::NDArray{Bool,0})
+    assertscalar("getindex")
+    acc = NDArrayAccessor{CxxWrap.CxxBool, 1}()
+    zero_index = StdVector([UInt64(0)]) #! CAN I PREALLOCATE THIS SOMEHOW
+    return read(acc, arr.ptr, zero_index)
+end
+
+#! TODO SUPPORT CONVERSION OF VALUES
+function Base.setindex!(arr::NDArray{T,N}, value::T, idxs::Vararg{Int,N}) where {T, N}
     assertscalar("setindex!")
+    _setindex!(Val{N}(), arr, value, idxs...)
+end
+
+function _setindex!(::Val{0}, arr::NDArray{T,0}, value::T) where {T<:SUPPORTED_NUMERIC_TYPES}
+    acc = NDArrayAccessor{T,1}()
+    write(acc, arr.ptr, StdVector(UInt64[0]), value)
+end
+
+function _setindex!(::Val{0}, arr::NDArray{Bool,0}, value::Bool)
+    acc = NDArrayAccessor{CxxWrap.CxxBool,1}()
+    write(acc, arr.ptr, StdVector(UInt64[0]), value)
+end
+
+function _setindex!(::Val{N}, arr::NDArray{T,N}, value::T, idxs::Vararg{Int,N}) where {T<:SUPPORTED_NUMERIC_TYPES,N}
     acc = NDArrayAccessor{T,N}()
     write(acc, arr.ptr, to_cpp_index(idxs), value)
 end
 
-function Base.setindex!(arr::NDArray{Bool, N}, value::Bool, idxs::Vararg{Int,N}) where {N}
-    assertscalar("setindex!")
-    acc = NDArrayAccessor{CxxWrap.CxxBool, N}()
+function _setindex!(::Val{N}, arr::NDArray{Bool,N}, value::Bool, idxs::Vararg{Int,N}) where {N}
+    acc = NDArrayAccessor{CxxWrap.CxxBool,N}()
     write(acc, arr.ptr, to_cpp_index(idxs), value)
 end
+
 
 #### START OF SLICING ####
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::Int64)
@@ -326,21 +402,18 @@ function Base.getindex(arr::NDArray{T}, c::Vararg{Colon,N}) where {T,N}
     return julia_array
 end
 
-# This should also probably be a named function
-# We can just define a specialization for Base.fill(::NDArray)
-function Base.setindex!(arr::NDArray, val::Union{Float32,Float64}, c::Vararg{Colon,N}) where {N}
-    nda_fill_array(arr, val)
-end
-
-function Base.setindex!(arr::NDArray, val::Union{Float32,Float64}, i::Colon, j::Int64)
+function Base.setindex!(arr::NDArray{T, 2}, val::T, i::Colon, j::Int64) where T
     s = nda_get_slice(arr, to_cpp_init_slice(slice(0, Base.size(arr, 1)), slice(j-1, j)))
     nda_fill_array(s, val)
 end
 
-function Base.setindex!(arr::NDArray, val::Union{Float32,Float64}, i::Int64, j::Colon)
+function Base.setindex!(arr::NDArray{T,2}, val::T, i::Int64, j::Colon) where T
     s = nda_get_slice(arr, to_cpp_init_slice(slice(i-1, i)))
     nda_fill_array(s, val)
 end
+
+Base.fill!(arr::NDArray{T}, val::T) where T = nda_fill_array(arr, val)
+
 
 #### INITIALIZATION OF NDARRAYS ####
 @doc"""
@@ -428,6 +501,14 @@ function zeros(dims::Int...)
     return zeros(DEFAULT_FLOAT, dims)
 end
 
+function zeros(::Type{T}) where T
+    return nda_zeros_array(UInt64[], T)
+end
+
+function zeros()
+    return zeros(DEFAULT_FLOAT)
+end
+
 @doc"""
     cuNumeric.ones([T=Float32,] dims::Int...)
     cuNumeric.ones([T=Float32,] dims::Tuple)
@@ -456,6 +537,14 @@ end
 
 function ones(dims::Int...)
     return ones(DEFAULT_FLOAT, dims)
+end
+
+function ones(::Type{T}) where T
+    return full((), T(1))
+end
+
+function ones()
+    return zeros(DEFAULT_FLOAT)
 end
 
 @doc"""

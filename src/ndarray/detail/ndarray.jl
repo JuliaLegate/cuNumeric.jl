@@ -46,21 +46,18 @@ mutable struct NDArray{T,N}
     end
 end
 
-function NDArray(value::T) where {T <: SUPPORTED_TYPES}
-    type = Legate.to_legate_type(T)
-    ptr = ccall((:nda_from_scalar, libnda),
-        NDArray_t, (Legate.LegateTypeAllocated, Ptr{Cvoid}),
-        type, Ref(value))
-    return NDArray(ptr, T = T, n_dim = 1)
-end
-
-# function make_0D(value::T) where {T <: SUPPORTED_TYPES}
+#! JUST USE FULL TO MAKE a 0D?
+#$ cuNumeric.nda_full_array(UInt64[], 2.0f0)
+# function NDArray(value::T) where {T <: SUPPORTED_TYPES}
 #     type = Legate.to_legate_type(T)
-#     ptr = ccall((:nda_from_scalar_0D, libnda),
+#     ptr = ccall((:nda_from_scalar, libnda),
 #         NDArray_t, (Legate.LegateTypeAllocated, Ptr{Cvoid}),
 #         type, Ref(value))
-#     return NDArray(ptr, T = T, n_dim = 0)
+#     return NDArray(ptr, T = T, n_dim = 1)
 # end
+
+NDArray(value::T) where {T <: SUPPORTED_TYPES} = nda_full_array(UInt64[], value)
+
 
 # construction 
 function nda_zeros_array(shape::Vector{UInt64}, ::Type{T}) where {T}
@@ -251,7 +248,7 @@ function nda_dot(rhs1::NDArray, rhs2::NDArray)
 end
 
 @doc"""
-    to_cpp_index(idx::Dims{N}, int_type::Type=UInt64) where {N}
+    to_cpp_index(idx::Dims{N}, ::Type{T}=UInt64) where {N}
 
 **Internal API**
 
@@ -259,18 +256,18 @@ Converts a Julia 1-based index tuple `idx` to a zero-based C++ style index wrapp
 
 Each element of `idx` is decremented by 1 to adjust from Julia’s 1-based indexing to C++ 0-based indexing.
 """
-function to_cpp_index(idx::Dims{N}, int_type::Type=UInt64) where {N}
-    StdVector(int_type.([e - 1 for e in idx]))
+function to_cpp_index(idx::Dims{N}, ::Type{T}=UInt64) where {N, T <: Integer}
+    StdVector(T.([e - 1 for e in idx]))
 end
 
 @doc"""
-    to_cpp_index(d::Int64, int_type::Type=UInt64)
+    to_cpp_index(d::Int64, ::Type{T}=UInt64)
 
 **Internal API**
 
 Converts a single Julia 1-based index `d` to a zero-based C++ style index wrapped in `StdVector`.
 """
-to_cpp_index(d::Int64, int_type::Type=UInt64) = StdVector(int_type.([d - 1]))
+to_cpp_index(d::Int64, ::Type{T}=UInt64) where T = StdVector(T.([d - 1]))
 
 
 @doc"""

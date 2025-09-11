@@ -92,18 +92,24 @@ end
         end
 
         @testset "$(reduction)" for reduction in keys(cuNumeric.unary_reduction_map)
-            # Catch edge cases:
-            if (T == Int32 || T == Bool) && (reduction == Base.sum)
+
+            enable_sum_promotion = (T == Int32 || T == Bool) && (reduction == Base.sum)
+            enable_prod_promotion = (T == Int32) && (reduction == Base.prod)
+
+            # Test promotion errors cause we can:
+            if enable_sum_promotion
                 @test_throws ArgumentError reduction(cunumeric_arr)
-                continue
             end
 
-            if (T == Int32) && (reduction == Base.prod)
+            if enable_prod_promotion
                 @test_throws ArgumentError reduction(cunumeric_arr)
-                continue
             end
 
-            cunumeric_res = reduction(cunumeric_arr)
+
+
+            allowpromotion(enable_sum_promotion || enable_prod_promotion) do
+                cumeric_res = reduction(cunumeric_arr)
+            end
             julia_res = reduction(julia_arr)
 
             allowscalar() do
@@ -140,6 +146,7 @@ end
     end
 
     #! TODO SPECIAL CASES (^, ==, !=, lcm, gcd, non-broadcast funcs etc.)
+    #! LITERAL POWERS (NOT ARRAYS)
 
     @testset "Type and Shape Promotion" begin
         cunumeric_arr1 = cuNumeric.zeros(Float64, N)
@@ -169,6 +176,77 @@ end
         copyto!(a, b);
         @test @allowscalar a == b
     end
+end
+
+@testset verbose = true "Scalars" begin
+    N = 100
+
+    for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
+        julia_arr = rand(T, N)
+        julia_arr_2D = rand(T, N, N)
+
+        cunumeric_arr = zeros(T, N)
+        cunumeric_arr_2D = zeros(T, N, N)
+
+        
+
+    end
+
+end
+
+@testset verbose = true "Powers" begin
+    N = 100
+
+    TYPES = Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
+    @testset "$(BT) ^ $(PT)" for (BT, PT) in Iterators.product(TYPES, TYPES)
+        #! TEST POWER AS ARRAY
+        #! TEST POWER AS LITERAL
+    end
+
+    @testset verbose = true "Reciprocal" begin
+        @testset for T in TYPES
+            arr_jl = rand(T, N)
+            arr_cn = cuNumeric.zeros(T,N)
+            allowscalar() do
+                for i in 1:N
+                    arr_cn[i] = arr_jl[i]
+                end
+            end
+            T_OUT = Base.promote_op(Base.:(^), T, Int64)
+            res_jl = arr_jl .^ -1
+            allowpromotion(T == Bool || T == Int32) do
+                res_cn = arr_cn .^ -1
+                res_cn2 = inv.(arr_cn)
+                allowscalar() do
+                    @test cuNumeric.compare(res_jl, res_cn, atol(T_OUT), rtol(T_OUT))
+                    @test cuNumeric.compare(res_jl, res_cn2, atol(T_OUT), rtol(T_OUT))
+                end
+            end
+        end
+    end
+
+    @testset verbose = true "Square" begin
+        @testset for T in TYPES
+            arr_jl = rand(T, N)
+            arr_cn = cuNumeric.zeros(T,N)
+            allowscalar() do
+                for i in 1:N
+                    arr_cn[i] = arr_jl[i]
+                end
+            end
+            T_OUT = Base.promote_op(Base.:(^), T, Int64)
+            res_jl = arr_jl .^ 2
+
+            res_cn = arr_cn .^ 2
+            # res_cn2 = cuNumeric.square.(arr_cn)
+
+            allowscalar() do
+                @test cuNumeric.compare(res_jl, res_cn, atol(T_OUT), rtol(T_OUT))
+                # @test cuNumeric.compare(res_jl, res_cn2, atol(T_OUT), rtol(T_OUT))
+            end
+        end
+    end
+
 end
 
 @testset verbose = true "Slicing Tests" begin
