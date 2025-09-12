@@ -95,40 +95,36 @@ end
 
             # Test promotion errors cause we can:
             if enable_sum_promotion
-                @test_throws ArgumentError reduction(cunumeric_arr)
+                @test_throws "Implicit promotion" reduction(cunumeric_arr)
             end
 
             if enable_prod_promotion
-                @test_throws ArgumentError reduction(cunumeric_arr)
+                @test_throws "Implicit promotion" reduction(cunumeric_arr)
             end
-
 
 
             allowpromotion(enable_sum_promotion || enable_prod_promotion) do
-                cumeric_res = reduction(cunumeric_arr)
-            end
-            julia_res = reduction(julia_arr)
+                cunumeric_res = reduction(cunumeric_arr)
+                julia_res = reduction(julia_arr)
 
-            allowscalar() do
-                @test cuNumeric.compare([julia_res], cunumeric_res, atol(T), rtol(T))
+                allowscalar() do
+                    # assumes 0D result
+                    @test isapprox(julia_res, cunumeric_res[]; atol = atol(T), rtol = rtol(T))
+                end
             end
+
         end
     end
 
     # Test things that only work on Booleans
     julia_bools = rand(Bool, N)
-    cunumeric_bools = cuNumeric.zeros(Bool, N)
-
     allowscalar() do
-        for i in 1:N
-            cunumeric_bools[i] = julia_bools[i]
-        end
-        @test cuNumeric.compare([any(julia_bools)], any(cunumeric_bools), atol(Bool), rtol(Bool))
-        @test cuNumeric.compare([all(julia_bools)], all(cunumeric_bools), atol(Bool), rtol(Bool))
+        cunumeric_bools = NDArray(julia_bools)
+        @test any(julia_bools) == any(cunumeric_bools)[]
+        @test all(julia_bools) == all(cunumeric_bools)[]
     end
 end
 
-#* TODO TEST WITH SCALARS
 @testset verbose = true "Binary Ops" begin
     N = 100
 
@@ -171,10 +167,11 @@ end
         a = cuNumeric.zeros(2, 2)
         b = cuNumeric.ones(2, 2)
         copyto!(a, b);
-        @test @allowscalar a == b
+        @test issame(a, b)
     end
 end
 
+#TODO LOOP BINARY OPS WITH SCALARS
 @testset verbose = true "Scalars" begin
     N = 10
 
@@ -229,23 +226,36 @@ end
 end
 
 @testset verbose = true "Powers" begin
-    N = 100
+    N = 25
+
+    get_pwrs(::Type{I}) where {I <: Integer} = I.([-10, -5, -2, -1, 0, 1, 2, 5, 10])
+    get_pwrs(::Type{F}) where {F <: AbstractFloat} = F.([-3.141, -2, -1, 0, 1, 2, 3.2, 4.41])
+    get_pwrs(::Type{Bool}) = [true, false]
 
     TYPES = Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
     @testset "$(BT) ^ $(PT)" for (BT, PT) in Iterators.product(TYPES, TYPES)
-        #! TEST POWER AS ARRAY
-        #! TEST POWER AS LITERAL
+  
+        base_jl = rand(T, N)
+        power_jl = rand(T, N)
+        base_cn = @allowscalar NDArray(arr_jl)
+        pwrs = get_pwrs(PT)
+
+        T_OUT = Base.promote_op(Base.:(^), BT, PT)
+
+        # Power is array
+        @test cuNumeric.compare(base_jl .^ pwrs, base_cn .^ pwrs, atol(T_OUT), rtol(T_OUT))
+
+        # Power is scalar
+        for p in pwrs
+            @test cuNumeric.compare(base_jl .^ p, base_cn .^ p, atol(T_OUT), rtol(T_OUT))
+        end
     end
 
     @testset verbose = true "Reciprocal" begin
         @testset for T in TYPES
             arr_jl = rand(T, N)
-            arr_cn = cuNumeric.zeros(T,N)
-            allowscalar() do
-                for i in 1:N
-                    arr_cn[i] = arr_jl[i]
-                end
-            end
+            arr_cn = @allowscalar NDArray(arr_jl)
+
             T_OUT = Base.promote_op(Base.:(^), T, Int64)
             res_jl = arr_jl .^ -1
             allowpromotion(T == Bool || T == Int32) do
@@ -262,21 +272,14 @@ end
     @testset verbose = true "Square" begin
         @testset for T in TYPES
             arr_jl = rand(T, N)
-            arr_cn = cuNumeric.zeros(T,N)
-            allowscalar() do
-                for i in 1:N
-                    arr_cn[i] = arr_jl[i]
-                end
-            end
+            arr_cn = @allowscalar NDArray(arr_jl)
+
             T_OUT = Base.promote_op(Base.:(^), T, Int64)
             res_jl = arr_jl .^ 2
-
             res_cn = arr_cn .^ 2
-            # res_cn2 = cuNumeric.square.(arr_cn)
 
             allowscalar() do
                 @test cuNumeric.compare(res_jl, res_cn, atol(T_OUT), rtol(T_OUT))
-                # @test cuNumeric.compare(res_jl, res_cn2, atol(T_OUT), rtol(T_OUT))
             end
         end
     end

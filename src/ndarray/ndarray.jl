@@ -656,12 +656,12 @@ julia_arr2 = zeros(2, 2)
 arr == julia_arr2
 ```
 """
-function Base.:(==)(arr::NDArray, julia_array::Array)
+function Base.:(==)(arr::NDArray, julia_arr::Array)
     assertscalar("==")
     return julia_arr == Array(arr)
 end
 
-Base.:(==)(julia_array::Array, arr::NDArray) = (arr == julia_array)
+Base.:(==)(julia_arr::Array, arr::NDArray) = (arr == julia_arr)
 
 
 @doc"""

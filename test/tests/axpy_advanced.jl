@@ -48,20 +48,20 @@ function axpy_advanced(T, N)
     @test cuNumeric.dim(y) == 2
 
     allowscalar() do
-        @test x_cpu == x
-        @test y_cpu == y
-        @test x == x_cpu # LHS and RHS are switched
-        @test y == y_cpu
+        @test is_same(x_cpu, x)
+        @test is_same(y_cpu, y)
+        @test is_same(x, x_cpu) # LHS and RHS are switched
+        @test is_same(y, y_cpu)
 
         # test fill with scalar of all elements of the NDArray
         fill_value = T(4.23)
-        @allowscalar x[:, :] = fill_value
+        fill!(x, fill_value)
 
-        @test x == fill(fill_value, dims)
+        @test is_same(x, fill(fill_value, dims))
 
         ones_array = cuNumeric.ones(T, dims)
         ones_array_cpu = ones(T, dims)
-        @test ones_array == ones_array_cpu
+        @test is_same(ones_array, ones_array_cpu)
 
         # create two random arrays
         x = cuNumeric.as_type(cuNumeric.random(Float64, size(x)), T)
@@ -70,14 +70,14 @@ function axpy_advanced(T, N)
         # create a reference of NDArray
         x_ref = x
         y_ref = y
-        @test x_ref == x
-        @test y_ref == y
+        @test is_same(x_ref, x)
+        @test is_same(y_ref, y)
 
         # create a copy of NDArray
         x_copy = copy(x)
         y_copy = copy(y)
-        @test x_copy == x
-        @test y_copy == y
+        @test is_same(x_copy, x)
+        @test is_same(y_copy, y)
 
         # assign elements to a new array
         x_assign = cuNumeric.zeros(T, dims)
@@ -86,17 +86,17 @@ function axpy_advanced(T, N)
         copyto!(y_assign, y)
         # lets check that it didn't assign with zeros
         # this is a check ensuring we didn't mess up the argument order
-        @test x_assign != cuNumeric.zeros(T, dims)
-        @test y_assign != cuNumeric.zeros(T, dims)
+        @test !is_same(x_assign, cuNumeric.zeros(T, dims))
+        @test !is_same(y_assign, cuNumeric.zeros(T, dims))
         # check the assigned values
-        @test x_assign == x
-        @test y_assign == y
+        @test is_same(x_assign, x)
+        @test is_same(y_assign, y)
 
         # set all the elements of each NDArray to the CPU 2D array equivalent
-        x_cpu = x[:, :]
-        y_cpu = y[:, :]
-        @test x_cpu == x
-        @test y_cpu == y
+        x_cpu = Array(x)
+        y_cpu = Array(y)
+        @test is_same(x_cpu, x)
+        @test is_same(y_cpu, y)
 
         # reshape a 2D array into 1D
         x_1d = cuNumeric.reshape(x, N * N)
@@ -105,15 +105,15 @@ function axpy_advanced(T, N)
         @test ndims(y_1d) == 1
 
         # set all the elements of each NDArray to the CPU 1D array equivalent
-        x_cpu_1D = x_1d[:]
-        y_cpu_1D = y_1d[:]
-        @test x_cpu_1D == x_1d
-        @test y_cpu_1D == y_1d
+        x_cpu_1D = Array(x_1d)
+        y_cpu_1D = Array(y_1d)
+        @test is_same(x_cpu_1D, x_1d)
+        @test is_same(y_cpu_1D, y_1d)
 
         result = α .* x .+ y
 
         # check results 
-        @test result == (α * x_cpu + y_cpu)
-        @test (α * x_cpu + y_cpu) == result # LHS and RHS switched
+        @test is_same(result, (α * x_cpu + y_cpu))
+        @test is_same(α * x_cpu + y_cpu, result) # LHS and RHS switched
     end
 end

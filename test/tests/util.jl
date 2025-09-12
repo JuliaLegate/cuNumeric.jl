@@ -9,6 +9,10 @@ const DOMAIN_GENERATORS = Dict{Symbol, Function}(
     :positive => (T, N) -> abs.(rand(T,N))
 )
 
+is_same(arr1::NDArray, arr2::NDArray) = @allowscalar (arr1 == arr2)[1]
+is_same(arr1::NDArray, arr2::Array) = @allowscalar (arr1 == arr2)[1]
+is_same(arr1::Array, arr2::NDArray) = @allowscalar (arr1 == arr2)[1]
+is_same(arr1::Array, arr2::Array) = (arr1 == arr2)
 
 function make_julia_arrays(T, N, domain_key::Symbol; count::Int = 1)
     generator = DOMAIN_GENERATORS[domain_key]
