@@ -86,10 +86,7 @@ end
 
     @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
         julia_arr = rand(T, N)
-        cunumeric_arr = cuNumeric.zeros(T, N)
-        @allowscalar for i in 1:N
-            cunumeric_arr[i] = julia_arr[i]
-        end
+        cunumeric_arr = @allowscalar NDArray(julia_arr)
 
         @testset "$(reduction)" for reduction in keys(cuNumeric.unary_reduction_map)
 
@@ -179,18 +176,55 @@ end
 end
 
 @testset verbose = true "Scalars" begin
-    N = 100
+    N = 10
 
-    for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
+    for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
         julia_arr = rand(T, N)
         julia_arr_2D = rand(T, N, N)
 
-        cunumeric_arr = zeros(T, N)
-        cunumeric_arr_2D = zeros(T, N, N)
+        s = rand(T)
 
-        
-
+        allowscalar() do
+            cunumeric_arr = NDArray(julia_arr)
+            cunumeric_arr_2D = NDArray(julia_arr_2D)
+            allowpromotion(T == Int32) do 
+                for cn_arr in (cunumeric_arr, cunumeric_arr_2D)
+                    @test cuNumeric.compare(s * julia_arr, s * cunumeric_arr, atol(T), rtol(T))
+                    @test cuNumeric.compare(julia_arr * s, cunumeric_arr * s, atol(T), rtol(T))
+                    @test cuNumeric.compare(s .* julia_arr, s .* cunumeric_arr, atol(T), rtol(T))
+                    @test cuNumeric.compare(julia_arr .* s, cunumeric_arr .* s, atol(T), rtol(T))
+                    @test cuNumeric.compare(s .+ julia_arr, s .+ cunumeric_arr, atol(T), rtol(T))
+                    @test cuNumeric.compare(julia_arr .+ s,cunumeric_arr .+ s, atol(T), rtol(T))
+                    @test cuNumeric.compare(s .- julia_arr, s .- cunumeric_arr, atol(T), rtol(T))
+                    @test cuNumeric.compare(julia_arr .- s,cunumeric_arr .- s, atol(T), rtol(T))
+                    @test cuNumeric.compare(s ./ julia_arr, s ./ cunumeric_arr, atol(T), rtol(T))
+                    @test cuNumeric.compare(s .* julia_arr .+ s, s .* cunumeric_arr .+ s, atol(T), rtol(T))
+                end
+            end
+        end
     end
+
+    # Boolean things
+    allowpromotion() do
+        allowscalar() do
+            julia_arr = [1,2,3,4,5,6,7,8,9,10]
+            cunumeric_arr = NDArray(julia_arr)
+
+            @test cuNumeric.compare(true * julia_arr, true * cunumeric_arr, atol(T), rtol(T))
+            @test cuNumeric.compare(false * julia_arr, false * cunumeric_arr, atol(T), rtol(T))
+            @test cuNumeric.compare(true .* julia_arr, true .* cunumeric_arr, atol(T), rtol(T))
+            @test cuNumeric.compare(false .* julia_arr, false .* cunumeric_arr, atol(T), rtol(T))
+
+            julia_arr = [true, false, true, false, false, true, true]
+            cunumeric_arr = NDArray(julia_arr)
+
+            @test cuNumeric.compare(4 * julia_arr, 4 * cunumeric_arr, atol(T), rtol(T))
+            @test cuNumeric.compare(4 .* julia_arr, 4 .* cunumeric_arr, atol(T), rtol(T))
+            @test cuNumeric.compare(4 .+ julia_arr, 4 .+ cunumeric_arr, atol(T), rtol(T))
+            @test cuNumeric.compare(julia_arr ./ 3, cunumeric_arr ./ 3, atol(T), rtol(T))
+        end
+    end
+
 
 end
 

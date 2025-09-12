@@ -98,7 +98,7 @@ end
 function (::Type{<:NDArray{A}})(arr::Array{B}) where {A,B}
     assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
     dims = Base.size(arr)
-    out = Base.zeros(A, dims)
+    out = cuNumeric.zeros(A, dims)
     for CI in CartesianIndices(dims)
         out[Tuple(CI)...] = A(arr[CI])
     end
@@ -628,25 +628,7 @@ a == c
 ```
 """
 function Base.:(==)(arr1::NDArray{T,N}, arr2::NDArray{T,N}) where {T,N}
-
-    # return nda_array_equal(arr1, arr2) #DOESNT RETURN SCALAR
-    if (Base.size(arr1) != Base.size(arr2))
-        @warn "lhs has size $(Base.size(arr1)) and rhs has size $(Base.size(arr2))!\n"
-        return false
-    end
-
-    if (ndims(arr1) > 3)
-        @warn "Accessors do not support dimension > 3 yet"
-        return false
-    end
-
-    dims = Base.size(arr1)
-    for CI in CartesianIndices(dims)
-        if arr1[Tuple(CI)...] != arr2[Tuple(CI)...]
-            return false
-        end
-    end
-    return true
+    return nda_array_equal(arr1, arr2) #DOESNT RETURN SCALAR
 end
 
 @doc"""
@@ -675,26 +657,12 @@ arr == julia_arr2
 ```
 """
 function Base.:(==)(arr::NDArray, julia_array::Array)
-    if (Base.size(arr) != Base.size(julia_array))
-        @warn "NDArray has size $(Base.size(arr)) and Julia array has size $(Base.size(julia_array))!\n"
-        return false
-    end
-
-    for CI in CartesianIndices(julia_array)
-        if julia_array[CI] != arr[Tuple(CI)...]
-            return false
-        end
-    end
-
-    # successful completion
-    return true
+    assertscalar("==")
+    return julia_arr == Array(arr)
 end
 
-# julia_array == arr
-function Base.:(==)(julia_array::Array, arr::NDArray)
-    # flip LHS and RHS
-    return (arr == julia_array)
-end
+Base.:(==)(julia_array::Array, arr::NDArray) = (arr == julia_array)
+
 
 @doc"""
     isapprox(arr1::NDArray, arr2::NDArray; atol=0, rtol=0)
