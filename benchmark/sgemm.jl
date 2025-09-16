@@ -2,7 +2,6 @@ using cuNumeric
 using LinearAlgebra
 using Printf
 
-
 function initialize_cunumeric(N, M)
     A = cuNumeric.as_type(cuNumeric.rand(NDArray, N, M), Float32)
     B = cuNumeric.as_type(cuNumeric.rand(NDArray, M, N), Float32)
@@ -43,7 +42,9 @@ M = parse(Int, ARGS[3])
 n_samples = parse(Int, ARGS[4])
 n_warmup = parse(Int, ARGS[5])
 
-println("[cuNumeric]  MATMUL benchmark on $(N)x$(M) matricies for $(n_samples) iterations, $(n_warmup) warmups")
+println(
+    "[cuNumeric]  MATMUL benchmark on $(N)x$(M) matricies for $(n_samples) iterations, $(n_warmup) warmups"
+)
 
 mean_time_ms, gflops = gemm_cunumeric(N, M, n_samples, n_warmup)
 

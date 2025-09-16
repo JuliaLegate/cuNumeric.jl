@@ -17,7 +17,6 @@
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 
-
 @doc"""
     Base.copy(arr::NDArray)
 
@@ -32,7 +31,6 @@ b[1,1] == a[1,1]
 ```
 """
 Base.copy(arr::NDArray) = nda_copy(arr)
-
 
 @doc"""
     copyto!(arr::NDArray, other::NDArray)
@@ -70,8 +68,8 @@ arr = cuNumeric.rand(4, 5);
 as_type(arr, Float32)
 ```
 """
-as_type(arr::NDArray{S, N}, ::Type{T}) where {S,T,N} = nda_astype(arr, T)::NDArray{T,N}
-as_type(arr::NDArray{T}, ::Type{T}) where T = arr
+as_type(arr::NDArray{S,N}, ::Type{T}) where {S,T,N} = nda_astype(arr, T)::NDArray{T,N}
+as_type(arr::NDArray{T}, ::Type{T}) where {T} = arr
 
 # conversion from NDArray to Base Julia array
 function (::Type{<:Array{A}})(arr::NDArray{B}) where {A,B}
@@ -115,7 +113,6 @@ function (::Type{<:NDArray})(arr::Array{B}) where {B}
     return out
 end
 
-
 # Base.convert(::Type{<:NDArray{T}}, a::A) where {T, A} = NDArray(T(a))::NDArray{T}
 # Base.convert(::Type{T}, a::T) where {T <: NDArray} = a
 
@@ -132,7 +129,7 @@ end
 
 Returns the element type of the `NDArray`.
 """
-Base.eltype(arr::NDArray{T}) where T = T
+Base.eltype(arr::NDArray{T}) where {T} = T
 
 @doc"""
     dim(arr::NDArray)
@@ -198,32 +195,51 @@ Base.firstindex(arr::NDArray, dim::Int) = 1
 Base.lastindex(arr::NDArray, dim::Int) = Base.size(arr, dim)
 Base.lastindex(arr::NDArray) = Base.size(arr, 1)
 
-
 Base.axes(arr::NDArray) = Base.OneTo.(size(arr))
 Base.view(arr::NDArray, inds...) = arr[inds...] # NDArray slices are views by default.
 
 Base.IndexStyle(::NDArray) = IndexCartesian()
 
-function Base.show(io::IO, arr::NDArray{T, 0}) where T
+function Base.show(io::IO, arr::NDArray{T,0}) where {T}
     println(io, "0-dimensional NDArray{$(T),0}")
     print(io, arr[]) #! should I assert scalar??
 end
 
-function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T, 0}) where T
+function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T,0}) where {T}
     println(io, "0-dimensional NDArray{$(T),0}")
     print(io, arr[]) #! should I assert scalar??
 end
 
-function Base.show(io::IO, arr::NDArray{T}) where T
+function Base.show(io::IO, arr::NDArray{T}) where {T}
     dim = Base.size(arr)
     print(io, "NDArray of $(T)s, Dim: $(dim)")
+    if elems # print all elems of array
+        dims = shape(arr)
+        print(io, "[")
+        indxs = CartesianIndices(dims)
+        lastidx = last(indxs)
+        for CI in indxs
+            print(io, "$(arr[Tuple(CI)...])")
+            if CI != lastidx
+                print(io, ", ")
+            end
+        end
+        print(io, "]")
+    end
 end
 
-function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T}) where T
-    dim = Base.size(arr)
-    print(io, "NDArray of $(T)s, Dim: $(dim)")
+function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T}; elems=false) where {T}
+    Base.show(io, arr; elems=elems)
 end
 
+function Base.print(arr::NDArray; elems=false)
+    Base.show(stdout, arr; elems=elems)
+end
+
+function Base.println(arr::NDArray; elems=false)
+    Base.show(stdout, arr; elems=elems)
+    print("\n")
+end
 #### ARRAY INDEXING AND SLICES ####
 
 @doc"""
@@ -258,34 +274,34 @@ Array(A)
 ```
  """
 ##### REGULAR ARRAY INDEXING ####
-function Base.getindex(arr::NDArray{T,N}, idxs::Vararg{Int,N}) where {T <: SUPPORTED_NUMERIC_TYPES, N}
+function Base.getindex(arr::NDArray{T,N}, idxs::Vararg{Int,N}) where {T<:SUPPORTED_NUMERIC_TYPES,N}
     assertscalar("getindex")
     acc = NDArrayAccessor{T,N}()
     return read(acc, arr.ptr, to_cpp_index(idxs))
 end
 
-function Base.getindex(arr::NDArray{T,0}) where {T <: SUPPORTED_NUMERIC_TYPES}
+function Base.getindex(arr::NDArray{T,0}) where {T<:SUPPORTED_NUMERIC_TYPES}
     assertscalar("getindex")
     acc = NDArrayAccessor{T,1}()
     zero_index = StdVector([UInt64(0)]) #! CAN I PREALLOCATE THIS SOMEHOW
     return read(acc, arr.ptr, zero_index)
 end
 
-function Base.getindex(arr::NDArray{Bool,N}, idxs::Vararg{Int,N}) where N
+function Base.getindex(arr::NDArray{Bool,N}, idxs::Vararg{Int,N}) where {N}
     assertscalar("getindex")
-    acc = NDArrayAccessor{CxxWrap.CxxBool, N}()
+    acc = NDArrayAccessor{CxxWrap.CxxBool,N}()
     return read(acc, arr.ptr, to_cpp_index(idxs))
 end
 
 function Base.getindex(arr::NDArray{Bool,0})
     assertscalar("getindex")
-    acc = NDArrayAccessor{CxxWrap.CxxBool, 1}()
+    acc = NDArrayAccessor{CxxWrap.CxxBool,1}()
     zero_index = StdVector([UInt64(0)]) #! CAN I PREALLOCATE THIS SOMEHOW
     return read(acc, arr.ptr, zero_index)
 end
 
 #! TODO SUPPORT CONVERSION OF VALUES
-function Base.setindex!(arr::NDArray{T,N}, value::T, idxs::Vararg{Int,N}) where {T, N}
+function Base.setindex!(arr::NDArray{T,N}, value::T, idxs::Vararg{Int,N}) where {T,N}
     assertscalar("setindex!")
     _setindex!(Val{N}(), arr, value, idxs...)
 end
@@ -300,7 +316,9 @@ function _setindex!(::Val{0}, arr::NDArray{Bool,0}, value::Bool)
     write(acc, arr.ptr, StdVector(UInt64[0]), value)
 end
 
-function _setindex!(::Val{N}, arr::NDArray{T,N}, value::T, idxs::Vararg{Int,N}) where {T<:SUPPORTED_NUMERIC_TYPES,N}
+function _setindex!(
+    ::Val{N}, arr::NDArray{T,N}, value::T, idxs::Vararg{Int,N}
+) where {T<:SUPPORTED_NUMERIC_TYPES,N}
     acc = NDArrayAccessor{T,N}()
     write(acc, arr.ptr, to_cpp_index(idxs), value)
 end
@@ -309,7 +327,6 @@ function _setindex!(::Val{N}, arr::NDArray{Bool,N}, value::Bool, idxs::Vararg{In
     acc = NDArrayAccessor{CxxWrap.CxxBool,N}()
     write(acc, arr.ptr, to_cpp_index(idxs), value)
 end
-
 
 #### START OF SLICING ####
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::Int64)
@@ -402,18 +419,17 @@ function Base.getindex(arr::NDArray{T}, c::Vararg{Colon,N}) where {T,N}
     return julia_array
 end
 
-function Base.setindex!(arr::NDArray{T, 2}, val::T, i::Colon, j::Int64) where T
+function Base.setindex!(arr::NDArray{T,2}, val::T, i::Colon, j::Int64) where {T}
     s = nda_get_slice(arr, to_cpp_init_slice(slice(0, Base.size(arr, 1)), slice(j-1, j)))
     nda_fill_array(s, val)
 end
 
-function Base.setindex!(arr::NDArray{T,2}, val::T, i::Int64, j::Colon) where T
+function Base.setindex!(arr::NDArray{T,2}, val::T, i::Int64, j::Colon) where {T}
     s = nda_get_slice(arr, to_cpp_init_slice(slice(i-1, i)))
     nda_fill_array(s, val)
 end
 
-Base.fill!(arr::NDArray{T}, val::T) where T = nda_fill_array(arr, val)
-
+Base.fill!(arr::NDArray{T}, val::T) where {T} = nda_fill_array(arr, val)
 
 #### INITIALIZATION OF NDARRAYS ####
 @doc"""
@@ -428,12 +444,12 @@ cuNumeric.full((2, 3), 7.5)
 cuNumeric.full(4, 0)
 ```
 """
-function full(dims::Dims, val::T) where {T <: SUPPORTED_TYPES}
+function full(dims::Dims, val::T) where {T<:SUPPORTED_TYPES}
     shape = collect(UInt64, dims)
     return nda_full_array(shape, val)
 end
 
-function full(dim::Int, val::T) where {T <: SUPPORTED_TYPES}
+function full(dim::Int, val::T) where {T<:SUPPORTED_TYPES}
     shape = UInt64[dim]
     return nda_full_array(shape, val)
 end
@@ -484,12 +500,12 @@ cuNumeric.zeros(Float64, 3)
 cuNumeric.zeros(Int32, (2,3))
 ```
 """
-function zeros(::Type{T}, dims::Dims) where {T <: SUPPORTED_TYPES}
+function zeros(::Type{T}, dims::Dims) where {T<:SUPPORTED_TYPES}
     shape = collect(UInt64, dims)
     return nda_zeros_array(shape, T)
 end
 
-function zeros(::Type{T}, dims::Int...) where {T <: SUPPORTED_TYPES}
+function zeros(::Type{T}, dims::Int...) where {T<:SUPPORTED_TYPES}
     return zeros(T, dims)
 end
 
@@ -501,12 +517,16 @@ function zeros(dims::Int...)
     return zeros(DEFAULT_FLOAT, dims)
 end
 
-function zeros(::Type{T}) where T
+function zeros(::Type{T}) where {T}
     return nda_zeros_array(UInt64[], T)
 end
 
 function zeros()
     return zeros(DEFAULT_FLOAT)
+end
+
+function zeros_like(arr::NDArray)
+    return zeros(eltype(arr), Base.size(arr))
 end
 
 @doc"""
@@ -539,7 +559,7 @@ function ones(dims::Int...)
     return ones(DEFAULT_FLOAT, dims)
 end
 
-function ones(::Type{T}) where T
+function ones(::Type{T}) where {T}
     return full((), T(1))
 end
 
@@ -603,7 +623,6 @@ function reshape(arr::NDArray, i::Int64; copy::Bool=false)
     return copy ? copy(reshaped) : reshaped
 end
 
-
 @doc"""
     ==(arr1::NDArray, arr2::NDArray)
 
@@ -663,7 +682,6 @@ end
 
 Base.:(==)(julia_arr::Array, arr::NDArray) = (arr == julia_arr)
 
-
 @doc"""
     isapprox(arr1::NDArray, arr2::NDArray; atol=0, rtol=0)
     isapprox(arr::NDArray, julia_array::AbstractArray; atol=0, rtol=0)
@@ -693,15 +711,15 @@ isapprox(arr1, julia_arr)
 isapprox(julia_arr, arr2)
 ```
 """
-function Base.isapprox(julia_array::AbstractArray{T}, arr::NDArray{T}; atol=0, rtol=0) where T
+function Base.isapprox(julia_array::AbstractArray{T}, arr::NDArray{T}; atol=0, rtol=0) where {T}
     #! REPLCE THIS WITH BIN_OP isapprox
     return compare(julia_array, arr, atol, rtol)
 end
 
-function Base.isapprox(arr::NDArray{T}, julia_array::AbstractArray{T}; atol=0, rtol=0) where T
+function Base.isapprox(arr::NDArray{T}, julia_array::AbstractArray{T}; atol=0, rtol=0) where {T}
     return compare(julia_array, arr, atol, rtol)
 end
 
-function Base.isapprox(arr::NDArray{T}, arr2::NDArray{T}; atol=0, rtol=0) where T
+function Base.isapprox(arr::NDArray{T}, arr2::NDArray{T}; atol=0, rtol=0) where {T}
     return compare(arr, arr2, atol, rtol)
 end
