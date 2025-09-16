@@ -22,7 +22,7 @@ function get_julia_type(ptr::NDArray_t)
     return Legate.code_type_map[type_code]
 end
 
-get_n_dim(ptr::NDArray_t) = ccall((:nda_array_dim, libnda), Int32, (NDArray_t,), ptr)
+get_n_dim(ptr::NDArray_t) = Int(ccall((:nda_array_dim, libnda), Int32, (NDArray_t,), ptr))
 
 @doc"""
 **Internal API**
@@ -39,7 +39,7 @@ mutable struct NDArray{T,N}
     function NDArray(ptr::NDArray_t; T=get_julia_type(ptr), n_dim=get_n_dim(ptr))
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
-        handle = new{T,n_dim}(ptr, nbytes, nothing)
+        handle = new{T,Int(n_dim)}(ptr, nbytes, nothing)
         finalizer(handle) do h
             cuNumeric.nda_destroy_array(h.ptr)
             cuNumeric.register_free!(h.nbytes)
@@ -48,15 +48,17 @@ mutable struct NDArray{T,N}
     end
 end
 
-function NDArray(value::T) where {T<:SUPPORTED_TYPES}
-    type = Legate.to_legate_type(T)
-    ptr = ccall((:nda_from_scalar, libnda),
-        NDArray_t, (Legate.LegateTypeAllocated, Ptr{Cvoid}),
-        type, Ref(value))
-    return NDArray(ptr; T=T, n_dim=1)
-end
+#! JUST USE FULL TO MAKE a 0D?
+#$ cuNumeric.nda_full_array(UInt64[], 2.0f0)
+# function NDArray(value::T) where {T <: SUPPORTED_TYPES}
+#     type = Legate.to_legate_type(T)
+#     ptr = ccall((:nda_from_scalar, libnda),
+#         NDArray_t, (Legate.LegateTypeAllocated, Ptr{Cvoid}),
+#         type, Ref(value))
+#     return NDArray(ptr, T = T, n_dim = 1)
+# end
 
-Base.Broadcast.broadcastable(v::NDArray) = v
+NDArray(value::T) where {T<:SUPPORTED_TYPES} = nda_full_array(UInt64[], value)
 
 # construction 
 function nda_zeros_array(shape::Vector{UInt64}, ::Type{T}) where {T}
@@ -147,7 +149,6 @@ function nda_fill_array(arr::NDArray{T}, value::T) where {T}
     return nothing
 end
 
-#! probably should be copyto!
 function nda_assign(arr::NDArray{T}, other::NDArray{T}) where {T}
     ccall((:nda_assign, libnda),
         Cvoid, (NDArray_t, NDArray_t),
@@ -159,6 +160,17 @@ function nda_copy(arr::NDArray)
         NDArray_t, (NDArray_t,),
         arr.ptr)
     return NDArray(ptr)
+end
+
+# src will be unused after this
+function nda_move(dst::NDArray{T,N}, src::NDArray{T,N}) where {T,N}
+    ccall((:nda_move, libnda),
+        Cvoid, (NDArray_t, NDArray_t),
+        dst.ptr, src.ptr)
+
+    src.ptr = Ptr{Cvoid}(0)
+    src.nbytes = 0
+    register_free!(dst.nbytes)
 end
 
 # operations 
@@ -181,6 +193,13 @@ function nda_unary_reduction(out::NDArray, op_code::UnaryRedCode, input::NDArray
         Cvoid, (NDArray_t, UnaryRedCode, NDArray_t),
         out.ptr, op_code, input.ptr)
     return out
+end
+
+function nda_array_equal(rhs1::NDArray{T,N}, rhs2::NDArray{T,N}) where {T,N}
+    ptr = ccall((:nda_array_equal, libnda),
+        NDArray_t, (NDArray_t, NDArray_t),
+        rhs1.ptr, rhs2.ptr)
+    return NDArray(ptr; T=Bool, n_dim=1)
 end
 
 function nda_multiply(rhs1::NDArray, rhs2::NDArray, out::NDArray)
@@ -215,7 +234,7 @@ function nda_add_scalar(rhs1::NDArray{T,N}, value::T) where {T,N}
     return NDArray(ptr; T=T, n_dim=N)
 end
 
-function nda_three_dot_arg(rhs1::NDArray, rhs2::NDArray, out::NDArray)
+function nda_three_dot_arg(rhs1::NDArray{T}, rhs2::NDArray{T}, out::NDArray{T}) where {T}
     ccall((:nda_three_dot_arg, libnda),
         Cvoid, (NDArray_t, NDArray_t, NDArray_t),
         rhs1.ptr, rhs2.ptr, out.ptr)
@@ -237,7 +256,7 @@ function get_store(arr::NDArray)
 end
 
 @doc"""
-    to_cpp_index(idx::Dims{N}, int_type::Type=UInt64) where {N}
+    to_cpp_index(idx::Dims{N}, ::Type{T}=UInt64) where {N}
 
 **Internal API**
 
@@ -245,29 +264,18 @@ Converts a Julia 1-based index tuple `idx` to a zero-based C++ style index wrapp
 
 Each element of `idx` is decremented by 1 to adjust from Julia’s 1-based indexing to C++ 0-based indexing.
 """
-function to_cpp_index(idx::Dims{N}, int_type::Type=UInt64) where {N}
-    StdVector(int_type.([e - 1 for e in idx]))
+function to_cpp_index(idx::Dims{N}, (::Type{T})=UInt64) where {N,T<:Integer}
+    StdVector(T.([e - 1 for e in idx]))
 end
 
 @doc"""
-    to_cpp_index(d::Int64, int_type::Type=UInt64)
+    to_cpp_index(d::Int64, ::Type{T}=UInt64)
 
 **Internal API**
 
 Converts a single Julia 1-based index `d` to a zero-based C++ style index wrapped in `StdVector`.
 """
-to_cpp_index(d::Int64, int_type::Type=UInt64) = StdVector(int_type.([d - 1]))
-
-@doc"""
-    Base.eltype(arr::NDArray)
-
-**Internal API**
-
-Returns the element type of the `NDArray`.
-
-This method uses `nda_array_type_code` internally to map to the appropriate Julia element type.
-"""
-Base.eltype(arr::NDArray) = Legate.code_type_map[nda_array_type_code(arr)]
+to_cpp_index(d::Int64, (::Type{T})=UInt64) where {T} = StdVector(T.([d - 1]))
 
 @doc"""
     LegateType(T::Type)
@@ -370,19 +378,18 @@ Emits warnings when array sizes or element types differ.
 - Checks element type compatibility for `NDArray` vs Julia array.
 - Iterates over elements using `CartesianIndices` to compare element-wise difference.
 """
-function compare(julia_array::AbstractArray, arr::NDArray, max_diff)
+function compare(
+    julia_array::AbstractArray{T,N}, arr::NDArray{T,N}, atol::Real, rtol::Real
+) where {T,N}
     if (shape(arr) != Base.size(julia_array))
         @warn "NDArray has shape $(shape(arr)) and Julia array has shape $(Base.size(julia_array))!\n"
         return false
     end
 
-    if (eltype(arr) != eltype(julia_array))
-        @warn "NDArray has eltype $(eltype(arr)) and Julia array has eltype $(eltype(julia_array))!\n"
-        return false
-    end
-
     for CI in CartesianIndices(julia_array)
-        if abs(julia_array[CI] - arr[Tuple(CI)...]) > max_diff
+        x = julia_array[CI];
+        y = arr[Tuple(CI)...]
+        if !isapprox(x, y; atol=atol, rtol=rtol)
             return false
         end
     end
@@ -391,11 +398,13 @@ function compare(julia_array::AbstractArray, arr::NDArray, max_diff)
     return true
 end
 
-function compare(arr::NDArray, julia_array::AbstractArray, max_diff)
-    return compare(julia_array, arr, max_diff)
+function compare(
+    arr::NDArray{T,N}, julia_array::AbstractArray{T,N}, atol::Real, rtol::Real
+) where {T,N}
+    return compare(julia_array, arr, atol, rtol)
 end
 
-function compare(arr::NDArray, arr2::NDArray, max_diff)
+function compare(arr::NDArray{T,N}, arr2::NDArray{T,N}, atol::Real, rtol::Real) where {T,N}
     if (shape(arr) != shape(arr2))
         @warn "NDArray LHS has shape $(shape(arr)) and NDArray RHS has shape $(shape(arr2))!\n"
         return false
@@ -403,7 +412,9 @@ function compare(arr::NDArray, arr2::NDArray, max_diff)
 
     dims = shape(arr)
     for CI in CartesianIndices(dims)
-        if abs(arr2[Tuple(CI)...] - arr[Tuple(CI)...]) > max_diff
+        x = arr[Tuple(CI)...];
+        y = arr2[Tuple(CI)...]
+        if !isapprox(x, y; atol=atol, rtol=rtol)
             return false
         end
     end

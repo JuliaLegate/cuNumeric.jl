@@ -18,6 +18,39 @@
 =#
 
 @doc"""
+    Base.copy(arr::NDArray)
+
+Create and return a deep copy of the given `NDArray`.
+
+# Examples
+```@repl
+a = cuNumeric.ones(2, 2)
+b = copy(a)
+b === a
+b[1,1] == a[1,1]
+```
+"""
+Base.copy(arr::NDArray) = nda_copy(arr)
+
+@doc"""
+    copyto!(arr::NDArray, other::NDArray)
+
+Assign the contents of `other` to `arr` element-wise.
+
+This function overwrites the data in `arr` with the values from `other`.  
+Both arrays must have the same shape.
+
+# Examples
+```@repl
+a = cuNumeric.zeros(2, 2)
+b = cuNumeric.ones(2, 2)
+copyto!(a, b);
+a[1,1]
+```
+"""
+Base.copyto!(arr::NDArray{T,N}, other::NDArray{T,N}) where {T,N} = nda_assign(arr, other)
+
+@doc"""
     as_type(arr::NDArray, t::Type{T}) where {T}
 
 Convert the element type of `arr` to type `T`, returning a new `NDArray` with elements cast to `T`.
@@ -35,12 +68,69 @@ arr = cuNumeric.rand(4, 5);
 as_type(arr, Float32)
 ```
 """
-# as_type(arr::NDArray, t::Type{T}) where {T} = nda_astype(arr, t)
 as_type(arr::NDArray{S,N}, ::Type{T}) where {S,T,N} = nda_astype(arr, T)::NDArray{T,N}
 as_type(arr::NDArray{T}, ::Type{T}) where {T} = arr
 
+# conversion from NDArray to Base Julia array
+function (::Type{<:Array{A}})(arr::NDArray{B}) where {A,B}
+    assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
+    dims = Base.size(arr)
+    out = Base.zeros(A, dims)
+    for CI in CartesianIndices(dims)
+        out[CI] = A(arr[Tuple(CI)...])
+    end
+    return out
+end
+
+function (::Type{<:Array})(arr::NDArray{B}) where {B}
+    assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
+    dims = Base.size(arr)
+    out = Base.zeros(B, dims)
+    for CI in CartesianIndices(dims)
+        out[CI] = arr[Tuple(CI)...]
+    end
+    return out
+end
+
+# conversion from Base Julia array to NDArray
+function (::Type{<:NDArray{A}})(arr::Array{B}) where {A,B}
+    assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
+    dims = Base.size(arr)
+    out = cuNumeric.zeros(A, dims)
+    for CI in CartesianIndices(dims)
+        out[Tuple(CI)...] = A(arr[CI])
+    end
+    return out
+end
+
+function (::Type{<:NDArray})(arr::Array{B}) where {B}
+    assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
+    dims = Base.size(arr)
+    out = cuNumeric.zeros(B, dims)
+    for CI in CartesianIndices(dims)
+        out[Tuple(CI)...] = arr[CI]
+    end
+    return out
+end
+
+# Base.convert(::Type{<:NDArray{T}}, a::A) where {T, A} = NDArray(T(a))::NDArray{T}
+# Base.convert(::Type{T}, a::T) where {T <: NDArray} = a
+
+# #! NEED TO THROW ERROR ON PROMOTION TO DOUBLE PRECISION??
+# #! ADD MECHANISM LIKE @allowscalar, @allowdouble ??
+# Base.convert(::Type{NDArray{T}}, a::NDArray) where {T} = as_type(copy(a), T)
+# Base.convert(::Type{NDArray{T,N}}, a::NDArray{<:Any,N}) where {T,N} = as_type(copy(a), T)
+
 #### ARRAY/INDEXING INTERFACE ####
 # https://docs.julialang.org/en/v1/manual/interfaces/#Indexing
+
+@doc"""
+    Base.eltype(arr::NDArray)
+
+Returns the element type of the `NDArray`.
+"""
+Base.eltype(arr::NDArray{T}) where {T} = T
+
 @doc"""
     dim(arr::NDArray)
     Base.ndims(arr::NDArray)
@@ -58,8 +148,8 @@ ndims(arr)
 ```
 """
 
-dim(::NDArray{T,N}) where {T,N} = N
-Base.ndims(::NDArray{T,N}) where {T,N} = N
+dim(::NDArray{T,N}) where {T,N} = N::Int
+Base.ndims(::NDArray{T,N}) where {T,N} = N::Int
 @doc"""
     Base.size(arr::NDArray)
     Base.size(arr::NDArray, dim::Int)
@@ -104,10 +194,21 @@ lastindex(arr)
 Base.firstindex(arr::NDArray, dim::Int) = 1
 Base.lastindex(arr::NDArray, dim::Int) = Base.size(arr, dim)
 Base.lastindex(arr::NDArray) = Base.size(arr, 1)
+
 Base.axes(arr::NDArray) = Base.OneTo.(size(arr))
 Base.view(arr::NDArray, inds...) = arr[inds...] # NDArray slices are views by default.
 
 Base.IndexStyle(::NDArray) = IndexCartesian()
+
+function Base.show(io::IO, arr::NDArray{T,0}) where {T}
+    println(io, "0-dimensional NDArray{$(T),0}")
+    print(io, arr[]) #! should I assert scalar??
+end
+
+function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T,0}) where {T}
+    println(io, "0-dimensional NDArray{$(T),0}")
+    print(io, arr[]) #! should I assert scalar??
+end
 
 function Base.show(io::IO, arr::NDArray{T}) where {T}
     dim = Base.size(arr)
@@ -173,50 +274,94 @@ Array(A)
 ```
  """
 ##### REGULAR ARRAY INDEXING ####
-function Base.getindex(arr::NDArray{T}, idxs::Vararg{Int,N}) where {T,N}
+function Base.getindex(arr::NDArray{T,N}, idxs::Vararg{Int,N}) where {T<:SUPPORTED_NUMERIC_TYPES,N}
+    assertscalar("getindex")
     acc = NDArrayAccessor{T,N}()
     return read(acc, arr.ptr, to_cpp_index(idxs))
 end
 
-function Base.setindex!(arr::NDArray{T}, value::T, idxs::Vararg{Int,N}) where {T<:Number,N}
+function Base.getindex(arr::NDArray{T,0}) where {T<:SUPPORTED_NUMERIC_TYPES}
+    assertscalar("getindex")
+    acc = NDArrayAccessor{T,1}()
+    zero_index = StdVector([UInt64(0)]) #! CAN I PREALLOCATE THIS SOMEHOW
+    return read(acc, arr.ptr, zero_index)
+end
+
+function Base.getindex(arr::NDArray{Bool,N}, idxs::Vararg{Int,N}) where {N}
+    assertscalar("getindex")
+    acc = NDArrayAccessor{CxxWrap.CxxBool,N}()
+    return read(acc, arr.ptr, to_cpp_index(idxs))
+end
+
+function Base.getindex(arr::NDArray{Bool,0})
+    assertscalar("getindex")
+    acc = NDArrayAccessor{CxxWrap.CxxBool,1}()
+    zero_index = StdVector([UInt64(0)]) #! CAN I PREALLOCATE THIS SOMEHOW
+    return read(acc, arr.ptr, zero_index)
+end
+
+#! TODO SUPPORT CONVERSION OF VALUES
+function Base.setindex!(arr::NDArray{T,N}, value::T, idxs::Vararg{Int,N}) where {T,N}
+    assertscalar("setindex!")
+    _setindex!(Val{N}(), arr, value, idxs...)
+end
+
+function _setindex!(::Val{0}, arr::NDArray{T,0}, value::T) where {T<:SUPPORTED_NUMERIC_TYPES}
+    acc = NDArrayAccessor{T,1}()
+    write(acc, arr.ptr, StdVector(UInt64[0]), value)
+end
+
+function _setindex!(::Val{0}, arr::NDArray{Bool,0}, value::Bool)
+    acc = NDArrayAccessor{CxxWrap.CxxBool,1}()
+    write(acc, arr.ptr, StdVector(UInt64[0]), value)
+end
+
+function _setindex!(
+    ::Val{N}, arr::NDArray{T,N}, value::T, idxs::Vararg{Int,N}
+) where {T<:SUPPORTED_NUMERIC_TYPES,N}
     acc = NDArrayAccessor{T,N}()
+    write(acc, arr.ptr, to_cpp_index(idxs), value)
+end
+
+function _setindex!(::Val{N}, arr::NDArray{Bool,N}, value::Bool, idxs::Vararg{Int,N}) where {N}
+    acc = NDArrayAccessor{CxxWrap.CxxBool,N}()
     write(acc, arr.ptr, to_cpp_index(idxs), value)
 end
 
 #### START OF SLICING ####
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::Int64)
     s = nda_get_slice(lhs, slice_array((0, Base.size(lhs, 1)), (j-1, j)))
-    nda_assign(s, rhs);
+    copyto!(s, rhs);
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Int64, j::Colon)
     s = nda_get_slice(lhs, slice_array((i-1, i)))
-    nda_assign(s, rhs);
+    copyto!(s, rhs);
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::Colon)
     s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (0, Base.size(lhs, 2))))
-    nda_assign(s, rhs)
+    copyto!(s, rhs)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::UnitRange)
     s = nda_get_slice(lhs, slice_array((0, Base.size(lhs, 1)), (first(j) - 1, last(j))))
-    nda_assign(s, rhs)
+    copyto!(s, rhs)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::Int64)
     s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (j-1, j)))
-    nda_assign(s, rhs)
+    copyto!(s, rhs)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Int64, j::UnitRange)
     s = nda_get_slice(lhs, slice_array((i-1, i), (first(j) - 1, last(j))))
-    nda_assign(s, rhs)
+    copyto!(s, rhs)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::UnitRange)
     s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (first(j) - 1, last(j))))
-    nda_assign(s, rhs)
+    copyto!(s, rhs)
 end
 
 function Base.getindex(arr::NDArray, i::Colon, j::Int64)
@@ -263,6 +408,7 @@ end
 # Long term probably be a named function since we allocate
 # whole new array in here. Not exactly what I expect form []
 function Base.getindex(arr::NDArray{T}, c::Vararg{Colon,N}) where {T,N}
+    assertscalar("getindex")
     arr_dims = Int.(cuNumeric.nda_array_shape(arr))
     julia_array = Base.zeros(T, arr_dims...)
 
@@ -273,21 +419,17 @@ function Base.getindex(arr::NDArray{T}, c::Vararg{Colon,N}) where {T,N}
     return julia_array
 end
 
-# This should also probably be a named function
-# We can just define a specialization for Base.fill(::NDArray)
-function Base.setindex!(arr::NDArray, val::Union{Float32,Float64}, c::Vararg{Colon,N}) where {N}
-    nda_fill_array(arr, val)
-end
-
-function Base.setindex!(arr::NDArray, val::Union{Float32,Float64}, i::Colon, j::Int64)
+function Base.setindex!(arr::NDArray{T,2}, val::T, i::Colon, j::Int64) where {T}
     s = nda_get_slice(arr, to_cpp_init_slice(slice(0, Base.size(arr, 1)), slice(j-1, j)))
     nda_fill_array(s, val)
 end
 
-function Base.setindex!(arr::NDArray, val::Union{Float32,Float64}, i::Int64, j::Colon)
+function Base.setindex!(arr::NDArray{T,2}, val::T, i::Int64, j::Colon) where {T}
     s = nda_get_slice(arr, to_cpp_init_slice(slice(i-1, i)))
     nda_fill_array(s, val)
 end
+
+Base.fill!(arr::NDArray{T}, val::T) where {T} = nda_fill_array(arr, val)
 
 #### INITIALIZATION OF NDARRAYS ####
 @doc"""
@@ -324,9 +466,9 @@ Create an `NDArray` filled with the true, with the shape specified by `dims`.
 cuNumeric.trues(2, 3)
 ```
 """
-# trues(dim::Int) = cuNumeric.full(dim, true)
-# trues(dims::Dims) = cuNumeric.full(dims, true)
-# trues(dims::Int...) = cuNumeric.full(dims, true)
+trues(dim::Int) = cuNumeric.full(dim, true)
+trues(dims::Dims) = cuNumeric.full(dims, true)
+trues(dims::Int...) = cuNumeric.full(dims, true)
 
 @doc"""
     cuNumeric.falses(dims::Tuple, val)
@@ -340,9 +482,9 @@ Create an `NDArray` filled with the false, with the shape specified by `dims`.
 cuNumeric.falses(2, 3)
 ```
 """
-# falses(dim::Int) = cuNumeric.full(dim, false)
-# falses(dims::Dims) = cuNumeric.full(dims, false)
-# falses(dims::Int...) = cuNumeric.full(dims, false)
+falses(dim::Int) = cuNumeric.full(dim, false)
+falses(dims::Dims) = cuNumeric.full(dims, false)
+falses(dims::Int...) = cuNumeric.full(dims, false)
 
 @doc"""
     cuNumeric.zeros([T=Float32,] dims::Int...)
@@ -373,6 +515,14 @@ end
 
 function zeros(dims::Int...)
     return zeros(DEFAULT_FLOAT, dims)
+end
+
+function zeros(::Type{T}) where {T}
+    return nda_zeros_array(UInt64[], T)
+end
+
+function zeros()
+    return zeros(DEFAULT_FLOAT)
 end
 
 function zeros_like(arr::NDArray)
@@ -409,6 +559,14 @@ function ones(dims::Int...)
     return ones(DEFAULT_FLOAT, dims)
 end
 
+function ones(::Type{T}) where {T}
+    return full((), T(1))
+end
+
+function ones()
+    return zeros(DEFAULT_FLOAT)
+end
+
 @doc"""
     cuNumeric.rand!(arr::NDArray)
 
@@ -436,6 +594,8 @@ Random.rand(::Type{NDArray}, dims::Int...) = cuNumeric.rand(NDArray, dims)
 random(::Type{T}, dims::Dims) where {T} = cuNumeric.nda_random_array(UInt64.(collect(dims)))
 random(::Type{T}, dim::Int64) where {T} = cuNumeric.random(T, (dim,))
 random(dims::Dims, e::Type{T}) where {T} = cuNumeric.rand(e, dims)
+
+#! THIS SHOULD HAVE AN ! IT MODIFES THE INPUT
 random(arr::NDArray, code::Int64) = cuNumeric.nda_random(arr, code)
 
 #### OPERATIONS ####
@@ -464,291 +624,6 @@ function reshape(arr::NDArray, i::Int64; copy::Bool=false)
 end
 
 @doc"""
-    Base.:+(arr::NDArray, val::Number)
-    Base.:+(val::Number, arr::NDArray)
-    Base.:+(lhs::NDArray, rhs::NDArray)
-
-Add a scalar `val` to every element in the `NDArray` `arr`, or perform element-wise addition between two NDArrays,
-returning a new `NDArray`.
-
-Broadcasting is supported to enable element-wise addition between `NDArray` and scalars or between two NDArrays.
-
-# Examples
-```@repl
-lhs + 3
-3 + rhs
-lhs + rhs
-```
-"""
-
-function Base.:+(arr::NDArray{T}, val::V) where {T,V<:SUPPORTED_TYPES}
-    P = __my_promote_type(V, T)
-    return nda_add_scalar(maybe_promote_arr(arr, P), P(val))
-end
-
-function Base.:+(val::V, arr::NDArray{T}) where {T,V<:SUPPORTED_TYPES}
-    return +(arr, val)
-end
-
-function Base.Broadcast.broadcasted(
-    ::typeof(+), arr::NDArray{T}, val::V
-) where {T,V<:SUPPORTED_TYPES}
-    return +(arr, val)
-end
-
-function Base.Broadcast.broadcasted(
-    ::typeof(+), val::V, arr::NDArray{T}
-) where {T,V<:SUPPORTED_TYPES}
-    return +(arr, val)
-end
-
-function Base.Broadcast.broadcasted(::typeof(+), lhs::NDArray{T}, rhs::NDArray{T}) where {T}
-    return +(lhs, rhs)
-end
-
-@doc"""
-    Base.:-(val::Number, arr::NDArray)
-    Base.:-(arr::NDArray, val::Number)
-    Base.:-(lhs::NDArray, rhs::NDArray)
-
-Perform subtraction involving an `NDArray` and a scalar or between two NDArrays. 
-
-- `val - arr` subtracts `val` by `arr`.
-- `arr - val` subtracts scalar `val` from each element of `arr`.
-- Element-wise subtraction is supported between two NDArrays.
-
-Broadcasting is also supported for these operations.
-
-# Examples
-```@repl
-lhs - 3
-3 - rhs
-lhs - rhs
-```
-"""
-function Base.:-(val::V, arr::NDArray{T}) where {T,V<:SUPPORTED_TYPES}
-    return nda_multiply_scalar(arr, -val)
-end
-
-function Base.:-(arr::NDArray{T}, val::V) where {T,V<:SUPPORTED_TYPES}
-    return +(arr, (-1*val))
-end
-
-function Base.Broadcast.broadcasted(
-    ::typeof(-), arr::NDArray{T}, val::V
-) where {T,V<:SUPPORTED_TYPES}
-    return -(arr, val)
-end
-function Base.Broadcast.broadcasted(
-    ::typeof(-), val::V, rhs::NDArray{T}
-) where {T,V<:SUPPORTED_TYPES}
-    lhs = full(size(rhs), val)
-    return -(lhs, rhs)
-end
-
-function Base.Broadcast.broadcasted(::typeof(-), lhs::NDArray{T}, rhs::NDArray{T}) where {T}
-    return -(lhs, rhs)
-end
-
-@doc"""
-    Base.:*(val::Number, arr::NDArray)
-    Base.:*(arr::NDArray, val::Number)
-    Base.Broadcast.broadcasted(::typeof(*), arr::NDArray, val::Number)
-    Base.Broadcast.broadcasted(::typeof(*), val::Number, arr::NDArray)
-    Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray, rhs::NDArray)
-
-Multiply an `NDArray` by a scalar or perform element-wise multiplication between NDArrays.
-
-- Scalar multiplication supports types: `Float32`, `Float64`, `Int32`, `Int64`.
-- Broadcasting works seamlessly with scalars and NDArrays.
-
-# Examples
-```@repl
-lhs * 3
-2 * rhs
-lhs - rhs
-```
-"""
-
-function Base.:*(val::V, arr::NDArray{T}) where {T,V<:SUPPORTED_NUMERIC_TYPES}
-    P = __my_promote_type(V, T)
-    return nda_multiply_scalar(maybe_promote_arr(arr, P), P(val))
-end
-
-function Base.:*(arr::NDArray{T}, val::V) where {T,V<:SUPPORTED_NUMERIC_TYPES}
-    return *(val, arr)
-end
-
-function Base.Broadcast.broadcasted(
-    ::typeof(*), arr::NDArray{T}, val::V
-) where {T,V<:SUPPORTED_NUMERIC_TYPES}
-    return *(val, arr)
-end
-
-function Base.Broadcast.broadcasted(
-    ::typeof(*), val::V, arr::NDArray{T}
-) where {T,V<:SUPPORTED_NUMERIC_TYPES}
-    return *(val, arr)
-end
-
-function Base.Broadcast.broadcasted(::typeof(*), lhs::NDArray{T}, rhs::NDArray{T}) where {T}
-    return *(lhs, rhs)
-end
-
-@doc"""
-    Base.:/(arr::NDArray, val::Scalar)
-    Base.Broadcast.broadcasted(::typeof(/), arr::NDArray, val::Scalar)
-
-Returns the element-wise multiplication of `arr` by the scalar reciprocal `1 / val`.
-
-# Examples
-```@repl
-arr = cuNumeric.ones(2, 2)
-arr / 2
-```
-"""
-function Base.:/(arr::NDArray{T}, val::V) where {T,V<:SUPPORTED_NUMERIC_TYPES}
-    throw(ErrorException("[/] is not supported yet"))
-end
-
-function Base.Broadcast.broadcasted(
-    ::typeof(/), arr::NDArray{T}, val::V
-) where {T,V<:Union{Float16,Float32,Float64}}
-    return nda_multiply_scalar(arr, V(1 / val))
-end
-
-@doc"""
-    Base.Broadcast.broadcasted(::typeof(/), val::Scalar, arr::NDArray)
-
-Throws an error since element-wise division of a scalar by an NDArray is not supported yet.
-
-# Examples
-```@repl
-arr = cuNumeric.ones(2, 2)
-# 2 ./ arr # ERROR
-```
-"""
-function Base.Broadcast.broadcasted(
-    ::typeof(/), val::V, arr::NDArray{T}
-) where {T,V<:SUPPORTED_NUMERIC_TYPES}
-    return throw(ErrorException("element wise [val ./ NDArray] is not supported yet"))
-end
-
-@doc"""
-    Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray, rhs::NDArray)
-
-Perform element-wise division of two NDArrays.
-
-# Examples
-```@repl
-A = cuNumeric.rand(2, 2)
-B = cuNumeric.ones(2, 2)
-C = A ./ B
-typeof(C)
-```
-"""
-function Base.Broadcast.broadcasted(::typeof(/), lhs::NDArray{T}, rhs::NDArray{T}) where {T}
-    return /(lhs, rhs)
-end
-
-#* Can't overload += in Julia, this should be called by .+= 
-#* to maintain some semblence native Julia array syntax
-# See https://docs.julialang.org/en/v1/manual/interfaces/#extending-in-place-broadcast-2
-
-@doc"""
-    add!(out::NDArray, arr1::NDArray, arr2::NDArray)
-
-Compute element-wise addition of `arr1` and `arr2` storing the result in `out`.
-
-This is an in-place operation and is used to support `.+=` style syntax.
-
-# Examples
-```@repl
-a = cuNumeric.ones(2, 2)
-b = cuNumeric.ones(2, 2)
-out = similar(a)
-add!(out, a, b)
-```
-"""
-function add!(out::NDArray, arr1::NDArray, arr2::NDArray)
-    return nda_add(arr1, arr2, out)
-end
-
-@doc"""
-    multiply!(out::NDArray, arr1::NDArray, arr2::NDArray)
-
-Compute element-wise multiplication of `arr1` and `arr2`, storing the result in `out`.
-
-This function performs the operation in-place, modifying `out`.
-
-# Examples
-```@repl
-a = cuNumeric.ones(2, 2)
-b = cuNumeric.ones(2, 2)
-out = similar(a)
-multiply!(out, a, b)
-```
-"""
-function multiply!(out::NDArray, arr1::NDArray, arr2::NDArray)
-    return nda_multiply(arr1, arr2, out)
-end
-
-@doc"""
-    LinearAlgebra.mul!(out::NDArray, arr1::NDArray, arr2::NDArray)
-
-Compute the matrix multiplication (dot product) of `arr1` and `arr2`, storing the result in `out`.
-
-This function performs the operation in-place, modifying `out`.
-
-# Examples
-```@repl
-a = cuNumeric.ones(2, 3)
-b = cuNumeric.ones(3, 2)
-out = cuNumeric.zeros(2, 2)
-LinearAlgebra.mul!(out, a, b)
-```
-"""
-function LinearAlgebra.mul!(out::NDArray{T,2}, arr1::NDArray{T,2}, arr2::NDArray{T,2}) where {T}
-    #! TODO: Support type promotion
-    return nda_three_dot_arg(arr1, arr2, out)
-end
-
-@doc"""
-    Base.copy(arr::NDArray)
-
-Create and return a deep copy of the given `NDArray`.
-
-# Examples
-```@repl
-a = cuNumeric.ones(2, 2)
-b = copy(a)
-b === a
-b[1,1] == a[1,1]
-```
-"""
-function Base.copy(arr::NDArray)
-    return nda_copy(arr)
-end
-
-@doc"""
-    assign(arr::NDArray, other::NDArray)
-
-Assign the contents of `other` to `arr` element-wise.
-
-This function overwrites the data in `arr` with the values from `other`.  
-Both arrays must have the same shape.
-
-# Examples
-```@repl
-a = cuNumeric.zeros(2, 2)
-b = cuNumeric.ones(2, 2)
-cuNumeric.assign(a, b);
-a[1,1]
-```
-"""
-assign(arr::NDArray, other::NDArray) = nda_assign(arr, other)
-
-@doc"""
     ==(arr1::NDArray, arr2::NDArray)
 
 Check if two NDArrays are equal element-wise.
@@ -771,24 +646,8 @@ c = cuNumeric.zeros(2, 2)
 a == c
 ```
 """
-function Base.:(==)(arr1::NDArray, arr2::NDArray)
-    if (Base.size(arr1) != Base.size(arr2))
-        @warn "lhs has size $(Base.size(arr1)) and rhs has size $(Base.size(arr2))!\n"
-        return false
-    end
-
-    if (ndims(arr1) > 3)
-        @warn "Accessors do not support dimension > 3 yet"
-        return false
-    end
-
-    dims = Base.size(arr1)
-    for CI in CartesianIndices(dims)
-        if arr1[Tuple(CI)...] != arr2[Tuple(CI)...]
-            return false
-        end
-    end
-    return true
+function Base.:(==)(arr1::NDArray{T,N}, arr2::NDArray{T,N}) where {T,N}
+    return nda_array_equal(arr1, arr2) #DOESNT RETURN SCALAR
 end
 
 @doc"""
@@ -816,27 +675,12 @@ julia_arr2 = zeros(2, 2)
 arr == julia_arr2
 ```
 """
-function Base.:(==)(arr::NDArray, julia_array::Array)
-    if (Base.size(arr) != Base.size(julia_array))
-        @warn "NDArray has size $(Base.size(arr)) and Julia array has size $(Base.size(julia_array))!\n"
-        return false
-    end
-
-    for CI in CartesianIndices(julia_array)
-        if julia_array[CI] != arr[Tuple(CI)...]
-            return false
-        end
-    end
-
-    # successful completion
-    return true
+function Base.:(==)(arr::NDArray, julia_arr::Array)
+    assertscalar("==")
+    return julia_arr == Array(arr)
 end
 
-# julia_array == arr
-function Base.:(==)(julia_array::Array, arr::NDArray)
-    # flip LHS and RHS
-    return (arr == julia_array)
-end
+Base.:(==)(julia_arr::Array, arr::NDArray) = (arr == julia_arr)
 
 @doc"""
     isapprox(arr1::NDArray, arr2::NDArray; atol=0, rtol=0)
@@ -867,14 +711,15 @@ isapprox(arr1, julia_arr)
 isapprox(julia_arr, arr2)
 ```
 """
-function Base.isapprox(julia_array::AbstractArray, arr::NDArray; atol=0, rtol=0)
-    return compare(julia_array, arr, atol)
+function Base.isapprox(julia_array::AbstractArray{T}, arr::NDArray{T}; atol=0, rtol=0) where {T}
+    #! REPLCE THIS WITH BIN_OP isapprox
+    return compare(julia_array, arr, atol, rtol)
 end
 
-function Base.isapprox(arr::NDArray, julia_array::AbstractArray; atol=0, rtol=0)
-    return compare(julia_array, arr, atol)
+function Base.isapprox(arr::NDArray{T}, julia_array::AbstractArray{T}; atol=0, rtol=0) where {T}
+    return compare(julia_array, arr, atol, rtol)
 end
 
-function Base.isapprox(arr::NDArray, arr2::NDArray; atol=0, rtol=0)
-    return compare(arr, arr2, atol)
+function Base.isapprox(arr::NDArray{T}, arr2::NDArray{T}; atol=0, rtol=0) where {T}
+    return compare(arr, arr2, atol, rtol)
 end
