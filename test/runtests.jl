@@ -40,7 +40,22 @@ include("tests/slicing.jl")
 include("tests/gemm.jl")
 include("tests/unary_tests.jl")
 include("tests/binary_tests.jl")
+include("tests/fusion_tests.jl")
 # include("tests/custom_cuda.jl")
+
+@testset verbose = true "Fusion" begin
+    N = 1
+    @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)
+        ufused, vfused = gray_scott(T, N)
+        ubase, vbase = gray_scott_base(T, N)
+        allowscalar() do
+            # println(ubase; elems=true)
+            # println(ufused; elems=true)
+            @test cuNumeric.compare(ubase, ufused, atol(T) * N, rtol(T) * 10)
+            @test cuNumeric.compare(vbase, vfused, atol(T) * N, rtol(T) * 10)
+        end
+    end
+end
 
 @testset verbose = true "AXPY" begin
     N = 100
