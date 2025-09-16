@@ -109,7 +109,7 @@ function process_ndarray_scope(block)
     for var in assigned_vars
         push!(cleanup_exprs, :(cuNumeric.nda_destroy_array($var.ptr)))
         # push!(cleanup_exprs, :(cuNumeric.register_free!($var.nbytes)))
-        # push!(cleanup_exprs, :($var.ptr = Ptr{Cvoid}(0)))
+        push!(cleanup_exprs, :($var.ptr = Ptr{Cvoid}(0)))
         # push!(cleanup_exprs, :($var.nbytes = 0))
     end
 
@@ -124,7 +124,26 @@ function process_ndarray_scope(block)
 end
 
 function find_ndarray_assignments(ex, assigned_vars::Set{Symbol})
-    cache = Dict{Expr,Symbol}()
+    cache = Dict{Any,Symbol}()
+    alias_map = Dict{Symbol,Symbol}()
+    local_assigned = Set{Symbol}()
+
+    function fresh_tmp(expr)
+        if haskey(cache, expr)
+            return cache[expr], []
+        else
+            counter[] += 1
+            tmp = Symbol(:tmp, counter[])
+            cache[expr] = tmp
+            push!(local_assigned, tmp)
+            return tmp, [:($tmp = $expr)]
+        end
+    end
+
+    function is_arrayish(x)
+        x isa Expr && (x.head == :ref || x in keys(cache))
+    end
+
     function rewrite(e)::Tuple{Any,Vector{Expr}}
         if !(e isa Expr)
             return e, Expr[]
@@ -133,23 +152,47 @@ function find_ndarray_assignments(ex, assigned_vars::Set{Symbol})
         if e.head == :(=)
             lhs, rhs = e.args
             if lhs isa Symbol
-                push!(assigned_vars, lhs)
+                push!(local_assigned, lhs)
             end
+
             new_rhs, temps = rewrite(rhs)
+
+            # detect simple alias like `lhs = tmpX`
+            if new_rhs isa Symbol
+                alias_map[lhs] = new_rhs
+                return Expr(:block, temps..., :($lhs = $new_rhs)), []
+            end
+
             return Expr(:block, temps..., :($lhs = $new_rhs)), []
+
         elseif e.head == :ref
-            if haskey(cache, e)
-                return cache[e], []
+            return fresh_tmp(e)
+
+        elseif e.head == :call
+            op = e.args[1]
+            new_args, hoisted = Any[], Expr[]
+            arrayish = false
+            for arg in e.args[2:end]
+                new_arg, temps = rewrite(arg)
+                push!(new_args, new_arg)
+                append!(hoisted, temps)
+                if new_arg isa Symbol && new_arg in local_assigned
+                    arrayish = true
+                elseif is_arrayish(new_arg)
+                    arrayish = true
+                end
+            end
+            new_expr = Expr(:call, op, new_args...)
+
+            if arrayish
+                tmp, bind = fresh_tmp(new_expr)
+                return tmp, vcat(hoisted, bind)
             else
-                counter[] += 1
-                tmp = Symbol(:tmp, counter[]) # make tmp1, tmp2, tmp3 ....
-                cache[e] = tmp
-                push!(assigned_vars, tmp)
-                return tmp, [:($tmp = $e)]
+                return new_expr, hoisted
             end
         else
-            new_args = Any[]
-            hoisted = Expr[]
+            # fallback
+            new_args, hoisted = Any[], Expr[]
             for arg in e.args
                 new_arg, temps = rewrite(arg)
                 push!(new_args, new_arg)
@@ -160,5 +203,9 @@ function find_ndarray_assignments(ex, assigned_vars::Set{Symbol})
     end
 
     new_ex, temps = rewrite(ex)
+
+    real_vars = setdiff(local_assigned, keys(alias_map))
+    union!(assigned_vars, real_vars)
+
     return Expr(:block, temps..., new_ex)
 end
