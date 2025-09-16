@@ -46,13 +46,13 @@ include("tests/scoping.jl")
 @testset verbose = true "Scoping" begin
     N = 1
     @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)
-        ufused, vfused = gray_scott(T, N)
+        uscoped, vscoped = gray_scott(T, N)
         ubase, vbase = gray_scott_base(T, N)
         allowscalar() do
             # println(ubase; elems=true)
-            # println(ufused; elems=true)
-            @test cuNumeric.compare(ubase, ufused, atol(T) * N, rtol(T) * 10)
-            @test cuNumeric.compare(vbase, vfused, atol(T) * N, rtol(T) * 10)
+            # println(uscoped; elems=true)
+            @test cuNumeric.compare(ubase, uscoped, atol(T) * N, rtol(T) * 10)
+            @test cuNumeric.compare(vbase, vscoped, atol(T) * N, rtol(T) * 10)
         end
     end
 end
