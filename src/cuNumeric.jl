@@ -78,6 +78,9 @@ include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
 
+# scoping macro
+include("scoping.jl")
+
 # # Custom CUDA.jl kernel integration
 include("cuda.jl")
 
