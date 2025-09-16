@@ -40,10 +40,10 @@ include("tests/slicing.jl")
 include("tests/gemm.jl")
 include("tests/unary_tests.jl")
 include("tests/binary_tests.jl")
-include("tests/fusion_tests.jl")
+include("tests/scoping.jl")
 # include("tests/custom_cuda.jl")
 
-@testset verbose = true "Fusion" begin
+@testset verbose = true "Scoping" begin
     N = 1
     @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)
         ufused, vfused = gray_scott(T, N)
