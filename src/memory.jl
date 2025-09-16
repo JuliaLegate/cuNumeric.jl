@@ -69,13 +69,6 @@ function maybe_collect()
     return nothing
 end
 
-macro __tryfinally(ex, fin)
-    Expr(:tryfinally,
-        :($(esc(ex))),
-        :($(esc(fin))),
-    )
-end
-
 macro cunumeric(block)
     esc(process_ndarray_scope(block))
 end
@@ -107,10 +100,12 @@ function process_ndarray_scope(block)
     cleanup_exprs = []
 
     for var in assigned_vars
-        push!(cleanup_exprs, :(cuNumeric.nda_destroy_array($var.ptr)))
-        # push!(cleanup_exprs, :(cuNumeric.register_free!($var.nbytes)))
-        push!(cleanup_exprs, :($var.ptr = Ptr{Cvoid}(0)))
-        # push!(cleanup_exprs, :($var.nbytes = 0))
+        push!(cleanup_exprs, quote
+            if !($var isa Number)
+                cuNumeric.nda_destroy_array($var.ptr)
+                $var.ptr = Ptr{Cvoid}(0)
+            end
+        end)
     end
 
     result = quote
@@ -124,88 +119,70 @@ function process_ndarray_scope(block)
 end
 
 function find_ndarray_assignments(ex, assigned_vars::Set{Symbol})
-    cache = Dict{Any,Symbol}()
-    alias_map = Dict{Symbol,Symbol}()
-    local_assigned = Set{Symbol}()
+    cache = Dict{Any,Symbol}()       # expression → temp mapping
+    local_assigned = Set{Symbol}()    # track all assigned symbols
 
+    # --- create a fresh temp for any expression ---
     function fresh_tmp(expr)
-        if haskey(cache, expr)
-            return cache[expr], []
-        else
-            counter[] += 1
-            tmp = Symbol(:tmp, counter[])
-            cache[expr] = tmp
-            push!(local_assigned, tmp)
-            return tmp, [:($tmp = $expr)]
-        end
+        counter[] += 1
+        tmp = Symbol(:tmp, counter[])
+        cache[expr] = tmp
+        push!(local_assigned, tmp)
+        return tmp, [:($tmp = $expr)]
     end
 
-    function is_arrayish(x)
-        x isa Expr && (x.head == :ref || x in keys(cache))
-    end
-
+    # --- recursive rewrite ---
     function rewrite(e)::Tuple{Any,Vector{Expr}}
         if !(e isa Expr)
             return e, Expr[]
         end
 
+        # --- assignment: leave LHS intact ---
         if e.head == :(=)
             lhs, rhs = e.args
             if lhs isa Symbol
                 push!(local_assigned, lhs)
             end
-
             new_rhs, temps = rewrite(rhs)
-
-            # detect simple alias like `lhs = tmpX`
-            if new_rhs isa Symbol
-                alias_map[lhs] = new_rhs
-                return Expr(:block, temps..., :($lhs = $new_rhs)), []
-            end
-
             return Expr(:block, temps..., :($lhs = $new_rhs)), []
+        end
 
-        elseif e.head == :ref
+        # --- array slice reference ---
+        if e.head == :ref
             return fresh_tmp(e)
+        end
 
-        elseif e.head == :call
+        # --- function calls ---
+        if e.head == :call
             op = e.args[1]
             new_args, hoisted = Any[], Expr[]
-            arrayish = false
+
+            # recursively rewrite arguments first
             for arg in e.args[2:end]
                 new_arg, temps = rewrite(arg)
                 push!(new_args, new_arg)
                 append!(hoisted, temps)
-                if new_arg isa Symbol && new_arg in local_assigned
-                    arrayish = true
-                elseif is_arrayish(new_arg)
-                    arrayish = true
-                end
             end
+
+            # recreate call with rewritten args
             new_expr = Expr(:call, op, new_args...)
 
-            if arrayish
-                tmp, bind = fresh_tmp(new_expr)
-                return tmp, vcat(hoisted, bind)
-            else
-                return new_expr, hoisted
-            end
-        else
-            # fallback
-            new_args, hoisted = Any[], Expr[]
-            for arg in e.args
-                new_arg, temps = rewrite(arg)
-                push!(new_args, new_arg)
-                append!(hoisted, temps)
-            end
-            return Expr(e.head, new_args...), hoisted
+            # always hoist calls (arrays and non-arrays)
+            tmp, bind = fresh_tmp(new_expr)
+            return tmp, vcat(hoisted, bind)
         end
+
+        # --- fallback for other Expr types ---
+        new_args, hoisted = Any[], Expr[]
+        for arg in e.args
+            new_arg, temps = rewrite(arg)
+            push!(new_args, new_arg)
+            append!(hoisted, temps)
+        end
+        return Expr(e.head, new_args...), hoisted
     end
 
     new_ex, temps = rewrite(ex)
-
-    real_vars = setdiff(local_assigned, keys(alias_map))
-    union!(assigned_vars, real_vars)
-
+    union!(assigned_vars, local_assigned)
     return Expr(:block, temps..., new_ex)
 end
