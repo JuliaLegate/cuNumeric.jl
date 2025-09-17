@@ -40,9 +40,7 @@ function process_ndarray_scope(block)
     cleanup_exprs = []
 
     for var in assigned_vars
-        push!(cleanup_exprs, quote
-            cuNumeric.maybe_insert_delete($var)
-        end)
+        push!(cleanup_exprs, :(cuNumeric.maybe_insert_delete($var)))
     end
 
     result = quote

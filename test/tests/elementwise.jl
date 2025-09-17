@@ -38,8 +38,8 @@ function elementwise()
         cuNumeric.random(arrA, seed)
         cuNumeric.random(arrB, seed)
 
-        arrA_cpu = arrA[:, :]
-        arrB_cpu = arrB[:, :]
+        arrA_cpu = Array(arrA)
+        arrB_cpu = Array(arrB)
 
         @test arrA == arrA_cpu
         @test arrB == arrB_cpu
@@ -81,8 +81,8 @@ function elementwise()
         result_cpu = arrA_cpu + arrB_cpu
         @test result == result_cpu
 
-        arrA = 1.3 ./ arrA 
-        arrA_cpu =  1.3 ./ arrA_cpu
+        arrA = 1.3 ./ arrA
+        arrA_cpu = 1.3 ./ arrA_cpu
         @test arrA == arrA_cpu
 
         arrA = arrA ./ 1.3

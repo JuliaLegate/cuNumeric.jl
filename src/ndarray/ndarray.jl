@@ -403,19 +403,9 @@ function Base.getindex(arr::NDArray, i::UnitRange)
     )
 end
 
-# USED TO CONVERT NDArray to Julia Array
-# Long term probably be a named function since we allocate
-# whole new array in here. Not exactly what I expect form []
-function Base.getindex(arr::NDArray{T}, c::Vararg{Colon,N}) where {T,N}
-    assertscalar("getindex")
-    arr_dims = Int.(cuNumeric.nda_array_shape(arr))
-    julia_array = Base.zeros(T, arr_dims...)
-
-    for CI in CartesianIndices(julia_array)
-        julia_array[CI] = arr[Tuple(CI)...]
-    end
-
-    return julia_array
+Base.getindex(arr::NDArray{T}, c::Vararg{Colon,N}) where {T,N} = Base.copy(arr)
+function Base.setindex!(arr::NDArray{T}, rhs::NDArray{T}, c::Vararg{Colon,N}) where {T,N}
+    Base.copyto!(arr, rhs)
 end
 
 function Base.setindex!(arr::NDArray{T,2}, val::T, i::Colon, j::Int64) where {T}

@@ -1,174 +1,87 @@
 using cuNumeric
 
-struct ParamsGS{T<:AbstractFloat}
-    dx::T
-    dt::T
-    c_u::T
-    c_v::T
-    f::T
-    k::T
+function run_test(op, op_scope, FT, N)
+    a = cuNumeric.as_type(cuNumeric.random(Float64, (N, N)), FT)
+    b = cuNumeric.as_type(cuNumeric.random(Float64, (N, N)), FT)
+    c_scoped = cuNumeric.zeros(FT, (N, N))
 
-    # Constructor with default values
-    function ParamsGS{T}(
-        dx::T=one(T), c_u::T=one(T), c_v::T=T(0.3), f::T=T(0.03), k::T=T(0.06)
-    ) where {T<:AbstractFloat}
-        new(dx, dx/5, c_u, c_v, f, k)
-    end
+    c_base = op(a, b)
+
+    cuNumeric.disable_gc!()
+    op_scope(a, b, c_scoped)
+    cuNumeric.init_gc!()
+
+    return c_base, c_scoped
 end
 
-function step(u, v, u_new, v_new, args::ParamsGS)
-    @cunumeric begin
-        # calculate F_u and F_v functions
-        # currently we don't have NDArray^x working yet. 
-        F_u = (
-            (
-                -u[2:(end - 1), 2:(end - 1)] .*
-                (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
-            ) + args.f*(1 .- u[2:(end - 1), 2:(end - 1)])
+function run_slice_test(op, op_scoped, FT, N; f=0.04, k=0.06, dx=1.0)
+    u = cuNumeric.as_type(cuNumeric.random(Float64, (N, N)), FT)
+    v = cuNumeric.as_type(cuNumeric.random(Float64, (N, N)), FT)
+    scoped = cuNumeric.zeros(FT, (N-2, N-2))
+    args = (f=FT(f), k=FT(k), dx=FT(dx))
+
+    base = op(u, v, args)
+
+    cuNumeric.disable_gc!()
+    op_scoped(u, v, scoped, args)
+    cuNumeric.init_gc!()
+
+    return base, scoped
+end
+
+binary_scope(op) = (a, b, out) -> @cunumeric out[:, :] = op(a, b)
+slice_scope(op) = (u, v, out, args) -> @cunumeric out[:, :] = op(u, v, args)
+
+const OPS = Dict(
+    :add => (+),
+    :negate_add => ((a, b) -> -a + b),
+    :sub => (-),
+    :mul => (*), :complex => ((a, b) -> (a + b) .* (a - b) .+ (-a .* b)),
+)
+
+const SLICE_OPS = Dict(
+    :F_u => (
+        (u, v, args) -> (
+            -u[2:(end - 1), 2:(end - 1)] .*
+            (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)]) +
+            args.f * (1 .- u[2:(end - 1), 2:(end - 1)])
         )
-        F_v = (
-            (
-                u[2:(end - 1), 2:(end - 1)] .*
-                (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
-            ) - (args.f+args.k)*v[2:(end - 1), 2:(end - 1)]
+    ),
+    :F_v => (
+        (u, v, args) -> (
+            u[2:(end - 1), 2:(end - 1)] .*
+            (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)]) -
+            (args.f + args.k) * v[2:(end - 1), 2:(end - 1)]
         )
-        # 2-D Laplacian of f using array slicing, excluding boundaries
-        # For an N x N array f, f_lap is the Nend x Nend array in the "middle"
-        u_lap = (
+    ),
+    :lap_u => (
+        (u, _, args) -> (
             (
-                u[3:end, 2:(end - 1)] - 2*u[2:(end - 1), 2:(end - 1)] +
+                u[3:end, 2:(end - 1)] .- 2*u[2:(end - 1), 2:(end - 1)] .+
                 u[1:(end - 2), 2:(end - 1)]
-            ) ./ args.dx^2 +
+            ) ./ args.dx^2 .+
             (
-                u[2:(end - 1), 3:end] - 2*u[2:(end - 1), 2:(end - 1)] +
+                u[2:(end - 1), 3:end] .- 2*u[2:(end - 1), 2:(end - 1)] .+
                 u[2:(end - 1), 1:(end - 2)]
             ) ./ args.dx^2
         )
-        v_lap = (
-            (
-                v[3:end, 2:(end - 1)] - 2*v[2:(end - 1), 2:(end - 1)] +
-                v[1:(end - 2), 2:(end - 1)]
-            ) ./ args.dx^2 +
-            (
-                v[2:(end - 1), 3:end] - 2*v[2:(end - 1), 2:(end - 1)] +
-                v[2:(end - 1), 1:(end - 2)]
-            ) ./ args.dx^2
-        )
+    ),
+)
 
-        # # Forward-Euler time step for all points except the boundaries
-        u_new[2:(end - 1), 2:(end - 1)] =
-            ((args.c_u * u_lap) + F_u) * args.dt + u[2:(end - 1), 2:(end - 1)]
-        v_new[2:(end - 1), 2:(end - 1)] =
-            ((args.c_v * v_lap) + F_v) * args.dt + v[2:(end - 1), 2:(end - 1)]
+function run_all_ops(FT, N)
+    results = Dict()
 
-        # Apply periodic boundary conditions
-        u_new[:, 1] = u[:, end - 1]
-        u_new[:, end] = u[:, 2]
-        u_new[1, :] = u[end - 1, :]
-        u_new[end, :] = u[2, :]
-        v_new[:, 1] = v[:, end - 1]
-        v_new[:, end] = v[:, 2]
-        v_new[1, :] = v[end - 1, :]
-        v_new[end, :] = v[2, :]
-    end
-end
-
-# same as above but without @cunumeric macro
-function step_base(u, v, u_new, v_new, args::ParamsGS)
-    # calculate F_u and F_v functions
-    # currently we don't have NDArray^x working yet. 
-    F_u = (
-        (
-            -u[2:(end - 1), 2:(end - 1)] .*
-            (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
-        ) + args.f*(1 .- u[2:(end - 1), 2:(end - 1)])
-    )
-    F_v = (
-        (
-            u[2:(end - 1), 2:(end - 1)] .*
-            (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
-        ) - (args.f+args.k)*v[2:(end - 1), 2:(end - 1)]
-    )
-    # 2-D Laplacian of f using array slicing, excluding boundaries
-    # For an N x N array f, f_lap is the Nend x Nend array in the "middle"
-    u_lap = (
-        (
-            u[3:end, 2:(end - 1)] - 2*u[2:(end - 1), 2:(end - 1)] +
-            u[1:(end - 2), 2:(end - 1)]
-        ) ./ args.dx^2 +
-        (
-            u[2:(end - 1), 3:end] - 2*u[2:(end - 1), 2:(end - 1)] +
-            u[2:(end - 1), 1:(end - 2)]
-        ) ./ args.dx^2
-    )
-    v_lap = (
-        (
-            v[3:end, 2:(end - 1)] - 2*v[2:(end - 1), 2:(end - 1)] +
-            v[1:(end - 2), 2:(end - 1)]
-        ) ./ args.dx^2 +
-        (
-            v[2:(end - 1), 3:end] - 2*v[2:(end - 1), 2:(end - 1)] +
-            v[2:(end - 1), 1:(end - 2)]
-        ) ./ args.dx^2
-    )
-
-    # # Forward-Euler time step for all points except the boundaries
-    u_new[2:(end - 1), 2:(end - 1)] =
-        ((args.c_u * u_lap) + F_u) * args.dt + u[2:(end - 1), 2:(end - 1)]
-    v_new[2:(end - 1), 2:(end - 1)] =
-        ((args.c_v * v_lap) + F_v) * args.dt + v[2:(end - 1), 2:(end - 1)]
-
-    # Apply periodic boundary conditions
-    u_new[:, 1] = u[:, end - 1]
-    u_new[:, end] = u[:, 2]
-    u_new[1, :] = u[end - 1, :]
-    u_new[end, :] = u[2, :]
-    v_new[:, 1] = v[:, end - 1]
-    v_new[:, end] = v[:, 2]
-    v_new[1, :] = v[end - 1, :]
-    v_new[end, :] = v[2, :]
-end
-
-function gray_scott(FT, n_steps)
-    N = 100
-    dims = (N, N)
-    args = ParamsGS{FT}()
-    u = cuNumeric.ones(FT, dims)
-    v = cuNumeric.zeros(FT, dims)
-    u_new = cuNumeric.zeros(FT, dims)
-    v_new = cuNumeric.zeros(FT, dims)
-
-    u[1:15, 1:15] = cuNumeric.as_type(cuNumeric.rand(NDArray, (15, 15)), FT)
-    v[1:15, 1:15] = cuNumeric.as_type(cuNumeric.rand(NDArray, (15, 15)), FT)
-
-    cuNumeric.disable_gc!()
-    for n in 1:n_steps
-        step(u, v, u_new, v_new, args)
-        u, u_new = u_new, u
-        v, v_new = v_new, v
+    # Regular binary/complex ops
+    for (name, op) in OPS
+        c_base, c_scoped = run_test(op, binary_scope(op), FT, N)
+        results[name] = (c_base, c_scoped)
     end
 
-    return u, v
-end
-
-function gray_scott_base(FT, n_steps)
-    N = 100
-    dims = (N, N)
-    args = ParamsGS{FT}()
-    u = cuNumeric.ones(FT, dims)
-    v = cuNumeric.zeros(FT, dims)
-    u_new = cuNumeric.zeros(FT, dims)
-    v_new = cuNumeric.zeros(FT, dims)
-
-    u[1:15, 1:15] = cuNumeric.as_type(cuNumeric.rand(NDArray, (15, 15)), FT)
-    v[1:15, 1:15] = cuNumeric.as_type(cuNumeric.rand(NDArray, (15, 15)), FT)
-
-    cuNumeric.init_gc!()
-    for n in 1:n_steps
-        step_base(u, v, u_new, v_new, args)
-        u, u_new = u_new, u
-        v, v_new = v_new, v
+    # Slice-heavy ops
+    for (name, op) in SLICE_OPS
+        c_base, c_scoped = run_slice_test(op, slice_scope(op), FT, N)
+        results[name] = (c_base, c_scoped)
     end
 
-    return u, v
+    return results
 end

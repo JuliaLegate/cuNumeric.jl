@@ -44,15 +44,13 @@ include("tests/scoping.jl")
 # include("tests/custom_cuda.jl")
 
 @testset verbose = true "Scoping" begin
-    N = 1
+    N = 100
     @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)
-        uscoped, vscoped = gray_scott(T, N)
-        ubase, vbase = gray_scott_base(T, N)
         allowscalar() do
-            # println(ubase; elems=true)
-            # println(uscoped; elems=true)
-            @test cuNumeric.compare(ubase, uscoped, atol(T) * N, rtol(T) * 10)
-            @test cuNumeric.compare(vbase, vscoped, atol(T) * N, rtol(T) * 10)
+            results = run_all_ops(T, N)
+            for (name, (c_base, c_scoped)) in results
+                @test cuNumeric.compare(c_base, c_scoped, atol(T), rtol(T))
+            end
         end
     end
 end
