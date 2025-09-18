@@ -41,19 +41,8 @@ include("tests/gemm.jl")
 include("tests/unary_tests.jl")
 include("tests/binary_tests.jl")
 include("tests/scoping.jl")
+include("tests/scoping-advanced.jl")
 # include("tests/custom_cuda.jl")
-
-@testset verbose = true "Scoping" begin
-    N = 100
-    @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)
-        allowscalar() do
-            results = run_all_ops(T, N)
-            for (name, (c_base, c_scoped)) in results
-                @test cuNumeric.compare(c_base, c_scoped, atol(T), rtol(T))
-            end
-        end
-    end
-end
 
 @testset verbose = true "AXPY" begin
     N = 100
@@ -311,3 +300,24 @@ end
 #     max_diff = Float32(1e-4)
 #     @testset binaryop(max_diff)
 # end
+
+@testset verbose = true "Scoping" begin
+    N = 100
+
+    @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)
+        allowscalar() do
+            results = run_all_ops(T, N)
+            for (name, (c_base, c_scoped)) in results
+                @test cuNumeric.compare(c_base, c_scoped, atol(T), rtol(T))
+            end
+
+            u_rand = cuNumeric.as_type(cuNumeric.rand(NDArray, (15, 15)), T)
+            v_rand = cuNumeric.as_type(cuNumeric.rand(NDArray, (15, 15)), T)
+
+            u, v = gray_scott_base(T, N, u_rand, v_rand)
+            u_scoped, v_scoped = gray_scott(T, N, u_rand, v_rand)
+
+            @test cuNumeric.compare(u, u_scoped, atol(T) * N, rtol(T) * 10)
+        end
+    end
+end

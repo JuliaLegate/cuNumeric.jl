@@ -129,7 +129,7 @@ function step_base(u, v, u_new, v_new, args::ParamsGS)
     v_new[end, :] = v[2, :]
 end
 
-function gray_scott(FT, n_steps)
+function gray_scott(FT, n_steps, u_rand, v_rand)
     N = 100
     dims = (N, N)
     args = ParamsGS{FT}()
@@ -138,8 +138,8 @@ function gray_scott(FT, n_steps)
     u_new = cuNumeric.zeros(FT, dims)
     v_new = cuNumeric.zeros(FT, dims)
 
-    u[1:15, 1:15] = cuNumeric.as_type(cuNumeric.rand(NDArray, (15, 15)), FT)
-    v[1:15, 1:15] = cuNumeric.as_type(cuNumeric.rand(NDArray, (15, 15)), FT)
+    u[1:15, 1:15] = u_rand
+    v[1:15, 1:15] = v_rand
 
     cuNumeric.disable_gc!()
     for n in 1:n_steps
@@ -151,7 +151,7 @@ function gray_scott(FT, n_steps)
     return u, v
 end
 
-function gray_scott_base(FT, n_steps)
+function gray_scott_base(FT, n_steps, u_rand, v_rand)
     N = 100
     dims = (N, N)
     args = ParamsGS{FT}()
@@ -160,8 +160,8 @@ function gray_scott_base(FT, n_steps)
     u_new = cuNumeric.zeros(FT, dims)
     v_new = cuNumeric.zeros(FT, dims)
 
-    u[1:15, 1:15] = cuNumeric.as_type(cuNumeric.rand(NDArray, (15, 15)), FT)
-    v[1:15, 1:15] = cuNumeric.as_type(cuNumeric.rand(NDArray, (15, 15)), FT)
+    u[1:15, 1:15] = u_rand
+    v[1:15, 1:15] = v_rand
 
     cuNumeric.init_gc!()
     for n in 1:n_steps
