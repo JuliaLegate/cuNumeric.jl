@@ -6,7 +6,6 @@ macro cunumeric(block)
     esc(process_ndarray_scope(block))
 end
 
-const ndarray_scope_cache = Dict{UInt64,Expr}()
 const counter = Ref(0)
 
 function maybe_insert_delete(var::NDArray)
@@ -19,14 +18,6 @@ maybe_insert_delete(x) = x
 function process_ndarray_scope(block)
     # Normalize block to list of statements
     stmts = block isa Expr && block.head == :block ? block.args : [block]
-
-    # Hash the content structurally (avoiding pointer identity)
-    h = hash(stmts)
-
-    # Return cached result if present
-    if haskey(ndarray_scope_cache, h)
-        return ndarray_scope_cache[h]
-    end
 
     # Otherwise, process and cache
     assigned_vars = Set{Symbol}()
@@ -49,7 +40,6 @@ function process_ndarray_scope(block)
     end
 
     counter[] = 0
-    ndarray_scope_cache[h] = result
     return result
 end
 
