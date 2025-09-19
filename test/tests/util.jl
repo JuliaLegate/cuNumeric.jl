@@ -9,10 +9,25 @@ const DOMAIN_GENERATORS = Dict{Symbol, Function}(
     :positive => (T, N) -> abs.(rand(T,N))
 )
 
+rtol(::Type{Float16}) = 1e-2
+rtol(::Type{Float32}) = 1e-5
+rtol(::Type{Float64}) = 1e-12
+rtol(::Type{I}) where {I<:Integer} = rtol(float(I))
+atol(::Type{Float16}) = 1e-3
+atol(::Type{Float32}) = 1e-8
+atol(::Type{Float64}) = 1e-15
+atol(::Type{I}) where {I<:Integer} = atol(float(I))
+rtol(::Type{Complex{T}}) where {T} = rtol(T)
+atol(::Type{Complex{T}}) where {T} = atol(T)
+
 is_same(arr1::NDArray, arr2::NDArray) = @allowscalar (arr1 == arr2)[1]
 is_same(arr1::NDArray, arr2::Array) = @allowscalar (arr1 == arr2)[1]
 is_same(arr1::Array, arr2::NDArray) = @allowscalar (arr1 == arr2)[1]
 is_same(arr1::Array, arr2::Array) = (arr1 == arr2)
+
+my_rand(::Type{F}, dims...; L = F(-1000), R = F(1000)) where {F <: AbstractFloat} = L .+ (R-L).*rand(F, dims...)
+my_rand(::Type{I}, dims...; L = I(-255), R = I(255)) where {I <: Signed} = L .+ floor.(I, (R - L + 1) .* rand(dims...))
+my_rand(::Type{Bool}, dims...) = rand(Bool, dims...)
 
 function make_julia_arrays(T, N, domain_key::Symbol; count::Int = 1)
     generator = DOMAIN_GENERATORS[domain_key]

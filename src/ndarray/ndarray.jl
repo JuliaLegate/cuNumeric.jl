@@ -93,6 +93,7 @@ function (::Type{<:Array})(arr::NDArray{B}) where {B}
 end
 
 # conversion from Base Julia array to NDArray
+#! breaks for 1 element arrays???
 function (::Type{<:NDArray{A}})(arr::Array{B}) where {A,B}
     assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
     dims = Base.size(arr)
