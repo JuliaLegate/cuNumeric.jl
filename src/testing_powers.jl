@@ -1,4 +1,7 @@
-include("../cuNumeric.jl/test/tests/util.jl")
+using Pkg
+Pkg.activate("../cn_dev")
+using cuNumeric
+include("/pool/emeitz/repos/cuNumeric.jl/test/tests/util.jl")
 
 N = 9
 

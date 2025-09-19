@@ -71,6 +71,9 @@ __checked_promote_op(op, ::Type{Tuple{A, B}}) where {A,B} = __checked_promote_op
     end
 end
 
+__checked_promote_op(::typeof(Base.inv), ::Type{Tuple{A}}) where A = __recip_type(A)
+
+
 
 # Squaring always maintains type
 # __checked_promote_op(::typeof(Base.literal_pow), a::Type{Tuple{<:Any, ARR_TYPE, Val{2}}}) where ARR_TYPE = ARR_TYPE

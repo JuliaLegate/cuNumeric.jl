@@ -134,8 +134,8 @@ end
     return nda_unary_op(out, cuNumeric.RECIPROCAL, input)
 end
 
-@inline function __broadcast(::typeof(Base.inv), out::NDArray, input::NDArray)
-    return nda_unary_op(out, cuNumeric.RECIPROCAL, input)
+@inline function __broadcast(::typeof(Base.inv), out::NDArray{O}, input::NDArray) where O
+    return nda_unary_op(out, cuNumeric.RECIPROCAL, checked_promote_arr(input,O))
 end
 
 

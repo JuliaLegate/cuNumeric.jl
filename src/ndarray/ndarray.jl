@@ -211,9 +211,8 @@ function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T,0}) where {T}
     print(io, arr[]) #! should I assert scalar??
 end
 
-function Base.show(io::IO, arr::NDArray{T}) where {T}
-    dim = Base.size(arr)
-    print(io, "NDArray of $(T)s, Dim: $(dim)")
+function Base.show(io::IO, arr::NDArray{T,D}; elems=false) where {T,D}
+    print(io, "NDArray of $(T)s, Dim: $(D)")
     if elems # print all elems of array
         dims = shape(arr)
         print(io, "[")
@@ -233,11 +232,11 @@ function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T}; elems=false) whe
     Base.show(io, arr; elems=elems)
 end
 
-function Base.print(arr::NDArray; elems=false)
+function Base.print(arr::NDArray{T}; elems=false) where {T}
     Base.show(stdout, arr; elems=elems)
 end
 
-function Base.println(arr::NDArray; elems=false)
+function Base.println(arr::NDArray{T}; elems=false) where {T}
     Base.show(stdout, arr; elems=elems)
     print("\n")
 end
