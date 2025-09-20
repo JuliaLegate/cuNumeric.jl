@@ -267,8 +267,10 @@ end
             arr_cn = @allowscalar NDArray(arr_jl)
 
             # Differ from Julia here
-            T_OUT = cuNumeric.__recip_type(Base.:(^), T, Int64)
-            res_jl = arr_jl .^ -1
+            T_OUT = cuNumeric.__recip_type(T)
+
+            # Cast julia result to whatever we do
+            res_jl = T_OUT.(arr_jl .^ -1)
             allowpromotion(T == Bool || T == Int32) do
                 res_cn = arr_cn .^ -1
                 res_cn2 = inv.(arr_cn)

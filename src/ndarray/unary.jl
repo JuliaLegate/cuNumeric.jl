@@ -120,22 +120,16 @@ end
     return nda_unary_op(out, cuNumeric.SQUARE, input)
 end
 
-# function square end
-
-# Base.promote_op(::typeof(cuNumeric.square), ::Type{T}) where T = Base.promote_op(Base.:(^), T, Int64)
-# # Base._return_type(::typeof(cuNumeric.square), argT) = Base._return_type(Base.:(^), argT)
-
-# @inline function __broadcast(::typeof(cuNumeric.square), out::NDArray{O}, input::NDArray{T}) where {O, T}
-#     return nda_unary_op(out, cuNumeric.SQUARE, checked_promote_arr(input, O))
-# end
-
-# could also define for inv on single array
-@inline function __broadcast(::typeof(Base.literal_pow), out::NDArray{O}, _, input::NDArray{T}, ::Type{Val{-1}}) where {T,O}
-    return nda_unary_op(out, cuNumeric.RECIPROCAL, input)
+@inline function __broadcast(::typeof(Base.literal_pow), out::NDArray{O}, _, input::NDArray, ::Type{Val{-1}}) where O
+    copyto!(out, O(1) ./ checked_promote_arr(input,O)) #! HAS EXTRA ALLOC, REPLACE WITH RECIP ONCE FIXED
+    return out
+    # return nda_unary_op(out, cuNumeric.RECIPROCAL, input)
 end
 
 @inline function __broadcast(::typeof(Base.inv), out::NDArray{O}, input::NDArray) where O
-    return nda_unary_op(out, cuNumeric.RECIPROCAL, checked_promote_arr(input,O))
+    copyto!(out, O(1) ./ checked_promote_arr(input,O)) #! HAS EXTRA ALLOC, REPLACE WITH RECIP ONCE FIXED
+    return out
+    # return nda_unary_op(out, cuNumeric.RECIPROCAL, checked_promote_arr(input,O))
 end
 
 
