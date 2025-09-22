@@ -1,9 +1,6 @@
 using Base.Broadcast: DefaultArrayStyle, Broadcasted, AbstractArrayStyle
 
 
-#TODO Implement Broadcasting with scalars
-
-
 struct NDArrayStyle{N} <: AbstractArrayStyle{N} end
 Base.BroadcastStyle(::Type{<:NDArray{<:Any, N}}) where N = NDArrayStyle{N}()
 Base.BroadcastStyle(::NDArrayStyle{N}, ::NDArrayStyle{M}) where {N,M} = NDArrayStyle{max(N,M)}()
@@ -59,30 +56,16 @@ __checked_promote_op(op, ::Type{Tuple{A}}) where A = __checked_promote_op(op, A)
 __checked_promote_op(op, ::Type{Tuple{A, B}}) where {A,B} = __checked_promote_op(op, A, B)
 
 # Path for literal powers
-#! DONT LOVE THAT THIS HAS IF-ELSE LOGIC...
-#! BUT I DONT THINK YOU CAN DISPATCH ON THE LITERAL WITHOUT BEING AMBIGUIOUS
 @inline function __checked_promote_op(f::typeof(Base.literal_pow), a::Type{Tuple{_, ARR_TYPE, Val{POWER}}}) where {_,ARR_TYPE, POWER} 
-    if POWER == -1
-        return __recip_type(ARR_TYPE)
-    elseif POWER == 2
-        return ARR_TYPE
-    else
-        return __checked_promote_op(Base.:(^), ARR_TYPE, typeof(POWER))
-    end
+    return __checked_promote_op(Base.:(^), ARR_TYPE, typeof(POWER))
 end
+__checked_promote_op(f::typeof(Base.literal_pow), a::Type{Tuple{_, ARR_TYPE, Val{-1}}}) where {_,ARR_TYPE} = __recip_type(ARR_TYPE) 
+__checked_promote_op(f::typeof(Base.literal_pow), a::Type{Tuple{_, ARR_TYPE, Val{2}}}) where {_,ARR_TYPE} = ARR_TYPE
 
 __checked_promote_op(::typeof(Base.inv), ::Type{Tuple{A}}) where A = __recip_type(A)
 
 
-
-# Squaring always maintains type
-# __checked_promote_op(::typeof(Base.literal_pow), a::Type{Tuple{<:Any, ARR_TYPE, Val{2}}}) where ARR_TYPE = ARR_TYPE
-
 # Inverse always goes to Float (not Julia behavior)
-# __checked_promote_op(::typeof(Base.literal_pow), a::Type{Tuple{<:Any, ARR_TYPE, Val{-1}}}) where {ARR_TYPE <: AbstractFloat} = ARR_TYPE
-# __checked_promote_op(::typeof(Base.literal_pow), a::Type{Tuple{<:Any, Int32, Val{-1}}}) = Float32
-# __checked_promote_op(::typeof(Base.literal_pow), a::Type{Tuple{<:Any, Int64, Val{-1}}}) = Float64
-# __checked_promote_op(::typeof(Base.literal_pow), a::Type{Tuple{<:Any, Bool, Val{-1}}}) = DEFAULT_FLOAT
 __recip_type(::Type{ARR_TYPE}) where {ARR_TYPE <: AbstractFloat} = ARR_TYPE
 __recip_type(::Type{Int32}) = Float32
 __recip_type(::Type{Int64}) = Float64
@@ -144,6 +127,11 @@ function __broadcast(f::Function, _, args...)
         but it is necessary until support is added."""
     )
 end
+
+# Get depth of Broadcast tree recursively 
+# Need to call instantiate first 
+bcast_depth(bc::Base.Broadcast.Broadcasted) = maximum(bcast_depth, bc.args, init=0) + 1;
+bcast_depth(::Any) = 0
 
 function Base.Broadcast.materialize(bc::Broadcasted{<:NDArrayStyle})
     ElType = Broadcast.combine_eltypes(bc.f, bc.args)
@@ -209,3 +197,4 @@ function Base.copyto!(dest::NDArray, bc::Broadcasted{<:NDArrayStyle})
     # CALL MOVE ASSIGNMENT ONTO SELF
     return copyto!(dest, Base.Broadcast.materialize(bc))
 end
+
