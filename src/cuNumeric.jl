@@ -73,6 +73,7 @@ include("warnings.jl")
 include("ndarray/detail/ndarray.jl")
 
 # NDArray interface
+include("ndarray/promotion.jl")
 include("ndarray/broadcast.jl")
 include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
