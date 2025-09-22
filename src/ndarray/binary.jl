@@ -19,6 +19,8 @@ The following binary operations are supported and can be applied elementwise to 
   • `hypot`
   • `max`
   • `min`
+  • `lcm`
+  • `gcd`
 
 These operations are applied elementwise by default and follow standard Julia semantics.
 
@@ -61,6 +63,8 @@ global const binary_op_map = Dict{Function,BinaryOpCode}(
     Base.:(>=) => cuNumeric.GREATER_EQUAL, #* Julia also has non-broadcasted versions required `isless`
     Base.:(!=) => cuNumeric.NOT_EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION)
     Base.:(==) => cuNumeric.EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION),
+    Base.lcm => cuNumeric.LCM,
+    Base.gcd => cuNumeric.GCD,
     # Base.xor => cuNumeric.LOGICAL_XOR, #! DO LATER
     # Base.:⊻ => cuNumeric.LOGICAL_XOR, #! DO LATER
     # Base.div => cuNumeric.FLOOR_DIVIDE, #! THESE ARE IN-EXACT FOR INTS?
@@ -249,15 +253,6 @@ end
     return nda_binary_op(out, cuNumeric.POWER, input, power)
 end
 
-@inline function Base.lcm(input::NDArray{T}) where {T<:Integer}
-    out = cuNumeric.zeros(T, size(input))
-    return nda_binary_op(out, cuNumeric.LCM, input)
-end
-
-@inline function Base.gcd(input::NDArray{T}) where {T<:Integer}
-    out = cuNumeric.zeros(T, size(input))
-    return nda_binary_op(out, cuNumeric.GCD, input)
-end
 
 # This is more "Julian" since a user expects map to broadcast
 # their operation whereas the generated functions should technically

@@ -108,7 +108,7 @@ function Base.:(-)(input::NDArray{T}) where T
 end
 
 function Base.:(-)(input::NDArray{Bool})
-    throw(error(ArgumentError("cuNumeric.jl does not support negation (-) of Boolean NDArrays")))
+    return -(checked_promote_arr(input, DEFAULT_INT))
 end
 
 
@@ -121,13 +121,13 @@ end
 end
 
 @inline function __broadcast(::typeof(Base.literal_pow), out::NDArray{O}, _, input::NDArray, ::Type{Val{-1}}) where O
-    copyto!(out, O(1) ./ checked_promote_arr(input,O)) #! HAS EXTRA ALLOC, REPLACE WITH RECIP ONCE FIXED
+    nda_move(out, O(1) ./ checked_promote_arr(input,O)) #! REPLACE WITH RECIP ONCE FIXED
     return out
     # return nda_unary_op(out, cuNumeric.RECIPROCAL, input)
 end
 
 @inline function __broadcast(::typeof(Base.inv), out::NDArray{O}, input::NDArray) where O
-    copyto!(out, O(1) ./ checked_promote_arr(input,O)) #! HAS EXTRA ALLOC, REPLACE WITH RECIP ONCE FIXED
+    nda_move(out, O(1) ./ checked_promote_arr(input,O)) #! REPLACE WITH RECIP ONCE FIXED
     return out
     # return nda_unary_op(out, cuNumeric.RECIPROCAL, checked_promote_arr(input,O))
 end

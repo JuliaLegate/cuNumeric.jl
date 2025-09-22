@@ -65,7 +65,20 @@ end
             test_unary_function_set(cuNumeric.unary_op_map_no_args, T, N)
         end
 
-        #!SPECIAL CASES (!, -, ^-1, ^2)
+        # Special cases for unary ops that dont use . syntax
+        @testset "- (Negation)" begin
+            arr = my_rand(T, N)
+            arr_cn = @allowscalar NDArray(arr)
+
+            allowscalar() do
+                allowpromotion(T == Bool) do
+                    T_OUT = T == Bool ? cuNumeric.DEFAULT_INT : T
+                    @test cuNumeric.compare(T_OUT.(-arr), -arr_cn, atol(T), rtol(T))
+                end
+            end
+        end
+
+        #!SPECIAL CASES (!, -)
     end
 end
 
@@ -121,9 +134,21 @@ end
         allowpromotion(T == Bool) do
             test_binary_function_set(cuNumeric.binary_op_map, T, N)
         end
+
+        if T <: cuNumeric.SUPPORTED_INT_TYPES
+            arr_jl = my_rand(T, N)
+            arr_jl2 = my_rand(T, N)
+            arr_cn = @allowscalar NDArray(arr_jl)
+            arr_cn2 = @allowscalar NDArray(arr_jl2)
+
+            allowscalar() do
+                @test cuNumeric.compare(lcm.(arr_jl, arr_jl2), lcm.(arr_cn, arr_cn2), atol(T), rtol(T))
+                @test cuNumeric.compare(gcd.(arr_jl, arr_jl2), gcd.(arr_cn, arr_cn2), atol(T), rtol(T))
+            end
+        end
     end
 
-    #! TODO SPECIAL CASES (^, ==, !=, lcm, gcd, non-broadcast funcs etc.)
+    #! TODO SPECIAL CASES (==, !=, non-broadcast funcs etc.)
 
     @testset "Type and Shape Promotion" begin
         cunumeric_arr1 = cuNumeric.zeros(Float64, N)

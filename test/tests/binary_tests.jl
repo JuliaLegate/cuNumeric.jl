@@ -20,11 +20,14 @@ end
 
 function test_binary_function_set(func_dict, T, N)
 
+    skip = (Base.lcm, Base.gcd)
 
     @testset "$func" for func in keys(func_dict)
 
         # This is tested separately 
         func == Base.:(^) && continue 
+
+        (func in skip) && continue
 
         arrs_jl = make_julia_arrays(T, N, :uniform; count = 2)
         arrs_cunum = make_cunumeric_arrays(arrs_jl[1:2], arrs_jl[3:4], T, N; count = 2)
