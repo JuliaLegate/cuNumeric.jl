@@ -10,7 +10,7 @@ Depth = 2:2
 
 ```@autodocs
 Modules = [cuNumeric]
-Pages = ["cuNumeric.jl", "memory.jl", "util.jl", "ndarray/ndarray.jl", "ndarray/unary.jl", "ndarray/binary.jl"]
+Pages = ["cuNumeric.jl", "memory.jl", "scoping.jl", "warnings.jl", "util.jl", "ndarray/ndarray.jl", "ndarray/unary.jl", "ndarray/binary.jl"]
 ```
 
 # CUDA.jl Tasking
