@@ -18,42 +18,36 @@
 =#
 
 #= Purpose of test: daxpy
-    - Test a matrix matrix multiply
+    -- Focused on double 2 dimenional. Does not test other types or dims. 
+    -- NDArray intialization 
+    -- NDArray writing and reading scalar indexing
+    --          shows both [i, j] and [(i, j)] working
+    -- NDArray addition and multiplication
 =#
-function sgemm(max_diff)
-    N = 100
-    FT = Float32
-
+function axpy_basic(T, N)
+    α = T(56.6)
     dims = (N, N)
 
     # Base julia arrays
-    A_cpu = rand(FT, dims);
-    B_cpu = rand(FT, dims);
+    x_cpu = rand(T, dims);
+    y_cpu = rand(T, dims);
 
     # cunumeric arrays
-    A = cuNumeric.zeros(Float64, dims)
-    B = cuNumeric.zeros(Float64, dims)
+    x = cuNumeric.zeros(T, dims)
+    y = cuNumeric.zeros(T, dims)
 
-    # Initialize NDArrays with random values
-    # used in Julia arrays
-    for i in 1:N
+    # Initialize NDArrays with same random values as julia arrays
+    @allowscalar for i in 1:N
         for j in 1:N
-            A[i, j] = Float64(A_cpu[i, j])
-            B[i, j] = Float64(B_cpu[i, j])
+            x[i, j] = x_cpu[i, j]
+            y[i, j] = y_cpu[i, j]
         end
     end
 
-    # Needed to start as Float64 to 
-    # initialize the NDArray
-    C_cpu = A_cpu .* B_cpu
-
-    A = cuNumeric.as_type(A, FT)
-    B = cuNumeric.as_type(B, FT)
-    C = cuNumeric.zeros(FT, N, N)
-
-    C = A * B
-
-    @test cuNumeric.compare(C, C_cpu, max_diff)
-    # same comparison as above using approx
-    @test C ≈ C_cpu atol=max_diff
+    result = α .* x .+ y
+    result_cpu = α .* x_cpu .+ y_cpu
+    allowscalar() do
+        @test cuNumeric.compare(result, result_cpu, atol(T), rtol(T))
+        @test cuNumeric.compare(result_cpu, result, atol(T), rtol(T))
+    end
 end
