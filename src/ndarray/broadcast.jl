@@ -49,7 +49,7 @@ bcast_depth(::Any) = 0
 function Base.Broadcast.materialize(bc::Broadcasted{<:NDArrayStyle})
     ElType = Broadcast.combine_eltypes(bc.f, bc.args)
     if ElType == Union{} || !Base.allocatedinline(ElType)
-        error("Cannot broadcast $(bc.f) over eltypes: $(eltype.(bc.args))")
+        error("Cannot broadcast $(bc.f) over NDArrays with eltypes: $(eltype.(bc.args))")
     end
 
     #* This be the place to inject kernel fusion via CUDA.jl

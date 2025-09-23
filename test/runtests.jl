@@ -135,20 +135,30 @@ end
             test_binary_function_set(cuNumeric.binary_op_map, T, N)
         end
 
-        if T <: cuNumeric.SUPPORTED_INT_TYPES
+        # Special cases
+        @testset "lcm, gcd, ==, !=" begin
+
             arr_jl = my_rand(T, N)
             arr_jl2 = my_rand(T, N)
             arr_cn = @allowscalar NDArray(arr_jl)
             arr_cn2 = @allowscalar NDArray(arr_jl2)
 
+            if T <: cuNumeric.SUPPORTED_INT_TYPES
+                allowscalar() do
+                    @test cuNumeric.compare(lcm.(arr_jl, arr_jl2), lcm.(arr_cn, arr_cn2), atol(T), rtol(T))
+                    @test cuNumeric.compare(gcd.(arr_jl, arr_jl2), gcd.(arr_cn, arr_cn2), atol(T), rtol(T))
+                end
+            end
+
             allowscalar() do
-                @test cuNumeric.compare(lcm.(arr_jl, arr_jl2), lcm.(arr_cn, arr_cn2), atol(T), rtol(T))
-                @test cuNumeric.compare(gcd.(arr_jl, arr_jl2), gcd.(arr_cn, arr_cn2), atol(T), rtol(T))
+                @test unwrap(arr_cn == arr_cn)
+                @test !unwrap(arr_cn == arr_cn2)
+                @test unwrap(arr_cn != arr_cn2)
+                @test !unwrap(arr_cn != arr_cn)
+                @test unwrap(all(arr_cn .== arr_cn))
             end
         end
     end
-
-    #! TODO SPECIAL CASES (==, !=, non-broadcast funcs etc.)
 
     @testset "Type and Shape Promotion" begin
         cunumeric_arr1 = cuNumeric.zeros(Float64, N)

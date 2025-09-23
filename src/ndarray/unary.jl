@@ -101,6 +101,10 @@ global const unary_op_map_no_args = Dict{Function, UnaryOpCode}(
 
 ### SPECIAL CASES ###
 
+# Needed to support != 
+Base.:(!)(input::NDArray{Bool,0}) = nda_unary_op(similar(input), cuNumeric.LOGICAL_NOT, input)
+Base.:(!)(input::NDArray{Bool,1}) = nda_unary_op(similar(input), cuNumeric.LOGICAL_NOT, input)
+
 # Non-broadcasted version of negation
 function Base.:(-)(input::NDArray{T}) where T
     out = cuNumeric.zeros(T, size(input))
