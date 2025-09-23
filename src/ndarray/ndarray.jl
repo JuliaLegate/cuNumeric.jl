@@ -17,6 +17,8 @@
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 
+export unwrap
+
 @doc"""
     Base.copy(arr::NDArray)
 
@@ -612,6 +614,10 @@ function reshape(arr::NDArray, i::Int64; copy::Bool=false)
     return copy ? copy(reshaped) : reshaped
 end
 
+# Ignore the scalar indexing here...
+unwrap(x::NDArray{<:Any,0}) = @allowscalar x[]
+unwrap(x::NDArray{<:Any,1}) = @allowscalar x[][1] # assumes 1 element
+
 @doc"""
     ==(arr1::NDArray, arr2::NDArray)
 
@@ -637,6 +643,10 @@ a == c
 """
 function Base.:(==)(arr1::NDArray{T,N}, arr2::NDArray{T,N}) where {T,N}
     return nda_array_equal(arr1, arr2) #DOESNT RETURN SCALAR
+end
+
+function Base.:(!=)(arr1::NDArray{T,N}, arr2::NDArray{T,N}) where {T,N}
+    return !(arr1 == arr2)
 end
 
 @doc"""

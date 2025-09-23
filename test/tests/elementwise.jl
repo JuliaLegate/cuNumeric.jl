@@ -40,7 +40,6 @@ function elementwise()
 
         arrA_cpu = Array(arrA)
         arrB_cpu = Array(arrB)
-
         @test arrA == arrA_cpu
         @test arrB == arrB_cpu
 

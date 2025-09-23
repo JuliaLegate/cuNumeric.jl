@@ -55,7 +55,7 @@ log.(A .+ 1)
 -sqrt.(abs.(A))
 ```
 """
-global const floaty_unary_ops_no_args = Dict{Function, UnaryOpCode}(
+global const floaty_unary_ops_no_args = Dict{Function,UnaryOpCode}(
     Base.acos => cuNumeric.ARCCOS,
     Base.acosh => cuNumeric.ARCCOSH,
     Base.asin => cuNumeric.ARCSIN,
@@ -81,7 +81,7 @@ global const floaty_unary_ops_no_args = Dict{Function, UnaryOpCode}(
     Base.tanh => cuNumeric.TANH,
 )
 
-global const unary_op_map_no_args = Dict{Function, UnaryOpCode}(
+global const unary_op_map_no_args = Dict{Function,UnaryOpCode}(
     Base.abs => cuNumeric.ABSOLUTE,
     # Base.conj => cuNumeric.CONJ, #! NEED TO SUPPORT COMPLEX TYPES FIRST
     Base.:(-) => cuNumeric.NEGATIVE,
@@ -94,50 +94,49 @@ global const unary_op_map_no_args = Dict{Function, UnaryOpCode}(
     # Base.isnan => cuNumeric.ISNAN, #* dont feel like looking into Inf rn
     # Base.modf => cuNumeric.MODF, #* annoying returns tuple
     #missing => cuNumeric.POSITIVE, #What is this even for
-    Base.sign => cuNumeric.SIGN, 
+    Base.sign => cuNumeric.SIGN,
     # Base.signbit => cuNumeric.SIGNBIT, #! Doesnt support Bool, I do not feel like dealing with this right now...
 )
 
-
 ### SPECIAL CASES ###
 
+# Needed to support != 
+Base.:(!)(input::NDArray{Bool,0}) = nda_unary_op(similar(input), cuNumeric.LOGICAL_NOT, input)
+Base.:(!)(input::NDArray{Bool,1}) = nda_unary_op(similar(input), cuNumeric.LOGICAL_NOT, input)
+
 # Non-broadcasted version of negation
-function Base.:(-)(input::NDArray{T}) where T
+function Base.:(-)(input::NDArray{T}) where {T}
     out = cuNumeric.zeros(T, size(input))
     return nda_unary_op(out, cuNumeric.NEGATIVE, input)
 end
 
 function Base.:(-)(input::NDArray{Bool})
-    throw(error(ArgumentError("cuNumeric.jl does not support negation (-) of Boolean NDArrays")))
+    return -(checked_promote_arr(input, DEFAULT_INT))
 end
 
-
-function Base.sqrt(input::NDArray{T,2}) where T
+function Base.sqrt(input::NDArray{T,2}) where {T}
     error("cuNumeric.jl does not support matrix square root.")
 end
 
-@inline function __broadcast(f::typeof(Base.literal_pow), out::NDArray{O}, _, input::NDArray{T}, ::Type{Val{2}}) where {T,O}
+@inline function __broadcast(
+    f::typeof(Base.literal_pow), out::NDArray{O}, _, input::NDArray{T}, ::Type{Val{2}}
+) where {T,O}
     return nda_unary_op(out, cuNumeric.SQUARE, input)
 end
 
-# function square end
-
-# Base.promote_op(::typeof(cuNumeric.square), ::Type{T}) where T = Base.promote_op(Base.:(^), T, Int64)
-# # Base._return_type(::typeof(cuNumeric.square), argT) = Base._return_type(Base.:(^), argT)
-
-# @inline function __broadcast(::typeof(cuNumeric.square), out::NDArray{O}, input::NDArray{T}) where {O, T}
-#     return nda_unary_op(out, cuNumeric.SQUARE, checked_promote_arr(input, O))
-# end
-
-# could also define for inv on single array
-@inline function __broadcast(::typeof(Base.literal_pow), out::NDArray{O}, _, input::NDArray{T}, ::Type{Val{-1}}) where {T,O}
-    return nda_unary_op(out, cuNumeric.RECIPROCAL, input)
+@inline function __broadcast(
+    ::typeof(Base.literal_pow), out::NDArray{O}, _, input::NDArray, ::Type{Val{-1}}
+) where {O}
+    nda_move(out, O(1) ./ checked_promote_arr(input, O)) #! REPLACE WITH RECIP ONCE FIXED
+    return out
+    # return nda_unary_op(out, cuNumeric.RECIPROCAL, input)
 end
 
-@inline function __broadcast(::typeof(Base.inv), out::NDArray, input::NDArray)
-    return nda_unary_op(out, cuNumeric.RECIPROCAL, input)
+@inline function __broadcast(::typeof(Base.inv), out::NDArray{O}, input::NDArray) where {O}
+    nda_move(out, O(1) ./ checked_promote_arr(input, O)) #! REPLACE WITH RECIP ONCE FIXED
+    return out
+    # return nda_unary_op(out, cuNumeric.RECIPROCAL, checked_promote_arr(input,O))
 end
-
 
 #! NEEDS TO SUPPORT inv and ^ -1
 # @inline function literal_pow(::typeof(^), A::NDArray{T, 2}, ::Val{-1}) where T
@@ -149,7 +148,6 @@ end
 #     # return nda_matrix_power(out, A, -1)
 # end
 
-
 # Only supported for Bools
 @inline function __broadcast(f::typeof(Base.:(!)), out::NDArray{Bool}, input::NDArray{Bool})
     return nda_unary_op(out, cuNumeric.LOGICAL_NOT, input)
@@ -158,7 +156,9 @@ end
 # Generate hidden broadcasted version of unary ops.
 for (julia_fn, op_code) in unary_op_map_no_args
     @eval begin
-        @inline  function __broadcast(f::typeof($julia_fn), out::NDArray{T}, input::NDArray{T}) where T
+        @inline function __broadcast(
+            f::typeof($julia_fn), out::NDArray{T}, input::NDArray{T}
+        ) where {T}
             return nda_unary_op(out, $(op_code), input)
         end
     end
@@ -169,12 +169,16 @@ end
 # the input is integer, we first promote the input to float.
 for (julia_fn, op_code) in floaty_unary_ops_no_args
     @eval begin
-        @inline  function __broadcast(f::typeof($julia_fn), out::NDArray{T}, input::NDArray{T}) where T
+        @inline function __broadcast(
+            f::typeof($julia_fn), out::NDArray{T}, input::NDArray{T}
+        ) where {T}
             return nda_unary_op(out, $(op_code), input)
         end
 
         # If input is not already float, promote to that
-        @inline  function __broadcast(f::typeof($julia_fn), out::NDArray{A}, input::NDArray{B}) where {A <: SUPPORTED_FLOAT_TYPES, B <: Union{SUPPORTED_INT_TYPES, Bool}}
+        @inline function __broadcast(
+            f::typeof($julia_fn), out::NDArray{A}, input::NDArray{B}
+        ) where {A<:SUPPORTED_FLOAT_TYPES,B<:Union{SUPPORTED_INT_TYPES,Bool}}
             return __broadcast(f, out, checked_promote_arr(input, A))
         end
     end
@@ -253,7 +257,7 @@ global const unary_reduction_map = Dict{Function,UnaryRedCode}(
 # Generate code for all unary reductions.
 for (base_func, op_code) in unary_reduction_map
     @eval begin
-        function $(Symbol(base_func))(input::NDArray{T}) where T
+        function $(Symbol(base_func))(input::NDArray{T}) where {T}
             T_OUT = Base.promote_op($base_func, Vector{T})
             is_wider_type(T_OUT, T) && assertpromotion($base_func, T, T_OUT)
             out = cuNumeric.zeros(T_OUT) #0D result (not right if reducing along dims)
@@ -262,13 +266,12 @@ for (base_func, op_code) in unary_reduction_map
     end
 end
 
-
-function Base.all(input::NDArray{Bool}) 
+function Base.all(input::NDArray{Bool})
     out = cuNumeric.zeros(Bool)
     return nda_unary_reduction(out, cuNumeric.ALL, input)
 end
 
-function Base.any(input::NDArray{Bool}) 
+function Base.any(input::NDArray{Bool})
     out = cuNumeric.zeros(Bool)
     return nda_unary_reduction(out, cuNumeric.ANY, input)
 end
@@ -281,7 +284,6 @@ end
 # function Base.reduce(f::Function, arr::NDArray)
 #     return f(arr)
 # end
-
 
 #* TODO Overload broadcasting to just call this
 #* e.g. sin.(ndarray) should call this or the proper generated func

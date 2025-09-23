@@ -19,6 +19,8 @@ The following binary operations are supported and can be applied elementwise to 
   • `hypot`
   • `max`
   • `min`
+  • `lcm`
+  • `gcd`
 
 These operations are applied elementwise by default and follow standard Julia semantics.
 
@@ -61,6 +63,8 @@ global const binary_op_map = Dict{Function,BinaryOpCode}(
     Base.:(>=) => cuNumeric.GREATER_EQUAL, #* Julia also has non-broadcasted versions required `isless`
     Base.:(!=) => cuNumeric.NOT_EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION)
     Base.:(==) => cuNumeric.EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION),
+    Base.lcm => cuNumeric.LCM,
+    Base.gcd => cuNumeric.GCD,
     # Base.xor => cuNumeric.LOGICAL_XOR, #! DO LATER
     # Base.:⊻ => cuNumeric.LOGICAL_XOR, #! DO LATER
     # Base.div => cuNumeric.FLOOR_DIVIDE, #! THESE ARE IN-EXACT FOR INTS?
@@ -161,7 +165,7 @@ function LinearAlgebra.mul!(
     T_OUT = __my_promote_type(A, B)
     ((T_OUT <: AbstractFloat) && (T <: Integer)) && throw(
         ArgumentError(
-            "mul! output has integer type $(T), but inputs promote to floating point type: $(T_OUT)",
+            "mul! output has integer type $(T), but inputs promote to floating point type: $(T_OUT)"
         ),
     )
     return nda_three_dot_arg(checked_promote_arr(rhs1, T), checked_promote_arr(rhs2, T), out)
@@ -247,16 +251,6 @@ end
     f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, power::NDArray{T}
 ) where {T}
     return nda_binary_op(out, cuNumeric.POWER, input, power)
-end
-
-@inline function Base.lcm(input::NDArray{T}) where {T<:Integer}
-    out = cuNumeric.zeros(T, size(input))
-    return nda_binary_op(out, cuNumeric.LCM, input)
-end
-
-@inline function Base.gcd(input::NDArray{T}) where {T<:Integer}
-    out = cuNumeric.zeros(T, size(input))
-    return nda_binary_op(out, cuNumeric.GCD, input)
 end
 
 # This is more "Julian" since a user expects map to broadcast
