@@ -43,7 +43,7 @@ n_samples = parse(Int, ARGS[4])
 n_warmup = parse(Int, ARGS[5])
 
 println(
-    "[cuNumeric]  MATMUL benchmark on $(N)x$(M) matricies for $(n_samples) iterations, $(n_warmup) warmups",
+    "[cuNumeric]  MATMUL benchmark on $(N)x$(M) matricies for $(n_samples) iterations, $(n_warmup) warmups"
 )
 
 mean_time_ms, gflops = gemm_cunumeric(N, M, n_samples, n_warmup)

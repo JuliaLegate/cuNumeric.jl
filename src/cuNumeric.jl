@@ -25,6 +25,8 @@ include("utilities/wrapper_download.jl")
 const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.05.00"]
 
 const DEFAULT_FLOAT = Float32
+const DEFAULT_INT = Int32
+
 const SUPPORTED_INT_TYPES = Union{Int32,Int64}
 const SUPPORTED_FLOAT_TYPES = Union{Float32,Float64}
 const SUPPORTED_NUMERIC_TYPES = Union{SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES}
@@ -66,18 +68,23 @@ preload_libs() # for precompilation
 # custom GC
 include("memory.jl")
 
+# allowscalar and allowpromotion
+include("warnings.jl")
+
 # NDArray internal
 include("ndarray/detail/ndarray.jl")
 
 # NDArray interface
+include("ndarray/promotion.jl")
+include("ndarray/broadcast.jl")
 include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
 
-# Custom CUDA.jl kernel integration
+# # Custom CUDA.jl kernel integration
 include("cuda.jl")
 
-# Utilities 
+# # Utilities 
 include("utilities/version.jl")
 include("util.jl")
 
@@ -133,4 +140,5 @@ function __init__()
     global cuNumeric_config_str = version_config_setup()
     cunumeric_setup(AA)
 end
-end
+
+end #module cuNumeric

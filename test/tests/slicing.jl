@@ -21,52 +21,52 @@
     -- Perform NDArray operations using slices for more efficient memory access
 =#
 
-struct Params
-    dx::Float64
-    dt::Float64
-    c_u::Float64
-    c_v::Float64
-    f::Float64
-    k::Float64
+struct Params{T}
+    dx::T
+    dt::T
+    c_u::T
+    c_v::T
+    f::T
+    k::T
 
-    function Params(dx=0.1, c_u=1.0, c_v=0.3, f=0.03, k=0.06)
-        new(dx, dx/5, c_u, c_v, f, k)
+    function Params(::Type{T}, dx=T(0.1), c_u=T(1.0), c_v=T(0.3), f=T(0.03), k=T(0.06)) where {T <: AbstractFloat}
+        new{T}(dx, dx/T(5), c_u, c_v, f, k)
     end
 end
 
-function slicing(max_diff)
-    N = 100
+function slicing(T, N)
     dims = (N, N)
 
-    FT = Float64
-    args = Params()
+    args = Params(T)
 
-    u = cuNumeric.zeros(Float64, dims)
-    v = cuNumeric.zeros(Float64, dims)
+    u = cuNumeric.zeros(T, dims)
+    v = cuNumeric.zeros(T, dims)
 
-    u_cpu = rand(FT, dims);
-    v_cpu = rand(FT, dims);
+    u_cpu = rand(T, dims);
+    v_cpu = rand(T, dims);
 
-    for i in 1:N
+    @allowscalar for i in 1:N
         for j in 1:N
-            u[i, j] = Float64(u_cpu[i, j])
-            v[i, j] = Float64(v_cpu[i, j])
+            u[i, j] = T(u_cpu[i, j])
+            v[i, j] = T(v_cpu[i, j])
         end
     end
 
-    u_new = cuNumeric.zeros(Float64, dims)
-    v_new = cuNumeric.zeros(Float64, dims)
+    u_new = cuNumeric.zeros(T, dims)
+    v_new = cuNumeric.zeros(T, dims)
 
-    u_new_cpu = zeros(dims)
-    v_new_cpu = zeros(dims)
+    u_new_cpu = zeros(T, dims)
+    v_new_cpu = zeros(T, dims)
 
     step(u_cpu, v_cpu, u_new_cpu, v_new_cpu, args)
     step(u, v, u_new, v_new, args)
 
-    @test cuNumeric.compare(u, u_cpu, max_diff)
-    @test cuNumeric.compare(v, v_cpu, max_diff)
-    @test cuNumeric.compare(u_new, u_new_cpu, max_diff)
-    @test cuNumeric.compare(v_new, v_new_cpu, max_diff)
+    allowscalar() do
+        @test cuNumeric.compare(u, u_cpu, atol(T), rtol(T))
+        @test cuNumeric.compare(v, v_cpu, atol(T), rtol(T))
+        @test cuNumeric.compare(u_new, u_new_cpu, atol(T), rtol(T))
+        @test cuNumeric.compare(v_new, v_new_cpu, atol(T), rtol(T))
+    end
 end
 
 # gray scott
