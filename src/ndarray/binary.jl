@@ -165,7 +165,7 @@ function LinearAlgebra.mul!(
     T_OUT = __my_promote_type(A, B)
     ((T_OUT <: AbstractFloat) && (T <: Integer)) && throw(
         ArgumentError(
-            "mul! output has integer type $(T), but inputs promote to floating point type: $(T_OUT)",
+            "mul! output has integer type $(T), but inputs promote to floating point type: $(T_OUT)"
         ),
     )
     return nda_three_dot_arg(checked_promote_arr(rhs1, T), checked_promote_arr(rhs2, T), out)
@@ -252,7 +252,6 @@ end
 ) where {T}
     return nda_binary_op(out, cuNumeric.POWER, input, power)
 end
-
 
 # This is more "Julian" since a user expects map to broadcast
 # their operation whereas the generated functions should technically
