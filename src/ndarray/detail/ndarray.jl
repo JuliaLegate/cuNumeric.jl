@@ -60,7 +60,6 @@ end
 
 NDArray(value::T) where {T<:SUPPORTED_TYPES} = nda_full_array(UInt64[], value)
 
-
 # construction 
 function nda_zeros_array(shape::Vector{UInt64}, ::Type{T}) where {T}
     n_dim = Int32(length(shape))

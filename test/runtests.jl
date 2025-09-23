@@ -29,6 +29,8 @@ include("tests/slicing.jl")
 include("tests/gemm.jl")
 include("tests/unary_tests.jl")
 include("tests/binary_tests.jl")
+include("tests/scoping.jl")
+include("tests/scoping-advanced.jl")
 # include("tests/custom_cuda.jl")
 
 @testset verbose = true "AXPY" begin
@@ -64,7 +66,6 @@ end
         allowpromotion(T == Bool) do
             test_unary_function_set(cuNumeric.unary_op_map_no_args, T, N)
         end
-
         # Special cases for unary ops that dont use . syntax
         @testset "- (Negation)" begin
             arr = my_rand(T, N)
@@ -137,7 +138,6 @@ end
 
         # Special cases
         @testset "lcm, gcd, ==, !=" begin
-
             arr_jl = my_rand(T, N)
             arr_jl2 = my_rand(T, N)
             arr_cn = @allowscalar NDArray(arr_jl)
@@ -145,8 +145,12 @@ end
 
             if T <: cuNumeric.SUPPORTED_INT_TYPES
                 allowscalar() do
-                    @test cuNumeric.compare(lcm.(arr_jl, arr_jl2), lcm.(arr_cn, arr_cn2), atol(T), rtol(T))
-                    @test cuNumeric.compare(gcd.(arr_jl, arr_jl2), gcd.(arr_cn, arr_cn2), atol(T), rtol(T))
+                    @test cuNumeric.compare(
+                        lcm.(arr_jl, arr_jl2), lcm.(arr_cn, arr_cn2), atol(T), rtol(T)
+                    )
+                    @test cuNumeric.compare(
+                        gcd.(arr_jl, arr_jl2), gcd.(arr_cn, arr_cn2), atol(T), rtol(T)
+                    )
                 end
             end
 
@@ -216,7 +220,7 @@ end
                     @test cuNumeric.compare(
                         s .* julia_arr .+ s, s .* cunumeric_arr .+ s, atol(T), rtol(T)
                     )
-                    @test s + s ≈  (NDArray(s) + NDArray(s))[] # atol=atol(T) r_tol=atol(T)
+                    @test s + s ≈ (NDArray(s) + NDArray(s))[] # atol=atol(T) r_tol=atol(T)
                     # @test s * s ≈ (NDArray(s) * NDArray(s))[] # atol=atol(T) r_tol=atol(T)
                 end
             end
@@ -226,13 +230,15 @@ end
     # Boolean things
     allowpromotion() do
         allowscalar() do
-            julia_arr = [-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10]
+            julia_arr = [-3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
             cunumeric_arr = NDArray(julia_arr)
 
             @test cuNumeric.compare(true * julia_arr, true * cunumeric_arr, atol(Int), rtol(Int))
             @test cuNumeric.compare(false * julia_arr, false * cunumeric_arr, atol(Int), rtol(Int))
             @test cuNumeric.compare(true .* julia_arr, true .* cunumeric_arr, atol(Int), rtol(Int))
-            @test cuNumeric.compare(false .* julia_arr, false .* cunumeric_arr, atol(Int), rtol(Int))
+            @test cuNumeric.compare(
+                false .* julia_arr, false .* cunumeric_arr, atol(Int), rtol(Int)
+            )
 
             julia_arr = [true, false, true, false, false, true, true]
             cunumeric_arr = NDArray(julia_arr)
@@ -240,7 +246,9 @@ end
             @test cuNumeric.compare(4 * julia_arr, 4 * cunumeric_arr, atol(Int), rtol(Int))
             @test cuNumeric.compare(4 .* julia_arr, 4 .* cunumeric_arr, atol(Int), rtol(Int))
             @test cuNumeric.compare(4 .+ julia_arr, 4 .+ cunumeric_arr, atol(Int), rtol(Int))
-            @test cuNumeric.compare(julia_arr ./ 3, cunumeric_arr ./ 3, atol(Float64), rtol(Float64))
+            @test cuNumeric.compare(
+                julia_arr ./ 3, cunumeric_arr ./ 3, atol(Float64), rtol(Float64)
+            )
         end
     end
 end
@@ -248,19 +256,18 @@ end
 @testset verbose = true "Powers" begin
     N = 9
 
-    get_pwrs(::Type{I}) where {I <: Integer} = I.([-10, -5, -2, -1, 0, 1, 2, 5, 10])
-    get_pwrs(::Type{F}) where {F <: AbstractFloat} = F.([-3.141, -2, -1, 0, 1, 2, 3.2, 4.41, 6.233])
-    get_pwrs(::Type{Bool}) = [true, false, true, false, false, true, false, true, true] 
+    get_pwrs(::Type{I}) where {I<:Integer} = I.([-10, -5, -2, -1, 0, 1, 2, 5, 10])
+    get_pwrs(::Type{F}) where {F<:AbstractFloat} = F.([-3.141, -2, -1, 0, 1, 2, 3.2, 4.41, 6.233])
+    get_pwrs(::Type{Bool}) = [true, false, true, false, false, true, false, true, true]
 
     TYPES = Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
     @testset "$(BT) ^ $(PT)" for (BT, PT) in Iterators.product(TYPES, TYPES)
-  
         base_jl = my_rand(BT, N)
 
-        if BT <: Union{Bool, Int32} && PT == Int32
+        if BT <: Union{Bool,Int32} && PT == Int32
             # julia doesnt like Int32 powers
             pwrs = Float32.(get_pwrs(PT))
-        elseif BT <: Union{Bool, Int32, Int64} && PT <: Union{Int32,Int64}
+        elseif BT <: Union{Bool,Int32,Int64} && PT <: Union{Int32,Int64}
             # julia doesnt like Int64 powers on bool
             pwrs = Float64.(get_pwrs(PT))
         elseif (PT <: AbstractFloat) && (BT <: AbstractFloat || BT <: Signed)
@@ -275,18 +282,20 @@ end
         pwrs_cn = @allowscalar NDArray(pwrs)
 
         # we deviate a bit form Julia here
-        if (PT <: Union{Int32, Int64}) && (BT <: Union{Bool,Int32, Int64})
+        if (PT <: Union{Int32,Int64}) && (BT <: Union{Bool,Int32,Int64})
             T_OUT = cuNumeric.__my_promote_type(typeof(^), BT, PT)
         else
             T_OUT = Base.promote_op(Base.:(^), BT, PT)
         end
 
-        TEST_BROKEN = (BT <: Union{Int32, Int64} && PT == Bool)
+        TEST_BROKEN = (BT <: Union{Int32,Int64} && PT == Bool)
 
         allowpromotion(sizeof(BT) != sizeof(PT)) do
-            allowscalar() do 
+            allowscalar() do
                 # Power is array
-                @test cuNumeric.compare(base_jl .^ pwrs, base_cn .^ pwrs_cn, atol(T_OUT), rtol(T_OUT)) skip=TEST_BROKEN
+                @test cuNumeric.compare(
+                    base_jl .^ pwrs, base_cn .^ pwrs_cn, atol(T_OUT), rtol(T_OUT)
+                ) skip=TEST_BROKEN
 
                 # Power is scalar
                 for p in pwrs
@@ -331,7 +340,6 @@ end
             end
         end
     end
-
 end
 
 @testset verbose = true "Slicing Tests" begin
@@ -345,3 +353,24 @@ end
 #     max_diff = Float32(1e-4)
 #     @testset binaryop(max_diff)
 # end
+
+@testset verbose = true "Scoping" begin
+    N = 100
+
+    @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)
+        allowscalar() do
+            results = run_all_ops(T, N)
+            for (name, (c_base, c_scoped)) in results
+                @test cuNumeric.compare(c_base, c_scoped, atol(T), rtol(T))
+            end
+
+            u_rand = cuNumeric.as_type(cuNumeric.rand(NDArray, (15, 15)), T)
+            v_rand = cuNumeric.as_type(cuNumeric.rand(NDArray, (15, 15)), T)
+
+            u, v = gray_scott_base(T, N, u_rand, v_rand)
+            u_scoped, v_scoped = gray_scott(T, N, u_rand, v_rand)
+
+            @test cuNumeric.compare(u, u_scoped, atol(T) * N, rtol(T) * 10)
+        end
+    end
+end
