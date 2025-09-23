@@ -1,8 +1,5 @@
 using Base.Threads: Atomic, atomic_add!, atomic_sub!, atomic_xchg!
 
-lib = "libcwrapper.so"
-libnda = joinpath(@__DIR__, "../", "wrapper", "build", lib)
-
 query_device_memory() = ccall((:nda_query_device_memory, libnda),
     Int64, ())
 
@@ -13,12 +10,24 @@ const soft_frac = Ref{Float64}(0.80)
 const hard_frac = Ref{Float64}(0.90)
 const AUTO_GC_ENABLE = Ref{Bool}(false)
 
+@doc"""
+    init_gc!()
+
+Initializes the cuNumeric garbage collector by querying the available
+device memory and enabling the automatic GC heuristics.
+"""
 function init_gc!()
     total_bytes[] = query_device_memory()
     # @info "[cuNumeric GC] $(total_bytes[]) framebuffer available"
     AUTO_GC_ENABLE[] = true
 end
 
+@doc"""
+    disable_gc!()
+
+Disables the automatic garbage collection heuristics.
+This gives the user full control over memory management.
+"""
 function disable_gc!()
     AUTO_GC_ENABLE[] = false
     @info "You have disabled our GC heuristics. Good Luck!"
@@ -41,11 +50,6 @@ function register_free!(nbytes::Integer)
     return nothing
 end
 
-"""
-    maybe_collect()
-
-Soft: `GC.gc(false)` (non-full); Hard: `GC.gc(true)`
-"""
 function maybe_collect()
     # cur = current_bytes[]
     # pend = pending_bytes[]

@@ -1,0 +1,153 @@
+# Conda CI test. This will build the workflow using the conda build path.
+# This test only occurs if build.jl changes.
+name: Conda test
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build instead'
+        required: false
+        default: ''
+      mark_as_latest:
+        description: 'Mark as latest'
+        type: boolean
+        required: false
+        default: false
+  push:
+    paths:
+      - 'deps/build.jl'
+      - '.github/workflows/conda.yml'
+    tags:
+      - 'v*'
+    branches:
+      - main
+  pull_request:
+    paths:
+      - 'deps/build.jl'
+      - '.github/workflows/conda.yml'
+jobs:
+  docs:
+    name : Conda Test
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+      actions: write
+    # runs-on: [self-hosted, linux, x64]
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:22.04
+    defaults:
+      run:
+        shell: bash
+    env:
+      LEGATE_AUTO_CONFIG: 0
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: bash
+        run: source /etc/profile
+
+      - name: Get package spec
+        id: pkg
+        run: |
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            echo "ref=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            echo "name=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "ref=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "ref=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "name=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref_type }}" == "branch" ]]; then
+            echo "ref=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "ref=${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "name=dev" >> $GITHUB_OUTPUT
+          fi
+
+          VERSION=$(grep "^version = " Project.toml | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Install basic utils
+        run: apt-get update && apt-get install -y wget curl git build-essential
+
+      - name: Setup Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.11'
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          miniconda-version: "latest"
+          python-version: 3.11
+          activate-environment: true
+          use-mamba: true
+
+      - name: Setup cache for Conda env
+        uses: actions/cache@v4
+        with:
+            path: |
+              ~/.conda
+              ~/miniconda3
+            key: conda-${{ runner.os }}-${{ steps.pkg.outputs.version }}
+            restore-keys: |
+                conda-${{ runner.os }}-
+
+      - name: Setup Conda env
+        run: |
+          CONDA_OVERRIDE_CUDA="12.4" conda create -n myenv -c conda-forge -c legate/label/rc -c nvidia cuda-toolkit=12.4 libcublas=12.4 libgomp cupynumeric=${{ steps.pkg.outputs.version }}.rc3 -y
+      
+      - name: Load Julia packages from cache
+        id: julia-cache
+        uses: julia-actions/cache@v2
+        with:
+            cache-name: julia-developer-conda-test
+
+      - name: Setup CUDA runtime version
+        run: |
+          julia --color=yes -e '
+              using Pkg
+              Pkg.add("CUDA")
+              using CUDA
+              CUDA.set_runtime_version!(v"12.4")
+          '
+      - name: Set LD_LIBRARY_PATH for CUDA_Driver_jll
+        run: |
+          echo "LD_LIBRARY_PATH=$(julia -e 'using Pkg; \
+            Pkg.add("CUDA_Driver_jll"); \
+            using CUDA_Driver_jll; \
+            print(joinpath(CUDA_Driver_jll.artifact_dir, "lib"))' \
+          ):$LD_LIBRARY_PATH" >> $GITHUB_ENV
+      
+      - name: Set LD_LIBRARY_PATH for CONDA
+        run: |
+          echo "LD_LIBRARY_PATH=/github/home/miniconda3/envs/myenv/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+          
+      - name: Setup cuNumeric.jl and Legate.jl
+        run: |
+          julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")' || true # ensure clean env
+          julia --color=yes -e 'using Pkg; Pkg.rm("Legate")' || true # ensure clean env
+
+          conda run --no-capture-output -n myenv julia --color=yes -e '
+              using Pkg;
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main", subdir = "lib/LegatePreferences"))
+              using LegatePreferences; LegatePreferences.use_conda("/github/home/miniconda3/envs/myenv");
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")) # Pkg.add invokes Pkg.build
+          '
+
+          conda run --no-capture-output -n myenv julia --color=yes -e '
+              using Pkg;
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}", subdir = "lib/CNPreferences"))
+              using CNPreferences; CNPreferences.use_conda("/github/home/miniconda3/envs/myenv");
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}"))
+          '
+
+      - name: Perform Test
+        run: |
+         conda run --no-capture-output -n myenv julia --color=yes -e 'using Pkg; Pkg.test("cuNumeric")'
