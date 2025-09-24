@@ -584,7 +584,8 @@ Random.rand(::Type{NDArray}, dims::Int...) = cuNumeric.rand(NDArray, dims)
 
 random(::Type{T}, dims::Dims) where {T} = cuNumeric.nda_random_array(UInt64.(collect(dims)))
 random(::Type{T}, dim::Int64) where {T} = cuNumeric.random(T, (dim,))
-random(dims::Dims, e::Type{T}) where {T} = cuNumeric.rand(e, dims)
+random(dims::Dims, ::Type{T}) where {T} = cuNumeric.random(T, dims)
+random(dim::Int64, ::Type{T}) where {T} = cuNumeric.random(T, (dim,))
 
 #! THIS SHOULD HAVE AN ! IT MODIFES THE INPUT
 random(arr::NDArray, code::Int64) = cuNumeric.nda_random(arr, code)
