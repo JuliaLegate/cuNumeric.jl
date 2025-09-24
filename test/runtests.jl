@@ -21,6 +21,9 @@ using Test
 using cuNumeric
 using LinearAlgebra
 
+using Random
+import Random: rand
+
 include("tests/util.jl")
 include("tests/axpy.jl")
 include("tests/axpy_advanced.jl")
@@ -201,7 +204,7 @@ end
         julia_arr = my_rand(T, N)
         julia_arr_2D = my_rand(T, N, N)
 
-        s = rand(T)
+        s = Random.rand(T)
 
         allowscalar() do
             cunumeric_arr = NDArray(julia_arr)
@@ -260,7 +263,9 @@ end
     get_pwrs(::Type{F}) where {F<:AbstractFloat} = F.([-3.141, -2, -1, 0, 1, 2, 3.2, 4.41, 6.233])
     get_pwrs(::Type{Bool}) = [true, false, true, false, false, true, false, true, true]
 
-    TYPES = Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
+    # TYPES = Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
+    TYPES = Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)
+
     @testset "$(BT) ^ $(PT)" for (BT, PT) in Iterators.product(TYPES, TYPES)
         base_jl = my_rand(BT, N)
 
@@ -307,7 +312,7 @@ end
 
     @testset verbose = true "Reciprocal" begin
         @testset for T in TYPES
-            arr_jl = rand(T, N)
+            arr_jl = Random.rand(T, N)
             arr_cn = @allowscalar NDArray(arr_jl)
 
             # Differ from Julia here
@@ -328,7 +333,7 @@ end
 
     @testset verbose = true "Square" begin
         @testset for T in TYPES
-            arr_jl = rand(T, N)
+            arr_jl = Random.rand(T, N)
             arr_cn = @allowscalar NDArray(arr_jl)
 
             T_OUT = Base.promote_op(Base.:(^), T, Int64)

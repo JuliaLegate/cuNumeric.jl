@@ -22,7 +22,6 @@
 =#
 
 function elementwise()
-    seed = 10
     N = 100
     dims = (N, N)
 
@@ -35,8 +34,8 @@ function elementwise()
         arrB_cpu = ones(dims)
         @test arrB == arrB_cpu
 
-        cuNumeric.random(arrA, seed)
-        cuNumeric.random(arrB, seed)
+        cuNumeric.rand!(arrA)
+        cuNumeric.rand!(arrB)
 
         arrA_cpu = Array(arrA)
         arrB_cpu = Array(arrB)

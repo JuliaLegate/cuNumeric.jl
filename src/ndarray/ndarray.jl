@@ -561,7 +561,7 @@ end
 @doc"""
     cuNumeric.rand!(arr::NDArray)
 
-Fills `arr` with Float64s uniformly at random.
+Fills `arr` with AbstractFloats uniformly at random.
 
     cuNumeric.rand(NDArray, dims::Int...)
     cuNumeric.rand(NDArray, dims::Tuple)
@@ -570,6 +570,7 @@ Create a new `NDArray` of element type Float64, filled with uniform random value
 
 This function uses the same signature as `Base.rand` with a custom backend,
 and currently supports only `Float64` with uniform distribution (`code = 0`).
+In order to support other Floats, we type convert for the user automatically.
 
 # Examples
 ```@repl
@@ -579,15 +580,18 @@ A = cuNumeric.zeros(2, 2); cuNumeric.rand!(A)
 ```
 """
 Random.rand!(arr::NDArray{Float64}) = cuNumeric.nda_random(arr, 0)
-Random.rand(::Type{NDArray}, dims::Dims) = cuNumeric.nda_random_array(UInt64.(collect(dims)))
-Random.rand(::Type{NDArray}, dims::Int...) = cuNumeric.rand(NDArray, dims)
+rand(::Type{NDArray}, dims::Dims) = cuNumeric.nda_random_array(UInt64.(collect(dims)))
+rand(::Type{NDArray}, dims::Int...) = cuNumeric.rand(NDArray, dims)
+rand(dims::Dims) = cuNumeric.rand(NDArray, dims)
+rand(dims::Int...) = cuNumeric.rand(NDArray, dims)
 
-random(::Type{T}, dims::Dims) where {T} = cuNumeric.nda_random_array(UInt64.(collect(dims)))
-random(::Type{T}, dim::Int64) where {T} = cuNumeric.random(T, (dim,))
-random(dims::Dims, e::Type{T}) where {T} = cuNumeric.rand(e, dims)
+function rand(::Type{T}, dims::Dims) where {T<:AbstractFloat}
+    arrfp64 = cuNumeric.nda_random_array(UInt64.(collect(dims)))
+    # if T == Float64, as_type should do minimial work # TODO check this.
+    return cuNumeric.as_type(arrfp64, T)
+end
 
-#! THIS SHOULD HAVE AN ! IT MODIFES THE INPUT
-random(arr::NDArray, code::Int64) = cuNumeric.nda_random(arr, code)
+rand(::Type{T}, dims::Int...) where {T<:AbstractFloat} = cuNumeric.rand(T, dims)
 
 #### OPERATIONS ####
 @doc"""
