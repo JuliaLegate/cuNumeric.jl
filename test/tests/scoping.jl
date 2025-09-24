@@ -1,8 +1,8 @@
 using cuNumeric
 
 function run_test(op, op_scope, FT, N)
-    a = cuNumeric.as_type(cuNumeric.random(Float64, (N, N)), FT)
-    b = cuNumeric.as_type(cuNumeric.random(Float64, (N, N)), FT)
+    a = cuNumeric.rand(FT, (N, N))
+    b = cuNumeric.rand(FT, (N, N))
     c_scoped = cuNumeric.zeros(FT, (N, N))
 
     c_base = op(a, b)
@@ -15,8 +15,9 @@ function run_test(op, op_scope, FT, N)
 end
 
 function run_slice_test(op, op_scoped, FT, N; f=0.04, k=0.06, dx=1.0)
-    u = cuNumeric.as_type(cuNumeric.random(Float64, (N, N)), FT)
-    v = cuNumeric.as_type(cuNumeric.random(Float64, (N, N)), FT)
+    u = cuNumeric.rand(FT, (N, N))
+    v = cuNumeric.rand(FT, (N, N))
+
     scoped = cuNumeric.zeros(FT, (N-2, N-2))
     args = (f=FT(f), k=FT(k), dx=FT(dx))
 

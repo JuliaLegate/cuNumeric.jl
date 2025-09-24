@@ -64,9 +64,8 @@ function axpy_advanced(T, N)
         @test is_same(ones_array, ones_array_cpu)
 
         # create two random arrays
-        x = cuNumeric.as_type(cuNumeric.random(Float64, size(x)), T)
-        y = cuNumeric.as_type(cuNumeric.random(Float64, size(y)), T)
-
+        x = cuNumeric.rand(T, size(x))
+        y = cuNumeric.rand(T, size(x))
         # create a reference of NDArray
         x_ref = x
         y_ref = y
