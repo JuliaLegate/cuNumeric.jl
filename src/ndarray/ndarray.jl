@@ -75,22 +75,29 @@ as_type(arr::NDArray{T}, ::Type{T}) where {T} = arr
 
 # conversion from NDArray to Base Julia array
 function (::Type{<:Array{A}})(arr::NDArray{B}) where {A,B}
-    assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
+    # assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
     dims = Base.size(arr)
     out = Base.zeros(A, dims)
-    for CI in CartesianIndices(dims)
-        out[CI] = A(arr[Tuple(CI)...])
-    end
+    attached = cuNumeric.nda_attach_external(out)
+    copyto!(out, attached)
+
+    # for CI in CartesianIndices(dims)
+    #     out[CI] = A(arr[Tuple(CI)...])
+    # end
+
     return out
 end
 
 function (::Type{<:Array})(arr::NDArray{B}) where {B}
-    assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
+    # assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
     dims = Base.size(arr)
     out = Base.zeros(B, dims)
-    for CI in CartesianIndices(dims)
-        out[CI] = arr[Tuple(CI)...]
-    end
+    attached = cuNumeric.nda_attach_external(out)
+    copyto!(out, attached)
+
+    #for CI in CartesianIndices(dims)
+    #    out[CI] = arr[Tuple(CI)...]
+    #end
     return out
 end
 

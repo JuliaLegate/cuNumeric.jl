@@ -248,6 +248,19 @@ function nda_dot(rhs1::NDArray, rhs2::NDArray)
     return NDArray(ptr)
 end
 
+function nda_attach_external(arr::AbstractArray{T,N}) where {T,N}
+    ptr = Base.unsafe_convert(Ptr{Cvoid}, arr)
+    nbytes = sizeof(T) * length(arr)
+    shape = collect(UInt64, size(arr))
+    legate_type = Legate.to_legate_type(T)
+
+    nda_ptr = ccall((:nda_attach_external, libnda),
+        NDArray_t, (Ptr{Cvoid}, UInt64, Int32, Ptr{UInt64}, Legate.LegateTypeAllocated),
+        ptr, nbytes, N, shape, legate_type)
+
+    return NDArray(nda_ptr; T=T, n_dim=N)
+end
+
 # return underlying logical store to the NDArray obj
 function get_store(arr::NDArray)
     cxx_ptr = CxxWrap.CxxPtr{cuNumeric.CN_NDArray}(arr.ptr)
