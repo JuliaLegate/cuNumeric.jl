@@ -75,50 +75,35 @@ as_type(arr::NDArray{T}, ::Type{T}) where {T} = arr
 
 # conversion from NDArray to Base Julia array
 function (::Type{<:Array{A}})(arr::NDArray{B}) where {A,B}
-    # assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
     dims = Base.size(arr)
     out = Base.zeros(A, dims)
     attached = cuNumeric.nda_attach_external(out)
-    copyto!(out, attached)
-
-    # for CI in CartesianIndices(dims)
-    #     out[CI] = A(arr[Tuple(CI)...])
-    # end
-
+    copyto!(attached, arr)
     return out
 end
 
 function (::Type{<:Array})(arr::NDArray{B}) where {B}
-    # assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
     dims = Base.size(arr)
     out = Base.zeros(B, dims)
     attached = cuNumeric.nda_attach_external(out)
-    copyto!(out, attached)
-
-    #for CI in CartesianIndices(dims)
-    #    out[CI] = arr[Tuple(CI)...]
-    #end
+    copyto!(attached, arr)
     return out
 end
 
 # conversion from Base Julia array to NDArray
 function (::Type{<:NDArray{A}})(arr::Array{B}) where {A,B}
-    assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
     dims = Base.size(arr)
     out = cuNumeric.zeros(A, dims)
-    for CI in CartesianIndices(dims)
-        out[Tuple(CI)...] = A(arr[CI])
-    end
+    attached = cuNumeric.nda_attach_external(arr)
+    copyto!(out, attached)
     return out
 end
 
 function (::Type{<:NDArray})(arr::Array{B}) where {B}
-    assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
     dims = Base.size(arr)
     out = cuNumeric.zeros(B, dims)
-    for CI in CartesianIndices(dims)
-        out[Tuple(CI)...] = arr[CI]
-    end
+    attached = cuNumeric.nda_attach_external(arr)
+    copyto!(out, attached)
     return out
 end
 

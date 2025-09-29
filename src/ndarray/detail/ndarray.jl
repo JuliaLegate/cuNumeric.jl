@@ -150,6 +150,7 @@ function nda_fill_array(arr::NDArray{T}, value::T) where {T}
 end
 
 function nda_assign(arr::NDArray{T}, other::NDArray{T}) where {T}
+    println("hello nda_assign")
     ccall((:nda_assign, libnda),
         Cvoid, (NDArray_t, NDArray_t),
         arr.ptr, other.ptr)
@@ -250,6 +251,8 @@ end
 
 function nda_attach_external(arr::AbstractArray{T,N}) where {T,N}
     ptr = Base.unsafe_convert(Ptr{Cvoid}, arr)
+    #ptr = pointer_from_objref(arr)
+
     nbytes = sizeof(T) * length(arr)
     shape = collect(UInt64, size(arr))
     legate_type = Legate.to_legate_type(T)
