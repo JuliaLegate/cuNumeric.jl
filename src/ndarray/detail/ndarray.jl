@@ -1,4 +1,5 @@
 export NDArray
+export WrappedNDArray
 
 struct Slice
     has_start::Cint
@@ -24,6 +25,8 @@ end
 
 get_n_dim(ptr::NDArray_t) = Int(ccall((:nda_array_dim, libnda), Int32, (NDArray_t,), ptr))
 
+abstract type AbstractNDArray{T<:SUPPORTED_TYPES,N} end
+
 @doc"""
 **Internal API**
 
@@ -31,7 +34,7 @@ The NDArray type represents a multi-dimensional array in cuNumeric.
 It is a wrapper around a Legate array and provides various methods for array manipulation and operations. 
 Finalizer calls `nda_destroy_array` to clean up the underlying Legate array when the NDArray is garbage collected.
 """
-mutable struct NDArray{T,N}
+mutable struct NDArray{T,N} <: AbstractNDArray{T,N}
     ptr::NDArray_t
     nbytes::Int64
     padding::Union{Nothing,NTuple{N,Int}} where {N}
@@ -47,6 +50,21 @@ mutable struct NDArray{T,N}
         return handle
     end
 end
+
+# struct WrappedNDArray{T,N} <: AbstractNDArray{T,N}
+#     ndarr::NDArray{T,N}
+#     jlarr::Array{T,N}
+
+#     function WrappedNDArray(ndarray::NDArray{T,N}, jlarray::Array{T,N}) where {T,N}
+#         ndarr = ndarray
+#         jlarr = jlarray
+#     end
+
+#     function WrappedNDArray(ndarray::NDArray{T,N}) where {T,N}
+#         ndarr = ndarray
+#         jlarr = nothing
+#     end
+# end
 
 #! JUST USE FULL TO MAKE a 0D?
 #$ cuNumeric.nda_full_array(UInt64[], 2.0f0)
@@ -150,7 +168,6 @@ function nda_fill_array(arr::NDArray{T}, value::T) where {T}
 end
 
 function nda_assign(arr::NDArray{T}, other::NDArray{T}) where {T}
-    println("hello nda_assign")
     ccall((:nda_assign, libnda),
         Cvoid, (NDArray_t, NDArray_t),
         arr.ptr, other.ptr)
@@ -251,8 +268,6 @@ end
 
 function nda_attach_external(arr::AbstractArray{T,N}) where {T,N}
     ptr = Base.unsafe_convert(Ptr{Cvoid}, arr)
-    #ptr = pointer_from_objref(arr)
-
     nbytes = sizeof(T) * length(arr)
     shape = collect(UInt64, size(arr))
     legate_type = Legate.to_legate_type(T)
@@ -267,8 +282,12 @@ end
 # return underlying logical store to the NDArray obj
 function get_store(arr::NDArray)
     cxx_ptr = CxxWrap.CxxPtr{cuNumeric.CN_NDArray}(arr.ptr)
-    store = _get_store(cxx_ptr)
-    return CxxWrap.CxxRef(store)
+    return _get_store(cxx_ptr)
+end
+
+function get_ptr(arr::NDArray)
+    st = get_store(arr)
+    return _get_ptr(st)
 end
 
 @doc"""

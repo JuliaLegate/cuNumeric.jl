@@ -73,21 +73,24 @@ as_type(arr, Float32)
 as_type(arr::NDArray{S,N}, ::Type{T}) where {S,T,N} = nda_astype(arr, T)::NDArray{T,N}
 as_type(arr::NDArray{T}, ::Type{T}) where {T} = arr
 
+# Wrap a raw pointer into an AbstractArray view
+function make_array(::Type{T}, ptr::Ptr{T}, shape::NTuple{N,Int}) where {T,N}
+    return unsafe_wrap(Array{T,N}, ptr, shape; own=false)
+end
+
 # conversion from NDArray to Base Julia array
+# get_ptr is a blocking call that grabs the physical store
+# we have not tested across multiple processes or devices yet
 function (::Type{<:Array{A}})(arr::NDArray{B}) where {A,B}
     dims = Base.size(arr)
-    out = Base.zeros(A, dims)
-    attached = cuNumeric.nda_attach_external(out)
-    copyto!(attached, arr)
-    return out
+    ptr = Ptr{A}(get_ptr(arr))
+    return make_array(A, ptr, dims)
 end
 
 function (::Type{<:Array})(arr::NDArray{B}) where {B}
     dims = Base.size(arr)
-    out = Base.zeros(B, dims)
-    attached = cuNumeric.nda_attach_external(out)
-    copyto!(attached, arr)
-    return out
+    ptr = Ptr{B}(get_ptr(arr))
+    return make_array(B, ptr, dims)
 end
 
 # conversion from Base Julia array to NDArray
@@ -95,7 +98,7 @@ function (::Type{<:NDArray{A}})(arr::Array{B}) where {A,B}
     dims = Base.size(arr)
     out = cuNumeric.zeros(A, dims)
     attached = cuNumeric.nda_attach_external(arr)
-    copyto!(out, attached)
+    copyto!(out, attached) # copy elems of attached to resulting out
     return out
 end
 
@@ -205,19 +208,9 @@ function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T,0}) where {T}
 end
 
 function Base.show(io::IO, arr::NDArray{T,D}; elems=false) where {T,D}
-    print(io, "NDArray of $(T)s, Dim: $(D)")
+    println(io, "NDArray{$(T),$(D)}")
     if elems # print all elems of array
-        dims = shape(arr)
-        print(io, "[")
-        indxs = CartesianIndices(dims)
-        lastidx = last(indxs)
-        for CI in indxs
-            print(io, "$(arr[Tuple(CI)...])")
-            if CI != lastidx
-                print(io, ", ")
-            end
-        end
-        print(io, "]")
+        print(io, Array(arr))
     end
 end
 
@@ -227,6 +220,9 @@ end
 
 function Base.print(arr::NDArray{T}; elems=false) where {T}
     Base.show(stdout, arr; elems=elems)
+    if !elems
+        print("Use ';elems=true' to print elements\n")
+    end
 end
 
 function Base.println(arr::NDArray{T}; elems=false) where {T}
@@ -671,7 +667,6 @@ arr == julia_arr2
 ```
 """
 function Base.:(==)(arr::NDArray, julia_arr::Array)
-    assertscalar("==")
     return julia_arr == Array(arr)
 end
 
