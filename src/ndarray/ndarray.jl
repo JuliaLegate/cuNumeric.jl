@@ -207,26 +207,21 @@ function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T,0}) where {T}
     print(io, arr[]) #! should I assert scalar??
 end
 
-function Base.show(io::IO, arr::NDArray{T,D}; elems=false) where {T,D}
+function Base.show(io::IO, arr::NDArray{T,D}) where {T,D}
     println(io, "NDArray{$(T),$(D)}")
-    if elems # print all elems of array
-        print(io, Array(arr))
-    end
+    Base.print_matrix(io, Array(arr))
 end
 
-function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T}; elems=false) where {T}
-    Base.show(io, arr; elems=elems)
+function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T}) where {T}
+    Base.show(io, arr)
 end
 
-function Base.print(arr::NDArray{T}; elems=false) where {T}
-    Base.show(stdout, arr; elems=elems)
-    if !elems
-        print("Use ';elems=true' to print elements\n")
-    end
+function Base.print(arr::NDArray{T}) where {T}
+    Base.show(stdout, arr)
 end
 
-function Base.println(arr::NDArray{T}; elems=false) where {T}
-    Base.show(stdout, arr; elems=elems)
+function Base.println(arr::NDArray{T}) where {T}
+    Base.show(stdout, arr)
     print("\n")
 end
 #### ARRAY INDEXING AND SLICES ####
