@@ -19,6 +19,11 @@
 
 using Test
 using cuNumeric
+
+# for CUDA tests
+using CUDA
+import CUDA: i32
+
 using LinearAlgebra
 
 using Random
@@ -34,7 +39,15 @@ include("tests/unary_tests.jl")
 include("tests/binary_tests.jl")
 include("tests/scoping.jl")
 include("tests/scoping-advanced.jl")
-# include("tests/custom_cuda.jl")
+include("tests/cuda/vecadd.jl")
+
+# TODO: this fails in the testing suite; however, it works fine outside of it
+# Failed to load CUDA module! Error log: ptxas fatal   : Unresolved extern function 'julia_throw_boundserror_8900'
+@testset verbose = true "CUDA Tests" begin
+    max_diff = Float32(1e-4)
+    @testset binaryop(max_diff)
+    @testset unaryop(max_diff)
+end
 
 @testset verbose = true "AXPY" begin
     N = 100
@@ -353,11 +366,6 @@ end
         slicing(T, N)
     end
 end
-
-# @testset verbose = true "CUDA Tests" begin
-#     max_diff = Float32(1e-4)
-#     @testset binaryop(max_diff)
-# end
 
 @testset verbose = true "Scoping" begin
     N = 100

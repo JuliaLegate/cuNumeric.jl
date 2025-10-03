@@ -1,5 +1,18 @@
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+CUDA_Driver_jll = "4ee394cb-3365-5eb0-8335-949819d2adfc"
+Legate = "1238f2cf-6593-4d60-9aca-2f5364e49909"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+cuNumeric = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
+
+[compat]
+CUDA_Driver_jll = "0.12.1"
+StatsBase = "0.34"
+julia = "1.10"
+
+[extras]
+CNPreferences = "3e078157-ea10-49d5-bf32-908f777cd46f"
+LegatePreferences = "8028f36a-2b64-49e9-aa04-2d0933fd2ed9"

@@ -282,12 +282,13 @@ end
 # return underlying logical store to the NDArray obj
 function get_store(arr::NDArray)
     cxx_ptr = CxxWrap.CxxPtr{cuNumeric.CN_NDArray}(arr.ptr)
-    return _get_store(cxx_ptr)
+    store = _get_store(cxx_ptr)
+    return CxxWrap.CxxRef(store)
 end
 
 function get_ptr(arr::NDArray)
     st = get_store(arr)
-    return _get_ptr(st)
+    return _get_ptr(CxxWrap.CxxPtr(st))
 end
 
 @doc"""
