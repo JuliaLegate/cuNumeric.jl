@@ -52,6 +52,9 @@ end
 bcast_depth(bc::Base.Broadcast.Broadcasted) = maximum(bcast_depth, bc.args, init=0) + 1;
 bcast_depth(::Any) = 0
 
+
+#! TODO NEED TO IMPLEMENT "materialize!" for IN PLACE THINGS
+
 function Base.Broadcast.materialize(bc::Broadcasted{<:NDArrayStyle})
     ElType = Broadcast.combine_eltypes(bc.f, bc.args)
     if ElType == Union{} || !Base.allocatedinline(ElType)

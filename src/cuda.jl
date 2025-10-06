@@ -22,6 +22,11 @@ function ndarray_cuda_type(A::NDArray{T,N}) where {T,N}
     end
 end
 
+# ndarray_cuda_type(::NDArray{T, 1}) where T = CuDeviceVector{T, 1}
+# ndarray_cuda_type(::NDArray{T, 2}) where T = CuDeviceMatrix{T, 1}
+# ndarray_cuda_type(::NDArray{T, N}) where T = CuDeviceArray{T, N, 1}
+
+
 function ndarray_cuda_type(arg::T) where {T}
     Base.isbits(arg) || throw(ArgumentError("Unsupported argument type: $(typeof(arg))"))
     typeof(arg)
