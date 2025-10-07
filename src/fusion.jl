@@ -13,75 +13,67 @@ struct FusedKernelData{I,O,S}
     scalars::S
 end
 
-function ptx_as_string(f::Function, types::Tuple)
-    buf = IOBuffer()
-    CUDA.code_ptx(buf, f, types; raw = true)
-    return String(take!(buf))
-end
 
-
-function fuse_function(args, fn::Function, output_indices)
+#! ASSUME OUTPUT_INDICIES ARE THE ARRAYS
+#! RETURNED FROM THE FUNCTION AS WELL??
+#! HOW TO HANDLE CASE WHEN output_indicies = ()
+#! HOW TO HANDLE KWARGS??
+function fuse_function(
+        fn::Function,
+        output_indices,
+        args...;
+        kwargs...
+    )
     
     println("Compiling $(Symbol(fn)) to PTX")
 
-    output_set = Set(output_indices)
-    inputs = [args[i] for i in 1:length(args) if i ∉ output_set]
+    N_args = length(args)
+    if length(output_indices) > N_args || max(output_indices) > N_args
+        error(ArgumentError("Marked arguments $(output_indices) as outputs, but there are only $(N_args) arguments"))
+    end
+
+    input_indices = setdiff(1:length(args), Set(output_indices))
+    inputs = [args[i] for i in input_indices]
     outputs = [args[i] for i in output_indices]
 
-    in_arrays = filter(i -> i isa NDArray, inputs)
-    scalars = filter!(i -> i isa Number, inputs)
+    #! ADD KWARGS TO THESE ??
+    scalars = filter(x -> isa(x, Number), inputs)
+    ndarray_inputs = filter(x -> !isa(x, NDArray), inputs)
+    other_inputs = filter(x -> !isa(x, Number) && !isa(x, NDArray), inputs)
 
-    if length(in_arrays) + length(scalars) != length(inputs)
-        @error "SOMETHING WEIRD HAPPENED"
-    end
+    #! Parse out the isbtis structs and unwrap them??
     
-    #! NOT SURE IF THIS IS TRUE
-    if any(scalars .<: Number)
-        @error "Scalar outputs are not allowed"
+    if any(isa.(outputs, Number))
+        @error "Scalar outputs are not allowed, use 0D store."
     end
 
     # Dummy types so we can use CUDA.jl to compile
-    converted_types = ndarray_cuda_type.(args)
-    local ptx = ptx_as_string(fn, converted_types)
-    local ptx_f_name = cuNumeric.extract_kernel_name(ptx)
-    cuNumeric.ptx_task(ptx, ptx_f_name)
+    converted_types = ndarray_cuda_type.(args) # enforces everything is an `isbitstype`
+    ct = CUDATask(fn, converted_types)
 
-    # Debug 
-    f = open("/pool/emeitz/ptx2.txt", "w")
-    println(f, ptx)
-    close(f)
-
-    ct = CUDATask(ptx_f_name, converted_types)
-
-    return FusedKernelData(ct, in_arrays, outputs, scalars)
-
-
+    return FusedKernelData(ct, other_inputs, outputs, scalars)
 end
  
-function maybe_fuse_kernel(args, func_name::Symbol; kwargs...)
-    arg_types = typeof.(args)
-    throw(ArgumentError("Can only fuse functions who arguments are NDArrays or scalars. Got $(arg_types)"))
-end
-
 # For @fuse on user defined function
-function maybe_fuse_kernel(args::T, fn::Function; kwargs...) where {T <: Tuple{ALLOWED_FUSION_TYPES}}
+function maybe_fuse_kernel(fn::Function, output_indices, args::T; kwargs...) where T
 
-    cache_key = hash((func_name, T))
+    cache_key = hash((fn, T)) #! ADD KWRAGS TO THIS?
 
     if !haskey(FUSED_KERNEL_CACHE, cache_key)
         FUSED_KERNEL_CACHE[cache_key] = fuse_function(
-            args,
             fn,
-            kwargs... # blocks and threads
+            output_indices,
+            args...;
+            kwargs...
         )
     end
     
     return cache_key
 end
 
-function run_fused_kernel(cache_key, inputs, outputs, scalars; blocks, threads)    
-    task = FUSED_KERNEL_CACHE[cache_key]
-    cuNumeric.launch(task, inputs, outputs, scalars; blocks=blocks, threads=threads)
+function run_fused_kernel(cache_key; blocks, threads)    
+    fkd = FUSED_KERNEL_CACHE[cache_key]
+    cuNumeric.launch(fkd.ct, fkd.inputs, fkd.outputs, fkd.scalars; blocks=blocks, threads=threads)
 end
 
 macro fuse(ex...)
@@ -95,6 +87,13 @@ macro fuse(ex...)
         end
     end
 
+    #! TODO SET DEFAULT BLOCKS/THREADS
+    #! HOW TO KNOW WHATS THE RIGHT DIMENSION??
+
+    blocks = get(kwargs[:blocks], DEFAULT_BLOCKS)
+    threads = get(kwargs[:threads], DEFAULT_THREADS)
+    output_indices = get(kwargs[:output_indices], ())
+
     code = quote end
 
     if Meta.isexpr(call, :function)
@@ -102,9 +101,31 @@ macro fuse(ex...)
         data = splitdef(longdef(call))
         # splitarg parses args into (name, type, is_slurp, default)
         arg_data = map(splitarg, data[:args])
+        kwarg_data = map(splitarg, data[:kwargs])
 
-        
-        throw(ArgumentError("@fuse before function definitions is not supported yet."))
+        arg_names = getindex.(arg_data, 1)
+
+
+        @gensym wrapper_name, cache_key
+
+        push!(code.args,
+            quote
+
+                # The fused function
+                function $(wrapper_name)() where {$(dict[:whereparams]...)}
+                    #! NOT SURE THIS IS RIGHT WAY TO INTERPOLATE ARGS
+                     #! WANT IT INTERPOLATE AS TUPLE OF ARGS
+                     #! TODO PASS KWARGS
+                    $cache_key = maybe_fuse_kernel($(data[:name]), $output_indices, $(arg_names...))
+                    run_fused_kernel($cache_key; blocks=$blocks, threads=$threads)   
+                end
+
+                # Replace original function with call to fused
+                function $(data[:name])($(data[:args]...); $(data[:kwargs]...)) where {$(dict[:whereparams]...)}
+                    $(wrapper_name)()
+                end
+            end
+        )        
     else
         throw(ArgumentError("fuse expected Broadcasted object or function, got $(call.head)"))
     end

@@ -34,6 +34,17 @@ end
 
 map_ndarray_cuda_types(args...) = tuple(map(ndarray_cuda_type, args)...)
 
+# Check if we can take struct passed to kernel 
+# and pass it as individual arguments. 
+can_unwrap_input(::Type{T}) where T =  all(T.types .<: Union{SUPPORTED_TYPES, <:NDArray})
+
+# #! HOW TO MAKE SURE THESE DO NOT INTERFERE
+# #! WITH OTHER ARGUMENTS
+# function unwrap_input(::Type{T})
+#     return fieldnames(T)
+# end
+
+
 function to_stdvec(::Type{T}, vec) where {T}
     stdvec = CxxWrap.StdVector{T}()
     for x in vec
@@ -45,6 +56,23 @@ end
 struct CUDATask
     func::String
     argtypes::NTuple{N,Type} where {N}
+end
+
+function CUDATask(f::Function, arg_types::Tuple)
+
+    buf = IOBuffer()
+
+    # what does kernel = true do??
+    CUDA.code_ptx(buf, f, arg_types; raw=false, kernel=true)
+
+    ptx = String(take!(buf))
+    func_name = cuNumeric.extract_kernel_name(ptx)
+
+    # issue ptx_task within legate runtime to register cufunction ptr with cucontext
+    cuNumeric.ptx_task(ptx, func_name)
+
+    # create a CUDAtask that stores some info for a launch config
+    return CUDATask(func_name, arg_types)
 end
 
 function add_padding(arr::NDArray, dims::Dims{N}; copy=false) where {N}
@@ -228,19 +256,8 @@ macro cuda_task(call_expr)
     fargs = call_expr.args[2:end]
 
     esc(quote
-        local _buf = IOBuffer()
         local _types = $cuNumeric.map_ndarray_cuda_types($(fargs...))
-        # generate ptx using CUDA.jl
-        CUDA.code_ptx(_buf, $fname, _types; raw=false, kernel=true)
-
-        local _ptx = String(take!(_buf))
-        local _func_name = cuNumeric.extract_kernel_name(_ptx)
-
-        # issue ptx_task within legate runtime to register cufunction ptr with cucontext
-        cuNumeric.ptx_task(_ptx, _func_name)
-
-        # create a CUDAtask that stores some info for a launch config
-        cuNumeric.CUDATask(_func_name, _types)
+        return CUDATask($fname, _types)
     end)
 end
 """
