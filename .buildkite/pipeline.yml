@@ -1,5 +1,15 @@
 steps:
+  - label: "Setup (Legate)"
+    agents:
+      queue: "juliagpu"
+      cuda: "*"
+    commands:
+      - julia --project -e 'using Pkg; Pkg.Registry.update();
+                          Pkg.add(PackageSpec(url="https://github.com/JuliaLegate/Legate.jl.git", rev="main"));
+                          Pkg.instantiate()'
+  
   - label: "Julia v1"
+    depends_on: "Setup (Legate)"
     plugins:
       - JuliaCI/julia#v1:
           version: "1"
@@ -11,12 +21,12 @@ steps:
       queue: "juliagpu"
       cuda: "*"
     if: build.message !~ /\[skip tests\]/
-    command: "julia --project -e 'using Pkg; Pkg.add(;url = \"https://github.com/JuliaLegate/Legate.jl.git\", rev = \"main\")'"
     timeout_in_minutes: 30
     env:
       LEGATE_SHOW_CONFIG: "1"
 
   - label: "Julia 1.11"
+    depends_on: "Setup (Legate)"
     plugins:
       - JuliaCI/julia#v1:
           version: "1.11"
@@ -28,12 +38,12 @@ steps:
       queue: "juliagpu"
       cuda: "*"
     if: build.message !~ /\[skip tests\]/
-    command: "julia --project -e 'using Pkg; Pkg.add(;url = \"https://github.com/JuliaLegate/Legate.jl.git\", rev = \"main\")'"
     timeout_in_minutes: 30
     env:
       LEGATE_SHOW_CONFIG: "1"
 
   - label: "Julia LTS"
+    depends_on: "Setup (Legate)"
     plugins:
       - JuliaCI/julia#v1:
           version: "1.10"
@@ -45,7 +55,6 @@ steps:
       queue: "juliagpu"
       cuda: "*"
     if: build.message !~ /\[skip tests\]/
-    command: "julia --project -e 'using Pkg; Pkg.add(;url = \"https://github.com/JuliaLegate/Legate.jl.git\", rev = \"main\")'"
     timeout_in_minutes: 30
     env:
       LEGATE_SHOW_CONFIG: "1"
