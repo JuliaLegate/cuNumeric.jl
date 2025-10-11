@@ -1,5 +1,6 @@
 steps:
   - label: "Setup (Legate)"
+    key: setup_legate
     agents:
       queue: "juliagpu"
       cuda: "*"
@@ -9,7 +10,7 @@ steps:
                           Pkg.instantiate()'
   
   - label: "Julia v1"
-    depends_on: "Setup (Legate)"
+    depends_on: setup_legate
     plugins:
       - JuliaCI/julia#v1:
           version: "1"
@@ -26,7 +27,7 @@ steps:
       LEGATE_SHOW_CONFIG: "1"
 
   - label: "Julia 1.11"
-    depends_on: "Setup (Legate)"
+    depends_on: setup_legate
     plugins:
       - JuliaCI/julia#v1:
           version: "1.11"
@@ -43,7 +44,7 @@ steps:
       LEGATE_SHOW_CONFIG: "1"
 
   - label: "Julia LTS"
-    depends_on: "Setup (Legate)"
+    depends_on: setup_legate
     plugins:
       - JuliaCI/julia#v1:
           version: "1.10"
