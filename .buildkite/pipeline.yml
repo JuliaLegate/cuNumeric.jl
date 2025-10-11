@@ -6,7 +6,7 @@ steps:
         plugins:
           - JuliaCI/julia#v1:
               version: "{{matrix.julia}}"
-          - jquick/pre-hook-buildkite-plugin#v1.2.0:
+          - jquick/pre-hook#v1.2.0:
             commands:
               - >
                 julia --project -e '
