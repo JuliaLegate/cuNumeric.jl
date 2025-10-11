@@ -7,7 +7,7 @@ steps:
           - JuliaCI/julia#v1:
               version: "{{matrix.julia}}"
           - jquick/pre-hook#v1.2.0:
-            command: "julia --project -e 'using Pkg; Pkg.add(;url=\"https://github.com/JuliaLegate/Legate.jl.git\", rev=\"main\"));  Pkg.instantiate()'"
+              command: "julia --project -e 'using Pkg; Pkg.add(;url=\"https://github.com/JuliaLegate/Legate.jl.git\", rev=\"main\"));  Pkg.instantiate()'"
           - JuliaCI/julia-test#v1: ~
           - JuliaCI/julia-coverage#v1:
               dirs:
