@@ -1,61 +1,68 @@
 steps:
-  - label: "Setup (Legate)"
-    key: setup_legate
-    agents:
-      queue: "juliagpu"
-      cuda: "*"
-    commands:
-      - julia --project -e 'using Pkg; Pkg.Registry.update();
-                          Pkg.add(PackageSpec(url="https://github.com/JuliaLegate/Legate.jl.git", rev="main"));
-                          Pkg.instantiate()'
-  
-  - label: "Julia v1"
-    depends_on: setup_legate
-    plugins:
-      - JuliaCI/julia#v1:
-          version: "1"
-      - JuliaCI/julia-test#v1: ~
-      - JuliaCI/julia-coverage#v1:
-          dirs:
-            - src
-    agents:
-      queue: "juliagpu"
-      cuda: "*"
-    if: build.message !~ /\[skip tests\]/
-    timeout_in_minutes: 30
-    env:
-      LEGATE_SHOW_CONFIG: "1"
+  - group: ":julia: Julia"
+    key: "julia"
+    steps:
+      - label: "Julia {{matrix.julia}}"
+        plugins:
+          - JuliaCI/julia#v1:
+              version: "{{matrix.julia}}"
+          - JuliaCI/julia-test#v1: ~
+          - JuliaCI/julia-coverage#v1:
+              dirs:
+                - src
+                - lib
+        agents:
+          queue: "juliagpu"
+          cuda: "*"
+        if: build.message !~ /\[skip tests\]/
+        timeout_in_minutes: 30
+        env:
+          LEGATE_SHOW_CONFIG: "1"
+        matrix:
+          setup:
+            julia:
+              - "1.10"
+              - "1.11"
+              - "1.12"
+            adjustments:
+              - with:
+                  julia: "1.12"
+                soft_fail : true
+  # - group: "CUDA"
+  #   key: "cuda"
+  #   depends_on: "julia"
+  #   steps:
+  #     - label: "CUDA {{matrix.cuda}}"
+  #       plugins:
+  #         - JuliaCI/julia#v1:
+  #             version: "1.11"
+  #         - JuliaCI/julia-test#v1:
+  #             test_args: "--quickfail core base libraries"
+  #         - JuliaCI/julia-coverage#v1:
+  #             dirs:
+  #               - src
+  #               - lib
+  #               - examples
+  #       agents:
+  #         queue: "juliagpu"
+  #         cuda: "*"
+  #       if: build.message !~ /\[skip tests\]/
+  #       timeout_in_minutes: 60
+  #       matrix:
+  #         setup:
+  #           cuda:
+  #             - "13.0"
+  #             - "12.9"
+  #             - "12.8"
+  #             - "12.6"
+  #             - "12.5"
+  #             - "12.4"
+  #             - "12.3"
+  #             - "12.2"
+  #             - "12.1"
+  #             - "12.0"
+  #         adjustments:
+  #           - with:
+  #               cuda: "13.0"
+  #             soft_fail: true
 
-  - label: "Julia 1.11"
-    depends_on: setup_legate
-    plugins:
-      - JuliaCI/julia#v1:
-          version: "1.11"
-      - JuliaCI/julia-test#v1: ~
-      - JuliaCI/julia-coverage#v1:
-          dirs:
-            - src
-    agents:
-      queue: "juliagpu"
-      cuda: "*"
-    if: build.message !~ /\[skip tests\]/
-    timeout_in_minutes: 30
-    env:
-      LEGATE_SHOW_CONFIG: "1"
-
-  - label: "Julia LTS"
-    depends_on: setup_legate
-    plugins:
-      - JuliaCI/julia#v1:
-          version: "1.10"
-      - JuliaCI/julia-test#v1: ~
-      - JuliaCI/julia-coverage#v1:
-          dirs:
-            - src
-    agents:
-      queue: "juliagpu"
-      cuda: "*"
-    if: build.message !~ /\[skip tests\]/
-    timeout_in_minutes: 30
-    env:
-      LEGATE_SHOW_CONFIG: "1"

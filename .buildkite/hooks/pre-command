@@ -1,0 +1,9 @@
+#!/bin/bash
+
+set -e
+
+julia --project -e '
+    using Pkg; 
+    Pkg.add(;url="https://github.com/JuliaLegate/Legate.jl.git", rev="main"));
+    Pkg.instantiate()
+'
