@@ -11,6 +11,7 @@ steps:
       queue: "juliagpu"
       cuda: "*"
     if: build.message !~ /\[skip tests\]/
+    command: "julia --project -e 'using Pkg; Pkg.add(;url = \"https://github.com/JuliaLegate/Legate.jl.git\", rev = \"main\")'"
     timeout_in_minutes: 30
     env:
       LEGATE_SHOW_CONFIG: "1"
@@ -27,6 +28,7 @@ steps:
       queue: "juliagpu"
       cuda: "*"
     if: build.message !~ /\[skip tests\]/
+    command: "julia --project -e 'using Pkg; Pkg.add(;url = \"https://github.com/JuliaLegate/Legate.jl.git\", rev = \"main\")'"
     timeout_in_minutes: 30
     env:
       LEGATE_SHOW_CONFIG: "1"
@@ -43,6 +45,7 @@ steps:
       queue: "juliagpu"
       cuda: "*"
     if: build.message !~ /\[skip tests\]/
+    command: "julia --project -e 'using Pkg; Pkg.add(;url = \"https://github.com/JuliaLegate/Legate.jl.git\", rev = \"main\")'"
     timeout_in_minutes: 30
     env:
       LEGATE_SHOW_CONFIG: "1"
