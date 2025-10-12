@@ -1,3 +1,4 @@
+# TODO TEST LOCAL INSTALL OF cuPyNumeric
 steps:
   - group: ":julia: Julia"
     key: "julia"
