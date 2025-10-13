@@ -1,9 +1,10 @@
-# TODO TEST LOCAL INSTALL OF cuPyNumeric
+cancel_running_builds: true
+
 steps:
   - group: ":julia: Julia"
     key: "julia"
     steps:
-      - label: "Julia {{matrix.julia}}"
+      - label: "Julia {{matrix.julia}} CUDA 12.8"
         plugins:
           - JuliaCI/julia#v1:
               version: "{{matrix.julia}}"
@@ -22,52 +23,50 @@ steps:
         timeout_in_minutes: 30
         env:
           LEGATE_SHOW_CONFIG: "1"
+          GPUTESTS: "1"
+          CODECOV_TOKEN: "${CODECOV_TOKEN}" 
         matrix:
           setup:
             julia:
               - "1.10"
               - "1.11"
               - "1.12"
+            arch:
+              - "x64"
           adjustments:
             - with:
                 julia: "1.12"
               soft_fail : true
 
-  # - group: "CUDA"
-  #   key: "cuda"
-  #   depends_on: "julia"
-  #   steps:
-  #     - label: "CUDA {{matrix.cuda}}"
-  #       plugins:
-  #         - JuliaCI/julia#v1:
-  #             version: "1.11"
-  #         - JuliaCI/julia-test#v1:
-  #             test_args: "--quickfail core base libraries"
-  #         - JuliaCI/julia-coverage#v1:
-  #             dirs:
-  #               - src
-  #               - lib
-  #               - examples
-  #       agents:
-  #         queue: "juliagpu"
-  #         cuda: "*"
-  #       if: build.message !~ /\[skip tests\]/
-  #       timeout_in_minutes: 60
-  #       matrix:
-  #         setup:
-  #           cuda:
-  #             - "13.0"
-  #             - "12.9"
-  #             - "12.8"
-  #             - "12.6"
-  #             - "12.5"
-  #             - "12.4"
-  #             - "12.3"
-  #             - "12.2"
-  #             - "12.1"
-  #             - "12.0"
-  #         adjustments:
-  #           - with:
-  #               cuda: "13.0"
-  #             soft_fail: true
-
+  - group: ":computer: CUDA Versions (Julia 1.11)"
+    key: "cuda"
+    depends_on: "julia"
+    steps:
+      - label: "Julia 1.11 CUDA {{matrix.cuda}}"
+        plugins:
+          - JuliaCI/julia#v1:
+              version: "1.11"
+          - jquick/pre-hook#v1.2.0:
+              command: "julia --project -e 'using Pkg; Pkg.add(;url=\"https://github.com/JuliaLegate/Legate.jl.git\", rev=\"main\");  Pkg.instantiate()'"
+          - JuliaCI/julia-test#v1:
+              test_args: "--quickfail"
+        agents:
+          queue: "juliagpu"
+          cuda: "{{matrix.cuda}}"
+        if: build.message !~ /\[skip tests\]/
+        timeout_in_minutes: 30
+        env:
+          LEGATE_SHOW_CONFIG: "1"
+          GPUTESTS: "1"
+        matrix:
+          setup:
+            cuda:
+              - "12.2"
+              - "12.4"
+              - "13.0"
+            arch:
+              - "x64"
+          adjustments:
+            - with:
+                cuda: "13.0"
+              soft_fail: true
