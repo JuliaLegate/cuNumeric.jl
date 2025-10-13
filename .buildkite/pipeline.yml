@@ -1,4 +1,5 @@
-cancel_intermediate_builds : true
+cancel_intermediate_builds: true
+cancel_running_branch_builds: true
 
 env:
   SECRET_CODECOV_TOKEN: "sMCDyGgkybsZMWSXvJDovbNC38ZMt4NmXzjvCpCxsnd7yXFSI6FpWigltoQafN/HM170MfVarH+sepnEbWOCgDmVzxn+Aolw4nL+o/5Bx1EeG+ztpOShzzaFMyrR8dfcAOr8Syo1O9LYGxP0c01onWGnA5L16Bl2J4gL+6pVPBsZtH57PREoNOPVED2eDw4R/U7MMpA5BCFO+37nNWhsw5+su4OwcTWVPNM8z02LooxL4o6pX3xc11bF7n2kD8NCJDu0hbolimqBXabP2BgHaWYmVe8LiC1b8nIi29ET8/YVxmTSUqj/iYTzIFXKawLB7W7IvTMe6NmSMQIK7Li3xQ==;U2FsdGVkX19XNvaivb92zC6a2SOk1aj3zZ5L1SBhCpVl9LiJdOGEu9wb1boGLyHjk5fSiLzEtEVgd1lvyDO5HuJ07tKLrwBjWQxdS2moeQs="
@@ -20,6 +21,8 @@ steps:
               dirs:
                 - src
                 - lib
+              codecov: true
+            if: matrix.julia == "1.11"
         agents:
           queue: "juliagpu"
           cuda: "12.8"
@@ -28,7 +31,6 @@ steps:
         env:
           LEGATE_SHOW_CONFIG: "1"
           GPUTESTS: "1"
-          CODECOV_TOKEN: "${CODECOV_TOKEN}" 
         matrix:
           setup:
             julia:
