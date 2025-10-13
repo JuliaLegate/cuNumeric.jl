@@ -45,6 +45,7 @@ function __broadcast(f::Function, _, args...)
         broadcast_g(x::NDArray) = x .+ 1. This can make the intention of code opaque to the reader, \
         but it is necessary until support is added.""",
     )
+
 end
 
 # Get depth of Broadcast tree recursively 
@@ -52,8 +53,6 @@ end
 bcast_depth(bc::Base.Broadcast.Broadcasted) = maximum(bcast_depth, bc.args, init=0) + 1;
 bcast_depth(::Any) = 0
 
-
-#! TODO NEED TO IMPLEMENT "materialize!" for IN PLACE THINGS
 
 function Base.Broadcast.materialize(bc::Broadcasted{<:NDArrayStyle})
     ElType = Broadcast.combine_eltypes(bc.f, bc.args)
@@ -103,6 +102,12 @@ function unravel_broadcast_tree(bc::Broadcasted)
 
     # Allocate output array of proper size/type
     out = similar(NDArray{T_OUT}, axes(bc))
+
+    println(eltypes)
+    println(T_OUT)
+    println(T_IN)
+    println(in_args)
+    println(out)
 
     # If the operation, "bc.f",  is supported by cuNumeric, this
     # dispatches to a function calling the C-API. 
