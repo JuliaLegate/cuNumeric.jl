@@ -51,31 +51,38 @@ Insert `cuNumeric.maybe_insert_delete(var)` after the last use of each temporary
 function insert_finalizers(exprs::Vector, assigned_vars::Set{Symbol})
     uses = Dict{Symbol,Vector{Int}}()
     defs = Dict{Symbol,Int}()
+    alias_map = Dict{Symbol,Symbol}()
+
+    stmts = Any[]
+    for expr in exprs
+        append!(stmts, expr.args)
+    end
 
     # Pass 1: collect definitions and uses
-    for expr in exprs
-        for (i, stmt) in enumerate(expr.args)
-            stmt isa Expr || continue
-            stmt.head == :line && continue
+    for (i, stmt) in enumerate(stmts)
+        stmt isa Expr || continue
+        stmt.head == :line && continue
 
-            if stmt.head == :(=)
-                lhs, rhs = stmt.args
-                if lhs isa Symbol
-                    defs[lhs] = i
-                end
-                for s in walk_symbols(rhs)
-                    if haskey(defs, s)
-                        push!(get!(uses, s, Int[]), i)
-                    end
-                end
-            else
-                for s in walk_symbols(stmt)
-                    if haskey(defs, s)
-                        push!(get!(uses, s, Int[]), i)
-                    end
-                end
+        if stmt.head == :(=)
+            lhs, rhs = stmt.args
+            if lhs isa Symbol
+                defs[lhs] = i
+            end
+            if lhs isa Symbol && rhs isa Symbol
+                alias_map[lhs] = rhs
+            end
+            for s in walk_symbols(rhs)
+                push!(get!(uses, s, Int[]), i)
+            end
+        else
+            for s in walk_symbols(stmt)
+                push!(get!(uses, s, Int[]), i)
             end
         end
+    end
+
+    for (alias, src) in alias_map
+        append!(get!(uses, src, Int[]), get(uses, alias, Int[]))
     end
 
     # Compute last usage index per variable
@@ -86,29 +93,27 @@ function insert_finalizers(exprs::Vector, assigned_vars::Set{Symbol})
 
     # Pass 2: insert finalizers
     out = Any[]
-    for expr in exprs
-        for (i, stmt) in enumerate(expr.args)
-            push!(out, stmt)
-            stmt isa Expr || continue
-            stmt.head == :line && continue
+    for (i, stmt) in enumerate(stmts)
+        push!(out, stmt)
+        stmt isa Expr || continue
+        stmt.head == :line && continue
 
-            # detect aliasing: v = w means don't finalize w
-            skip_finalize = Set{Symbol}()
-            if stmt.head == :(=)
-                lhs, rhs = stmt.args
-                # a = tmp1
-                # tmp1 will be added to skip_finalize
-                # a[:,:] = tmp1
-                # this does a copy, so we want to finalize tmp1
-                if lhs isa Symbol && rhs isa Symbol
-                    push!(skip_finalize, rhs)
-                end
+        # detect aliasing: v = w means don't finalize w
+        skip_finalize = Set{Symbol}()
+        if stmt.head == :(=)
+            lhs, rhs = stmt.args
+            # a = tmp1
+            # tmp1 will be added to skip_finalize
+            # a[:,:] = tmp1
+            # this does a copy, so we want to finalize tmp1
+            if lhs isa Symbol && rhs isa Symbol
+                push!(skip_finalize, rhs)
             end
+        end
 
-            for (v, lasti) in last_use
-                if lasti == i && v ∈ assigned_vars && !(v ∈ skip_finalize)
-                    push!(out, :(cuNumeric.maybe_insert_delete($v)))
-                end
+        for (v, lasti) in last_use
+            if lasti == i && v ∈ assigned_vars && !(v ∈ skip_finalize)
+                push!(out, :(cuNumeric.maybe_insert_delete($v)))
             end
         end
     end
