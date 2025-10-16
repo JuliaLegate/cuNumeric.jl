@@ -70,9 +70,9 @@ steps:
               - "13.0"
             arch:
               - "x64"
-        adjustments:
-          - with:
-              cuda: "13.0"
-            soft_fail: true
+          adjustments:
+            - with:
+                cuda: "13.0"
+              soft_fail: true
         commands: |
           echo -e "[CUDA_Runtime_jll]\nversion = \"{{matrix.cuda}}\"" >LocalPreferences.toml
