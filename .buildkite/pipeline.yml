@@ -23,7 +23,7 @@ steps:
               codecov: true
         agents:
           queue: "juliagpu"
-          cuda: "12.8"
+          cuda: "*"
         if: build.message !~ /\[skip tests\]/
         timeout_in_minutes: 30
         env:
@@ -74,3 +74,5 @@ steps:
             - with:
                 cuda: "13.0"
               soft_fail: true
+          commands: |
+            echo -e "[CUDA_Runtime_jll]\nversion = \"{{matrix.cuda}}\"" >LocalPreferences.toml
