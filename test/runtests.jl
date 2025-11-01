@@ -20,6 +20,9 @@
 using Test
 using cuNumeric
 using LinearAlgebra
+using CUDA
+import CUDA: i32
+
 
 using Random
 import Random: rand
@@ -34,7 +37,10 @@ include("tests/unary_tests.jl")
 include("tests/binary_tests.jl")
 include("tests/scoping.jl")
 include("tests/scoping-advanced.jl")
-# include("tests/custom_cuda.jl")
+include("tests/cuda/vecadd.jl")
+
+const run_gpu_tests = get(ENV, "GPUTESTS", "1") != "0"
+const run_cuda_tests   = run_gpu_tests && CUDA.functional()
 
 @testset verbose = true "AXPY" begin
     N = 100
@@ -354,11 +360,6 @@ end
     end
 end
 
-# @testset verbose = true "CUDA Tests" begin
-#     max_diff = Float32(1e-4)
-#     @testset binaryop(max_diff)
-# end
-
 @testset verbose = true "Scoping" begin
     N = 100
 
@@ -379,3 +380,12 @@ end
         end
     end
 end
+
+if run_cuda_tests
+    @testset verbose = true "CUDA Tests" begin
+        cuda_unaryop()
+        cuda_binaryop()
+    end
+else
+    @warn "The CUDA tests will not be run as a CUDA-enabled device is not available"
+end 

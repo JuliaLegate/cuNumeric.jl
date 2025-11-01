@@ -1,8 +1,3 @@
-using cuNumeric
-using CUDA
-import CUDA: i32
-using Test
-
 function unfused_cunumeric(u, v, f, k)
     F_u = (
         (

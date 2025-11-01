@@ -20,10 +20,6 @@
 #= Purpose of test: cuda
     -- Register various custom kernels using CUDA.jl
 =#
-using cuNumeric
-using CUDA
-import CUDA: i32
-using Test
 
 function kernel_add(a, b, c, N)
     i = (blockIdx().x - 1i32) * blockDim().x + threadIdx().x
@@ -43,7 +39,7 @@ function kernel_mul(a, b, c, N)
     return nothing
 end
 
-function binaryop(max_diff)
+function cuda_binaryop(max_diff)
     N = 1024
     threads = 256
     blocks = cld(N, threads)
@@ -57,9 +53,11 @@ function binaryop(max_diff)
     b_cpu = rand(FT, N)
     c_cpu = zeros(FT, N)
 
-    for i in 1:N
-        a[i] = a_cpu[i]
-        b[i] = b_cpu[i]
+    allowscalar() do
+        for i in 1:N
+            a[i] = a_cpu[i]
+            b[i] = b_cpu[i]
+        end
     end
 
     # get results on CPU for comparison
@@ -72,10 +70,10 @@ function binaryop(max_diff)
         N
     )
 
-    @test cuNumeric.compare(c, c_cpu, max_diff)
+    @test @allowscalar cuNumeric.compare(c, c_cpu, atol(Float32), rtol(Float32))
 
     for i in 1:N
-        b[i] = a[i] * c[i]
+        @allowscalar b[i] = a[i] * c[i]
     end
 
     task = cuNumeric.@cuda_task kernel_mul(a, b, c, UInt32(1))
@@ -83,7 +81,7 @@ function binaryop(max_diff)
         N
     )
 
-    @test cuNumeric.compare(b, b_cpu, max_diff)
+    @test @allowscalar cuNumeric.compare(b, b_cpu, atol(Float32), rtol(Float32))
 end
 
 function kernel_sin(a, b, N)
@@ -94,7 +92,7 @@ function kernel_sin(a, b, N)
     return nothing
 end
 
-function unaryop(max_diff)
+function cuda_unaryop(max_diff)
     N = 1024
     threads = 64
     blocks = cld(N, threads)
@@ -106,8 +104,10 @@ function unaryop(max_diff)
     a_cpu = rand(FT, N)
     b_cpu = zeros(FT, N)
 
-    for i in 1:N
-        a[i] = a_cpu[i]
+    allowscalar() do
+        for i in 1:N
+            a[i] = a_cpu[i]
+        end
     end
 
     # get results on CPU for comparison
@@ -119,8 +119,5 @@ function unaryop(max_diff)
     # TODO explore getting inplace ops working. 
     cuNumeric.@launch task=task threads=threads blocks=blocks inputs=a outputs=b scalars=UInt32(N)
 
-    @test cuNumeric.compare(b, b_cpu, max_diff)
+    @test @allowscalar cuNumeric.compare(b, b_cpu, atol(Float32), rtol(Float32))
 end
-
-unaryop(Float32(1e-4))
-binaryop(Float32(1e-4))
