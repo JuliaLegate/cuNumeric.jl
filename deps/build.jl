@@ -21,7 +21,7 @@ using Preferences
 using Legate
 using CNPreferences: CNPreferences
 
-const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.05.00"]
+const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.08.00"]
 const LATEST_CUPYNUMERIC_VERSION = SUPPORTED_CUPYNUMERIC_VERSIONS[end]
 
 up_dir(dir::String) = abspath(joinpath(dir, ".."))
