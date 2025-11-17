@@ -67,6 +67,8 @@ jobs:
         env:
           GPUTESTS: "0"
           LEGATE_SHOW_CONFIG: "1"
+          LEGATE_AUTO_CONFIG: "0"
+          LEGATE_CONFIG: "--cpus 2"
         run: julia --project -e 'using Pkg; Pkg.test(test_args=["--quickfail"])'
 
 
