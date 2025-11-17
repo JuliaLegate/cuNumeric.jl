@@ -69,6 +69,7 @@ jobs:
           LEGATE_SHOW_CONFIG: "1"
         run: julia --project -e 'using Pkg; Pkg.test(test_args=["--quickfail"])'
 
+
 # name: CI
 # on:
 #   workflow_dispatch:
