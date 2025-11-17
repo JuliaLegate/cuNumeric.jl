@@ -37,10 +37,14 @@ const SUPPORTED_TYPES = Union{SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES,Bool} #*
 function preload_libs()
     libs = [
         joinpath(OpenBLAS32_jll.artifact_dir, "lib", "libopenblas.so"), # required for libcupynumeric.so
-        joinpath(CUTENSOR_LIB, "libcutensor.so"),
         joinpath(TBLIS_LIB, "libtblis.so"),
         joinpath(CUPYNUMERIC_LIB, "libcupynumeric.so"),
     ]
+
+    if CUDA.functional()
+        append!(libs, joinpath(CUTENSOR_LIB, "libcutensor.so"))
+    end
+
     for lib in libs
         Libdl.dlopen(lib, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
     end
@@ -85,7 +89,9 @@ include("ndarray/binary.jl")
 include("scoping.jl")
 
 # # Custom CUDA.jl kernel integration
-include("cuda.jl")
+if CUDA.functional()
+    include("cuda.jl")
+end
 
 # # Utilities 
 include("utilities/version.jl")
@@ -115,10 +121,12 @@ function cunumeric_setup(AA::ArgcArgv)
     Base.atexit(my_on_exit)
 
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
-    # in /src/cuda.jl to notify /wrapper/src/cuda.cpp about CUDA.jl kernel state size
-    cuNumeric.set_kernel_state_size();
-    # in /wrapper/src/cuda.cpp
-    cuNumeric.register_tasks();
+    if CUDA.functional()
+        # in /src/cuda.jl to notify /wrapper/src/cuda.cpp about CUDA.jl kernel state size
+        cuNumeric.set_kernel_state_size();
+        # in /wrapper/src/cuda.cpp
+        cuNumeric.register_tasks();
+    end
     # setup /src/memory.jl 
     cuNumeric.init_gc!()
 end
