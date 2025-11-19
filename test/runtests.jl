@@ -40,7 +40,7 @@ include("tests/scoping-advanced.jl")
 include("tests/cuda/vecadd.jl")
 
 const run_gpu_tests = get(ENV, "GPUTESTS", "1") != "0"
-const run_cuda_tests   = run_gpu_tests && CUDA.functional()
+const run_cuda_tests   = run_gpu_tests && HAS_CUDA
 
 @testset verbose = true "AXPY" begin
     N = 100

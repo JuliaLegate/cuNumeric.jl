@@ -55,7 +55,7 @@ function find_preferences()
     pkg_root = abspath(joinpath(@__DIR__, "../", "../"))
 
     blas_lib = get_library_root(OpenBLAS32_jll, "JULIA_OPENBLAS_PATH")
-    if CUDA.functional()
+    if HAS_CUDA
         cutensor_lib = get_library_root(CUTENSOR_jll, "JULIA_CUTENSOR_PATH")
     end
 
@@ -93,7 +93,7 @@ function find_preferences()
         tblis_lib = cupynumeric_lib # cupynumeric libpath will by default contain tblis
     end
 
-    if CUDA.functional()
+    if HAS_CUDA
         set_preferences!(CNPreferences, "CUTENSOR_LIB" => cutensor_lib; force=true)
     end
 
