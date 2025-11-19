@@ -64,7 +64,7 @@ jobs:
         env:
           LEGATE_SHOW_CONFIG: "1"
           LEGATE_AUTO_CONFIG: "0"
-          LEGATE_CONFIG: "--cpus 2 --utility 0"
+          LEGATE_CONFIG: "--cpus 1 --utility 1"
         run: julia --project -e 'using Pkg; Pkg.add(;url="https://github.com/JuliaLegate/Legate.jl.git", rev="no-cuda"); Pkg.instantiate()'
       
       - name: Run tests
@@ -72,7 +72,7 @@ jobs:
           GPUTESTS: "0"
           LEGATE_SHOW_CONFIG: "1"
           LEGATE_AUTO_CONFIG: "0"
-          LEGATE_CONFIG: "--cpus 2 --utility 0"
+          LEGATE_CONFIG: "--cpus 1 --utility 1"
         run: julia --project -e 'using Pkg; Pkg.test(test_args=["--quickfail"])'
 
 
