@@ -61,6 +61,10 @@ jobs:
       - uses: julia-actions/cache@v2
       
       - name: Install Legate.jl
+        env:
+          LEGATE_SHOW_CONFIG: "1"
+          LEGATE_AUTO_CONFIG: "0"
+          LEGATE_CONFIG: "--cpus 2"
         run: julia --project -e 'using Pkg; Pkg.add(;url="https://github.com/JuliaLegate/Legate.jl.git", rev="no-cuda"); Pkg.instantiate()'
       
       - name: Run tests
