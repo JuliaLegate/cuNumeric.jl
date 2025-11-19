@@ -72,7 +72,7 @@ jobs:
           GPUTESTS: "0" # parsed by runtests.jl
           LEGATE_SHOW_CONFIG: "1"
           LEGATE_AUTO_CONFIG: "0"
-          LEGATE_CONFIG: "--cpus 1 --utility 1"
+          LEGATE_CONFIG: "--cpus 1 --utility 1 --sysmem 4000"
         run: julia --project -e 'using Pkg; Pkg.test(test_args=["--quickfail"])'
 
 
