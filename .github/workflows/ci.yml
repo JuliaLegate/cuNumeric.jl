@@ -65,7 +65,7 @@ jobs:
           LEGATE_SHOW_CONFIG: "1"
           LEGATE_AUTO_CONFIG: "0"
           LEGATE_CONFIG: "--cpus 1 --utility 1"
-        run: julia --project -e 'using Pkg; Pkg.develop(;url = "https://github.com/JuliaLegate/Legate.jl", subdir = "lib/LegatePreferences", rev="no-cuda"); Pkg.add(;url="https://github.com/JuliaLegate/Legate.jl.git", rev="no-cuda"); Pkg.instantiate()'
+        run: julia --project -e 'using Pkg; Pkg.add(;url = "https://github.com/JuliaLegate/Legate.jl", subdir = "lib/LegatePreferences", rev="no-cuda"); Pkg.add(;url="https://github.com/JuliaLegate/Legate.jl.git", rev="no-cuda"); Pkg.instantiate()'
       
       - name: Run tests
         env:
