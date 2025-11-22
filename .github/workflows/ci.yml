@@ -1,4 +1,4 @@
-name: CI (CPU Tests)
+name: CI CPU
 
 on:
   workflow_dispatch:
@@ -35,7 +35,7 @@ on:
 
 jobs:
   test:
-    name: CPU - Julia ${{ matrix.julia }} - ${{ matrix.os }}
+    name: Julia ${{ matrix.julia }} - ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

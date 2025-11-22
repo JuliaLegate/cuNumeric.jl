@@ -1,6 +1,6 @@
 name = "cuNumeric"
 uuid = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
-version = "25.5.0"
+version = "0.1"
 
 [deps]
 CNPreferences = "3e078157-ea10-49d5-bf32-908f777cd46f"
@@ -31,7 +31,7 @@ libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
 [compat]
 CNPreferences = "0.1.0"
 CxxWrap = "0.17"
-Legate = "25.8 - 25.10"
+Legate = "0.1"
 LegatePreferences = "0.1.0"
 MacroTools = "0.5.16"
 cupynumeric_jll = "25.8 - 25.10"
