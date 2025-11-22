@@ -35,7 +35,7 @@ on:
 
 jobs:
   test:
-    name: Julia ${{ matrix.julia }} - ${{ matrix.os }}
+    name: CPU - Julia ${{ matrix.julia }} - ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
