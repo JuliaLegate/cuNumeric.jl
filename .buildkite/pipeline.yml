@@ -13,7 +13,7 @@
 #           - JuliaCI/julia#v1:
 #               version: "{{matrix.julia}}"
 #           - jquick/pre-hook#v1.2.0:
-#               command: "julia --project -e 'using Pkg; Pkg.add(;url=\"https://github.com/JuliaLegate/Legate.jl.git\", rev=\"no-cuda\"); Pkg.instantiate()'"
+#               command: "julia --project -e 'using Pkg; Pkg.add(;url=\"https://github.com/JuliaLegate/Legate.jl.git\"); Pkg.instantiate()'"
 #           - JuliaCI/julia-test#v1:
 #               test_args: "--quickfail"
 #           - JuliaCI/julia-coverage#v1:
