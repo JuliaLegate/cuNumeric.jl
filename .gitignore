@@ -6,11 +6,13 @@ help.sh
 docker.log
 docs/package-lock.json
 
-extracted_cunumeric
-deps/cunumeric_jl_wrapper/*
-deps/cunumeric_jl_wrapper
-deps/cunumeric_jl_wrapper_src/*
-deps/cunumeric_jl_wrapper_src
+# auto-generated script
+build_wrapper.sh
+
+logging
+logging/*
+debug 
+debug/*
 
 compile_wrapper.sh
 

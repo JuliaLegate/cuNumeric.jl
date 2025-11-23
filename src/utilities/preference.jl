@@ -76,7 +76,7 @@ function find_preferences()
             )
             check_cupynumeric_install(cupynumeric_path)
         end
-        cunumeric_wrapper_lib = joinpath(pkg_root, "deps", "cunumeric_jl_wrapper", "lib")
+        cunumeric_wrapper_lib = joinpath(pkg_root, "lib", "cunumeric_jl_wrapper", "build", "lib")
         # if conda
     elseif mode == CNPreferences.MODE_CONDA
         @warn "mode = conda may break. We are using a subset of libraries from conda."

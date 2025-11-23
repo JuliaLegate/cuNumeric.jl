@@ -19,6 +19,11 @@
 
 using Test
 using cuNumeric
+
+# for CUDA tests
+using CUDA
+import CUDA: i32
+
 using LinearAlgebra
 using CUDA
 import CUDA: i32
