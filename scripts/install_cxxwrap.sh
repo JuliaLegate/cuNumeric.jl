@@ -25,11 +25,11 @@ if [[ $# -ne 1 ]]; then
     exit 1
 fi
 
-LEGATE_ROOT_DIR=$1  # First argument
+CUNUMERIC_ROOT_DIR=$1  # First argument
 
 # Check if the provided argument is a valid directory
-if [[ ! -d "$LEGATE_ROOT_DIR" ]]; then
-    echo "Error: '$LEGATE_ROOT_DIR' is not a valid directory."
+if [[ ! -d "$CUNUMERIC_ROOT_DIR" ]]; then
+    echo "Error: '$CUNUMERIC_ROOT_DIR' is not a valid directory."
     exit 1
 fi
 
@@ -45,10 +45,10 @@ echo "Using $JULIA at: $JULIA_PATH"
 
 GIT_REPO="https://github.com/JuliaInterop/libcxxwrap-julia.git"
 COMMIT_HASH="89e4699837bfa0929610c9e330889fb2df925b47" #(v14.2)
-JULIA_CXXWRAP_SRC=$LEGATE_ROOT_DIR/deps/libcxxwrap-julia
+JULIA_CXXWRAP_SRC=$CUNUMERIC_ROOT_DIR/deps/libcxxwrap-julia
 
 if [ ! -d "$JULIA_CXXWRAP_SRC" ]; then
-    cd $LEGATE_ROOT_DIR/deps
+    cd $CUNUMERIC_ROOT_DIR/deps
     git clone $GIT_REPO
 fi
 
@@ -66,9 +66,10 @@ JULIA_CXXWRAP=$JULIA_CXXWRAP_DEV/override
 # Clean up whatever env is there right now and
 # build default version of CxxWrap / libcxxwrap_julia
 #* THIS COULD BREAK SOME USERS CODE IF THEY ALREADY OVERRIDE THIS PKG
-cd $LEGATE_ROOT_DIR
+cd $CUNUMERIC_ROOT_DIR
 [ -f Manifest.toml ] && rm Manifest.toml
 rm -rf $JULIA_CXXWRAP_DEV
+julia -e 'using Pkg; Pkg.activate("."); Pkg.add(url="https://github.com/JuliaLegate/Legate.jl")'
 julia -e 'using Pkg; Pkg.activate("."); Pkg.precompile(["CxxWrap"])'
 
 # https://github.com/JuliaInterop/libcxxwrap-julia/tree/v0.13.3?tab=readme-ov-file#preparing-the-install-location

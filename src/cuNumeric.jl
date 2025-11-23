@@ -20,9 +20,8 @@
 module cuNumeric
 
 include("utilities/depends.jl")
-include("utilities/wrapper_download.jl")
 
-const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.05.00"]
+const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.05.00", "25.08.00", "25.10.00"]
 
 const DEFAULT_FLOAT = Float32
 const DEFAULT_INT = Int32
@@ -106,7 +105,7 @@ end
 getargv(a::ArgcArgv) = Base.unsafe_convert(CxxPtr{CxxPtr{CxxChar}}, a.argv)
 
 function my_on_exit()
-    # @info "Cleaning Up cuNuermic"
+    # @info "Cleaning Up cuNumeric"
 end
 
 global cuNumeric_config_str::String = ""

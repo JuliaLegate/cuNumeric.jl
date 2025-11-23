@@ -7,7 +7,7 @@ function run_test(op, op_scope, FT, N)
 
     c_base = op(a, b)
 
-    cuNumeric.disable_gc!()
+    cuNumeric.disable_gc!(; verbose=false)
     op_scope(a, b, c_scoped)
     cuNumeric.init_gc!()
 
@@ -23,7 +23,7 @@ function run_slice_test(op, op_scoped, FT, N; f=0.04, k=0.06, dx=1.0)
 
     base = op(u, v, args)
 
-    cuNumeric.disable_gc!()
+    cuNumeric.disable_gc!(; verbose=false)
     op_scoped(u, v, scoped, args)
     cuNumeric.init_gc!()
 

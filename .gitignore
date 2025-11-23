@@ -11,6 +11,10 @@ deps/cunumeric_jl_wrapper/*
 deps/cunumeric_jl_wrapper
 deps/cunumeric_jl_wrapper_src/*
 deps/cunumeric_jl_wrapper_src
+logging
+logging/*
+debug 
+debug/*
 
 compile_wrapper.sh
 

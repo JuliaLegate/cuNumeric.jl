@@ -28,9 +28,11 @@ end
 Disables the automatic garbage collection heuristics.
 This gives the user full control over memory management.
 """
-function disable_gc!()
+function disable_gc!(; verbose=true)
     AUTO_GC_ENABLE[] = false
-    @info "You have disabled our GC heuristics. Good Luck!"
+    if verbose
+        @info "You have disabled our GC heuristics. Good Luck!"
+    end
 end
 
 soft_limit() = Int(round(soft_frac[] * total_bytes[]))
