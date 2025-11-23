@@ -150,7 +150,7 @@ function process_ndarray_scope(block)
         push!(body, new_stmts)
     end
 
-    println(body)
+    # println(body)
 
     result = quote
         $(Expr(:block, body...))

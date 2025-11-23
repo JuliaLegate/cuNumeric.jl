@@ -21,7 +21,7 @@ using Preferences
 using Legate
 using CNPreferences: CNPreferences
 
-const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.08.00"]
+const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.05.00", "25.08.00", "25.10.00"]
 const LATEST_CUPYNUMERIC_VERSION = SUPPORTED_CUPYNUMERIC_VERSIONS[end]
 
 up_dir(dir::String) = abspath(joinpath(dir, ".."))
@@ -88,7 +88,7 @@ function build_jlcxxwrap(repo_root)
 end
 
 function build_cpp_wrapper(
-    repo_root, cupynumeric_loc, legate_loc, hdf5_root, blas_lib, install_root
+    repo_root, cupynumeric_loc, legate_loc, blas_lib, install_root
 )
     @info "libcunumeric_jl_wrapper: Building C++ Wrapper Library"
     if isdir(install_root)
@@ -97,14 +97,10 @@ function build_cpp_wrapper(
         mkdir(install_root)
     end
 
-    branch = load_preference(
-        CNPreferences, "wrapper_branch", CNPreferences.DEVEL_DEFAULT_WRAPPER_BRANCH
-    )
-
     build_cpp_wrapper = joinpath(repo_root, "scripts/build_cpp_wrapper.sh")
     nthreads = Threads.nthreads()
     run_sh(
-        `bash $build_cpp_wrapper $repo_root $cupynumeric_loc $legate_loc $hdf5_root $blas_lib $install_root $branch $nthreads`,
+        `bash $build_cpp_wrapper $repo_root $cupynumeric_loc $legate_loc $blas_lib $install_root $nthreads`,
         "cpp_wrapper",
     )
 end
@@ -146,7 +142,6 @@ function build(mode)
 
     @info "cuNumeric.jl: Parsed Package Dir as: $(pkg_root)"
 
-    hdf5_lib = Legate.get_install_libhdf5()
     legate_lib = Legate.get_install_liblegate()
     cupynumeric_lib = load_preference(CNPreferences, "CUPYNUMERIC_LIB", nothing)
     blas_lib = load_preference(CNPreferences, "BLAS_LIB", nothing)
@@ -155,10 +150,10 @@ function build(mode)
     blas_lib = replace_nothing_jll(blas_lib, :OpenBLAS32_jll)
 
     if mode == CNPreferences.MODE_DEVELOPER
-        install_lib = joinpath(pkg_root, "deps", "cunumeric_jl_wrapper")
+        install_lib = joinpath(pkg_root, "lib", "cunumeric_jl_wrapper", "build")
         build_jlcxxwrap(pkg_root)
         build_cpp_wrapper(
-            pkg_root, up_dir(cupynumeric_lib), up_dir(legate_lib), up_dir(hdf5_lib), blas_lib,
+            pkg_root, up_dir(cupynumeric_lib), up_dir(legate_lib), blas_lib,
             install_lib,
         )
     end

@@ -67,7 +67,8 @@ end
 # end
 
 #! JUST USE FULL TO MAKE a 0D?
-#$ cuNumeric.nda_full_array(UInt64[], 2.0f0)
+# $ cuNumeric.nda_full_array(UInt64[], 2.0f0)
+# TODO DAVID TEST THIS HERE
 # function NDArray(value::T) where {T <: SUPPORTED_TYPES}
 #     type = Legate.to_legate_type(T)
 #     ptr = ccall((:nda_from_scalar, libnda),

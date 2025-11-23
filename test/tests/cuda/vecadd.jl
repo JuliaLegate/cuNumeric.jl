@@ -121,6 +121,3 @@ function unaryop(max_diff)
 
     @test @allowscalar cuNumeric.compare(b, b_cpu, max_diff, max_diff)
 end
-
-unaryop(Float32(1e-4))
-binaryop(Float32(1e-4))
