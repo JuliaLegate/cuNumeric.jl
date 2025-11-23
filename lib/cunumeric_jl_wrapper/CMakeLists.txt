@@ -13,13 +13,26 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
 # ---- New: NOCUDA option ----
 option(NOCUDA "Build without CUDA support (skip CUDAToolkit and src/cuda.cpp)" OFF)
+option(BINARYBUILDER "Building with binary builder" ON)
+
 
 # Always needed (unless your packages themselves require CUDA at configure time)
 find_package(legate REQUIRED)
 find_package(cupynumeric REQUIRED)
 
 # CxxWrap Stuff
-find_package(JlCxx)
+if(NOT BINARYBUILDER)
+execute_process(
+  COMMAND julia -e "println(DEPOT_PATH[1])"
+  OUTPUT_VARIABLE JULIA_DEP_PATH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+set(JlCxx_DIR "${JULIA_DEP_PATH}/dev/libcxxwrap_julia_jll/override")
+message(STATUS "Setting JlCxx_DIR to ${JlCxx_DIR} (not using BinaryBuilder)")
+endif()
+
+find_package(JlCxx REQUIRED)
 get_target_property(JlCxx_location JlCxx::cxxwrap_julia LOCATION)
 get_filename_component(JlCxx_location ${JlCxx_location} DIRECTORY)
 set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib;${JlCxx_location}")

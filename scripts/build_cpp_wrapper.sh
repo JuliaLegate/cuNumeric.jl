@@ -45,6 +45,8 @@ echo $LEGATE_ROOT_DIR
 if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
     echo "Configuring project..."
     cmake -S "$CUNUMERIC_WRAPPER_SOURCE" -B "$BUILD_DIR" \
+        -D BINARYBUILDER=OFF \
+        -D CMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
         -D CMAKE_PREFIX_PATH="$CUPYNUMERIC_ROOT_DIR;$LEGATE_ROOT_DIR;" \
         -D CUPYNUMERIC_PATH="$CUPYNUMERIC_ROOT_DIR" \
         -D BLAS_LIBRARIES="$BLAS_LIB_DIR/libopenblas.so" \
@@ -55,4 +57,3 @@ else
 fi
 
 cmake --build "$BUILD_DIR" --parallel "$NTHREADS" --verbose
-cmake --install "$BUILD_DIR"
