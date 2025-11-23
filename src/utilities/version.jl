@@ -45,13 +45,19 @@ function version_config_setup()
     hostname = gethostname()
     git_hash = read_githash()
 
-    liblegate = Legate.get_install_liblegate()
-    libnccl = Legate.get_install_libnccl()
-    libmpi = Legate.get_install_libmpi()
-    libhdf5 = Legate.get_install_libhdf5()
-    libcuda = Legate.get_install_libcuda()
-    libcudart = Legate.get_install_libcudart()
-    liblegatewrapper = Legate.LEGATE_WRAPPER_LIB
+    liblegate = Legate.LEGATE_LIBDIR
+    liblegatewrapper = Legate.LEGATE_WRAPPER_LIBDIR
+    if Legate.LegatePreferences.MODE == "jll"
+        other_dirs = Legate.find_dependency_paths(Legate.JLL())
+    else
+        other_dirs = Dict(
+            "HDF5" => "unknown",
+            "MPI" => "unknown",
+            "NCCL" => "unknown",
+            "CUDA_DRIVER" => "unknown",
+            "CUDA_RUNTIME" => "unknown"
+        )
+    end
 
     libblas = BLAS_LIB
     libcutensor = CUTENSOR_LIB
@@ -71,8 +77,8 @@ function version_config_setup()
     Hostname:         $hostname
     Julia Version:    $julia_ver
     C++ Compiler:     $compiler
-    CUDA Driver:      $libcuda
-    CUDA Runtime:     $libcudart
+    CUDA Driver:      $(other_dirs["CUDA_DRIVER"])
+    CUDA Runtime:     $(other_dirs["CUDA_RUNTIME"])
 
     Library Paths:
       Legate:         $liblegate
@@ -80,9 +86,9 @@ function version_config_setup()
       BLAS:           $libblas
       TBLIS:          $libtblis
       CUTENSOR:       $libcutensor
-      NCCL:           $libnccl
-      MPI:            $libmpi
-      HDF5:           $libhdf5
+      NCCL:           $(other_dirs["NCCL"])
+      MPI:            $(other_dirs["MPI"])
+      HDF5:           $(other_dirs["HDF5"])
 
     Wrappers:
       cuNumeric       $libcunumericwrapper
