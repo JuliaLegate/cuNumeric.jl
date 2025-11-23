@@ -284,4 +284,16 @@ CN_NDArray* nda_attach_external(const void* ptr, size_t size, int dim,
                                                             alloc, ordering);
   return new CN_NDArray{cupynumeric::as_array(store)};
 }
+
+// CN_NDArray* nda_isapprox(CN_NDArray* rhs1, CN_NDArray* rhs2, float atol,
+// float rtol){
+//    CN_Type type(legate::bool_());
+//    const auto shape = rhs.shape();
+//    std::vector<uint64_t> out_shape(shape);
+//    NDArray result = zeros(std::move(out_shape), type.obj);
+//   // HOW TO PASS KWARGS???
+//    result.binary_op(CuPyNumericBinaryOpCode::CUPYNUMERIC_BINOP_ISCLOSE,
+//    rhs1->obj, rhs2->obj); return new CN_NDArray{std::move(result))};
+// }
+
 }  // extern "C"
