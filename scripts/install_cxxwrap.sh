@@ -45,10 +45,10 @@ echo "Using $JULIA at: $JULIA_PATH"
 
 GIT_REPO="https://github.com/JuliaInterop/libcxxwrap-julia.git"
 COMMIT_HASH="89e4699837bfa0929610c9e330889fb2df925b47" #(v14.2)
-JULIA_CXXWRAP_SRC=$CUNUMERIC_ROOT_DIR/deps/libcxxwrap-julia
+JULIA_CXXWRAP_SRC=$CUNUMERIC_ROOT_DIR/lib/libcxxwrap-julia
 
 if [ ! -d "$JULIA_CXXWRAP_SRC" ]; then
-    cd $CUNUMERIC_ROOT_DIR/deps
+    cd $CUNUMERIC_ROOT_DIR/lib
     git clone $GIT_REPO
 fi
 
