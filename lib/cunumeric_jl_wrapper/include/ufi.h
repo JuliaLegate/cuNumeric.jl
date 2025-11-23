@@ -22,6 +22,7 @@
 #include "jlcxx/jlcxx.hpp"
 #include "legate.h"
 
+#ifdef HAVE_CUDA
 namespace ufi {
 enum TaskIDs {
   LOAD_PTX_TASK = 143432,
@@ -46,3 +47,5 @@ class RunPTXTask : public legate::LegateTask<RunPTXTask> {
 
 }  // namespace ufi
 void wrap_cuda_methods(jlcxx::Module& mod);
+
+#endif

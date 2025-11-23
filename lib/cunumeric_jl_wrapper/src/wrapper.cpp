@@ -75,11 +75,13 @@ legate::Library get_lib() {
   return runtime->get_library();
 }
 
+#ifdef HAVE_CUDA
 void register_tasks() {
   auto library = get_lib();
   ufi::LoadPTXTask::register_variants(library);
   ufi::RunPTXTask::register_variants(library);
 }
+#endif
 
 JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   wrap_unary_ops(mod);
@@ -109,7 +111,9 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   mod.method("_get_store", &get_store);
   mod.method("_get_ptr", &get_ptr);
   mod.method("get_lib", &get_lib);
+#ifdef HAVE_CUDA
   mod.method("register_tasks", &register_tasks);
+#endif
 
   auto ndarray_accessor =
       mod.add_type<Parametric<TypeVar<1>, TypeVar<2>>>("NDArrayAccessor");
@@ -123,5 +127,7 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
         v.push_back(std::make_shared<CN_NDArray>(x));
       });
 
+#ifdef HAVE_CUDA
   wrap_cuda_methods(mod);
+#endif
 }
