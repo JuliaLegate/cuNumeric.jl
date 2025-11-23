@@ -6,6 +6,9 @@ help.sh
 docker.log
 docs/package-lock.json
 
+# auto-generated script
+build_wrapper.sh
+
 extracted_cunumeric
 deps/cunumeric_jl_wrapper/*
 deps/cunumeric_jl_wrapper
