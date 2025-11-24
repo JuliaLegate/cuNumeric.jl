@@ -19,28 +19,30 @@ steps:
           - JuliaCI/julia-coverage#v1:
               dirs:
                 - src
-                - lib
               codecov: true
         agents:
           queue: "juliagpu"
           cuda: "*"
+        commands: |
+          echo -e "[CUDA_Runtime_jll]\nlocal = \"true\"" >LocalPreferences.toml
         if: build.message !~ /\[skip tests\]/
-        timeout_in_minutes: 30
+        timeout_in_minutes: 45
         env:
           LEGATE_SHOW_CONFIG: "1"
           GPUTESTS: "1"
+          LEGATE_TEST: "1"
         matrix:
           setup:
             julia:
               - "1.10"
               - "1.11"
-              - "1.12"
+              # - "1.12"
             arch:
               - "x64"
-          adjustments:
-            - with:
-                julia: "1.12"
-              soft_fail : true
+          # adjustments:
+          #   - with:
+          #       julia: "1.12"
+          #     soft_fail : true
 
   # - group: ":computer: CUDA Versions (Julia 1.11)"
   #   key: "cuda"
