@@ -20,10 +20,6 @@
 using Test
 using cuNumeric
 
-# for CUDA tests
-using CUDA
-import CUDA: i32
-
 using LinearAlgebra
 using CUDA
 import CUDA: i32
@@ -44,7 +40,11 @@ include("tests/scoping.jl")
 include("tests/scoping-advanced.jl")
 
 const run_gpu_tests = get(ENV, "GPUTESTS", "1") != "0"
-const run_cuda_tests   = run_gpu_tests && HAS_CUDA
+const run_cuda_tests   = run_gpu_tests && CUDA.functional()
+
+if run_gpu_tests && !run_cuda_tests
+    @warn "You asked for CUDA tests, but they are disabled because no functional CUDA device was detected."
+end
 
 @info "Run CUDA Tests: $(run_cuda_tests)"
 
