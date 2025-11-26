@@ -2,8 +2,9 @@
 #include <cupynumeric/ndarray.h>
 #include <cupynumeric/operators.h>
 #include <cupynumeric/runtime.h>
+#include <deps/realm/machine.h>
+#include <deps/realm/machine_impl.h>
 #include <legate.h>
-#include <legate/mapping/mapping.h>
 
 #include <atomic>
 #include <cstdint>
@@ -19,47 +20,70 @@ constexpr uint64_t KiB = 1024ull;
 constexpr uint64_t MiB = KiB * 1024ull;
 constexpr uint64_t GiB = MiB * 1024ull;
 
-// Find "--key=" and parse the decimal that follows. Returns default_val if not
-// found / bad.
-static uint64_t parse_flag_mb(std::string_view cfg, std::string_view key,
-                              uint64_t default_val) {
-  // pattern to look for: "--key="
-  std::string pattern = "--";
-  pattern += key;
-  pattern += '=';
-
-  size_t pos = cfg.find(pattern);
-  if (pos == std::string_view::npos) return default_val;
-
-  pos += pattern.size();
-  size_t end = cfg.find_first_of(" \t", pos);
-  std::string_view numstr = cfg.substr(
-      pos, end == std::string_view::npos ? cfg.size() - pos : end - pos);
-  if (numstr.empty()) return default_val;
-
-  uint64_t v = 0;
-  for (char c : numstr) {
-    if (c < '0' || c > '9') return default_val;  // reject non-digit
-    v = v * 10 + uint64_t(c - '0');
-  }
-  return v;  // still in MB
-}
-
 static uint64_t compute_total_fb_bytes_from_env() {
-  const char* env = std::getenv("LEGATE_CONFIG");
-  if (!env) return 0;
+  Legion::Machine legion_machine{Legion::Machine::get_machine()};
 
-  std::string_view cfg(env);
+#if LEGATE_DEFINED(LEGATE_USE_CUDA)
+  Legion::Machine::ProcessorQuery gpus =
+      Legion::Machine::ProcessorQuery(legion_machine)
+          .only_kind(Realm::Processor::TOC_PROC);
 
-  // Legate convention: numeric values are MB
-  uint64_t fbmem_mb = parse_flag_mb(cfg, "fbmem", 0);  // per GPU
-  uint64_t gpus = parse_flag_mb(cfg, "gpus", 1);       // total # GPUs requested
+  uint64_t total_fb_mem = 0;
+  uint64_t gpus_count = gpus.count();
 
-  if (fbmem_mb == 0) return 0;
+  // for each GPU
+  for (auto it = gpus.begin(); it != gpus.end(); ++it) {
+    auto proc = *it;
+    assert(proc.kind() == Realm::Processor::TOC_PROC);
 
-  // aggregate across GPUs (change if you want per‑GPU instead)
-  uint64_t total = fbmem_mb * gpus * MiB;
-  return total;
+    // get all the FB memories local to this GPU
+    Realm::Machine::MemoryQuery local_memories =
+        Legion::Machine::MemoryQuery(legion_machine)
+            .only_kind(Realm::Memory::GPU_FB_MEM)
+            .same_address_space_as(proc);
+
+    // TODO: will this ever have multiple GPU_FB_MEM memories???
+    for (auto mem_it = local_memories.begin(); mem_it != local_memories.end();
+         ++mem_it) {
+      auto mem = *mem_it;
+      assert(mem.kind() == Realm::Memory::GPU_FB_MEM);
+
+      total_fb_mem += mem.capacity();
+    }
+  }
+  // std::cout << "Detected " << gpus_count << " GPUs with " << total_fb_mem /
+  // MiB
+  //           << " MB each, total " << total_fb_mem / GiB << " GB\n";
+  return total_fb_mem;
+#else
+  uint64_t total_system_mem = 0;
+  Legion::Machine::ProcessorQuery cpus =
+      Legion::Machine::ProcessorQuery(legion_machine)
+          .only_kind(Realm::Processor::LOC_PROC);
+
+  for (auto it = cpus.begin(); it != cpus.end(); ++it) {
+    auto proc = *it;
+    assert(proc.kind() == Realm::Processor::LOC_PROC);
+
+    // get all the SYSTEM memories local to this CPU
+    Realm::Machine::MemoryQuery local_memories =
+        Legion::Machine::MemoryQuery(legion_machine)
+            .only_kind(Realm::Memory::SYSTEM_MEM)
+            .same_address_space_as(proc);
+
+    // TODO: will this ever have multiple SYSTEM memories???
+    for (auto mem_it = local_memories.begin(); mem_it != local_memories.end();
+         ++mem_it) {
+      auto mem = *mem_it;
+      assert(mem.kind() == Realm::Memory::SYSTEM_MEM);
+
+      total_system_mem += mem.capacity();
+    }
+  }
+  // std::cout << "Detected system memory: " << total_system_mem / GiB << "
+  // GB\n";
+  return total_system_mem;
+#endif
 }
 
 extern "C" {
