@@ -20,7 +20,7 @@ constexpr uint64_t KiB = 1024ull;
 constexpr uint64_t MiB = KiB * 1024ull;
 constexpr uint64_t GiB = MiB * 1024ull;
 
-static uint64_t compute_total_fb_bytes_from_env() {
+static uint64_t query_machine_config() {
   Legion::Machine legion_machine{Legion::Machine::get_machine()};
 
 #if LEGATE_DEFINED(LEGATE_USE_CUDA)
@@ -52,8 +52,7 @@ static uint64_t compute_total_fb_bytes_from_env() {
     }
   }
   // std::cout << "Detected " << gpus_count << " GPUs with " << total_fb_mem /
-  // MiB
-  //           << " MB each, total " << total_fb_mem / GiB << " GB\n";
+  // MiB << " MB each, total " << total_fb_mem / GiB << " GB\n";
   return total_fb_mem;
 #else
   uint64_t total_system_mem = 0;
@@ -80,8 +79,7 @@ static uint64_t compute_total_fb_bytes_from_env() {
       total_system_mem += mem.capacity();
     }
   }
-  // std::cout << "Detected system memory: " << total_system_mem / GiB << "
-  // GB\n";
+  // std::cout << "System memory: " << total_system_mem / GiB << "GB\n";
   return total_system_mem;
 #endif
 }
@@ -108,7 +106,7 @@ struct CN_Store {
 };
 
 uint64_t nda_query_device_memory() {
-  uint64_t total = compute_total_fb_bytes_from_env();
+  uint64_t total = query_machine_config();
   if (total == 0) total = 8ull * GiB;
   return total;
 }
