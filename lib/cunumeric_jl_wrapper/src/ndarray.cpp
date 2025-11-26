@@ -20,13 +20,13 @@ constexpr uint64_t KiB = 1024ull;
 constexpr uint64_t MiB = KiB * 1024ull;
 constexpr uint64_t GiB = MiB * 1024ull;
 
+using Legion::Machine;
 static uint64_t query_machine_config() {
-  Legion::Machine legion_machine{Legion::Machine::get_machine()};
+  Machine legion_machine{Machine::get_machine()};
 
 #if LEGATE_DEFINED(LEGATE_USE_CUDA)
-  Legion::Machine::ProcessorQuery gpus =
-      Legion::Machine::ProcessorQuery(legion_machine)
-          .only_kind(Realm::Processor::TOC_PROC);
+  Machine::ProcessorQuery gpus = Machine::ProcessorQuery(legion_machine)
+                                     .only_kind(Realm::Processor::TOC_PROC);
 
   uint64_t total_fb_mem = 0;
   uint64_t gpus_count = gpus.count();
@@ -38,7 +38,7 @@ static uint64_t query_machine_config() {
 
     // get all the FB memories local to this GPU
     Realm::Machine::MemoryQuery local_memories =
-        Legion::Machine::MemoryQuery(legion_machine)
+        Machine::MemoryQuery(legion_machine)
             .only_kind(Realm::Memory::GPU_FB_MEM)
             .same_address_space_as(proc);
 
@@ -56,9 +56,8 @@ static uint64_t query_machine_config() {
   return total_fb_mem;
 #else
   uint64_t total_system_mem = 0;
-  Legion::Machine::ProcessorQuery cpus =
-      Legion::Machine::ProcessorQuery(legion_machine)
-          .only_kind(Realm::Processor::LOC_PROC);
+  Machine::ProcessorQuery cpus = Machine::ProcessorQuery(legion_machine)
+                                     .only_kind(Realm::Processor::LOC_PROC);
 
   for (auto it = cpus.begin(); it != cpus.end(); ++it) {
     auto proc = *it;
@@ -66,7 +65,7 @@ static uint64_t query_machine_config() {
 
     // get all the SYSTEM memories local to this CPU
     Realm::Machine::MemoryQuery local_memories =
-        Legion::Machine::MemoryQuery(legion_machine)
+        Machine::MemoryQuery(legion_machine)
             .only_kind(Realm::Memory::SYSTEM_MEM)
             .same_address_space_as(proc);
 
