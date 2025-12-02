@@ -1,0 +1,11 @@
+coverage:
+  ignore:
+    - "benchmark"
+    - "docs/"
+    - "scripts/"
+    - "examples/"
+    - "deps/"
+  status:
+    patch: false
+    project: false
+    changes: false

@@ -21,6 +21,12 @@ module cuNumeric
 
 include("utilities/depends.jl")
 
+const HAS_CUDA = cupynumeric_jll.host_platform["cuda"] != "none"
+
+if !HAS_CUDA
+    @warn "cuPyNumeric JLL does not have CUDA. If you have an NVIDIA GPU something might be wrong."
+end
+
 const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.05.00", "25.08.00", "25.10.00"]
 
 const DEFAULT_FLOAT = Float32
@@ -32,18 +38,6 @@ const SUPPORTED_NUMERIC_TYPES = Union{SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES}
 const SUPPORTED_TYPES = Union{SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES,Bool} #* TODO Test UInt, Complex
 
 # const MAX_DIM = 6 # idk what we compiled?
-
-function preload_libs()
-    libs = [
-        joinpath(OpenBLAS32_jll.artifact_dir, "lib", "libopenblas.so"), # required for libcupynumeric.so
-        joinpath(CUTENSOR_LIB, "libcutensor.so"),
-        joinpath(TBLIS_LIB, "libtblis.so"),
-        joinpath(CUPYNUMERIC_LIB, "libcupynumeric.so"),
-    ]
-    for lib in libs
-        Libdl.dlopen(lib, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
-    end
-end
 
 include("utilities/preference.jl")
 find_preferences()
@@ -58,6 +52,22 @@ libnda = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_c_wrapper.so")
 libpath = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_jl_wrapper.so")
 if !isfile(libpath)
     error("Developer mode: You need to call Pkg.build()")
+end
+
+function preload_libs()
+    libs = [
+        joinpath(OpenBLAS32_jll.artifact_dir, "lib", "libopenblas.so"), # required for libcupynumeric.so
+        joinpath(TBLIS_LIB, "libtblis.so"),
+        joinpath(CUPYNUMERIC_LIB, "libcupynumeric.so"),
+    ]
+
+    if HAS_CUDA
+        push!(libs, joinpath(CUTENSOR_LIB, "libcutensor.so"))
+    end
+
+    for lib in libs
+        Libdl.dlopen(lib, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
+    end
 end
 
 preload_libs() # for precompilation
@@ -84,7 +94,9 @@ include("ndarray/binary.jl")
 include("scoping.jl")
 
 # # Custom CUDA.jl kernel integration
-include("cuda.jl")
+if HAS_CUDA
+    include("cuda.jl")
+end
 
 # # Utilities 
 include("utilities/version.jl")
@@ -114,10 +126,12 @@ function cunumeric_setup(AA::ArgcArgv)
     Base.atexit(my_on_exit)
 
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
-    # in /src/cuda.jl to notify /wrapper/src/cuda.cpp about CUDA.jl kernel state size
-    cuNumeric.set_kernel_state_size();
-    # in /wrapper/src/cuda.cpp
-    cuNumeric.register_tasks();
+    if HAS_CUDA
+        # in /src/cuda.jl to notify /wrapper/src/cuda.cpp about CUDA.jl kernel state size
+        cuNumeric.set_kernel_state_size();
+        # in /wrapper/src/cuda.cpp
+        cuNumeric.register_tasks();
+    end
     # setup /src/memory.jl 
     cuNumeric.init_gc!()
 end
