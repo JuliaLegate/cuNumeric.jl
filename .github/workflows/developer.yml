@@ -98,7 +98,7 @@ jobs:
         id: julia-cache
         uses: julia-actions/cache@v2
         with:
-            cache-name: julia-developer-ci-test
+            cache-name: julia-developer-ci-test-new
       - name: Cleanup old cuNumeric and Legate
         run: | 
           julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")' || true # ensure clean env
