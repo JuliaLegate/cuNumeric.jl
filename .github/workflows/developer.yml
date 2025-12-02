@@ -108,6 +108,7 @@ jobs:
       - name: Setup cuNumeric.jl and Legate.jl with build from src wrappers
         run: |
           julia --color=yes -e '
+              using Pkg;
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "driver-compat"))
               using LegatePreferences; LegatePreferences.use_developer_mode();
           '
