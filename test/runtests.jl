@@ -20,11 +20,9 @@
 using Test
 using cuNumeric
 
-# for CUDA tests
+using LinearAlgebra
 using CUDA
 import CUDA: i32
-
-using LinearAlgebra
 
 using Random
 import Random: rand
@@ -39,15 +37,21 @@ include("tests/unary_tests.jl")
 include("tests/binary_tests.jl")
 include("tests/scoping.jl")
 include("tests/scoping-advanced.jl")
-include("tests/cuda/vecadd.jl")
 
-# TODO: this fails in the testing suite; however, it works fine outside of it
-# Failed to load CUDA module! Error log: ptxas fatal   : Unresolved extern function 'julia_throw_boundserror_8900'
-# @testset verbose = true "CUDA Tests" begin
-#     max_diff = Float32(1e-4)
-#     @testset binaryop(max_diff)
-#     @testset unaryop(max_diff)
-# end
+const run_gpu_tests = get(ENV, "GPUTESTS", "1") != "0"
+const run_cuda_tests = run_gpu_tests && CUDA.functional()
+
+if run_gpu_tests
+    println(CUDA.versioninfo())
+end
+
+if run_gpu_tests && !CUDA.functional()
+    error(
+        "You asked for CUDA tests, but they are disabled because no functional CUDA device was detected.",
+    )
+end
+
+@info "Run CUDA Tests: $(run_cuda_tests)"
 
 @testset verbose = true "AXPY" begin
     N = 100
@@ -386,4 +390,14 @@ end
             @test cuNumeric.compare(u, u_scoped, atol(T) * N, rtol(T) * 10)
         end
     end
+end
+
+if run_cuda_tests
+    include("tests/cuda/vecadd.jl")
+    @testset verbose = true "CUDA Tests" begin
+        cuda_unaryop()
+        cuda_binaryop()
+    end
+else
+    @warn "The CUDA tests will not be run as a CUDA-enabled device is not available"
 end

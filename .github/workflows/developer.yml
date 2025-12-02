@@ -74,35 +74,35 @@ jobs:
             echo "name=dev" >> $GITHUB_OUTPUT
           fi
 
-          VERSION=$(grep "^version = " Project.toml | cut -d'"' -f2)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+#           VERSION=$(grep "^version = " Project.toml | cut -d'"' -f2)
+#           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      - name: Setup Julia
-        uses: julia-actions/setup-julia@v2
-        with:
-          version: '1.11'
+#       - name: Setup Julia
+#         uses: julia-actions/setup-julia@v2
+#         with:
+#           version: '1.11'
       
-      - name: Install basic utils
-        run: apt-get update && apt-get install -y wget curl git build-essential
+#       - name: Install basic utils
+#         run: apt-get update && apt-get install -y wget curl git build-essential
 
 
-      - name: Install CMake 3.30.7
-        run: |
-          mkdir -p $HOME/.local
-          cd $WORKSPACE
-          wget https://github.com/Kitware/CMake/releases/download/v3.30.7/cmake-3.30.7-linux-x86_64.sh --no-check-certificate
-          sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=$HOME/.local
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+#       - name: Install CMake 3.30.7
+#         run: |
+#           mkdir -p $HOME/.local
+#           cd $WORKSPACE
+#           wget https://github.com/Kitware/CMake/releases/download/v3.30.7/cmake-3.30.7-linux-x86_64.sh --no-check-certificate
+#           sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=$HOME/.local
+#           echo "$HOME/.local/bin" >> $GITHUB_PATH
       
-      - name: Load Julia packages from cache
-        id: julia-cache
-        uses: julia-actions/cache@v2
-        with:
-            cache-name: julia-developer-ci-test
-      - name: Cleanup old cuNumeric and Legate
-        run: | 
-          julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")' || true # ensure clean env
-          julia --color=yes -e 'using Pkg; Pkg.rm("Legate")' || true # ensure clean env
+#       - name: Load Julia packages from cache
+#         id: julia-cache
+#         uses: julia-actions/cache@v2
+#         with:
+#             cache-name: julia-developer-ci-test
+#       - name: Cleanup old cuNumeric and Legate
+#         run: | 
+#           julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")' || true # ensure clean env
+#           julia --color=yes -e 'using Pkg; Pkg.rm("Legate")' || true # ensure clean env
           
 
       - name: Setup cuNumeric.jl and Legate.jl with build from src wrappers
