@@ -39,7 +39,7 @@ function kernel_mul(a, b, c, N)
     return nothing
 end
 
-function binaryop(max_diff)
+function cuda_binaryop(max_diff)
     N = 1024
     threads = 256
     blocks = cld(N, threads)
@@ -70,7 +70,7 @@ function binaryop(max_diff)
         N
     )
 
-    @test @allowscalar cuNumeric.compare(c, c_cpu, max_diff, max_diff)
+    @test @allowscalar cuNumeric.compare(c, c_cpu, atol(Float32), rtol(Float32))
 
     for i in 1:N
         @allowscalar b[i] = a[i] * c[i]
@@ -81,7 +81,7 @@ function binaryop(max_diff)
         N
     )
 
-    @test @allowscalar cuNumeric.compare(b, b_cpu, max_diff, max_diff)
+    @test @allowscalar cuNumeric.compare(b, b_cpu, atol(Float32), rtol(Float32))
 end
 
 function kernel_sin(a, b, N)
@@ -92,7 +92,7 @@ function kernel_sin(a, b, N)
     return nothing
 end
 
-function unaryop(max_diff)
+function cuda_unaryop(max_diff)
     N = 1024
     threads = 64
     blocks = cld(N, threads)
@@ -119,5 +119,5 @@ function unaryop(max_diff)
     # TODO explore getting inplace ops working. 
     cuNumeric.@launch task=task threads=threads blocks=blocks inputs=a outputs=b scalars=UInt32(N)
 
-    @test @allowscalar cuNumeric.compare(b, b_cpu, max_diff, max_diff)
+    @test @allowscalar cuNumeric.compare(b, b_cpu, atol(Float32), rtol(Float32))
 end
