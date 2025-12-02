@@ -109,15 +109,17 @@ jobs:
         run: |
           julia --color=yes -e '
               using Pkg;
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "driver-compat"))
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "driver-compat", subdir = "lib/LegatePreferences"))
               using LegatePreferences; LegatePreferences.use_developer_mode();
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "driver-compat"))
           '
           julia --color=yes -e 'using Pkg; Pkg.build("Legate")'
 
           julia --color=yes -e '
               using Pkg;
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}"))
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}", subdir = "lib/CNPreferences"))  
               using CNPreferences; CNPreferences.use_developer_mode();
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}"))
           '
           julia --color=yes -e 'using Pkg; Pkg.build("cuNumeric")'
 
