@@ -17,6 +17,8 @@ on:
     paths:
       - 'deps/build.jl'
       - '.github/workflows/developer.yml'
+      - 'lib/cunumeric_jl_wrapper/src/**'
+      - 'lib/cunumeric_jl_wrapper/include/**'
     tags:
       - 'v*'
     branches:
@@ -25,6 +27,8 @@ on:
     paths:
       - 'deps/build.jl'
       - '.github/workflows/developer.yml'
+      - 'lib/cunumeric_jl_wrapper/src/**'
+      - 'lib/cunumeric_jl_wrapper/include/**'
 jobs:
   docs:
     name : Developer CI test
@@ -100,37 +104,21 @@ jobs:
           julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")' || true # ensure clean env
           julia --color=yes -e 'using Pkg; Pkg.rm("Legate")' || true # ensure clean env
           
-      - name: Setup CUDA runtime version
-        run: |       
-          julia --color=yes -e '
-              using Pkg
-              Pkg.add("CUDA")
-              using CUDA
-              CUDA.set_runtime_version!(v"12.4")
-          '
-      - name: Set LD_LIBRARY_PATH for CUDA_Driver_jll
-        run: |
-          echo "LD_LIBRARY_PATH=$(julia -e 'using Pkg; \
-            Pkg.add(name = "CUDA_Driver_jll", version = "0.12.1"); \
-            using CUDA_Driver_jll; \
-            print(joinpath(CUDA_Driver_jll.artifact_dir, "lib"))' \
-          ):$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
       - name: Setup cuNumeric.jl and Legate.jl with build from src wrappers
         run: |
           julia --color=yes -e '
-              using Pkg;
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main", subdir = "lib/LegatePreferences"))
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "driver-compat"))
               using LegatePreferences; LegatePreferences.use_developer_mode();
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")) # Pkg.add invokes Pkg.build
           '
+          julia --color=yes -e 'using Pkg; Pkg.build("Legate")'
 
           julia --color=yes -e '
               using Pkg;
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}", subdir = "lib/CNPreferences"))
+              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}"))
               using CNPreferences; CNPreferences.use_developer_mode();
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}")) # Pkg.add invokes Pkg.build
           '
+          julia --color=yes -e 'using Pkg; Pkg.build("cuNumeric")'
 
       - name: Perform Test
         run: |
