@@ -68,11 +68,11 @@ function find_preferences()
         cunumeric_wrapper_lib = joinpath(cunumeric_jl_wrapper_jll.artifact_dir, "lib")
     elseif mode == CNPreferences.MODE_DEVELOPER
         use_cupynumeric_jll = load_preference(
-            CNPreferences, "use_cupynumeric_jll", true
+            CNPreferences, "cunumeric_use_jll", true
         )
         if use_cupynumeric_jll == false
             cupynumeric_path = load_preference(
-                CNPreferences, "cupynumeric_path", nothing
+                CNPreferences, "cunumeric_path", nothing
             )
             check_cupynumeric_install(cupynumeric_path)
         end
