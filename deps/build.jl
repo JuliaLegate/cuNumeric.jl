@@ -154,7 +154,7 @@ end
 function replace_nothing_conda_jll(mode, lib, jll)
     if isnothing(lib)
         if mode == CNPreferences.MODE_CONDA
-            lib = joinpath(load_preference(CNPreferences, "conda_env", nothing), "lib")
+            lib = joinpath(load_preference(CNPreferences, "cunumeric_conda_env", nothing), "lib")
         else
             eval(:(using $(jll)))
             jll_mod = getfield(Main, jll)
@@ -203,5 +203,5 @@ function build(mode)
     end
 end
 
-const mode = load_preference(CNPreferences, "mode", CNPreferences.MODE_JLL)
+const mode = load_preference(CNPreferences, "cunumeric_mode", CNPreferences.MODE_JLL)
 build(mode)

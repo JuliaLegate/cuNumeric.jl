@@ -61,18 +61,18 @@ function find_preferences()
 
     cupynumeric_path = cupynumeric_jll.artifact_dir
 
-    mode = load_preference(CNPreferences, "mode", CNPreferences.MODE_JLL)
+    mode = load_preference(CNPreferences, "cunumeric_mode", CNPreferences.MODE_JLL)
 
     # if developer mode
     if mode == CNPreferences.MODE_JLL
         cunumeric_wrapper_lib = joinpath(cunumeric_jl_wrapper_jll.artifact_dir, "lib")
     elseif mode == CNPreferences.MODE_DEVELOPER
         use_cupynumeric_jll = load_preference(
-            CNPreferences, "use_cupynumeric_jll", CNPreferences.DEVEL_DEFAULT_JLL_CONFIG
+            CNPreferences, "use_cupynumeric_jll", true
         )
         if use_cupynumeric_jll == false
             cupynumeric_path = load_preference(
-                CNPreferences, "cupynumeric_path", CNPreferences.DEVEL_DEFAULT_CUPYNUMERIC_PATH
+                CNPreferences, "cupynumeric_path", nothing
             )
             check_cupynumeric_install(cupynumeric_path)
         end
@@ -80,7 +80,7 @@ function find_preferences()
         # if conda
     elseif mode == CNPreferences.MODE_CONDA
         @warn "mode = conda may break. We are using a subset of libraries from conda."
-        conda_env = load_preference(CNPreferences, "conda_env", nothing)
+        conda_env = load_preference(CNPreferences, "cunumeric_conda_env", nothing)
         check_cupynumeric_install(conda_env)
         cupynumeric_path = conda_env
         cutensor_lib = joinpath(conda_env, "lib")
