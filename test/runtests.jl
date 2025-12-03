@@ -38,16 +38,22 @@ include("tests/binary_tests.jl")
 include("tests/scoping.jl")
 include("tests/scoping-advanced.jl")
 
+const VERBOSE = false
+
 const run_gpu_tests = get(ENV, "GPUTESTS", "1") != "0"
 const run_cuda_tests = run_gpu_tests && CUDA.functional()
 
-if run_gpu_tests
+if VERBOSE
+    cuNumeric.versioninfo()
+end
+
+if run_gpu_tests && VERBOSE
     println(CUDA.versioninfo())
 end
 
 if run_gpu_tests && !CUDA.functional()
     error(
-        "You asked for CUDA tests, but they are disabled because no functional CUDA device was detected.",
+        "You asked for CUDA tests, but they are disabled because no functional CUDA device was detected."
     )
 end
 
@@ -395,8 +401,8 @@ end
 if run_cuda_tests
     include("tests/cuda/vecadd.jl")
     @testset verbose = true "CUDA Tests" begin
-        cuda_unaryop()
-        cuda_binaryop()
+        cuda_unaryop(rtol(Float32))
+        cuda_binaryop(rtol(Float32))
     end
 else
     @warn "The CUDA tests will not be run as a CUDA-enabled device is not available"
