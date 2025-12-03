@@ -46,7 +46,7 @@ set(SOURCES
 
 # Conditionally add CUDA bits
 if(NOT NOCUDA)
-    find_package(CUDAToolkit 12.2 REQUIRED)
+    find_package(CUDAToolkit 13.0 REQUIRED)
     list(APPEND SOURCES src/cuda.cpp)
     add_compile_definitions(HAVE_CUDA)
     set(HAVE_CUDA TRUE)
