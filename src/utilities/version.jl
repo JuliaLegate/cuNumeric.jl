@@ -55,7 +55,7 @@ function version_config_setup()
             "MPI" => "unknown",
             "NCCL" => "unknown",
             "CUDA_DRIVER" => "unknown",
-            "CUDA_RUNTIME" => "unknown"
+            "CUDA_RUNTIME" => "unknown",
         )
     end
 
