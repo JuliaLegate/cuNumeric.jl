@@ -30,7 +30,7 @@ cupynumeric_jll = "2862d674-414d-5b0b-a494-b21f8deca547"
 libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
 
 [compat]
-CUDA = "5.7"
+CUDA = "5.9"
 CNPreferences = "0.1.1"
 CxxWrap = "0.17"
 Legate = "0.1.0"
