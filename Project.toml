@@ -31,7 +31,7 @@ libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
 
 [compat]
 CUDA = "5.9"
-CNPreferences = "0.1.1"
+CNPreferences = "0.1.2"
 CxxWrap = "0.17"
 Legate = "0.1.0"
 LegatePreferences = "0.1.5"
