@@ -43,7 +43,7 @@ jobs:
       matrix:
         # julia: ["1.10", "1.11"]
         julia: ["1.11"] # 1.10 will break
-        cuda: ["12.4"]
+        cuda: ["13.0"]
         platform: ["linux/amd64"]
         os: ["ubuntu-22.04"]
         user: ["50020:50020"]
