@@ -129,6 +129,22 @@ function Base.:(*)(rhs1::NDArray{Bool,2}, rhs2::NDArray{Bool,2})
     )
 end
 
+function Base.:(*)(rhs1::NDArray{T,2}, rhs2::NDArray{T,2}) where {T<:Integer}
+
+    size(rhs1, 2) == size(rhs2, 1) || throw(DimensionMismatch("Matrix dimensions incompatible: $(size(rhs1)) × $(size(rhs2))"))
+
+    IntermediateType = Float64
+
+    A_float = cuNumeric.as_type(rhs1, IntermediateType)
+    B_float = cuNumeric.as_type(rhs2, IntermediateType)
+
+    C_float = A_float * B_float
+    C_int = cuNumeric.as_type(C_float, T)
+
+    return C_int
+
+end
+
 function Base.:(*)(rhs1::NDArray{<:Integer,2}, rhs2::NDArray{<:Integer,2})
     #* this is a stupid.....
     throw(
