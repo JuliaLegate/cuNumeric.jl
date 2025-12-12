@@ -145,13 +145,6 @@ function Base.:(*)(rhs1::NDArray{T,2}, rhs2::NDArray{T,2}) where {T<:Integer}
 
 end
 
-function Base.:(*)(rhs1::NDArray{<:Integer,2}, rhs2::NDArray{<:Integer,2})
-    #* this is a stupid.....
-    throw(
-        ArgumentError("cuNumeric.jl does not support matrix multiplication of two Integer arrays")
-    )
-end
-
 @doc"""
     LinearAlgebra.mul!(out::NDArray, arr1::NDArray, arr2::NDArray)
 

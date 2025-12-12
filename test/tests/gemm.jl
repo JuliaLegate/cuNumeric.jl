@@ -36,10 +36,9 @@ function gemm(N, M, T, max_diff)
     if T <: Integer
         a = cuNumeric.ones(Int32, 5, 5)
         a_jl = ones(Int32, 5, 5)
-        b = cuNumeric.ones(Float32, 5, 5)
-        b_jl = ones(Float32, 5, 5)
-        @test_throws ArgumentError a * a
-        @test @allowscalar cuNumeric.compare(a_jl * b_jl, a * b, 0.0, max_diff)
+        b = a * a
+        b_jl = a_jl * a_jl
+        @test @allowscalar cuNumeric.compare(b_jl, b, 0.0, max_diff)
         return
     end
 
