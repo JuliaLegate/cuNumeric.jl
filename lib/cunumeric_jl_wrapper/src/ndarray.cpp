@@ -116,8 +116,7 @@ CN_NDArray* nda_zeros_array(int32_t dim, const uint64_t* shape, CN_Type type) {
   return new CN_NDArray{NDArray(std::move(result))};
 }
 
-CN_NDArray* nda_full_array(int32_t dim, const uint64_t* shape, CN_Type type,
-                           const void* value) {
+CN_NDArray* nda_full_array(int32_t dim, const uint64_t* shape, CN_Type type, const void* value) {
   std::vector<uint64_t> shp(shape, shape + dim);
   Scalar s(type.obj, value, true);
   NDArray result = full(shp, s);
@@ -132,8 +131,8 @@ CN_NDArray* nda_random_array(int32_t dim, const uint64_t* shape) {
   return new CN_NDArray{NDArray(std::move(result))};
 }
 
-CN_NDArray* nda_reshape_array(CN_NDArray* arr, int32_t dim,
-                              const uint64_t* shape) {
+
+CN_NDArray* nda_reshape_array(CN_NDArray* arr, int32_t dim, const uint64_t* shape) {
   std::vector<int64_t> shp(shape, shape + dim);
   NDArray result = cupynumeric::reshape(arr->obj, shp, "C");
   return new CN_NDArray{NDArray(std::move(result))};
@@ -169,6 +168,12 @@ void nda_multiply(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out) {
 
 void nda_add(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out) {
   cupynumeric::add(rhs1->obj, rhs2->obj, out->obj);
+}
+
+
+CN_NDArray* nda_transpose(CN_NDArray* arr){
+  NDArray result = cupynumeric::transpose(arr);
+  return new CN_NDArray{NDArray(std::move(result))};
 }
 
 CN_NDArray* nda_multiply_scalar(CN_NDArray* rhs1, CN_Type type,

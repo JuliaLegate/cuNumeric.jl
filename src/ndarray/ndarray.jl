@@ -20,6 +20,14 @@
 export unwrap
 
 @doc"""
+    Base.nda_transpose(arr::NDArray)
+
+Return a new `NDArray` that is the transpose of the input `arr`.
+"""
+Base.nda_transpose(arr::NDArray) = nda_transpose(arr)
+
+
+@doc"""
     Base.copy(arr::NDArray)
 
 Create and return a deep copy of the given `NDArray`.
@@ -708,3 +716,7 @@ end
 function Base.isapprox(arr::NDArray{T}, arr2::NDArray{T}; atol=0, rtol=0) where {T}
     return compare(arr, arr2, atol, rtol)
 end
+
+
+
+

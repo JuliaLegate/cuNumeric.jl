@@ -267,6 +267,13 @@ function nda_dot(rhs1::NDArray, rhs2::NDArray)
     return NDArray(ptr)
 end
 
+function nda_transpose(arr::NDArray)
+    ptr = ccall((:nda_transpose, libnda),
+        NDArray_t, (NDArray_t,),
+        arr.ptr)
+    return NDArray(ptr)
+end
+
 function nda_attach_external(arr::AbstractArray{T,N}) where {T,N}
     ptr = Base.unsafe_convert(Ptr{Cvoid}, arr)
     nbytes = sizeof(T) * length(arr)
