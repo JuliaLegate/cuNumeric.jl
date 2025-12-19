@@ -38,6 +38,26 @@ function eye(rows::Int; T::Type{S}=Float64) where {S}
     return nda_eye(rows, cuNumeric.Type(S))
 end
 
+@doc"""
+    cuNumeric.abs(arr::NDArray)
+
+Return a new `NDArray` containing the element-wise absolute values of the input `arr`.
+"""
+function abs(arr::NDArray)
+    return nda_abs(arr)
+end
+
+@doc"""
+    cuNumeric.trace(arr::NDArray; offset=0, a1=0, a2=1, T=Float32)
+
+Compute the trace of the `NDArray` along the specified axes.
+"""
+function trace(arr::NDArray; offset::Int=0, a1::Int=0, a2::Int=1, T::Type{S}=Float32) where {S}
+    out = cuNumeric.zeros(S)
+    nda_trace(arr, offset, a1, a2, cuNumeric.Type(S), out)
+    return out
+end
+
 
 @doc"""
     Base.copy(arr::NDArray)

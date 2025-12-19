@@ -170,6 +170,10 @@ void nda_add(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out) {
   cupynumeric::add(rhs1->obj, rhs2->obj, out->obj);
 }
 
+void nda_trace(CN_NDArray* arr, int32_t offset, int32_t a1, int32_t a2, CN_Type type, CN_NDArray* out){
+  cupynumeric::trace(arr, offset, a1, a2, type, out);
+}
+
 CN_NDArray* nda_eye(int32_t rows, CN_Type type){
   NDArray result = cupynumeric::eye(rows, rows, 0, type.obj)
   return new CN_NDArray{NDArray(std::move(result))}; 
@@ -177,6 +181,11 @@ CN_NDArray* nda_eye(int32_t rows, CN_Type type){
 
 CN_NDArray* nda_transpose(CN_NDArray* arr){
   NDArray result = cupynumeric::transpose(arr);
+  return new CN_NDArray{NDArray(std::move(result))};
+}
+
+CN_NDArray* nda_abs(CN_NDArray* arr){
+  NDArray result = cupynumeric::abs(arr);
   return new CN_NDArray{NDArray(std::move(result))};
 }
 
