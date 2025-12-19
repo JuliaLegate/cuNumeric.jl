@@ -170,6 +170,10 @@ void nda_add(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out) {
   cupynumeric::add(rhs1->obj, rhs2->obj, out->obj);
 }
 
+CN_NDArray* nda_eye(int32_t rows, CN_Type type){
+  NDArray result = cupynumeric::eye(rows, rows, 0, type.obj)
+  return new CN_NDArray{NDArray(std::move(result))}; 
+}
 
 CN_NDArray* nda_transpose(CN_NDArray* arr){
   NDArray result = cupynumeric::transpose(arr);

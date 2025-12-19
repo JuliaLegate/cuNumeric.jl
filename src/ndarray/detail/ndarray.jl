@@ -267,6 +267,14 @@ function nda_dot(rhs1::NDArray, rhs2::NDArray)
     return NDArray(ptr)
 end
 
+function nda_eye(rows::Int32, ::Type{T}) where {T}
+    legate_type = Legate.to_legate_type(T)
+    ptr = ccall((:eye, libnda),
+        NDArray_t, (Int32, Legate.LegateTypeAllocated),
+        rows, legate_type)
+    return NDArray(ptr; T=T, n_dim=2)
+end
+
 function nda_transpose(arr::NDArray)
     ptr = ccall((:nda_transpose, libnda),
         NDArray_t, (NDArray_t,),

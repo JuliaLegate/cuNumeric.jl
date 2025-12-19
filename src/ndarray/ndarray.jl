@@ -19,12 +19,24 @@
 
 export unwrap
 
+
 @doc"""
-    Base.nda_transpose(arr::NDArray)
+    cuNumeric.transpose(arr::NDArray)
 
 Return a new `NDArray` that is the transpose of the input `arr`.
 """
-Base.nda_transpose(arr::NDArray) = nda_transpose(arr)
+function transpose(arr::NDArray)
+    return nda_transpose(arr)
+end
+
+@doc"""
+    cuNumeric.eye(rows::Int; T=Float32)
+
+Create a 2D identity `NDArray` of size `rows x rows` with element type `T`.
+"""
+function eye(rows::Int; T::Type{S}=Float64) where {S}
+    return nda_eye(rows, cuNumeric.Type(S))
+end
 
 
 @doc"""
