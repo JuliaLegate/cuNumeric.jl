@@ -131,7 +131,6 @@ CN_NDArray* nda_random_array(int32_t dim, const uint64_t* shape) {
   return new CN_NDArray{NDArray(std::move(result))};
 }
 
-
 CN_NDArray* nda_reshape_array(CN_NDArray* arr, int32_t dim, const uint64_t* shape) {
   std::vector<int64_t> shp(shape, shape + dim);
   NDArray result = cupynumeric::reshape(arr->obj, shp, "C");
@@ -170,8 +169,35 @@ void nda_add(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out) {
   cupynumeric::add(rhs1->obj, rhs2->obj, out->obj);
 }
 
+// NEW
+
+void nda_divide(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out){
+  cupynumeric::divide(rhs1->obj, rhs2->obj, out->obj);
+}
+
+CN_NDArray* unique(CN_NDArray* arr){
+  NDArray result = cunumeric::unique(arr->obj);
+  return new CN_NDArray{NDArray(std::move(result))}; 
+}
+
+
+CN_NDArray* nda_sum(CN_NDArray* arr){
+  NDArray result = cunumeric::sum(arr->obj);
+  return new CN_NDArray{NDArray(std::move(result))}; 
+}
+
+CN_NDArray* nda_neg(CN_NDArray* arr){
+  NDArray result = cunumeric::negative(arr->obj);
+  return new CN_NDArray{NDArray(std::move(result))}; 
+}
+
+CN_NDArray* nda_ravel(CN_NDArray* arr){
+  NDArray result = cupynumeric::ravel(arr->obj, "C");
+  return new CN_NDArray{NDArray(std::move(result))}; 
+}
+
 void nda_trace(CN_NDArray* arr, int32_t offset, int32_t a1, int32_t a2, CN_Type type, CN_NDArray* out){
-  cupynumeric::trace(arr, offset, a1, a2, type, out);
+  cupynumeric::trace(arr->obj, offset, a1, a2, type, out);
 }
 
 CN_NDArray* nda_eye(int32_t rows, CN_Type type){
@@ -179,13 +205,19 @@ CN_NDArray* nda_eye(int32_t rows, CN_Type type){
   return new CN_NDArray{NDArray(std::move(result))}; 
 }
 
+CN_NDArray* diag(CN_NDArray* arr, int32_t k){
+  NDArray result = cunumeric::diag(arr->obj, k);
+  return new CN_NDArray{NDArray(std::move(result))};
+}
+
+
 CN_NDArray* nda_transpose(CN_NDArray* arr){
-  NDArray result = cupynumeric::transpose(arr);
+  NDArray result = cupynumeric::transpose(arr->obj);
   return new CN_NDArray{NDArray(std::move(result))};
 }
 
 CN_NDArray* nda_abs(CN_NDArray* arr){
-  NDArray result = cupynumeric::abs(arr);
+  NDArray result = cupynumeric::abs(arr->obj);
   return new CN_NDArray{NDArray(std::move(result))};
 }
 

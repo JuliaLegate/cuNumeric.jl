@@ -58,6 +58,61 @@ function trace(arr::NDArray; offset::Int=0, a1::Int=0, a2::Int=1, T::Type{S}=Flo
     return out
 end
 
+@doc"""
+    cuNumeric.diag(arr::NDArray; k=0)
+
+Extract the k-th diagonal from a 2D `NDArray`.
+"""
+function diag(arr::NDArray; k::Int=0)
+    return nda_diag(arr, k)
+end
+
+@doc"""
+    cuNumeric.ravel(arr::NDArray)
+
+Return a flattened 1D view of the input `NDArray`.
+"""
+function ravel(arr::NDArray)
+    return nda_ravel(arr)
+end
+
+@doc"""
+    cuNumeric.negative(arr::NDArray)
+
+Return a new `NDArray` with the element-wise negation of the input `arr`.
+"""
+function negative(arr::NDArray)
+    return nda_neg(arr)
+end
+
+@doc"""
+    cunumeric.sum(arr::NDArray)
+
+Compute the sum of all elements in the `NDArray` and return as a scalar `NDArray`.
+"""
+function sum(arr::NDArray)
+    out = cuNumeric.zeros(eltype(arr))
+    nda_sum(arr, out)
+    return out
+end
+
+@doc"""
+    cuNumeric.divide(arr1::NDArray, arr2::NDArray, out::NDArray)
+
+Perform element-wise division of `arr1` by `arr2`, storing the result in `out`.
+"""
+function divide(arr1::NDArray, arr2::NDArray, out::NDArray)
+    nda_divide(arr1, arr2, out)
+end
+
+@doc"""
+    cuNumeric.unique(arr::NDArray)
+
+Return a new `NDArray` containing the unique elements of the input `arr`.
+"""
+function unique(arr::NDArray)
+    return nda_unique(arr)
+end
 
 @doc"""
     Base.copy(arr::NDArray)

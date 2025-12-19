@@ -228,6 +228,48 @@ function nda_multiply(rhs1::NDArray, rhs2::NDArray, out::NDArray)
     return out
 end
 
+function nda_diag(arr::NDArray, k::Int32)
+    ptr = ccall((:diag, libnda),
+        NDArray_t, (NDArray_t, Int32),
+        arr.ptr, k)
+    return NDArray(ptr)
+end
+
+function nda_divide(rhs1::NDArray, rhs2::NDArray, out::NDArray)
+    ccall((:nda_divide, libnda),
+        Cvoid, (NDArray_t, NDArray_t, NDArray_t),
+        rhs1.ptr, rhs2.ptr, out.ptr)
+    return out
+end
+
+function nda_unique(arr::NDArray)
+    ptr = ccall((:nda_unique, libnda),
+        NDArray_t, (NDArray_t,),
+        arr.ptr)
+    return NDArray(ptr)
+end
+
+function nda_sum(arr::NDArray)
+    ptr = ccall((:nda_sum, libnda),
+        NDArray_t, (NDArray_t,),
+        arr.ptr)
+    return NDArray(ptr)
+end
+
+function nda_neg(arr::NDArray)
+    ptr = ccall((:nda_neg, libnda),
+        NDArray_t, (NDArray_t,),
+        arr.ptr)
+    return NDArray(ptr)
+end
+
+function nda_ravel(arr::NDArray)
+    ptr = ccall((:nda_ravel, libnda),
+        NDArray_t, (NDArray_t,),
+        arr.ptr)
+    return NDArray(ptr)
+end
+
 function nda_add(rhs1::NDArray, rhs2::NDArray, out::NDArray)
     ccall((:nda_add, libnda),
         Cvoid, (NDArray_t, NDArray_t, NDArray_t),
