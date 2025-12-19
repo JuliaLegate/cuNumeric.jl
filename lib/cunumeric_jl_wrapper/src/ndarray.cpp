@@ -171,25 +171,11 @@ void nda_add(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out) {
 
 // NEW
 
-void nda_divide(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out){
-  cupynumeric::divide(rhs1->obj, rhs2->obj, out->obj);
-}
-
 CN_NDArray* unique(CN_NDArray* arr){
   NDArray result = cunumeric::unique(arr->obj);
   return new CN_NDArray{NDArray(std::move(result))}; 
 }
 
-
-CN_NDArray* nda_sum(CN_NDArray* arr){
-  NDArray result = cunumeric::sum(arr->obj);
-  return new CN_NDArray{NDArray(std::move(result))}; 
-}
-
-CN_NDArray* nda_neg(CN_NDArray* arr){
-  NDArray result = cunumeric::negative(arr->obj);
-  return new CN_NDArray{NDArray(std::move(result))}; 
-}
 
 CN_NDArray* nda_ravel(CN_NDArray* arr){
   NDArray result = cupynumeric::ravel(arr->obj, "C");
@@ -213,11 +199,6 @@ CN_NDArray* diag(CN_NDArray* arr, int32_t k){
 
 CN_NDArray* nda_transpose(CN_NDArray* arr){
   NDArray result = cupynumeric::transpose(arr->obj);
-  return new CN_NDArray{NDArray(std::move(result))};
-}
-
-CN_NDArray* nda_abs(CN_NDArray* arr){
-  NDArray result = cupynumeric::abs(arr->obj);
   return new CN_NDArray{NDArray(std::move(result))};
 }
 

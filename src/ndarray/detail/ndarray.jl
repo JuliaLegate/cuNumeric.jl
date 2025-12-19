@@ -235,29 +235,8 @@ function nda_diag(arr::NDArray, k::Int32)
     return NDArray(ptr)
 end
 
-function nda_divide(rhs1::NDArray, rhs2::NDArray, out::NDArray)
-    ccall((:nda_divide, libnda),
-        Cvoid, (NDArray_t, NDArray_t, NDArray_t),
-        rhs1.ptr, rhs2.ptr, out.ptr)
-    return out
-end
-
 function nda_unique(arr::NDArray)
     ptr = ccall((:nda_unique, libnda),
-        NDArray_t, (NDArray_t,),
-        arr.ptr)
-    return NDArray(ptr)
-end
-
-function nda_sum(arr::NDArray)
-    ptr = ccall((:nda_sum, libnda),
-        NDArray_t, (NDArray_t,),
-        arr.ptr)
-    return NDArray(ptr)
-end
-
-function nda_neg(arr::NDArray)
-    ptr = ccall((:nda_neg, libnda),
         NDArray_t, (NDArray_t,),
         arr.ptr)
     return NDArray(ptr)
@@ -315,13 +294,6 @@ function nda_eye(rows::Int32, ::Type{T}) where {T}
         NDArray_t, (Int32, Legate.LegateTypeAllocated),
         rows, legate_type)
     return NDArray(ptr; T=T, n_dim=2)
-end
-
-function nda_abs(arr::NDArray{T,N}) where {T,N}
-    ptr = ccall((:nda_abs, libnda),
-        NDArray_t, (NDArray_t,),
-        arr.ptr)
-    return NDArray(ptr; T=T, n_dim=N)
 end
 
 function nda_multiply(rhs1::NDArray, rhs2::NDArray, out::NDArray)

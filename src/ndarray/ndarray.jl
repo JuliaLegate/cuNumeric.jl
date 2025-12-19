@@ -39,15 +39,6 @@ function eye(rows::Int; T::Type{S}=Float64) where {S}
 end
 
 @doc"""
-    cuNumeric.abs(arr::NDArray)
-
-Return a new `NDArray` containing the element-wise absolute values of the input `arr`.
-"""
-function abs(arr::NDArray)
-    return nda_abs(arr)
-end
-
-@doc"""
     cuNumeric.trace(arr::NDArray; offset=0, a1=0, a2=1, T=Float32)
 
 Compute the trace of the `NDArray` along the specified axes.
@@ -76,34 +67,6 @@ function ravel(arr::NDArray)
     return nda_ravel(arr)
 end
 
-@doc"""
-    cuNumeric.negative(arr::NDArray)
-
-Return a new `NDArray` with the element-wise negation of the input `arr`.
-"""
-function negative(arr::NDArray)
-    return nda_neg(arr)
-end
-
-@doc"""
-    cunumeric.sum(arr::NDArray)
-
-Compute the sum of all elements in the `NDArray` and return as a scalar `NDArray`.
-"""
-function sum(arr::NDArray)
-    out = cuNumeric.zeros(eltype(arr))
-    nda_sum(arr, out)
-    return out
-end
-
-@doc"""
-    cuNumeric.divide(arr1::NDArray, arr2::NDArray, out::NDArray)
-
-Perform element-wise division of `arr1` by `arr2`, storing the result in `out`.
-"""
-function divide(arr1::NDArray, arr2::NDArray, out::NDArray)
-    nda_divide(arr1, arr2, out)
-end
 
 @doc"""
     cuNumeric.unique(arr::NDArray)
