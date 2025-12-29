@@ -1,7 +1,15 @@
 [deps]
+cuNumeric = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
+CNPreferences = "3e078157-ea10-49d5-bf32-908f777cd46f"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 DocumenterVitepress = "4710194d-e776-4893-9690-8d956a29c365"
 LiveServer = "16fef848-5104-11e9-1b77-fb7a48bbb589"
 
 [compat]
 Documenter = "1.5"
+cuNumeric = "0.1"
+CNPreferences = "0.1.2"
+
+[sources]
+cuNumeric = {path = ".."}
+CNPreferences = {path = "../lib/CNPreferences"}
