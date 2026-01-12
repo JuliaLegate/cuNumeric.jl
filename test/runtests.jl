@@ -24,7 +24,6 @@ import Random: rand
 
 const VERBOSE = get(ENV, "VERBOSE", "1") != "0"
 const run_gpu_tests = get(ENV, "GPUTESTS", "1") != "0"
-const run_cuda_tests = run_gpu_tests && CUDA.functional()
 @info "Run CUDA Tests: $(run_cuda_tests)"
 
 if run_gpu_tests 
@@ -392,7 +391,7 @@ end
     end
 end
 
-if run_cuda_tests
+if run_gpu_tests
     include("tests/cuda/vecadd.jl")
     @testset verbose = true "CUDA Tests" begin
         cuda_unaryop(rtol(Float32))
