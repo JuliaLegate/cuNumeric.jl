@@ -24,7 +24,7 @@ import Random: rand
 
 const VERBOSE = get(ENV, "VERBOSE", "1") != "0"
 const run_gpu_tests = get(ENV, "GPUTESTS", "1") != "0"
-@info "Run CUDA Tests: $(run_cuda_tests)"
+@info "Run GPU Tests: $(run_gpu_tests)"
 
 if run_gpu_tests 
     using CUDA
