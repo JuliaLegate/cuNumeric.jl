@@ -83,6 +83,18 @@ static uint64_t query_machine_config() {
 #endif
 }
 
+int nda_recalibrate_allocator() {
+  auto runtime = legate::Runtime::get_runtime();
+  runtime->issue_execution_fence(true);  // block = true
+
+  // query current allocated bytes
+#if LEGATE_DEFINED(LEGATE_USE_CUDA)
+  uint64_t current_bytes = 0;
+#else
+  uint64_t current_bytes = 0;
+#endif
+}
+
 extern "C" {
 
 using cupynumeric::full;

@@ -52,6 +52,12 @@ function register_free!(nbytes::Integer)
     return nothing
 end
 
+function recalibrate_allocator!()
+    # int nda_recalibrate_allocator(void);
+    current_bytes[] = ccall((:nda_recalibrate_allocator, libnda), Int64, (Cvoid,))
+    return nothing
+end
+
 function maybe_collect()
     # cur = current_bytes[]
     # pend = pending_bytes[]
@@ -61,9 +67,11 @@ function maybe_collect()
     if tot > hard_limit()
         # Aggressive
         GC.gc(true)
+        recalibrate_allocator!()
     elseif tot > soft_limit()
         # Gentle
         GC.gc(false)
+        recalibrate_allocator!()
     end
     return nothing
 end
