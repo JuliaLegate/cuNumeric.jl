@@ -27,23 +27,20 @@ const run_gpu_tests = get(ENV, "GPUTESTS", "1") != "0"
 const run_cuda_tests = run_gpu_tests && CUDA.functional()
 @info "Run CUDA Tests: $(run_cuda_tests)"
 
-VERBOSE && cuNumeric.versioninfo()
-
-if run_gpu_tests && VERBOSE
-    println(CUDA.versioninfo())
-end
+if run_gpu_tests 
+    using CUDA
+    import CUDA: i32
+    VERBOSE && println(CUDA.versioninfo())
+end 
 
 if run_gpu_tests && !CUDA.functional()
     error(
         "You asked for CUDA tests, but they are disabled because no functional CUDA device was detected."
     )
-else
-    using CUDA
-    import CUDA: i32
 end
 
 using cuNumeric
-
+VERBOSE && cuNumeric.versioninfo()
 
 include("tests/util.jl")
 include("tests/axpy.jl")
