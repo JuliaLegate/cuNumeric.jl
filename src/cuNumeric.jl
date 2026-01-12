@@ -40,39 +40,55 @@ const SUPPORTED_TYPES = Union{SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES,Bool} #*
 # const MAX_DIM = 6 # idk what we compiled?
 
 include("utilities/preference.jl")
-find_preferences()
 
-const BLAS_LIB = load_preference(CNPreferences, "BLAS_LIB", nothing)
-const CUTENSOR_LIB = load_preference(CNPreferences, "CUTENSOR_LIB", nothing)
-const TBLIS_LIB = load_preference(CNPreferences, "TBLIS_LIB", nothing)
-const CUPYNUMERIC_LIB = load_preference(CNPreferences, "CUPYNUMERIC_LIB", nothing)
-const CUNUMERIC_WRAPPER_LIB = load_preference(CNPreferences, "CUNUMERIC_WRAPPER_LIB", nothing)
+# Sets the LEGATE_LIB_PATH and WRAPPER_LIB_PATH preferences based on mode
+# This will also include the relevant JLLs if necessary.
+@static if CNPreferences.MODE == "jll"
+    using cupynumeric_jll, cunumeric_jl_wrapper_jll
+    find_paths(
+        CNPreferences.MODE;
+        cupynumeric_jll_module=cupynumeric_jll,
+        cupynumeric_jll_wrapper_module=cunumeric_jl_wrapper_jll
+    )
+elseif CNPreferences.MODE == "developer"
+    use_cupynumeric_jll = load_preference(CNPreferences, "legate_use_jll", true)
+    if use_cupynumeric_jll
+        using cupynumeric_jll
+        find_paths(
+            CNPreferences.MODE;
+            cupynumeric_jll_module=cupynumeric_jll,
+            cupynumeric_jll_wrapper_module=nothing
+        )
+    else
+        find_paths(CNPreferences.MODE)
+    end
+elseif CNPreferences.MODE == "conda"
+    using cunumeric_jl_wrapper_jll
+    find_paths(
+        CNPreferences.MODE,
+        cupynumeric_jll_module=nothing,
+        cupynumeric_jll_wrapper_module=cunumeric_jl_wrapper_jll
+    )
+else
+    error("cuNumeric.jl: Unknown mode $(CNPreferences.MODE). Must be one of 'jll', 'developer', or 'conda'.")
+end
 
-libnda = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_c_wrapper.so")
-libpath = joinpath(CUNUMERIC_WRAPPER_LIB, "libcunumeric_jl_wrapper.so")
-if !isfile(libpath)
+
+const CUPYNUMERIC_LIBDIR = load_preference(CNPreferences, "CUPYNUMERIC_LIBDIR", nothing)
+const CUPYNUMERIC_WRAPPER_LIBDIR = load_preference(CNPreferences, "CUPYNUMERIC_WRAPPER_LIBDIR", nothing)
+
+const libnda = joinpath(CUPYNUMERIC_WRAPPER_LIBDIR, "libcunumeric_c_wrapper.so")
+const CUPYNUMERIC_WRAPPER_LIB_PATH = joinpath(CUPYNUMERIC_WRAPPER_LIBDIR, "libcunumeric_jl_wrapper.so")
+const CUPYNUMERIC_LIB_PATH = joinpath(CUPYNUMERIC_LIBDIR, "libcupynumeric.so")
+
+(isnothing(CUPYNUMERIC_LIBDIR) || isnothing(CUPYNUMERIC_WRAPPER_LIBDIR)) && error("cuNumeric.jl: CUPYNUMERIC_LIBDIR or CUPYNUMERIC_WRAPPER_LIBDIR preference not set. Check LocalPreferences.toml")
+
+if !isfile(CUPYNUMERIC_WRAPPER_LIB_PATH)
     error("Developer mode: You need to call Pkg.build()")
 end
 
-function preload_libs()
-    libs = [
-        joinpath(OpenBLAS32_jll.artifact_dir, "lib", "libopenblas.so"), # required for libcupynumeric.so
-        joinpath(TBLIS_LIB, "libtblis.so"),
-        joinpath(CUPYNUMERIC_LIB, "libcupynumeric.so"),
-    ]
 
-    if HAS_CUDA
-        push!(libs, joinpath(CUTENSOR_LIB, "libcutensor.so"))
-    end
-
-    for lib in libs
-        Libdl.dlopen(lib, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
-    end
-end
-
-preload_libs() # for precompilation
-
-@wrapmodule(() -> libpath)
+@wrapmodule(() -> CUPYNUMERIC_WRAPPER_LIB_PATH)
 
 # custom GC
 include("memory.jl")
@@ -92,11 +108,6 @@ include("ndarray/binary.jl")
 
 # scoping macro
 include("scoping.jl")
-
-# # Custom CUDA.jl kernel integration
-if HAS_CUDA
-    include("cuda.jl")
-end
 
 # # Utilities 
 include("utilities/version.jl")
@@ -122,19 +133,6 @@ end
 
 global cuNumeric_config_str::String = ""
 
-function cunumeric_setup(AA::ArgcArgv)
-    Base.atexit(my_on_exit)
-
-    cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
-    if HAS_CUDA
-        # in /src/cuda.jl to notify /wrapper/src/cuda.cpp about CUDA.jl kernel state size
-        cuNumeric.set_kernel_state_size();
-        # in /wrapper/src/cuda.cpp
-        cuNumeric.register_tasks();
-    end
-    # setup /src/memory.jl 
-    cuNumeric.init_gc!()
-end
 
 @doc"""
     versioninfo()
@@ -149,12 +147,21 @@ end
 # Runtime initilization
 function __init__()
     CNPreferences.check_unchanged()
-    preload_libs()
+    
+    Libdl.dlopen(CUPYNUMERIC_LIB_PATH, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
+    Libdl.dlopen(CUPYNUMERIC_WRAPPER_LIB_PATH, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
+
     @initcxx
 
     AA = ArgcArgv([Base.julia_cmd()[1]])
     global cuNumeric_config_str = version_config_setup()
-    cunumeric_setup(AA)
+
+    cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
+
+    # setup /src/memory.jl 
+    cuNumeric.init_gc!()
+
+    Base.atexit(my_on_exit)
 end
 
 end #module cuNumeric
