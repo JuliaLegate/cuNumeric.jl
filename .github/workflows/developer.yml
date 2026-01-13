@@ -123,4 +123,4 @@ jobs:
 
       - name: Perform Test
         run: |
-          julia --color=yes -e 'using Pkg; Pkg.test("cuNumeric")'
+          GPUTESTS=0 julia --color=yes -e 'using Pkg; Pkg.test("cuNumeric")'
