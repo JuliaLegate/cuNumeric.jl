@@ -26,11 +26,11 @@ const VERBOSE = get(ENV, "VERBOSE", "1") != "0"
 const run_gpu_tests = get(ENV, "GPUTESTS", "1") != "0"
 @info "Run GPU Tests: $(run_gpu_tests)"
 
-if run_gpu_tests 
+if run_gpu_tests
     using CUDA
     import CUDA: i32
     VERBOSE && println(CUDA.versioninfo())
-end 
+end
 
 if run_gpu_tests && !CUDA.functional()
     error(
@@ -40,6 +40,12 @@ end
 
 using cuNumeric
 VERBOSE && cuNumeric.versioninfo()
+
+# TODO
+# After loading cuNumeric, we should verify that the Legate config has set a GPU device
+# Right now, if you have a gpu device, but your LEGATE_CONFIG is cpu only,
+# @cuda_task will not be defined and tests will fail confusingly.
+# We should error out more gracefully in this situation.
 
 include("tests/util.jl")
 include("tests/axpy.jl")
