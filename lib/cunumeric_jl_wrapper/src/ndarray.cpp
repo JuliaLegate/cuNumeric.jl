@@ -16,85 +16,6 @@
 
 #include "ndarray_c_api.h"
 
-constexpr uint64_t KiB = 1024ull;
-constexpr uint64_t MiB = KiB * 1024ull;
-constexpr uint64_t GiB = MiB * 1024ull;
-
-using Legion::Machine;
-static uint64_t query_machine_config() {
-  Machine legion_machine{Machine::get_machine()};
-
-#if LEGATE_DEFINED(LEGATE_USE_CUDA)
-  Machine::ProcessorQuery gpus = Machine::ProcessorQuery(legion_machine)
-                                     .only_kind(Realm::Processor::TOC_PROC);
-
-  uint64_t total_fb_mem = 0;
-  uint64_t gpus_count = gpus.count();
-
-  // for each GPU
-  for (auto it = gpus.begin(); it != gpus.end(); ++it) {
-    auto proc = *it;
-    assert(proc.kind() == Realm::Processor::TOC_PROC);
-
-    // get all the FB memories local to this GPU
-    Realm::Machine::MemoryQuery local_memories =
-        Machine::MemoryQuery(legion_machine)
-            .only_kind(Realm::Memory::GPU_FB_MEM)
-            .same_address_space_as(proc);
-
-    // TODO: will this ever have multiple GPU_FB_MEM memories???
-    for (auto mem_it = local_memories.begin(); mem_it != local_memories.end();
-         ++mem_it) {
-      auto mem = *mem_it;
-      assert(mem.kind() == Realm::Memory::GPU_FB_MEM);
-
-      total_fb_mem += mem.capacity();
-    }
-  }
-  // std::cout << "Detected " << gpus_count << " GPUs with " << total_fb_mem /
-  // MiB << " MB each, total " << total_fb_mem / GiB << " GB\n";
-  return total_fb_mem;
-#else
-  uint64_t total_system_mem = 0;
-  Machine::ProcessorQuery cpus = Machine::ProcessorQuery(legion_machine)
-                                     .only_kind(Realm::Processor::LOC_PROC);
-
-  for (auto it = cpus.begin(); it != cpus.end(); ++it) {
-    auto proc = *it;
-    assert(proc.kind() == Realm::Processor::LOC_PROC);
-
-    // get all the SYSTEM memories local to this CPU
-    Realm::Machine::MemoryQuery local_memories =
-        Machine::MemoryQuery(legion_machine)
-            .only_kind(Realm::Memory::SYSTEM_MEM)
-            .same_address_space_as(proc);
-
-    // TODO: will this ever have multiple SYSTEM memories???
-    for (auto mem_it = local_memories.begin(); mem_it != local_memories.end();
-         ++mem_it) {
-      auto mem = *mem_it;
-      assert(mem.kind() == Realm::Memory::SYSTEM_MEM);
-
-      total_system_mem += mem.capacity();
-    }
-  }
-  // std::cout << "System memory: " << total_system_mem / GiB << "GB\n";
-  return total_system_mem;
-#endif
-}
-
-int nda_recalibrate_allocator() {
-  auto runtime = legate::Runtime::get_runtime();
-  runtime->issue_execution_fence(true);  // block = true
-
-  // query current allocated bytes
-#if LEGATE_DEFINED(LEGATE_USE_CUDA)
-  uint64_t current_bytes = 0;
-#else
-  uint64_t current_bytes = 0;
-#endif
-}
-
 extern "C" {
 
 using cupynumeric::full;
@@ -115,12 +36,6 @@ struct CN_Type {
 struct CN_Store {
   legate::LogicalStore obj;
 };
-
-uint64_t nda_query_device_memory() {
-  uint64_t total = query_machine_config();
-  if (total == 0) total = 8ull * GiB;
-  return total;
-}
 
 CN_NDArray* nda_zeros_array(int32_t dim, const uint64_t* shape, CN_Type type) {
   std::vector<uint64_t> shp(shape, shape + dim);

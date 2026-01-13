@@ -54,7 +54,12 @@ end
 
 function recalibrate_allocator!()
     # int nda_recalibrate_allocator(void);
-    current_bytes[] = ccall((:nda_recalibrate_allocator, libnda), Int64, (Cvoid,))
+    recal = ccall((:nda_recalibrate_allocator, libnda), Int64, (Cvoid,))
+    @assert recal >= 0
+    @info "[cuNumeric GC] Recalibrated allocator: $recal bytes"
+    @info "[cuNumeric GC] Previous allocation: $(current_bytes[]) bytes"
+
+    atomic_xchg!(current_bytes, recal)
     return nothing
 end
 
