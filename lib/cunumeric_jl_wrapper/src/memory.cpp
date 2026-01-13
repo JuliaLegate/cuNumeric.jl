@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <cstdlib>
 
+#include "ndarray_c_api.h"
+
 constexpr uint64_t KiB = 1024ull;
 constexpr uint64_t MiB = KiB * 1024ull;
 constexpr uint64_t GiB = MiB * 1024ull;
@@ -74,6 +76,8 @@ static uint64_t query_machine_config() {
   return total_system_mem;
 #endif
 }
+
+extern "C" {
 
 int nda_recalibrate_allocator() {
   auto runtime = legate::Runtime::get_runtime();
@@ -150,4 +154,5 @@ uint64_t nda_query_device_memory() {
     std::cerr << "Warning: Unable to query device memory, defaulting to 8 GB\n";
   }
   return total;
+}
 }
