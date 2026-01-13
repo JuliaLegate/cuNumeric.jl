@@ -1,13 +1,15 @@
-using Distributed
+ENV["LEGATE_CONFIG"] = "--cpus=2 --show-config --logging legate=debug,level=2  --show-progress  --show-memory-usage  --profile"
+
+using Distributed;
 addprocs(4)
 
 @everywhere begin
-    include("port.jl")
-    setup_legate_env()
-
     if myid() != 1
-        ENV["LEGATE_CONFIG"] = "--gpus=1 --fbmem=1000 --show-config --logging legate=debug,level=2  --show-progress  --show-memory-usage  --profile"
+        include("port.jl")
+        setup_legate_env()
+
         using cuNumeric
+        println("Number of runtimes: ", cuNumeric.get_number_of_runtimes())
 
         a = cuNumeric.rand(100)
         b = cuNumeric.rand(100)

@@ -10,6 +10,12 @@ const soft_frac = Ref{Float64}(0.80)
 const hard_frac = Ref{Float64}(0.90)
 const AUTO_GC_ENABLE = Ref{Bool}(false)
 
+function get_number_of_runtimes()
+    n = ccall((:nda_get_number_of_runtimes, libnda),
+        Int32, ())
+    return n
+end
+
 @doc"""
     init_gc!()
 

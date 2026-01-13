@@ -82,11 +82,15 @@ function setup_legate_env()
         peer_addrs = join(all_addrs[2:end], " ")
 
         # Set environment variables
-        ENV["WORKER_SELF_INFO"] = self_addr
-        ENV["WORKER_PEERS_INFO"] = peer_addrs
+        ENV["WORKER_SELF_INFO"] = "$self_addr"
+        ENV["WORKER_PEERS_INFO"] = "$peer_addrs"
+        ENV["BOOTSTRAP_P2P_PLUGIN"] = "ucp"
+        ENV["REALM_UCP_BOOTSTRAP_MODE"] = "p2p"
 
         # Optional: print to check
         println("Self: ", ENV["WORKER_SELF_INFO"])
         println("Peers: ", ENV["WORKER_PEERS_INFO"])
+        println("Bootstrap plugin: ", ENV["BOOTSTRAP_P2P_PLUGIN"])
+        println("Bootstrapping mode: ", ENV["REALM_UCP_BOOTSTRAP_MODE"])
     end
 end
