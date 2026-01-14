@@ -141,7 +141,7 @@ function gray_scott(FT, n_steps, u_rand, v_rand)
     u[1:15, 1:15] = u_rand
     v[1:15, 1:15] = v_rand
 
-    cuNumeric.disable_gc!()
+    cuNumeric.disable_gc!(; verbose=false)
     for n in 1:n_steps
         step(u, v, u_new, v_new, args)
         u, u_new = u_new, u

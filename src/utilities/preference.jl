@@ -51,49 +51,117 @@ function get_library_root(jll_module, env_var::String)
     end
 end
 
-function find_preferences()
-    pkg_root = abspath(joinpath(@__DIR__, "../", "../"))
+#############################################
+# LOTS OF THIS LOGIC EXISTS IN LEGATE.JL TOO
+# DEFINITELY DUPLICATED CODE
+#############################################
 
-    blas_lib = get_library_root(OpenBLAS32_jll, "JULIA_OPENBLAS_PATH")
-    cutensor_lib = get_library_root(CUTENSOR_jll, "JULIA_CUTENSOR_PATH")
+function check_jll(m::Module)
+    if !m.is_available()
+        m_host_cuda = cupynumeric_jll.host_platform["cuda"]
 
-    cupynumeric_path = cupynumeric_jll.artifact_dir
-
-    mode = load_preference(CNPreferences, "mode", CNPreferences.MODE_JLL)
-
-    # if developer mode
-    if mode == CNPreferences.MODE_JLL
-        cunumeric_wrapper_lib = joinpath(cunumeric_jl_wrapper_jll.artifact_dir, "lib")
-    elseif mode == CNPreferences.MODE_DEVELOPER
-        use_cupynumeric_jll = load_preference(
-            CNPreferences, "use_cupynumeric_jll", CNPreferences.DEVEL_DEFAULT_JLL_CONFIG
-        )
-        if use_cupynumeric_jll == false
-            cupynumeric_path = load_preference(
-                CNPreferences, "cupynumeric_path", CNPreferences.DEVEL_DEFAULT_CUPYNUMERIC_PATH
+        if (m_host_cuda == "none")
+            error(
+                "$(string(m)) installed but not available on this platform.\n $(string(cupynumeric_jll.host_platform))",
             )
-            check_cupynumeric_install(cupynumeric_path)
         end
-        cunumeric_wrapper_lib = joinpath(pkg_root, "deps", "cunumeric_jl_wrapper", "lib")
-        # if conda
-    elseif mode == CNPreferences.MODE_CONDA
-        @warn "mode = conda may break. We are using a subset of libraries from conda."
-        conda_env = load_preference(CNPreferences, "conda_env", nothing)
-        check_cupynumeric_install(conda_env)
-        cupynumeric_path = conda_env
-        cutensor_lib = joinpath(conda_env, "lib")
-    end
 
-    cupynumeric_lib = joinpath(cupynumeric_path, "lib")
-    if haskey(ENV, "JULIA_TBLIS_PATH")
-        tblis_lib = get(ENV, "JULIA_TBLIS_PATH", "0")
-    else
-        tblis_lib = cupynumeric_lib # cupynumeric libpath will by default contain tblis
+        v_host_cuda = VersionNumber(m_host_cuda)
+        valid_cuda_version = Legate.MIN_CUDA_VERSION <= v_host_cuda <= Legate.MAX_CUDA_VERSION
+        if !valid_cuda_version
+            error(
+                "$(string(m)) installed but not available on this platform. Host CUDA ver: $(v_host_cuda) not in range supported by $(string(m)): $(MIN_CUDA_VERSION)-$(MAX_CUDA_VERSION).",
+            )
+        else
+            error("$(string(m)) installed but not available on this platform. Unknown reason.")
+        end
     end
-
-    set_preferences!(CNPreferences, "BLAS_LIB" => blas_lib; force=true)
-    set_preferences!(CNPreferences, "CUTENSOR_LIB" => cutensor_lib; force=true)
-    set_preferences!(CNPreferences, "TBLIS_LIB" => tblis_lib; force=true)
-    set_preferences!(CNPreferences, "CUPYNUMERIC_LIB" => cupynumeric_lib; force=true)
-    set_preferences!(CNPreferences, "CUNUMERIC_WRAPPER_LIB" => cunumeric_wrapper_lib; force=true)
 end
+
+function find_paths(
+    mode::String;
+    cupynumeric_jll_module::Union{Module,Nothing}=nothing,
+    cupynumeric_jll_wrapper_module::Union{Module,Nothing}=nothing,
+)
+    libcupynumeric_path, libcupynumeric_wrapper_path = cuNumeric._find_paths(
+        CNPreferences.to_mode(mode), cupynumeric_jll_module, cupynumeric_jll_wrapper_module
+    )
+    set_preferences!(CNPreferences, "CUPYNUMERIC_LIBDIR" => libcupynumeric_path; force=true)
+    set_preferences!(
+        CNPreferences, "CUPYNUMERIC_WRAPPER_LIBDIR" => libcupynumeric_wrapper_path; force=true
+    )
+end
+
+function _find_paths(
+    mode::CNPreferences.JLL,
+    cupynumeric_jll_module::Module,
+    cupynumeric_jll_wrapper_module::Module,
+)
+    check_jll(cupynumeric_jll_module)
+    check_jll(cupynumeric_jll_wrapper_module)
+    legate_lib_dir = joinpath(cupynumeric_jll_module.artifact_dir, "lib")
+    legate_wrapper_libdir = joinpath(cupynumeric_jll_wrapper_module.artifact_dir, "lib")
+    return legate_lib_dir, legate_wrapper_libdir
+end
+
+function _find_paths(
+    mode::CNPreferences.Developer,
+    cupynumeric_jll_module::Module,
+    cupynumeric_jll_wrapper_module::Nothing,
+)
+    cupynumeric_path = ""
+    use_cupynumeric_jll = load_preference(CNPreferences, "cupynumeric_use_jll", true)
+
+    if use_cupynumeric_jll == false
+        cupynumeric_path = load_preference(CNPreferences, "cupynumeric_path", nothing)
+        check_cupynumeric_install(cupynumeric_path)
+    else
+        check_jll(cupynumeric_jll_module)
+        cupynumeric_path = cupynumeric_jll.artifact_dir
+    end
+
+    pkg_root = abspath(joinpath(@__DIR__, "../", "../"))
+    wrapper_lib = joinpath(pkg_root, "lib", "cunumeric_jl_wrapper", "build", "lib")
+
+    return joinpath(cupynumeric_path, "lib"), wrapper_lib
+end
+
+function _find_paths(
+    mode::CNPreferences.Conda,
+    cupynumeric_jll_module::Nothing,
+    cupynumeric_jll_wrapper_module::Module,
+)
+    @warn "mode = conda may break. We are using a subset of libraries from conda."
+
+    conda_env = load_preference(CNPreferences, "legate_conda_env", nothing)
+    isnothing(conda_env) && error(
+        "legate_conda_env preference must be set in LocalPreferences.toml when using conda mode"
+    )
+
+    check_legate_install(conda_env)
+    legate_path = conda_env
+    check_jll(cupynumeric_jll_wrapper_module)
+    legate_wrapper_lib = joinpath(cupynumeric_jll_wrapper_module.artifact_dir, "lib")
+
+    return joinpath(legate_path, "lib"), legate_wrapper_lib
+end
+
+# MPI, NCCL etc are found by Legate.find_dependency_paths
+const DEPS_MAP = Dict(
+    "CUTENSOR" => "libcutensor",
+    "BLAS" => "libopenblas",
+    "TBLIS" => "libtblis",
+)
+function find_dependency_paths(::Type{CNPreferences.JLL})
+    results = Dict{String,String}()
+
+    paths_to_search = copy(cupynumeric_jll.LIBPATH_list)
+
+    for (name, lib) in DEPS_MAP
+        results[name] = dirname(Libdl.find_library(lib, paths_to_search))
+    end
+    return results
+end
+
+find_dependency_paths(::Type{CNPreferences.Developer}) = Dict{String,String}()
+find_dependency_paths(::Type{CNPreferences.Conda}) = Dict{String,String}()

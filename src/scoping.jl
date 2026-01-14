@@ -23,6 +23,119 @@ end
 
 maybe_insert_delete(x) = x
 
+"""
+    walk_symbols(x) -> Vector{Symbol}
+
+Recursively collect all symbols that appear inside expression `x`.
+"""
+function walk_symbols(x)
+    syms = Symbol[]
+    if x isa Symbol
+        push!(syms, x)
+    elseif x isa Expr
+        for a in x.args
+            append!(syms, walk_symbols(a))
+        end
+    elseif x isa AbstractArray
+        for a in x
+            append!(syms, walk_symbols(a))
+        end
+    end
+    return syms
+end
+
+"""
+    insert_finalizers(stmts::Vector)
+Insert `cuNumeric.maybe_insert_delete(var)` after the last use of each temporary variable.
+"""
+function insert_finalizers(exprs::Vector, assigned_vars::Set{Symbol})
+    uses = Dict{Symbol,Vector{Int}}()
+    defs = Dict{Symbol,Int}()
+    alias_map = Dict{Symbol,Symbol}()
+
+    stmts = Any[]
+    for expr in exprs
+        append!(stmts, expr.args)
+    end
+
+    # Pass 1: collect definitions and uses
+    for (i, stmt) in enumerate(stmts)
+        stmt isa Expr || continue
+        stmt.head == :line && continue
+
+        if stmt.head == :(=)
+            lhs, rhs = stmt.args
+            if lhs isa Symbol
+                defs[lhs] = i
+            end
+            if lhs isa Symbol && rhs isa Symbol
+                alias_map[lhs] = rhs
+            end
+            for s in walk_symbols(rhs)
+                push!(get!(uses, s, Int[]), i)
+            end
+        else
+            for s in walk_symbols(stmt)
+                push!(get!(uses, s, Int[]), i)
+            end
+        end
+    end
+
+    for (alias, src) in alias_map
+        append!(get!(uses, src, Int[]), get(uses, alias, Int[]))
+    end
+
+    # Compute last usage index per variable
+    last_use = Dict{Symbol,Int}()
+    for (v, idxs) in uses
+        last_use[v] = maximum(idxs)
+    end
+
+    # Pass 2: insert finalizers
+    out = Any[]
+    for (i, stmt) in enumerate(stmts)
+        push!(out, stmt)
+        stmt isa Expr || continue
+        stmt.head == :line && continue
+
+        # detect aliasing: v = w means don't finalize w
+        skip_finalize = Set{Symbol}()
+        if stmt.head == :(=)
+            lhs, rhs = stmt.args
+            # a = tmp1
+            # tmp1 will be added to skip_finalize
+            # a[:,:] = tmp1
+            # this does a copy, so we want to finalize tmp1
+            if lhs isa Symbol && rhs isa Symbol
+                push!(skip_finalize, rhs)
+            end
+        end
+
+        for (v, lasti) in last_use
+            if lasti == i && v ∈ assigned_vars && !(v ∈ skip_finalize)
+                push!(out, :(cuNumeric.maybe_insert_delete($v)))
+            end
+        end
+    end
+
+    return out
+end
+
+"""
+    insert_finalizers(block::Expr)
+Apply finalizer insertion to a `begin ... end` or `:block` expression.
+"""
+function insert_finalizers(block::Expr, assigned_vars::Set{Symbol})
+    if block.head == :block || block.head == :begin
+        # Filter out LineNumberNodes before processing
+        stmts = [s for s in block.args if !(s isa LineNumberNode)]
+        new_stmts = insert_finalizers(stmts, assigned_vars)
+        return Expr(:block, new_stmts...)
+    else
+        error("Expected a begin/block expression")
+    end
+end
+
 function process_ndarray_scope(block)
     # Normalize block to list of statements
     stmts = block isa Expr && block.head == :block ? block.args : [block]
@@ -32,19 +145,15 @@ function process_ndarray_scope(block)
     body = Any[]
 
     for stmt in stmts
-        stmt = find_ndarray_assignments(stmt, assigned_vars)
-        push!(body, stmt)
+        stmts = find_ndarray_assignments(stmt, assigned_vars)
+        new_stmts = insert_finalizers(stmts, assigned_vars)
+        push!(body, new_stmts)
     end
 
-    cleanup_exprs = []
-
-    for var in assigned_vars
-        push!(cleanup_exprs, :(cuNumeric.maybe_insert_delete($var)))
-    end
+    # println(body)
 
     result = quote
-        cuNumeric.@__tryfinally($(Expr(:block, body...)),
-            $(Expr(:block, cleanup_exprs...)))
+        $(Expr(:block, body...))
     end
 
     counter[] = 0

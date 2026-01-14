@@ -1,18 +1,16 @@
 set -e
 
 # Check if exactly one argument is provided
-if [[ $# -ne 8 ]]; then
-    echo "Usage: $0 <cunumeric-pkg> <cupynumeric-root> <legate-root> <hdf5-root> <blas-lib> <install-dir> <branch> <nthreads>"
+if [[ $# -ne 6 ]]; then
+    echo "Usage: $0 <cunumeric-pkg> <cupynumeric-root> <legate-root> <blas-root> <install-dir> <nthreads>"
     exit 1
 fi
 CUNUMERICJL_ROOT_DIR=$1 # this is the repo root of cunumeric.jl
 CUPYNUMERIC_ROOT_DIR=$2
 LEGATE_ROOT_DIR=$3
-HDF5_ROOT_DIR=$4
-BLAS_LIB_DIR=$5
-INSTALL_DIR=$6
-WRAPPER_BRANCH=$7
-NTHREADS=$8
+BLAS_ROOT_DIR=$4
+INSTALL_DIR=$5
+NTHREADS=$6
 
 # Check if the provided argument is a valid directory
 
@@ -31,30 +29,7 @@ if [[ ! -d "$LEGATE_ROOT_DIR" ]]; then
     exit 1
 fi
 
-if [[ ! -d "$HDF5_ROOT_DIR" ]]; then
-    echo "Error: '$HDF5_ROOT_DIR' is not a valid directory."
-    exit 1
-fi
-
-echo "Checking out wrapper branch: $WRAPPER_BRANCH"
-GIT_REPO="https://github.com/JuliaLegate/cunumeric_jl_wrapper"
-CUNUMERIC_WRAPPER_SOURCE=$CUNUMERICJL_ROOT_DIR/deps/cunumeric_jl_wrapper_src
-
-if [ ! -d "$CUNUMERIC_WRAPPER_SOURCE" ]; then
-    git clone $GIT_REPO $CUNUMERIC_WRAPPER_SOURCE
-
-    cd "$CUNUMERIC_WRAPPER_SOURCE" || exit 1
-    echo "Current repo: $(basename $(pwd))"
-    git remote -v
-
-    git fetch origin "$WRAPPER_BRANCH"
-    git checkout "$WRAPPER_BRANCH"
-    # patch the cmake for our custom install
-    diff -u $CUNUMERIC_WRAPPER_SOURCE/CMakeLists.txt $CUNUMERICJL_ROOT_DIR/deps/CMakeLists.txt > deps_install.patch  || true
-    cd $CUNUMERIC_WRAPPER_SOURCE
-    patch -i $CUNUMERIC_WRAPPER_SOURCE/deps_install.patch
-fi
-
+CUNUMERIC_WRAPPER_SOURCE=$CUNUMERICJL_ROOT_DIR/lib/cunumeric_jl_wrapper
 BUILD_DIR=$CUNUMERIC_WRAPPER_SOURCE/build
 
 if [[ ! -d "$BUILD_DIR" ]]; then
@@ -66,21 +41,23 @@ if [[ ! -d "$INSTALL_DIR" ]]; then
 fi
 
 echo $LEGATE_ROOT_DIR
-LEGION_CMAKE_DIR=$LEGATE_ROOT_DIR/share/Legion/cmake
+
+# Default to OFF (CUDA support enabled), but allow override via environment variable
+NO_CUDA=${NO_CUDA:-OFF}
 
 if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
     echo "Configuring project..."
     cmake -S "$CUNUMERIC_WRAPPER_SOURCE" -B "$BUILD_DIR" \
-        -D CMAKE_PREFIX_PATH="$CUPYNUMERIC_ROOT_DIR;$LEGION_CMAKE_DIR;$LEGATE_ROOT_DIR;" \
+        -D BINARYBUILDER=OFF \
+        -D NOCUDA=$NO_CUDA \
+        -D CMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
+        -D CMAKE_PREFIX_PATH="$CUPYNUMERIC_ROOT_DIR;$LEGATE_ROOT_DIR;" \
         -D CUPYNUMERIC_PATH="$CUPYNUMERIC_ROOT_DIR" \
-        -D LEGATE_PATH="$LEGATE_ROOT_DIR" \
-        -D HDF5_PATH="$HDF5_ROOT_DIR" \
         -D BLAS_LIBRARIES="$BLAS_LIB_DIR/libopenblas.so" \
         -D PROJECT_INSTALL_PATH="$INSTALL_DIR" \
-        -D CMAKE_BUILD_TYPE=Release
+        -D CMAKE_BUILD_TYPE=Releases
 else
     echo "Skipping configure (already done in $BUILD_DIR)"
 fi
 
 cmake --build "$BUILD_DIR" --parallel "$NTHREADS" --verbose
-cmake --install "$BUILD_DIR"

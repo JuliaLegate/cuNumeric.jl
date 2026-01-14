@@ -20,6 +20,60 @@
 export unwrap
 
 @doc"""
+    cuNumeric.transpose(arr::NDArray)
+
+Return a new `NDArray` that is the transpose of the input `arr`.
+"""
+function transpose(arr::NDArray)
+    return nda_transpose(arr)
+end
+
+@doc"""
+    cuNumeric.eye(rows::Int; T=Float32)
+
+Create a 2D identity `NDArray` of size `rows x rows` with element type `T`.
+"""
+function eye(rows::Int; T::Type{S}=Float64) where {S}
+    return nda_eye(Int32(rows), S)
+end
+
+@doc"""
+    cuNumeric.trace(arr::NDArray; offset=0, a1=0, a2=1, T=Float32)
+
+Compute the trace of the `NDArray` along the specified axes.
+"""
+function trace(arr::NDArray; offset::Int=0, a1::Int=0, a2::Int=1, T::Type{S}=Float32) where {S}
+    return nda_trace(arr, Int32(offset), Int32(a1), Int32(a2), S)
+end
+
+@doc"""
+    cuNumeric.diag(arr::NDArray; k=0)
+
+Extract the k-th diagonal from a 2D `NDArray`.
+"""
+function diag(arr::NDArray; k::Int=0)
+    return nda_diag(arr, Int32(k))
+end
+
+@doc"""
+    cuNumeric.ravel(arr::NDArray)
+
+Return a flattened 1D view of the input `NDArray`.
+"""
+function ravel(arr::NDArray)
+    return nda_ravel(arr)
+end
+
+@doc"""
+    cuNumeric.unique(arr::NDArray)
+
+Return a new `NDArray` containing the unique elements of the input `arr`.
+"""
+function unique(arr::NDArray)
+    return nda_unique(arr)
+end
+
+@doc"""
     Base.copy(arr::NDArray)
 
 Create and return a deep copy of the given `NDArray`.
@@ -73,45 +127,40 @@ as_type(arr, Float32)
 as_type(arr::NDArray{S,N}, ::Type{T}) where {S,T,N} = nda_astype(arr, T)::NDArray{T,N}
 as_type(arr::NDArray{T}, ::Type{T}) where {T} = arr
 
+# Wrap a raw pointer into an AbstractArray view
+function make_array(::Type{T}, ptr::Ptr{T}, shape::NTuple{N,Int}) where {T,N}
+    return unsafe_wrap(Array{T,N}, ptr, shape; own=false)
+end
+
 # conversion from NDArray to Base Julia array
+# get_ptr is a blocking call that grabs the physical store
+# we have not tested across multiple processes or devices yet
 function (::Type{<:Array{A}})(arr::NDArray{B}) where {A,B}
-    assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
     dims = Base.size(arr)
-    out = Base.zeros(A, dims)
-    for CI in CartesianIndices(dims)
-        out[CI] = A(arr[Tuple(CI)...])
-    end
-    return out
+    ptr = Ptr{A}(get_ptr(arr))
+    return make_array(A, ptr, dims)
 end
 
 function (::Type{<:Array})(arr::NDArray{B}) where {B}
-    assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
     dims = Base.size(arr)
-    out = Base.zeros(B, dims)
-    for CI in CartesianIndices(dims)
-        out[CI] = arr[Tuple(CI)...]
-    end
-    return out
+    ptr = Ptr{B}(get_ptr(arr))
+    return make_array(B, ptr, dims)
 end
 
 # conversion from Base Julia array to NDArray
 function (::Type{<:NDArray{A}})(arr::Array{B}) where {A,B}
-    assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
     dims = Base.size(arr)
     out = cuNumeric.zeros(A, dims)
-    for CI in CartesianIndices(dims)
-        out[Tuple(CI)...] = A(arr[CI])
-    end
+    attached = cuNumeric.nda_attach_external(arr)
+    copyto!(out, attached) # copy elems of attached to resulting out
     return out
 end
 
 function (::Type{<:NDArray})(arr::Array{B}) where {B}
-    assertscalar("Array(...)") #! CAN WE DO THIS WITHOUT SCALAR INDEXING??
     dims = Base.size(arr)
     out = cuNumeric.zeros(B, dims)
-    for CI in CartesianIndices(dims)
-        out[Tuple(CI)...] = arr[CI]
-    end
+    attached = cuNumeric.nda_attach_external(arr)
+    copyto!(out, attached)
     return out
 end
 
@@ -212,33 +261,21 @@ function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T,0}) where {T}
     print(io, arr[]) #! should I assert scalar??
 end
 
-function Base.show(io::IO, arr::NDArray{T,D}; elems=false) where {T,D}
-    print(io, "NDArray of $(T)s, Dim: $(D)")
-    if elems # print all elems of array
-        dims = shape(arr)
-        print(io, "[")
-        indxs = CartesianIndices(dims)
-        lastidx = last(indxs)
-        for CI in indxs
-            print(io, "$(arr[Tuple(CI)...])")
-            if CI != lastidx
-                print(io, ", ")
-            end
-        end
-        print(io, "]")
-    end
+function Base.show(io::IO, arr::NDArray{T,D}) where {T,D}
+    println(io, "NDArray{$(T),$(D)}")
+    Base.print_matrix(io, Array(arr))
 end
 
-function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T}; elems=false) where {T}
-    Base.show(io, arr; elems=elems)
+function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T}) where {T}
+    Base.show(io, arr)
 end
 
-function Base.print(arr::NDArray{T}; elems=false) where {T}
-    Base.show(stdout, arr; elems=elems)
+function Base.print(arr::NDArray{T}) where {T}
+    Base.show(stdout, arr)
 end
 
-function Base.println(arr::NDArray{T}; elems=false) where {T}
-    Base.show(stdout, arr; elems=elems)
+function Base.println(arr::NDArray{T}) where {T}
+    Base.show(stdout, arr)
     print("\n")
 end
 #### ARRAY INDEXING AND SLICES ####
@@ -679,7 +716,6 @@ arr == julia_arr2
 ```
 """
 function Base.:(==)(arr::NDArray, julia_arr::Array)
-    assertscalar("==")
     return julia_arr == Array(arr)
 end
 

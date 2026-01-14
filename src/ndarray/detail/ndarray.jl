@@ -1,4 +1,5 @@
 export NDArray
+export WrappedNDArray
 
 struct Slice
     has_start::Cint
@@ -24,6 +25,8 @@ end
 
 get_n_dim(ptr::NDArray_t) = Int(ccall((:nda_array_dim, libnda), Int32, (NDArray_t,), ptr))
 
+abstract type AbstractNDArray{T<:SUPPORTED_TYPES,N} end
+
 @doc"""
 **Internal API**
 
@@ -31,7 +34,7 @@ The NDArray type represents a multi-dimensional array in cuNumeric.
 It is a wrapper around a Legate array and provides various methods for array manipulation and operations. 
 Finalizer calls `nda_destroy_array` to clean up the underlying Legate array when the NDArray is garbage collected.
 """
-mutable struct NDArray{T,N}
+mutable struct NDArray{T,N} <: AbstractNDArray{T,N}
     ptr::NDArray_t
     nbytes::Int64
     padding::Union{Nothing,NTuple{N,Int}} where {N}
@@ -48,8 +51,24 @@ mutable struct NDArray{T,N}
     end
 end
 
+# struct WrappedNDArray{T,N} <: AbstractNDArray{T,N}
+#     ndarr::NDArray{T,N}
+#     jlarr::Array{T,N}
+
+#     function WrappedNDArray(ndarray::NDArray{T,N}, jlarray::Array{T,N}) where {T,N}
+#         ndarr = ndarray
+#         jlarr = jlarray
+#     end
+
+#     function WrappedNDArray(ndarray::NDArray{T,N}) where {T,N}
+#         ndarr = ndarray
+#         jlarr = nothing
+#     end
+# end
+
 #! JUST USE FULL TO MAKE a 0D?
-#$ cuNumeric.nda_full_array(UInt64[], 2.0f0)
+# $ cuNumeric.nda_full_array(UInt64[], 2.0f0)
+# TODO DAVID TEST THIS HERE
 # function NDArray(value::T) where {T <: SUPPORTED_TYPES}
 #     type = Legate.to_legate_type(T)
 #     ptr = ccall((:nda_from_scalar, libnda),
@@ -202,11 +221,25 @@ function nda_array_equal(rhs1::NDArray{T,N}, rhs2::NDArray{T,N}) where {T,N}
     return NDArray(ptr; T=Bool, n_dim=1)
 end
 
-function nda_multiply(rhs1::NDArray, rhs2::NDArray, out::NDArray)
-    ccall((:nda_multiply, libnda),
-        Cvoid, (NDArray_t, NDArray_t, NDArray_t),
-        rhs1.ptr, rhs2.ptr, out.ptr)
-    return out
+function nda_diag(arr::NDArray, k::Int32)
+    ptr = ccall((:nda_diag, libnda),
+        NDArray_t, (NDArray_t, Int32),
+        arr.ptr, k)
+    return NDArray(ptr)
+end
+
+function nda_unique(arr::NDArray)
+    ptr = ccall((:nda_unique, libnda),
+        NDArray_t, (NDArray_t,),
+        arr.ptr)
+    return NDArray(ptr)
+end
+
+function nda_ravel(arr::NDArray)
+    ptr = ccall((:nda_ravel, libnda),
+        NDArray_t, (NDArray_t,),
+        arr.ptr)
+    return NDArray(ptr)
 end
 
 function nda_add(rhs1::NDArray, rhs2::NDArray, out::NDArray)
@@ -248,11 +281,55 @@ function nda_dot(rhs1::NDArray, rhs2::NDArray)
     return NDArray(ptr)
 end
 
+function nda_eye(rows::Int32, ::Type{T}) where {T}
+    legate_type = Legate.to_legate_type(T)
+    ptr = ccall((:nda_eye, libnda),
+        NDArray_t, (Int32, Legate.LegateTypeAllocated),
+        rows, legate_type)
+    return NDArray(ptr; T=T, n_dim=2)
+end
+
+function nda_trace(
+    arr::NDArray, offset::Int32, a1::Int32, a2::Int32, ::Type{T}
+) where {T}
+    legate_type = Legate.to_legate_type(T)
+    ptr = ccall((:nda_trace, libnda),
+        NDArray_t,
+        (NDArray_t, Int32, Int32, Int32, Legate.LegateTypeAllocated),
+        arr.ptr, offset, a1, a2, legate_type)
+    return NDArray(ptr; T=T, n_dim=1)
+end
+
+function nda_transpose(arr::NDArray)
+    ptr = ccall((:nda_transpose, libnda),
+        NDArray_t, (NDArray_t,),
+        arr.ptr)
+    return NDArray(ptr)
+end
+
+function nda_attach_external(arr::AbstractArray{T,N}) where {T,N}
+    ptr = Base.unsafe_convert(Ptr{Cvoid}, arr)
+    nbytes = sizeof(T) * length(arr)
+    shape = collect(UInt64, size(arr))
+    legate_type = Legate.to_legate_type(T)
+
+    nda_ptr = ccall((:nda_attach_external, libnda),
+        NDArray_t, (Ptr{Cvoid}, UInt64, Int32, Ptr{UInt64}, Legate.LegateTypeAllocated),
+        ptr, nbytes, N, shape, legate_type)
+
+    return NDArray(nda_ptr; T=T, n_dim=N)
+end
+
 # return underlying logical store to the NDArray obj
 function get_store(arr::NDArray)
     cxx_ptr = CxxWrap.CxxPtr{cuNumeric.CN_NDArray}(arr.ptr)
     store = _get_store(cxx_ptr)
     return CxxWrap.CxxRef(store)
+end
+
+function get_ptr(arr::NDArray)
+    st = get_store(arr)
+    return _get_ptr(CxxWrap.CxxPtr(st))
 end
 
 @doc"""
