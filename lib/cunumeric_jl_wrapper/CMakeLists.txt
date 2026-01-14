@@ -79,6 +79,7 @@ install(TARGETS ${CXX_CUNUMERICJL_WRAPPER} DESTINATION lib)
 # ---- C API ----
 set(C_SOURCES
     src/ndarray.cpp
+    src/memory.cpp
 )
 
 add_library(${C_INTERFACE_LIB} SHARED ${C_SOURCES})
