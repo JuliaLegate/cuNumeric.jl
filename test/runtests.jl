@@ -23,7 +23,7 @@ using Random
 import Random: rand
 
 const VERBOSE = get(ENV, "VERBOSE", "1") != "0"
-const run_gpu_tests = get(ENV, "GPUTESTS", "1") != "0"
+const run_gpu_tests = (get(ENV, "GPUTESTS", "1") != "0") && (get(ENV, "NO_CUDA", "OFF") != "ON")
 @info "Run GPU Tests: $(run_gpu_tests)"
 
 if run_gpu_tests
@@ -68,6 +68,10 @@ end
 
 @testset verbose = true "Operators" begin
     @testset elementwise()
+end
+
+@testset verbose = true "Linear Algebra Tests" begin
+    include("tests/linalg.jl")
 end
 
 @testset verbose = true "GEMM" begin
