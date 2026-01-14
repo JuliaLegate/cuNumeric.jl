@@ -44,18 +44,6 @@ static inline uint64_t query_machine_config_common(
   return total_mem;
 }
 
-static uint64_t query_machine_config_host() {
-  return query_machine_config_common(Realm::Processor::LOC_PROC,
-                                     Realm::Memory::SYSTEM_MEM);
-}
-
-#if LEGATE_DEFINED(LEGATE_USE_CUDA)
-static uint64_t query_machine_config_device() {
-  return query_machine_config_common(Realm::Processor::TOC_PROC,
-                                     Realm::Memory::GPU_FB_MEM);
-}
-#endif
-
 extern "C" {
 
 static inline uint64_t query_allocated_bytes_common(
@@ -109,13 +97,17 @@ uint64_t nda_query_allocated_host_memory() {
 
 uint64_t nda_query_total_device_memory() {
 #if LEGATE_DEFINED(LEGATE_USE_CUDA)
-  uint64_t total = query_machine_config_device();
+  uint64_t total = query_machine_config_common(Realm::Processor::TOC_PROC,
+                                               Realm::Memory::GPU_FB_MEM);
 #else
   uint64_t total = 0;
 #endif
   return total;
 }
 
-uint64_t nda_query_total_host_memory() { return query_machine_config_host(); }
+uint64_t nda_query_total_host_memory() {
+  return query_machine_config_common(Realm::Processor::LOC_PROC,
+                                     Realm::Memory::SYSTEM_MEM);
+}
 
 }  // extern "C"
