@@ -35,7 +35,7 @@ LegatePreferences = "0.1.5"
 MacroTools = "0.5.16"
 OpenBLAS32_jll = "0.3"
 StatsBase = "0.34"
-cunumeric_jl_wrapper_jll = "25.10.1"
+cunumeric_jl_wrapper_jll = "25.10.2"
 cupynumeric_jll = "25.10.1"
 julia = "1.10"
 
