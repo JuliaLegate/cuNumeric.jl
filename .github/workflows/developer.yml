@@ -47,6 +47,7 @@ jobs:
         shell: bash
     env:
         LEGATE_AUTO_CONFIG: 0
+        NO_CUDA: ON
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
