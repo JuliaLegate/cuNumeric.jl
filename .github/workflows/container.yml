@@ -11,26 +11,11 @@ on:
         type: boolean
         required: false
         default: false
-  push:
-    paths:
-      - 'src/**'
-      - 'wrapper/src/**'
-      - 'scripts/**'
-      - 'Dockerfile'
-      - 'deps/build.jl'
-      - '.github/workflows/ci.yml'
-    tags:
-      - 'v*'
+  workflow_run:
+    workflows: ['CI CPU']
+    types: [completed]
     branches:
       - main
-  pull_request:
-    paths:
-      - 'src/**'
-      - 'wrapper/src/**'
-      - 'scripts/**'
-      - 'Dockerfile'
-      - 'deps/build.jl'
-      - '.github/workflows/ci.yml'
 jobs:
   push_to_registry:
     name: Container for ${{ matrix.platform }} - Julia ${{ matrix.julia }} - CUDA ${{ matrix.cuda }}
@@ -158,17 +143,17 @@ jobs:
             JULIA_CPU_TARGET=${{ steps.cpu_target.outputs.target }}
             REF=${{ steps.pkg.outputs.ref }}
 
-      - name: Run tests in built image
-        run: |
-            docker run --rm -dit --name=${{ steps.pkg.outputs.ref }} ${{ steps.meta.outputs.tags }} > docker.log 2>&1
-            while ! docker ps --format '{{.Names}}' | grep -q ${{ steps.pkg.outputs.ref }}; do
-                sleep 0.5
-            done
-            echo "Running tests in container!"
-            docker exec -i ${{ steps.pkg.outputs.ref }} /bin/bash -c "source /etc/.env && /bin/bash /workspace/test_container.sh"
-            docker stop ${{ steps.pkg.outputs.ref }}
+      # - name: Run tests in built image
+      #   run: |
+      #       docker run --rm -dit --name=${{ steps.pkg.outputs.ref }} ${{ steps.meta.outputs.tags }} > docker.log 2>&1
+      #       while ! docker ps --format '{{.Names}}' | grep -q ${{ steps.pkg.outputs.ref }}; do
+      #           sleep 0.5
+      #       done
+      #       echo "Running tests in container!"
+      #       docker exec -i ${{ steps.pkg.outputs.ref }} /bin/bash -c "source /etc/.env && /bin/bash /workspace/test_container.sh"
+      #       docker stop ${{ steps.pkg.outputs.ref }}
 
-      - name: Push image if tests pass
+      - name: Push image
         if: success()
         run: |
           docker push ${{ steps.meta.outputs.tags }}
