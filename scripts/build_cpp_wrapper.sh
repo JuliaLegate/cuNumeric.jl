@@ -1,15 +1,16 @@
 set -e
 
 # Check if exactly one argument is provided
-if [[ $# -ne 5 ]]; then
-    echo "Usage: $0 <cunumeric-pkg> <cupynumeric-root> <legate-root> <install-dir> <nthreads>"
+if [[ $# -ne 6 ]]; then
+    echo "Usage: $0 <cunumeric-pkg> <cupynumeric-root> <legate-root> <blas-root> <install-dir> <nthreads>"
     exit 1
 fi
 CUNUMERICJL_ROOT_DIR=$1 # this is the repo root of cunumeric.jl
 CUPYNUMERIC_ROOT_DIR=$2
 LEGATE_ROOT_DIR=$3
-INSTALL_DIR=$4
-NTHREADS=$5
+BLAS_ROOT_DIR=$4
+INSTALL_DIR=$5
+NTHREADS=$6
 
 # Check if the provided argument is a valid directory
 
@@ -48,6 +49,7 @@ if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
         -D CMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
         -D CMAKE_PREFIX_PATH="$CUPYNUMERIC_ROOT_DIR;$LEGATE_ROOT_DIR;" \
         -D CUPYNUMERIC_PATH="$CUPYNUMERIC_ROOT_DIR" \
+        -D BLAS_LIBRARIES="$BLAS_LIB_DIR/libopenblas.so" \
         -D PROJECT_INSTALL_PATH="$INSTALL_DIR" \
         -D CMAKE_BUILD_TYPE=Releases
 else

@@ -71,7 +71,7 @@ elseif CNPreferences.MODE == "conda"
     )
 else
     error(
-        "cuNumeric.jl: Unknown mode $(CNPreferences.MODE). Must be one of 'jll', 'developer', or 'conda'.",
+        "cuNumeric.jl: Unknown mode $(CNPreferences.MODE). Must be one of 'jll', 'developer', or 'conda'."
     )
 end
 
@@ -87,14 +87,14 @@ const CUPYNUMERIC_WRAPPER_LIB_PATH = joinpath(
 const CUPYNUMERIC_LIB_PATH = joinpath(CUPYNUMERIC_LIBDIR, "libcupynumeric.so")
 
 (isnothing(CUPYNUMERIC_LIBDIR) || isnothing(CUPYNUMERIC_WRAPPER_LIBDIR)) && error(
-    "cuNumeric.jl: CUPYNUMERIC_LIBDIR or CUPYNUMERIC_WRAPPER_LIBDIR preference not set. Check LocalPreferences.toml",
+    "cuNumeric.jl: CUPYNUMERIC_LIBDIR or CUPYNUMERIC_WRAPPER_LIBDIR preference not set. Check LocalPreferences.toml"
 )
 
 if !isfile(CUPYNUMERIC_WRAPPER_LIB_PATH)
     # Print build error logs if available
-    deps_dir = joinpath(dirname(@__DIR__), "../", "deps")
+    deps = joinpath(dirname(@__DIR__), "deps")
     for errfile in ["cpp_wrapper.err", "libcxxwrap.err"]
-        errpath = joinpath(deps_dir, errfile)
+        errpath = joinpath(deps, errfile)
         if isfile(errpath)
             println("\n=== Contents of $errfile ===")
             println(read(errpath, String))
@@ -102,7 +102,7 @@ if !isfile(CUPYNUMERIC_WRAPPER_LIB_PATH)
         end
     end
     error(
-        "Developer mode: You need to call Pkg.build(). Library $CUPYNUMERIC_WRAPPER_LIB_PATH not found.",
+        "Developer mode: You need to call Pkg.build(). Library $CUPYNUMERIC_WRAPPER_LIB_PATH not found."
     )
 end
 
