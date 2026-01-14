@@ -100,7 +100,7 @@ void nda_add(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out) {
 
 // NEW
 
-CN_NDArray* unique(CN_NDArray* arr) {
+CN_NDArray* nda_unique(CN_NDArray* arr) {
   NDArray result = cupynumeric::unique(arr->obj);
   return new CN_NDArray{NDArray(std::move(result))};
 }
@@ -121,7 +121,7 @@ CN_NDArray* nda_eye(int32_t rows, CN_Type type) {
   return new CN_NDArray{NDArray(std::move(result))};
 }
 
-CN_NDArray* diag(CN_NDArray* arr, int32_t k) {
+CN_NDArray* nda_diag(CN_NDArray* arr, int32_t k) {
   NDArray result = cupynumeric::diag(arr->obj, k);
   return new CN_NDArray{NDArray(std::move(result))};
 }

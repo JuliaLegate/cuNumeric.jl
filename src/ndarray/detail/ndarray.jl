@@ -222,7 +222,7 @@ function nda_array_equal(rhs1::NDArray{T,N}, rhs2::NDArray{T,N}) where {T,N}
 end
 
 function nda_diag(arr::NDArray, k::Int32)
-    ptr = ccall((:diag, libnda),
+    ptr = ccall((:nda_diag, libnda),
         NDArray_t, (NDArray_t, Int32),
         arr.ptr, k)
     return NDArray(ptr)
@@ -283,14 +283,14 @@ end
 
 function nda_eye(rows::Int32, ::Type{T}) where {T}
     legate_type = Legate.to_legate_type(T)
-    ptr = ccall((:eye, libnda),
+    ptr = ccall((:nda_eye, libnda),
         NDArray_t, (Int32, Legate.LegateTypeAllocated),
         rows, legate_type)
     return NDArray(ptr; T=T, n_dim=2)
 end
 
 function nda_trace(
-    arr::NDArray, offset::Int32, a1::Int32, a2::Int32, ::Type{T}, out::NDArray
+    arr::NDArray, offset::Int32, a1::Int32, a2::Int32, ::Type{T}
 ) where {T}
     legate_type = Legate.to_legate_type(T)
     ptr = ccall((:nda_trace, libnda),

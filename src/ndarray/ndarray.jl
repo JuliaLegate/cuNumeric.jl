@@ -34,7 +34,7 @@ end
 Create a 2D identity `NDArray` of size `rows x rows` with element type `T`.
 """
 function eye(rows::Int; T::Type{S}=Float64) where {S}
-    return nda_eye(rows, S)
+    return nda_eye(Int32(rows), S)
 end
 
 @doc"""
@@ -43,7 +43,7 @@ end
 Compute the trace of the `NDArray` along the specified axes.
 """
 function trace(arr::NDArray; offset::Int=0, a1::Int=0, a2::Int=1, T::Type{S}=Float32) where {S}
-    return nda_trace(arr, offset, a1, a2, S)
+    return nda_trace(arr, Int32(offset), Int32(a1), Int32(a2), S)
 end
 
 @doc"""
@@ -52,7 +52,7 @@ end
 Extract the k-th diagonal from a 2D `NDArray`.
 """
 function diag(arr::NDArray; k::Int=0)
-    return nda_diag(arr, k)
+    return nda_diag(arr, Int32(k))
 end
 
 @doc"""
