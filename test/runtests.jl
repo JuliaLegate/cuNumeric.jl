@@ -70,6 +70,10 @@ end
     @testset elementwise()
 end
 
+@testset verbose = true "Linear Algebra Tests" begin
+    include("tests/linalg.jl")
+end
+
 @testset verbose = true "GEMM" begin
     N = 50
     M = 25

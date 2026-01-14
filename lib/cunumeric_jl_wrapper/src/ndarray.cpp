@@ -116,7 +116,8 @@ CN_NDArray* nda_zeros_array(int32_t dim, const uint64_t* shape, CN_Type type) {
   return new CN_NDArray{NDArray(std::move(result))};
 }
 
-CN_NDArray* nda_full_array(int32_t dim, const uint64_t* shape, CN_Type type, const void* value) {
+CN_NDArray* nda_full_array(int32_t dim, const uint64_t* shape, CN_Type type,
+                           const void* value) {
   std::vector<uint64_t> shp(shape, shape + dim);
   Scalar s(type.obj, value, true);
   NDArray result = full(shp, s);
@@ -131,7 +132,8 @@ CN_NDArray* nda_random_array(int32_t dim, const uint64_t* shape) {
   return new CN_NDArray{NDArray(std::move(result))};
 }
 
-CN_NDArray* nda_reshape_array(CN_NDArray* arr, int32_t dim, const uint64_t* shape) {
+CN_NDArray* nda_reshape_array(CN_NDArray* arr, int32_t dim,
+                              const uint64_t* shape) {
   std::vector<int64_t> shp(shape, shape + dim);
   NDArray result = cupynumeric::reshape(arr->obj, shp, "C");
   return new CN_NDArray{NDArray(std::move(result))};
@@ -171,33 +173,33 @@ void nda_add(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out) {
 
 // NEW
 
-CN_NDArray* unique(CN_NDArray* arr){
-  NDArray result = cunumeric::unique(arr->obj);
-  return new CN_NDArray{NDArray(std::move(result))}; 
-}
-
-
-CN_NDArray* nda_ravel(CN_NDArray* arr){
-  NDArray result = cupynumeric::ravel(arr->obj, "C");
-  return new CN_NDArray{NDArray(std::move(result))}; 
-}
-
-void nda_trace(CN_NDArray* arr, int32_t offset, int32_t a1, int32_t a2, CN_Type type, CN_NDArray* out){
-  cupynumeric::trace(arr->obj, offset, a1, a2, type, out);
-}
-
-CN_NDArray* nda_eye(int32_t rows, CN_Type type){
-  NDArray result = cupynumeric::eye(rows, rows, 0, type.obj)
-  return new CN_NDArray{NDArray(std::move(result))}; 
-}
-
-CN_NDArray* diag(CN_NDArray* arr, int32_t k){
-  NDArray result = cunumeric::diag(arr->obj, k);
+CN_NDArray* unique(CN_NDArray* arr) {
+  NDArray result = cupynumeric::unique(arr->obj);
   return new CN_NDArray{NDArray(std::move(result))};
 }
 
+CN_NDArray* nda_ravel(CN_NDArray* arr) {
+  NDArray result = cupynumeric::ravel(arr->obj, "C");
+  return new CN_NDArray{NDArray(std::move(result))};
+}
 
-CN_NDArray* nda_transpose(CN_NDArray* arr){
+CN_NDArray* nda_trace(CN_NDArray* arr, int32_t offset, int32_t a1, int32_t a2,
+                      CN_Type type) {
+  NDArray result = cupynumeric::trace(arr->obj, offset, a1, a2, type.obj);
+  return new CN_NDArray{NDArray(std::move(result))};
+}
+
+CN_NDArray* nda_eye(int32_t rows, CN_Type type) {
+  NDArray result = cupynumeric::eye(rows, rows, 0, type.obj);
+  return new CN_NDArray{NDArray(std::move(result))};
+}
+
+CN_NDArray* diag(CN_NDArray* arr, int32_t k) {
+  NDArray result = cupynumeric::diag(arr->obj, k);
+  return new CN_NDArray{NDArray(std::move(result))};
+}
+
+CN_NDArray* nda_transpose(CN_NDArray* arr) {
   NDArray result = cupynumeric::transpose(arr->obj);
   return new CN_NDArray{NDArray(std::move(result))};
 }

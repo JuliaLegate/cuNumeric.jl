@@ -221,13 +221,6 @@ function nda_array_equal(rhs1::NDArray{T,N}, rhs2::NDArray{T,N}) where {T,N}
     return NDArray(ptr; T=Bool, n_dim=1)
 end
 
-function nda_multiply(rhs1::NDArray, rhs2::NDArray, out::NDArray)
-    ccall((:nda_multiply, libnda),
-        Cvoid, (NDArray_t, NDArray_t, NDArray_t),
-        rhs1.ptr, rhs2.ptr, out.ptr)
-    return out
-end
-
 function nda_diag(arr::NDArray, k::Int32)
     ptr = ccall((:diag, libnda),
         NDArray_t, (NDArray_t, Int32),
@@ -296,20 +289,15 @@ function nda_eye(rows::Int32, ::Type{T}) where {T}
     return NDArray(ptr; T=T, n_dim=2)
 end
 
-function nda_multiply(rhs1::NDArray, rhs2::NDArray, out::NDArray)
-    ccall((:nda_multiply, libnda),
-        Cvoid, (NDArray_t, NDArray_t, NDArray_t),
-        rhs1.ptr, rhs2.ptr, out.ptr)
-    return out
-end
-
-function nda_trace(arr::NDArray, offset::Int32, a1::Int32, a2::Int32, ::Type{T}, out::NDArray) where {T}
+function nda_trace(
+    arr::NDArray, offset::Int32, a1::Int32, a2::Int32, ::Type{T}, out::NDArray
+) where {T}
     legate_type = Legate.to_legate_type(T)
-    ccall((:nda_trace, libnda),
-        Cvoid,
-        (NDArray_t, Int32, Int32, Int32, Legate.LegateTypeAllocated, NDArray_t),
-        arr.ptr, offset, a1, a2, legate_type, out.ptr)
-    return out
+    ptr = ccall((:nda_trace, libnda),
+        NDArray_t,
+        (NDArray_t, Int32, Int32, Int32, Legate.LegateTypeAllocated),
+        arr.ptr, offset, a1, a2, legate_type)
+    return NDArray(ptr; T=T, n_dim=1)
 end
 
 function nda_transpose(arr::NDArray)

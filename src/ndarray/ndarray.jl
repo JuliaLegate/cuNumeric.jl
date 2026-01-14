@@ -19,7 +19,6 @@
 
 export unwrap
 
-
 @doc"""
     cuNumeric.transpose(arr::NDArray)
 
@@ -35,7 +34,7 @@ end
 Create a 2D identity `NDArray` of size `rows x rows` with element type `T`.
 """
 function eye(rows::Int; T::Type{S}=Float64) where {S}
-    return nda_eye(rows, cuNumeric.Type(S))
+    return nda_eye(rows, S)
 end
 
 @doc"""
@@ -44,9 +43,7 @@ end
 Compute the trace of the `NDArray` along the specified axes.
 """
 function trace(arr::NDArray; offset::Int=0, a1::Int=0, a2::Int=1, T::Type{S}=Float32) where {S}
-    out = cuNumeric.zeros(S)
-    nda_trace(arr, offset, a1, a2, cuNumeric.Type(S), out)
-    return out
+    return nda_trace(arr, offset, a1, a2, S)
 end
 
 @doc"""
@@ -66,7 +63,6 @@ Return a flattened 1D view of the input `NDArray`.
 function ravel(arr::NDArray)
     return nda_ravel(arr)
 end
-
 
 @doc"""
     cuNumeric.unique(arr::NDArray)
@@ -766,7 +762,3 @@ end
 function Base.isapprox(arr::NDArray{T}, arr2::NDArray{T}; atol=0, rtol=0) where {T}
     return compare(arr, arr2, atol, rtol)
 end
-
-
-
-
