@@ -90,9 +90,8 @@ uint64_t nda_query_allocated_device_memory() {
   return allocated;
 }
 uint64_t nda_query_allocated_host_memory() {
-  uint64_t allocated = query_allocated_bytes_common(Realm::Processor::LOC_PROC,
-                                                    Realm::Memory::SYSTEM_MEM);
-  return allocated;
+  return query_allocated_bytes_common(Realm::Processor::LOC_PROC,
+                                      Realm::Memory::SYSTEM_MEM);
 }
 
 uint64_t nda_query_total_device_memory() {
