@@ -2,13 +2,13 @@ set -e
 
 # Check if exactly one argument is provided
 if [[ $# -ne 6 ]]; then
-    echo "Usage: $0 <cunumeric-pkg> <cupynumeric-root> <legate-root> <blas-lib> <install-dir> <nthreads>"
+    echo "Usage: $0 <cunumeric-pkg> <cupynumeric-root> <legate-root> <blas-root> <install-dir> <nthreads>"
     exit 1
 fi
 CUNUMERICJL_ROOT_DIR=$1 # this is the repo root of cunumeric.jl
 CUPYNUMERIC_ROOT_DIR=$2
 LEGATE_ROOT_DIR=$3
-BLAS_LIB_DIR=$4
+BLAS_ROOT_DIR=$4
 INSTALL_DIR=$5
 NTHREADS=$6
 
@@ -42,10 +42,14 @@ fi
 
 echo $LEGATE_ROOT_DIR
 
+# Default to OFF (CUDA support enabled), but allow override via environment variable
+NO_CUDA=${NO_CUDA:-OFF}
+
 if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
     echo "Configuring project..."
     cmake -S "$CUNUMERIC_WRAPPER_SOURCE" -B "$BUILD_DIR" \
         -D BINARYBUILDER=OFF \
+        -D NOCUDA=$NO_CUDA \
         -D CMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
         -D CMAKE_PREFIX_PATH="$CUPYNUMERIC_ROOT_DIR;$LEGATE_ROOT_DIR;" \
         -D CUPYNUMERIC_PATH="$CUPYNUMERIC_ROOT_DIR" \
