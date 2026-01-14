@@ -1,9 +1,8 @@
-using CUDA
-using Random
+export @cuda_task, @launch
 
 const KERNEL_OFFSET = sizeof(CUDA.KernelState)
 
-# cuNumeric.jl init will call this
+# __init__ will call this
 # kernel_state is the first ARG in the generated PTX in CUDA.jl
 function set_kernel_state_size()
     cuNumeric.register_kernel_state_size(UInt64(KERNEL_OFFSET))
