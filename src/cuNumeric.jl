@@ -48,7 +48,7 @@ include("utilities/preference.jl")
     find_paths(
         CNPreferences.MODE;
         cupynumeric_jll_module=cupynumeric_jll,
-        cupynumeric_jll_wrapper_module=cunumeric_jl_wrapper_jll
+        cupynumeric_jll_wrapper_module=cunumeric_jl_wrapper_jll,
     )
 elseif CNPreferences.MODE == "developer"
     use_cupynumeric_jll = load_preference(CNPreferences, "legate_use_jll", true)
@@ -57,7 +57,7 @@ elseif CNPreferences.MODE == "developer"
         find_paths(
             CNPreferences.MODE;
             cupynumeric_jll_module=cupynumeric_jll,
-            cupynumeric_jll_wrapper_module=nothing
+            cupynumeric_jll_wrapper_module=nothing,
         )
     else
         find_paths(CNPreferences.MODE)
@@ -67,26 +67,44 @@ elseif CNPreferences.MODE == "conda"
     find_paths(
         CNPreferences.MODE,
         cupynumeric_jll_module=nothing,
-        cupynumeric_jll_wrapper_module=cunumeric_jl_wrapper_jll
+        cupynumeric_jll_wrapper_module=cunumeric_jl_wrapper_jll,
     )
 else
-    error("cuNumeric.jl: Unknown mode $(CNPreferences.MODE). Must be one of 'jll', 'developer', or 'conda'.")
+    error(
+        "cuNumeric.jl: Unknown mode $(CNPreferences.MODE). Must be one of 'jll', 'developer', or 'conda'.",
+    )
 end
-
 
 const CUPYNUMERIC_LIBDIR = load_preference(CNPreferences, "CUPYNUMERIC_LIBDIR", nothing)
-const CUPYNUMERIC_WRAPPER_LIBDIR = load_preference(CNPreferences, "CUPYNUMERIC_WRAPPER_LIBDIR", nothing)
+const CUPYNUMERIC_WRAPPER_LIBDIR = load_preference(
+    CNPreferences, "CUPYNUMERIC_WRAPPER_LIBDIR", nothing
+)
 
 const libnda = joinpath(CUPYNUMERIC_WRAPPER_LIBDIR, "libcunumeric_c_wrapper.so")
-const CUPYNUMERIC_WRAPPER_LIB_PATH = joinpath(CUPYNUMERIC_WRAPPER_LIBDIR, "libcunumeric_jl_wrapper.so")
+const CUPYNUMERIC_WRAPPER_LIB_PATH = joinpath(
+    CUPYNUMERIC_WRAPPER_LIBDIR, "libcunumeric_jl_wrapper.so"
+)
 const CUPYNUMERIC_LIB_PATH = joinpath(CUPYNUMERIC_LIBDIR, "libcupynumeric.so")
 
-(isnothing(CUPYNUMERIC_LIBDIR) || isnothing(CUPYNUMERIC_WRAPPER_LIBDIR)) && error("cuNumeric.jl: CUPYNUMERIC_LIBDIR or CUPYNUMERIC_WRAPPER_LIBDIR preference not set. Check LocalPreferences.toml")
+(isnothing(CUPYNUMERIC_LIBDIR) || isnothing(CUPYNUMERIC_WRAPPER_LIBDIR)) && error(
+    "cuNumeric.jl: CUPYNUMERIC_LIBDIR or CUPYNUMERIC_WRAPPER_LIBDIR preference not set. Check LocalPreferences.toml",
+)
 
 if !isfile(CUPYNUMERIC_WRAPPER_LIB_PATH)
-    error("Developer mode: You need to call Pkg.build()")
+    # Print build error logs if available
+    deps_dir = joinpath(dirname(@__DIR__), "../", "deps")
+    for errfile in ["cpp_wrapper.err", "libcxxwrap.err"]
+        errpath = joinpath(deps_dir, errfile)
+        if isfile(errpath)
+            println("\n=== Contents of $errfile ===")
+            println(read(errpath, String))
+            println("=== End of $errfile ===\n")
+        end
+    end
+    error(
+        "Developer mode: You need to call Pkg.build(). Library $CUPYNUMERIC_WRAPPER_LIB_PATH not found.",
+    )
 end
-
 
 @wrapmodule(() -> CUPYNUMERIC_WRAPPER_LIB_PATH)
 
@@ -133,7 +151,6 @@ end
 
 global cuNumeric_config_str::String = ""
 
-
 @doc"""
     versioninfo()
 
@@ -147,7 +164,7 @@ end
 # Runtime initilization
 function __init__()
     CNPreferences.check_unchanged()
-    
+
     Libdl.dlopen(CUPYNUMERIC_LIB_PATH, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
     Libdl.dlopen(CUPYNUMERIC_WRAPPER_LIB_PATH, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
 

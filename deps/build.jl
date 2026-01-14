@@ -181,10 +181,7 @@ function build(mode)
 
     legate_lib = Legate.get_install_liblegate()
     cupynumeric_lib = load_preference(CNPreferences, "CUPYNUMERIC_LIB", nothing)
-    # blas_lib = load_preference(CNPreferences, "BLAS_LIB", nothing)
-
     cupynumeric_lib = replace_nothing_conda_jll(mode, cupynumeric_lib, :cupynumeric_jll)
-    # blas_lib = replace_nothing_jll(blas_lib, :OpenBLAS32_jll)
 
     if mode == CNPreferences.MODE_DEVELOPER
         install_lib = joinpath(pkg_root, "lib", "cunumeric_jl_wrapper", "build")

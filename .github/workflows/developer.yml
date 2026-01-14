@@ -52,37 +52,17 @@ jobs:
         uses: actions/checkout@v4
       - name: bash
         run: source /etc/profile
-      - name: Get package spec
-        id: pkg
-        run: |
-          if [[ -n "${{ inputs.tag }}" ]]; then
-            echo "ref=${{ inputs.tag }}" >> $GITHUB_OUTPUT
-            echo "name=${{ inputs.tag }}" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
-            echo "ref=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "ref=${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "name=pr-${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.ref_type }}" == "branch" ]]; then
-            echo "ref=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-          else
-            echo "ref=${{ github.sha }}" >> $GITHUB_OUTPUT
-            echo "name=dev" >> $GITHUB_OUTPUT
-          fi
 
-          VERSION=$(grep "^version = " Project.toml | cut -d'"' -f2)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      - name: Install basic utils
+        run: |
+          apt-get update && apt-get install -y wget curl git build-essential
+          curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+          apt-get install -y nodejs
 
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
         with:
           version: '1.11'
-      
-      - name: Install basic utils
-        run: apt-get update && apt-get install -y wget curl git build-essential
-
 
       - name: Install CMake 3.30.7
         run: |
@@ -111,13 +91,12 @@ jobs:
               using LegatePreferences; LegatePreferences.use_developer_mode();
               Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main"))
           '
-          julia --color=yes -e 'using Pkg; Pkg.build("Legate")'
 
           julia --color=yes -e '
               using Pkg;
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}", subdir = "lib/CNPreferences"))  
+              Pkg.develop(PackageSpec(path = "lib/CNPreferences"))
               using CNPreferences; CNPreferences.use_developer_mode();
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "${{ steps.pkg.outputs.ref }}"))
+              Pkg.develop(PackageSpec(path = "."))
           '
           julia --color=yes -e 'using Pkg; Pkg.build("cuNumeric")'
 
