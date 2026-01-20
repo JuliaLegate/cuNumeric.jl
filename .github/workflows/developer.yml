@@ -19,6 +19,7 @@ on:
       - '.github/workflows/developer.yml'
       - 'lib/cunumeric_jl_wrapper/src/**'
       - 'lib/cunumeric_jl_wrapper/include/**'
+      - 'Poject.toml'
     tags:
       - 'v*'
     branches:
@@ -29,6 +30,7 @@ on:
       - '.github/workflows/developer.yml'
       - 'lib/cunumeric_jl_wrapper/src/**'
       - 'lib/cunumeric_jl_wrapper/include/**'
+      - 'Project.toml'
 jobs:
   docs:
     name : Developer CI test
