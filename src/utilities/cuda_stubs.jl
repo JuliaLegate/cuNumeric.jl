@@ -3,11 +3,10 @@
 ## elsewhere in the package.
 
 export @cuda_task, @launch
-export extract_kernel_name, map_ndarray_cuda_types, ptx_task, launch, CUDATask
+export map_ndarray_cuda_types, launch, CUDATask
 
-function extract_kernel_name end
-function map_ndarray_cuda_types end
 function ptx_task end
+function map_ndarray_cuda_types end
 function launch end
 
 struct CUDATask

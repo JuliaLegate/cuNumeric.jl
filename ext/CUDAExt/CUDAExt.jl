@@ -3,9 +3,10 @@ module CUDAExt
 using Random
 using CUDA
 using Legate: Legate
+import CxxWrap
 using cuNumeric: cuNumeric
 import cuNumeric:
-    @cuda_task, @launch, NDArray, extract_kernel_name, map_ndarray_cuda_types, ptx_task, launch
+    @cuda_task, @launch, NDArray
 
 const KERNEL_OFFSET = sizeof(CUDA.KernelState)
 

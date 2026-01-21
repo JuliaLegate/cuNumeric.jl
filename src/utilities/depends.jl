@@ -6,7 +6,6 @@ using Libdl
 using CxxWrap
 using Pkg
 using TOML
-using FileWatching
 
 using cupynumeric_jll
 using cunumeric_jl_wrapper_jll

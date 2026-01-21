@@ -162,20 +162,6 @@ function versioninfo()
     println(cuNumeric_config_str)
 end
 
-function setup_runtime(; pidfile = "/pool/emeitz/test.pid")
-    res = trymkpidlock(pidfile) do 
-        # AA = ArgcArgv(String[])
-        # AA = ArgcArgv([Base.julia_cmd()[1]])
-        # cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
-    end
-
-    if res !== nothing
-        @warn "Could not acquire cuNumeric runtime lock. Another Julia process may be using cuNumeric or Legate."
-    end
-
-    return nothing
-end
-
 ### These functions guard against a user trying
 ### to start multiple runtimes and also to allow
 ## package extensions which always try to re-load

@@ -17,7 +17,7 @@ function ndarray_cuda_type(arg::T) where {T}
     typeof(arg)
 end
 
-map_ndarray_cuda_types(args...) = tuple(map(ndarray_cuda_type, args)...)
+cuNumeric.map_ndarray_cuda_types(args...) = tuple(map(ndarray_cuda_type, args)...)
 
 function to_stdvec(::Type{T}, vec) where {T}
     stdvec = CxxWrap.StdVector{T}()
@@ -141,11 +141,11 @@ function Launch(kernel::cuNumeric.CUDATask, inputs::Tuple{Vararg{NDArray}},
     end
 
     # all inputs are alligned with all outputs
-    cuNumeric.add_default_alignment(task, input_vars, output_vars)
+    add_default_alignment(task, input_vars, output_vars)
     Legate.submit_auto_task(rt, task)
 end
 
-function launch(kernel::cuNumeric.CUDATask, inputs, outputs, scalars; blocks, threads)
+function cuNumeric.launch(kernel::cuNumeric.CUDATask, inputs, outputs, scalars; blocks, threads)
     Launch(kernel,
         isa(inputs, Tuple) ? inputs : (inputs,),
         isa(outputs, Tuple) ? outputs : (outputs,),
@@ -155,7 +155,7 @@ function launch(kernel::cuNumeric.CUDATask, inputs, outputs, scalars; blocks, th
     )
 end
 
-function ptx_task(ptx::String, kernel_name)
+function cuNumeric.ptx_task(ptx::String, kernel_name)
     rt = Legate.get_runtime()
     lib = cuNumeric.get_lib() # grab lib of legate app
     # this taskid is directly tied to cpp code in our setup
@@ -173,15 +173,15 @@ macro cuda_task(call_expr)
 
     esc(quote
         local _buf = IOBuffer()
-        local _types = $map_ndarray_cuda_types($(fargs...))
+        local _types = cuNumeric.map_ndarray_cuda_types($(fargs...))
         # generate ptx using CUDA.jl
         CUDA.code_ptx(_buf, $fname, _types; raw=false, kernel=true)
 
         local _ptx = String(take!(_buf))
-        local _func_name = extract_kernel_name(_ptx)
+        local _func_name = cuNumeric.extract_kernel_name(_ptx)
 
         # issue ptx_task within legate runtime to register cufunction ptr with cucontext
-        ptx_task(_ptx, _func_name)
+        cuNumeric.ptx_task(_ptx, _func_name)
 
         # create a cuNumeric.CUDAtask that stores some info for a launch config
         cuNumeric.CUDATask(_func_name, _types)
