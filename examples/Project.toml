@@ -1,3 +1,9 @@
 [deps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+Legate = "1238f2cf-6593-4d60-9aca-2f5364e49909"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 cuNumeric = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
+
+[extras]
+CNPreferences = "3e078157-ea10-49d5-bf32-908f777cd46f"
+LegatePreferences = "8028f36a-2b64-49e9-aa04-2d0933fd2ed9"

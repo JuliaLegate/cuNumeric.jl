@@ -218,7 +218,7 @@ macro launch(args...)
 
     esc(
         quote
-            launch(
+            cuNumeric.launch(
                 $task, $inputs, $outputs, $scalars; blocks=($blocks), threads=($threads)
             )
         end,
