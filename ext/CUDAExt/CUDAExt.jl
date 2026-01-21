@@ -2,7 +2,8 @@ module CUDAExt
 
 using Random
 using CUDA
-# import Legate
+import Legate
+import cuNumeric
 import cuNumeric: @cuda_task, @launch, NDArray
 
 
@@ -11,7 +12,6 @@ const KERNEL_OFFSET = sizeof(CUDA.KernelState)
 include("cuda.jl")
 
 function __init__()
-    @info "IN PACKAGE EXTENSION"
     if CUDA.functional()
         # in cuda.jl to notify /wrapper/src/cuda.cpp about CUDA.jl kernel state size
         cuNumeric.register_kernel_state_size(UInt64(KERNEL_OFFSET))

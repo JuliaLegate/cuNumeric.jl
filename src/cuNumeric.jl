@@ -189,14 +189,9 @@ runtime_started() = _runtime_ref[] == RUNTIME_ACTIVE
 
 function _start_runtime()
 
-    CNPreferences.check_unchanged()
-
     Libdl.dlopen(CUPYNUMERIC_LIB_PATH, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
     Libdl.dlopen(CUPYNUMERIC_WRAPPER_LIB_PATH, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
 
-    @initcxx
-
-    global cuNumeric_config_str = version_config_setup()
 
     AA = ArgcArgv(String[])
     # AA = ArgcArgv([Base.julia_cmd()[1]])
@@ -230,9 +225,19 @@ function ensure_runtime!()
     end
 end
 
+_is_precompiling() = ccall(:jl_generating_output, Cint, ()) != 0
+
 # Runtime initilization
 function __init__()
-    @info "cuNumeric __init__" pid=getpid() tid=Threads.threadid()
+    # @info "cuNumeric __init__" pid=getpid() tid=Threads.threadid() precomp=_is_precompiling()
+
+    CNPreferences.check_unchanged()
+
+    @initcxx
+
+    global cuNumeric_config_str = version_config_setup()
+
+    _is_precompiling() && return
 
     ensure_runtime!()
 end
