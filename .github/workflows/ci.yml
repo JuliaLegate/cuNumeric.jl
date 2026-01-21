@@ -20,6 +20,7 @@ on:
       - 'Dockerfile'
       - 'deps/build.jl'
       - '.github/workflows/ci.yml'
+      - 'Project.toml'
     tags:
       - 'v*'
     branches:
@@ -32,6 +33,7 @@ on:
       - 'Dockerfile'
       - 'deps/build.jl'
       - '.github/workflows/ci.yml'
+      - 'Project.toml'
 
 jobs:
   test:

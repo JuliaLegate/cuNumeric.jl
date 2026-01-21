@@ -127,8 +127,9 @@ include("ndarray/binary.jl")
 # scoping macro
 include("scoping.jl")
 
-# # Utilities 
+# Utilities 
 include("utilities/version.jl")
+include("utilities/cuda_stubs.jl")
 include("util.jl")
 
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147
@@ -161,24 +162,70 @@ function versioninfo()
     println(cuNumeric_config_str)
 end
 
-# Runtime initilization
-function __init__()
-    CNPreferences.check_unchanged()
+### These functions guard against a user trying
+### to start multiple runtimes and also to allow
+## package extensions which always try to re-load
+
+const RUNTIME_INACTIVE = -1
+const RUNTIME_ACTIVE = 0
+const _runtime_ref = Ref{Int}(RUNTIME_INACTIVE)
+const _start_lock  = ReentrantLock()
+
+runtime_started() = _runtime_ref[] == RUNTIME_ACTIVE
+
+function _start_runtime()
 
     Libdl.dlopen(CUPYNUMERIC_LIB_PATH, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
     Libdl.dlopen(CUPYNUMERIC_WRAPPER_LIB_PATH, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
 
-    @initcxx
 
-    AA = ArgcArgv([Base.julia_cmd()[1]])
-    global cuNumeric_config_str = version_config_setup()
-
+    AA = ArgcArgv(String[])
+    # AA = ArgcArgv([Base.julia_cmd()[1]])
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
 
     # setup /src/memory.jl 
     cuNumeric.init_gc!()
 
     Base.atexit(my_on_exit)
+
+
+    return RUNTIME_ACTIVE
+end
+
+function ensure_runtime!()
+    # fast path (no lock)
+    rt = _runtime_ref[]
+    (rt == RUNTIME_INACTIVE) || return rt
+
+    lock(_start_lock)
+    try
+        # re-check after lock
+        rt = _runtime_ref[]
+        (rt == RUNTIME_INACTIVE) || return rt
+
+        rt = _start_runtime()
+        _runtime_ref[] = rt
+        return rt
+    finally
+        unlock(_start_lock)
+    end
+end
+
+_is_precompiling() = ccall(:jl_generating_output, Cint, ()) != 0
+
+# Runtime initilization
+function __init__()
+    # @info "cuNumeric __init__" pid=getpid() tid=Threads.threadid() precomp=_is_precompiling()
+
+    CNPreferences.check_unchanged()
+
+    @initcxx
+
+    global cuNumeric_config_str = version_config_setup()
+
+    _is_precompiling() && return
+
+    ensure_runtime!()
 end
 
 end #module cuNumeric

@@ -23,5 +23,7 @@ task = cuNumeric.@cuda_task kernel_add(a, b, c, UInt32(1))
 
 cuNumeric.@launch task=task threads=threads blocks=blocks inputs=(a, b) outputs=c scalars=UInt32(N)
 
-c_cpu = c[:]
-println("Result of c after kenel launch: ", c_cpu[1])
+allowscalar() do
+    c_cpu = c[:]
+    println("Result of c after kenel launch: ", c_cpu[1])
+end
