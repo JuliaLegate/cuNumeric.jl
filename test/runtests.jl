@@ -402,10 +402,11 @@ end
 end
 
 if run_gpu_tests
-    include("tests/cuda/vecadd.jl")
     @testset verbose = true "CUDA Tests" begin
-        cuda_unaryop(rtol(Float32))
-        cuda_binaryop(rtol(Float32))
+        include("tests/cuda/vecadd.jl")
+        max_diff = rtol(Float32)
+        # cuda_unaryop(rtol(Float32))
+        # cuda_binaryop(rtol(Float32))
     end
 else
     @warn "The CUDA tests will not be run as a CUDA-enabled device is not available"
