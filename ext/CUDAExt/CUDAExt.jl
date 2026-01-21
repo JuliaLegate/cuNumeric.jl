@@ -2,10 +2,10 @@ module CUDAExt
 
 using Random
 using CUDA
-import Legate
-import cuNumeric
-import cuNumeric: @cuda_task, @launch, NDArray
-
+using Legate: Legate
+using cuNumeric: cuNumeric
+import cuNumeric:
+    @cuda_task, @launch, NDArray, extract_kernel_name, map_ndarray_cuda_types, ptx_task, launch
 
 const KERNEL_OFFSET = sizeof(CUDA.KernelState)
 

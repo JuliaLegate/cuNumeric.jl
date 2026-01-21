@@ -27,11 +27,6 @@ function to_stdvec(::Type{T}, vec) where {T}
     return stdvec
 end
 
-struct CUDATask
-    func::String
-    argtypes::NTuple{N,Type} where {N}
-end
-
 function add_padding(arr::NDArray, dims::Dims{N}; copy=false) where {N}
     old_size = size(arr)
 
@@ -104,7 +99,7 @@ function add_default_alignment(
     end
 end
 
-function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
+function Launch(kernel::cuNumeric.CUDATask, inputs::Tuple{Vararg{NDArray}},
     outputs::Tuple{Vararg{NDArray}}, scalars::Tuple{Vararg{Any}}; blocks, threads)
 
     # we find the largest input/output.
@@ -150,7 +145,7 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
     Legate.submit_auto_task(rt, task)
 end
 
-function launch(kernel::CUDATask, inputs, outputs, scalars; blocks, threads)
+function launch(kernel::cuNumeric.CUDATask, inputs, outputs, scalars; blocks, threads)
     Launch(kernel,
         isa(inputs, Tuple) ? inputs : (inputs,),
         isa(outputs, Tuple) ? outputs : (outputs,),
@@ -188,8 +183,8 @@ macro cuda_task(call_expr)
         # issue ptx_task within legate runtime to register cufunction ptr with cucontext
         ptx_task(_ptx, _func_name)
 
-        # create a CUDAtask that stores some info for a launch config
-        CUDATask(_func_name, _types)
+        # create a cuNumeric.CUDAtask that stores some info for a launch config
+        cuNumeric.CUDATask(_func_name, _types)
     end)
 end
 
