@@ -18,8 +18,6 @@ on:
       - 'scripts/**'
       - 'deps/build.jl'
       - 'Project.toml'
-      - 'lib/cunumeric_jl_wrapper/src/**'
-      - 'lib/cunumeric_jl_wrapper/include/**'
       - 'lib/CNPreferences/src/**'
       - '.github/workflows/ci.yml'
       - 'Dockerfile' # container.yml depends on this
@@ -33,8 +31,6 @@ on:
       - 'scripts/**'
       - 'deps/build.jl'
       - 'Project.toml'
-      - 'lib/cunumeric_jl_wrapper/src/**'
-      - 'lib/cunumeric_jl_wrapper/include/**'
       - 'lib/CNPreferences/src/**'
       - '.github/workflows/ci.yml'
       - 'Dockerfile' # container.yml depends on this
