@@ -1,6 +1,6 @@
 # Develeper CI test. This will build the workflow using Jlls and building wrappers from SRC
-# This test only occurs if build.jl changes or if this CI script changes.
 name: Develeper CI test
+
 on:
   workflow_dispatch:
     inputs:
@@ -15,22 +15,28 @@ on:
         default: false
   push:
     paths:
+      - 'src/**'
+      - 'scripts/**'
       - 'deps/build.jl'
-      - '.github/workflows/developer.yml'
+      - 'Project.toml'
       - 'lib/cunumeric_jl_wrapper/src/**'
       - 'lib/cunumeric_jl_wrapper/include/**'
-      - 'Poject.toml'
+      - 'lib/CNPreferences/src/**'
+      - '.github/workflows/developer.yml'
     tags:
       - 'v*'
     branches:
       - main
   pull_request:
     paths:
+      - 'src/**'
+      - 'scripts/**'
       - 'deps/build.jl'
-      - '.github/workflows/developer.yml'
+      - 'Project.toml'
       - 'lib/cunumeric_jl_wrapper/src/**'
       - 'lib/cunumeric_jl_wrapper/include/**'
-      - 'Project.toml'
+      - 'lib/CNPreferences/src/**'
+      - '.github/workflows/developer.yml'
 jobs:
   docs:
     name : Developer CI test

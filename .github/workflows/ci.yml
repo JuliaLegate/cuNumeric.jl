@@ -15,12 +15,14 @@ on:
   push:
     paths:
       - 'src/**'
-      - 'wrapper/src/**'
       - 'scripts/**'
-      - 'Dockerfile'
       - 'deps/build.jl'
-      - '.github/workflows/ci.yml'
       - 'Project.toml'
+      - 'lib/cunumeric_jl_wrapper/src/**'
+      - 'lib/cunumeric_jl_wrapper/include/**'
+      - 'lib/CNPreferences/src/**'
+      - '.github/workflows/ci.yml'
+      - 'Dockerfile' # container.yml depends on this
     tags:
       - 'v*'
     branches:
@@ -28,13 +30,14 @@ on:
   pull_request:
     paths:
       - 'src/**'
-      - 'wrapper/src/**'
       - 'scripts/**'
-      - 'Dockerfile'
       - 'deps/build.jl'
-      - '.github/workflows/ci.yml'
       - 'Project.toml'
-
+      - 'lib/cunumeric_jl_wrapper/src/**'
+      - 'lib/cunumeric_jl_wrapper/include/**'
+      - 'lib/CNPreferences/src/**'
+      - '.github/workflows/ci.yml'
+      - 'Dockerfile' # container.yml depends on this
 jobs:
   test:
     name: Julia ${{ matrix.julia }} - ${{ matrix.os }}
