@@ -2,7 +2,7 @@ cancel_intermediate_builds: true
 cancel_running_branch_builds: true
 
 env:
-  SECRET_CODECOV_TOKEN: "iYDXbmzSsj91jFiZQl79SeRZb9u7I5zXVlsGG3bZdHPw3PW2JZPNRcIC6tLxYmmRL8oSPyg6mIe6wrrkNmuHo54sUrWOrafGBil1xxKinZDUaGUaF9OvPx96tDT92USAYHZkYl7us+js/4rzx03cyHU0d2n9qjapb8UzWi3Mji3WIuI5nC5B8+PZSiyxXlBYt8DupvBDsdrMLNkCNpG39ZKTIk0q/nFoFUtiLhh6lum2cS4d57VXNl/LSHEJykqqyW2ivpo/ms25RHoHpp0gjDCxp7a1fZ8+wjHwEcf1nxpZ886SKEyc/Zv6QaenvX9J8EuJLPAfKj7oYDmAtlwK6Q==;U2FsdGVkX19wPGBxZZObzZ/gF0hPIup/8wf55LEGnXlXjqxNGMhOR0PyUpWVCiXIj8AIcui4gRmge/o+op4qYg=="
+  SECRET_CODECOV_TOKEN: "V6sJ4HBJT+E4RtciX9fbkyUjVgOrt94J5Z/XSk5YHXIZ4Lm8Of1mna4zeKAciVYmKyat8cHbTAUXAC6Px1PBnOvBK1NbJpP48kXUk46fECyfyCoa9hkqdxWJPFE6EFjNL3s+wWS+nRjEle73wI2MFrRjn3z4D5g9vcW7Kxdl2wsxm2uXAE2atLFN5rli/msLYe4591VP1GRYUB+03KIg/A+2tuL3EvQk76m0qGSIU43lVMp5lO+aVhz/2EieVufnT/COZbCw4g2SEqqYNi7j24Hrgc19T/e1jY7OaCdiX4Q7Nf35UTapxHDZVPTeJageHm9wEDqlL54Y6+Mmy9h7cw==;U2FsdGVkX180zv9chFTpgUljSesITPZu2XDdFqJFZHrSumfFlATifq2KvBmgQoh1WyYwPlf7QtTwqkZt9Tw/iw=="
 
 steps:
   - group: ":julia: Julia"
@@ -29,6 +29,7 @@ steps:
           LEGATE_SHOW_CONFIG: "1"
           GPUTESTS: "1"
           LEGATE_TEST: "1"
+          LD_LIBRARY_PATH: ""
         matrix:
           setup:
             julia:
