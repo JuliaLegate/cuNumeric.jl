@@ -402,12 +402,11 @@ end
 end
 
 if run_gpu_tests
-    @testset verbose = true "CUDA Tests" begin
-        include("tests/cuda/vecadd.jl")
-        max_diff = rtol(Float32)
-        # cuda_unaryop(rtol(Float32))
-        # cuda_binaryop(rtol(Float32))
-    end
+    # @testset verbose = true "CUDA Tests" begin
+    #     cuda_unaryop(rtol(Float32))
+    #     cuda_binaryop(rtol(Float32))
+    # end
+    @warn "CUDA tests are turned off inside Pkg.test for now. --check-bounds=yes causes issues."
 else
     @warn "The CUDA tests will not be run as a CUDA-enabled device is not available"
 end

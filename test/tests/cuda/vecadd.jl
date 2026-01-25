@@ -92,32 +92,32 @@ function kernel_sin(a, b, N)
     return nothing
 end
 
-# function cuda_unaryop(max_diff)
-N = 1024
-threads = 64
-blocks = cld(N, threads)
-FT = Float32
+function cuda_unaryop(max_diff)
+    N = 1024
+    threads = 64
+    blocks = cld(N, threads)
+    FT = Float32
 
-a = cuNumeric.zeros(FT, N)
-b = cuNumeric.zeros(FT, N)
+    a = cuNumeric.zeros(FT, N)
+    b = cuNumeric.zeros(FT, N)
 
-a_cpu = rand(FT, N)
-b_cpu = zeros(FT, N)
+    a_cpu = rand(FT, N)
+    b_cpu = zeros(FT, N)
 
-allowscalar() do
-    for i in 1:N
-        a[i] = a_cpu[i]
+    allowscalar() do
+        for i in 1:N
+            a[i] = a_cpu[i]
+        end
     end
+
+    # get results on CPU for comparison
+    for i in 1:N
+        b_cpu[i] = sin(a_cpu[i])
+    end
+
+    task = cuNumeric.@cuda_task kernel_sin(a, b, UInt32(N))
+    # TODO explore getting inplace ops working. 
+    cuNumeric.@launch task=task threads=threads blocks=blocks inputs=a outputs=b scalars=UInt32(N)
+
+    @test @allowscalar cuNumeric.compare(b, b_cpu, atol(Float32), rtol(Float32))
 end
-
-# get results on CPU for comparison
-for i in 1:N
-    b_cpu[i] = sin(a_cpu[i])
-end
-
-task = cuNumeric.@cuda_task kernel_sin(a, b, UInt32(N))
-# TODO explore getting inplace ops working. 
-cuNumeric.@launch task=task threads=threads blocks=blocks inputs=a outputs=b scalars=UInt32(N)
-
-@test @allowscalar cuNumeric.compare(b, b_cpu, atol(Float32), rtol(Float32))
-# end
