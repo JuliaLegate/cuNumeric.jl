@@ -235,6 +235,14 @@ function __init__()
     _is_precompiling() && return nothing
 
     ensure_runtime!()
+
+    # Register existing C++ library with Legate runtime for UFI support
+    lib = get_lib()
+    Legate._ufi_interface_register(lib)
+
+    async_handle = Legate._get_async_handle()
+    request_ptr = Legate._get_request_ptr()
+    Legate._initialize_async_system(async_handle, request_ptr)
 end
 
 end #module cuNumeric
