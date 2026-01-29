@@ -1,4 +1,4 @@
-#= Copyright 2025 Northwestern University, 
+#= Copyright 2026 Northwestern University, 
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,46 +15,10 @@
  *
  * Author(s): David Krasowska <krasow@u.northwestern.edu>
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
+ *            Nader Rahal <naderrahhal2026@u.northwestern.edu>
 =#
 
 export unwrap
-
-function _BobTask(args::Vector{Legate.TaskArgument})
-    a, b, scalar = args
-    @inbounds @simd for i in eachindex(a)
-        b[i] = a[i] * scalar
-    end
-end
-
-function Bob(in_arr::NDArray{T}, scalar::Float32) where {T}
-    out_arr = cuNumeric.zeros(T, Base.size(in_arr))
-
-    rt = Legate.get_runtime()
-    lib = get_lib()
-
-    my_task = Legate.wrap_task(_BobTask; input_types=[T], output_types=[T])
-
-    task = Legate.create_julia_task(rt, lib, my_task)
-
-    input_vars = Vector{Legate.Variable}()
-    output_vars = Vector{Legate.Variable}()
-
-    push!(input_vars, Legate.add_input(task, get_store(in_arr)))
-    push!(output_vars, Legate.add_output(task, get_store(out_arr)))
-
-    Legate.default_alignment(task, input_vars, output_vars)
-    Legate.add_scalar(task, Legate.Scalar(scalar))
-
-    Legate.submit_task(rt, task)
-
-    # In single-threaded mode, we must wait to avoid deadlock
-    # (Main thread blocks on data access, preventing async_worker from running)
-    if Threads.nthreads() == 1
-        Legate.wait_ufi()
-    end
-
-    return out_arr
-end
 
 @doc"""
     cuNumeric.transpose(arr::NDArray)
