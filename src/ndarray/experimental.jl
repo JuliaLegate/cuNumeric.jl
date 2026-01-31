@@ -33,14 +33,14 @@ function assert_experimental()
     end
 end
 
-function _BobTask(args::Vector{Legate.TaskArgument})
+function _test_task(args::Vector{Legate.TaskArgument})
     a, b, scalar = args
     @inbounds @simd for i in eachindex(a)
         b[i] = a[i] * scalar
     end
 end
 
-function Bob(in_arr::NDArray{T}, scalar::Float32) where {T}
+function test_task_interface(in_arr::NDArray{T}, scalar::Float32) where {T}
     assert_experimental()
 
     out_arr = cuNumeric.zeros(T, Base.size(in_arr))
@@ -48,7 +48,7 @@ function Bob(in_arr::NDArray{T}, scalar::Float32) where {T}
     rt = Legate.get_runtime()
     lib = get_lib()
 
-    my_task = Legate.wrap_task(_BobTask)
+    my_task = Legate.wrap_task(_test_task)
 
     task = Legate.create_julia_task(rt, lib, my_task)
 
