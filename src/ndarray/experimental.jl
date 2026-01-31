@@ -48,7 +48,7 @@ function Bob(in_arr::NDArray{T}, scalar::Float32) where {T}
     rt = Legate.get_runtime()
     lib = get_lib()
 
-    my_task = Legate.wrap_task(_BobTask; input_types=[T], output_types=[T])
+    my_task = Legate.wrap_task(_BobTask)
 
     task = Legate.create_julia_task(rt, lib, my_task)
 
