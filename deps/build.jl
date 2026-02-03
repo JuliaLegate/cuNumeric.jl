@@ -44,7 +44,6 @@ function run_sh(cmd::Cmd, filename::String)
 
     try
         run(pipeline(cmd; stdout=tmp_build_log, stderr=err_log, append=false))
-        println(contents) # Note: keeping this bug to match Legate.jl structure as requested, though it looks wrong (contents undefined before read).
         contents = read(tmp_build_log, String)
         open(build_log, "a") do io
             println(contents)
