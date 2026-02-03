@@ -19,6 +19,7 @@
 
 module cuNumeric
 
+include(joinpath(@__DIR__, "../deps/version.jl"))
 include("utilities/depends.jl")
 
 const HAS_CUDA = cupynumeric_jll.host_platform["cuda"] != "none"
@@ -26,8 +27,6 @@ const HAS_CUDA = cupynumeric_jll.host_platform["cuda"] != "none"
 if !HAS_CUDA
     @warn "cuPyNumeric JLL does not have CUDA. If you have an NVIDIA GPU something might be wrong."
 end
-
-const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.10.00", "25.11.00"]
 
 const DEFAULT_FLOAT = Float32
 const DEFAULT_INT = Int32
@@ -169,15 +168,13 @@ end
 const RUNTIME_INACTIVE = -1
 const RUNTIME_ACTIVE = 0
 const _runtime_ref = Ref{Int}(RUNTIME_INACTIVE)
-const _start_lock  = ReentrantLock()
+const _start_lock = ReentrantLock()
 
 runtime_started() = _runtime_ref[] == RUNTIME_ACTIVE
 
 function _start_runtime()
-
     Libdl.dlopen(CUPYNUMERIC_LIB_PATH, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
     Libdl.dlopen(CUPYNUMERIC_WRAPPER_LIB_PATH, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
-
 
     AA = ArgcArgv(String[])
     # AA = ArgcArgv([Base.julia_cmd()[1]])
@@ -187,7 +184,6 @@ function _start_runtime()
     cuNumeric.init_gc!()
 
     Base.atexit(my_on_exit)
-
 
     return RUNTIME_ACTIVE
 end
@@ -223,7 +219,7 @@ function __init__()
 
     global cuNumeric_config_str = version_config_setup()
 
-    _is_precompiling() && return
+    _is_precompiling() && return nothing
 
     ensure_runtime!()
 end
