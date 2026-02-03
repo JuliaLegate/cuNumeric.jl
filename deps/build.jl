@@ -64,9 +64,9 @@ function build_jlcxxwrap(repo_root, cupynumeric_root)
     version_path = joinpath(DEPOT_PATH[1], "dev/libcxxwrap_julia_jll/override/LEGATE_INSTALL.txt")
     if isfile(version_path)
         version = VersionNumber(strip(read(version_path, String)))
-        @info "libcxxwrap: Found Legate $version"
+        @info "libcxxwrap: Found cuNumeric $version"
         if is_supported_version(version)
-            @info "libcxxwrap: Found supported version built with Legate.jl: $version"
+            @info "libcxxwrap: Found supported version built with cuNumeric.jl: $version"
             return nothing
         else
             @info "libcxxwrap: Unsupported version found: $version. Rebuilding..."
@@ -78,7 +78,7 @@ function build_jlcxxwrap(repo_root, cupynumeric_root)
     @info "libcxxwrap: Running build script: $build_libcxxwrap"
     run_sh(`bash $build_libcxxwrap $repo_root`, "libcxxwrap")
     open(version_path, "w") do io
-        write(io, string(get_cupynumeric_version(legate_root)))
+        write(io, string(get_cupynumeric_version(cupynumeric_root)))
     end
 end
 
@@ -175,7 +175,7 @@ function build(::CNPreferences.Developer)
     cupynumeric_root = load_preference(CNPreferences, "cunumeric_path", nothing)
     blas_lib = load_preference(CNPreferences, "BLAS_LIB", nothing)
     if isnothing(cupynumeric_root)
-        # we are using legate_jll for legate
+        # we are using cupynumeric_jll
         cupynumeric_root = _find_jll_artifact_dir(:cupynumeric_jll)
     else
         # this means we have a custom path set
