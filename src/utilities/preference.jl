@@ -1,54 +1,34 @@
-function is_cupynumeric_installed(cupynumeric_root::String; throw_errors::Bool=false)
-    include_dir = joinpath(cupynumeric_root, "include")
-    if !isdir(joinpath(include_dir, "cupynumeric"))
-        throw_errors &&
-            @error "cuNumeric.jl: Cannot find include/cupynumeric in $(cupynumeric_root)"
-        return false
-    end
-    return true
-end
-
-function parse_cupynumeric_version(cupynumeric_root)
-    version_file = joinpath(cupynumeric_root, "include", "cupynumeric", "version_config.hpp")
-    version = nothing
-    open(version_file, "r") do f
-        data = readlines(f)
-        major = parse(Int, split(data[end - 2])[end])
-        minor = lpad(split(data[end - 1])[end], 2, '0')
-        patch = lpad(split(data[end])[end], 2, '0')
-        version = "$(major).$(minor).$(patch)"
-    end
-
-    if isnothing(version)
-        error("cuNumeric.jl: Failed to parse version from conda environment")
-    end
-
-    return version
-end
+#= Copyright 2026 Northwestern University, 
+ *                   Carnegie Mellon University University
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * Author(s): David Krasowska <krasow@u.northwestern.edu>
+ *            Ethan Meitz <emeitz@andrew.cmu.edu>
+=#
 
 function check_cupynumeric_install(cupynumeric_root)
-    cupynumeric_installed = is_cupynumeric_installed(cupynumeric_root)
-    if !cupynumeric_installed
-        error("cuNumeric.jl: Build halted: cupynumeric not found in $cupynumeric_root")
-    end
-    installed_version = parse_cupynumeric_version(cupynumeric_root)
-    if installed_version ∉ SUPPORTED_CUPYNUMERIC_VERSIONS
+    is_legate_installed(cupynumeric_root; throw_errors=true)
+    if !legate_valid(cupynumeric_root)
         error(
-            "cuNumeric.jl: Build halted: $(cupynumeric_root) detected unsupported version $(installed_version)"
+            "cuNumeric.jl: Unsupported cuNumeric version at $(cupynumeric_root). " *
+            "Installed version: $(get_cupynumeric_version(cupynumeric_root)) not in range supported: " *
+            "$(MIN_CUNUMERIC_VERSION)-$(MAX_CUNUMERIC_VERSION).",
         )
     end
+
     @info "cuNumeric.jl: Found a valid install in: $(cupynumeric_root)"
     return true
-end
-
-function get_library_root(jll_module, env_var::String)
-    if haskey(ENV, env_var)
-        return get(ENV, env_var, "0")
-    elseif jll_module.is_available()
-        return joinpath(jll_module.artifact_dir, "lib")
-    else
-        error("$env_var not found via environment or JLL.")
-    end
 end
 
 #############################################
@@ -62,7 +42,7 @@ function check_jll(m::Module)
 
         if (m_host_cuda == "none")
             error(
-                "$(string(m)) installed but not available on this platform.\n $(string(cupynumeric_jll.host_platform))",
+                "$(string(m)) installed but not available on this platform.\n $(string(cupynumeric_jll.host_platform))"
             )
         end
 
@@ -70,7 +50,7 @@ function check_jll(m::Module)
         valid_cuda_version = Legate.MIN_CUDA_VERSION <= v_host_cuda <= Legate.MAX_CUDA_VERSION
         if !valid_cuda_version
             error(
-                "$(string(m)) installed but not available on this platform. Host CUDA ver: $(v_host_cuda) not in range supported by $(string(m)): $(MIN_CUDA_VERSION)-$(MAX_CUDA_VERSION).",
+                "$(string(m)) installed but not available on this platform. Host CUDA ver: $(v_host_cuda) not in range supported by $(string(m)): $(MIN_CUDA_VERSION)-$(MAX_CUDA_VERSION)."
             )
         else
             error("$(string(m)) installed but not available on this platform. Unknown reason.")
@@ -99,9 +79,9 @@ function _find_paths(
 )
     check_jll(cupynumeric_jll_module)
     check_jll(cupynumeric_jll_wrapper_module)
-    legate_lib_dir = joinpath(cupynumeric_jll_module.artifact_dir, "lib")
-    legate_wrapper_libdir = joinpath(cupynumeric_jll_wrapper_module.artifact_dir, "lib")
-    return legate_lib_dir, legate_wrapper_libdir
+    cupynumeric_lib = joinpath(cupynumeric_jll_module.artifact_dir, "lib")
+    wrapper_lib = joinpath(cupynumeric_jll_wrapper_module.artifact_dir, "lib")
+    return cupynumeric_lib, wrapper_lib
 end
 
 function _find_paths(
@@ -120,7 +100,7 @@ function _find_paths(
         cupynumeric_path = cupynumeric_jll.artifact_dir
     end
 
-    pkg_root = abspath(joinpath(@__DIR__, "../", "../"))
+    pkg_root = abspath(joinpath(@__DIR__, "../../"))
     wrapper_lib = joinpath(pkg_root, "lib", "cunumeric_jl_wrapper", "build", "lib")
 
     return joinpath(cupynumeric_path, "lib"), wrapper_lib
@@ -133,12 +113,12 @@ function _find_paths(
 )
     @warn "mode = conda may break. We are using a subset of libraries from conda."
 
-    conda_env = load_preference(CNPreferences, "legate_conda_env", nothing)
+    conda_env = load_preference(CNPreferences, "cunumeric_conda_path", nothing)
     isnothing(conda_env) && error(
         "legate_conda_env preference must be set in LocalPreferences.toml when using conda mode"
     )
 
-    check_legate_install(conda_env)
+    check_cupynumeric_install(conda_env)
     legate_path = conda_env
     check_jll(cupynumeric_jll_wrapper_module)
     legate_wrapper_lib = joinpath(cupynumeric_jll_wrapper_module.artifact_dir, "lib")

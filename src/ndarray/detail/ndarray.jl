@@ -10,6 +10,7 @@ end
 
 # Opaque pointer
 const NDArray_t = Ptr{Cvoid}
+const CN_Store_t = Ptr{Cvoid}
 
 # destroy
 nda_destroy_array(ptr::NDArray_t) = ccall((:nda_destroy_array, libnda),
@@ -308,28 +309,27 @@ function nda_transpose(arr::NDArray)
 end
 
 function nda_attach_external(arr::AbstractArray{T,N}) where {T,N}
-    ptr = Base.unsafe_convert(Ptr{Cvoid}, arr)
-    nbytes = sizeof(T) * length(arr)
-    shape = collect(UInt64, size(arr))
-    legate_type = Legate.to_legate_type(T)
-
-    nda_ptr = ccall((:nda_attach_external, libnda),
-        NDArray_t, (Ptr{Cvoid}, UInt64, Int32, Ptr{UInt64}, Legate.LegateTypeAllocated),
-        ptr, nbytes, N, shape, legate_type)
-
+    st = Legate.attach_external(arr)
+    # Use the CxxWrap method for type-safe interaction
+    # This returns a raw pointer compatible with the NDArray constructor
+    nda_ptr = cuNumeric.nda_store_to_ndarray(st.handle)
     return NDArray(nda_ptr; T=T, n_dim=N)
 end
 
 # return underlying logical store to the NDArray obj
 function get_store(arr::NDArray)
-    cxx_ptr = CxxWrap.CxxPtr{cuNumeric.CN_NDArray}(arr.ptr)
+    cxx_ptr = CxxWrap.CxxPtr{CN_NDArray}(arr.ptr)
     store = _get_store(cxx_ptr)
-    return CxxWrap.CxxRef(store)
+    return store
 end
 
-function get_ptr(arr::NDArray)
-    st = get_store(arr)
-    return _get_ptr(CxxWrap.CxxPtr(st))
+function get_ptr(arr::NDArray{T,N}) where {T,N}
+    # Get the raw Legate array impl
+    st_handle = get_store(arr) # CxxPtr{LogicalArrayImpl}
+    # Wrap it in the high-level LogicalArray struct expected by Legate.get_ptr
+    # st_handle[] dereferences the CxxPtr to get the LogicalArrayImpl object
+    la = Legate.LogicalArray{T,N}(st_handle[], size(arr))
+    return Legate.get_ptr(la)
 end
 
 @doc"""
