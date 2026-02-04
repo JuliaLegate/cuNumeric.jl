@@ -22,7 +22,7 @@ module cuNumeric
 include(joinpath(@__DIR__, "../deps/version.jl"))
 include("utilities/depends.jl")
 
-const HAS_CUDA = cupynumeric_jll.host_platform["cuda"] != "none"
+const HAS_CUDA = LegatePreferences.has_cuda_gpu()
 
 if !HAS_CUDA
     @warn "cuPyNumeric JLL does not have CUDA. If you have an NVIDIA GPU something might be wrong."
@@ -62,11 +62,10 @@ elseif CNPreferences.MODE == "developer"
         find_paths(CNPreferences.MODE)
     end
 elseif CNPreferences.MODE == "conda"
-    using cunumeric_jl_wrapper_jll
     find_paths(
         CNPreferences.MODE,
         cupynumeric_jll_module=nothing,
-        cupynumeric_jll_wrapper_module=cunumeric_jl_wrapper_jll,
+        cupynumeric_jll_wrapper_module=nothing,
     )
 else
     error(

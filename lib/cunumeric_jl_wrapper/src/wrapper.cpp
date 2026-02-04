@@ -29,7 +29,6 @@
 #include "jlcxx/stl.hpp"
 #include "legate.h"
 #include "legion.h"
-#include "mathtypes/half.h"
 #include "realm.h"
 #include "types.h"
 #include "ufi.h"

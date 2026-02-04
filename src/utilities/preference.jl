@@ -18,8 +18,8 @@
 =#
 
 function check_cupynumeric_install(cupynumeric_root)
-    is_legate_installed(cupynumeric_root; throw_errors=true)
-    if !legate_valid(cupynumeric_root)
+    is_cupynumeric_installed(cupynumeric_root; throw_errors=true)
+    if !cupynumeric_valid(cupynumeric_root)
         error(
             "cuNumeric.jl: Unsupported cuNumeric version at $(cupynumeric_root). " *
             "Installed version: $(get_cupynumeric_version(cupynumeric_root)) not in range supported: " *
@@ -109,21 +109,18 @@ end
 function _find_paths(
     mode::CNPreferences.Conda,
     cupynumeric_jll_module::Nothing,
-    cupynumeric_jll_wrapper_module::Module,
+    cupynumeric_jll_wrapper_module::Nothing,
 )
-    @warn "mode = conda may break. We are using a subset of libraries from conda."
-
-    conda_env = load_preference(CNPreferences, "cunumeric_conda_path", nothing)
+    conda_env = load_preference(CNPreferences, "cunumeric_conda_env", nothing)
     isnothing(conda_env) && error(
-        "legate_conda_env preference must be set in LocalPreferences.toml when using conda mode"
+        "cunumeric_conda_env preference must be set in LocalPreferences.toml when using conda mode"
     )
 
     check_cupynumeric_install(conda_env)
-    legate_path = conda_env
-    check_jll(cupynumeric_jll_wrapper_module)
-    legate_wrapper_lib = joinpath(cupynumeric_jll_wrapper_module.artifact_dir, "lib")
+    pkg_root = abspath(joinpath(@__DIR__, "../../"))
+    wrapper_lib = joinpath(pkg_root, "lib", "cunumeric_jl_wrapper", "build", "lib")
 
-    return joinpath(legate_path, "lib"), legate_wrapper_lib
+    return joinpath(conda_env, "lib"), wrapper_lib
 end
 
 # MPI, NCCL etc are found by Legate.find_dependency_paths
