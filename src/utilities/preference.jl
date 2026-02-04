@@ -27,7 +27,7 @@ function check_cupynumeric_install(cupynumeric_root)
         )
     end
 
-    @info "cuNumeric.jl: Found a valid install in: $(cupynumeric_root)"
+    @debug "cuNumeric.jl: Found a valid install in: $(cupynumeric_root)"
     return true
 end
 
