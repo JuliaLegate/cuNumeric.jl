@@ -57,7 +57,7 @@ function is_cupynumeric_installed(cupynumeric::String; throw_errors::Bool=false)
     include_dir = joinpath(cupynumeric, "include")
     if !isdir(joinpath(include_dir, "cupynumeric/cupynumeric"))
         throw_errors &&
-            @error "cuNumeric.jl: Cannot find include/cupynumeric/cupynumeric in $(cupynumeric_root)"
+            @error "cuNumeric.jl: Cannot find include/cupynumeric/cupynumeric in $(cupynumeric)"
         return false
     end
     return true
