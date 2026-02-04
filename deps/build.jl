@@ -19,10 +19,9 @@
 
 using Preferences
 using Legate
-using CNPreferences: CNPreferences
+using CNPreferences
 
-const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.10.00", "25.11.00"]
-const LATEST_CUPYNUMERIC_VERSION = SUPPORTED_CUPYNUMERIC_VERSIONS[end]
+include("version.jl")
 
 up_dir(dir::String) = abspath(joinpath(dir, ".."))
 
@@ -45,7 +44,6 @@ function run_sh(cmd::Cmd, filename::String)
 
     try
         run(pipeline(cmd; stdout=tmp_build_log, stderr=err_log, append=false))
-        println(contents)
         contents = read(tmp_build_log, String)
         open(build_log, "a") do io
             println(contents)
@@ -61,43 +59,14 @@ function run_sh(cmd::Cmd, filename::String)
     end
 end
 
-function get_version(version_file)
-    version = nothing
-    open(version_file, "r") do f
-        data = readlines(f)
-        major = parse(Int, split(data[end - 2])[end])
-        minor = lpad(split(data[end - 1])[end], 2, '0')
-        patch = lpad(split(data[end])[end], 2, '0')
-        version = "$(major).$(minor).$(patch)"
-    end
-    if isnothing(version)
-        error("cuNumeric.jl: Failed to parse version for $(version_file)")
-    end
-    return version
-end
-
-function get_cupynumeric_version(cupynumeric_root)
-    version_file = joinpath(cupynumeric_root, "include", "cupynumeric", "version_config.hpp")
-    return get_version(version_file)
-end
-
-function cupynumeric_valid(cupynumeric_root::String)
-    # todo check if cupynumeric_root matches the version that we are installing.
-    version_cupynumeric = get_cupynumeric_version(cupynumeric_root)
-    return version_cupynumeric ∈ SUPPORTED_CUPYNUMERIC_VERSIONS # return true if equal
-end
-
-function build_jlcxxwrap(repo_root)
-    @info "libcxxwrap: Downloading"
+function build_jlcxxwrap(repo_root, cupynumeric_root)
     build_libcxxwrap = joinpath(repo_root, "scripts/install_cxxwrap.sh")
-
-    # this is actually correct even for cunumeric.
     version_path = joinpath(DEPOT_PATH[1], "dev/libcxxwrap_julia_jll/override/LEGATE_INSTALL.txt")
-
     if isfile(version_path)
-        version = strip(read(version_path, String))
-        if version ∈ SUPPORTED_CUPYNUMERIC_VERSIONS
-            @info "libcxxwrap: Found supported version built with Legate.jl: $version"
+        version = VersionNumber(strip(read(version_path, String)))
+        @info "libcxxwrap: Found cuNumeric $version"
+        if is_supported_version(version)
+            @info "libcxxwrap: Found supported version built with cuNumeric.jl: $version"
             return nothing
         else
             @info "libcxxwrap: Unsupported version found: $version. Rebuilding..."
@@ -109,7 +78,7 @@ function build_jlcxxwrap(repo_root)
     @info "libcxxwrap: Running build script: $build_libcxxwrap"
     run_sh(`bash $build_libcxxwrap $repo_root`, "libcxxwrap")
     open(version_path, "w") do io
-        write(io, LATEST_CUPYNUMERIC_VERSION)
+        write(io, string(get_cupynumeric_version(cupynumeric_root)))
     end
 end
 
@@ -118,7 +87,6 @@ function build_cpp_wrapper(
 )
     @info "libcunumeric_jl_wrapper: Building C++ Wrapper Library"
     if isdir(install_root)
-        @warn "libcunumeric_jl_wrapper: Build dir exists. Deleting prior build."
         rm(install_root; recursive=true)
         mkdir(install_root)
     end
@@ -142,34 +110,15 @@ function build_cpp_wrapper(
     run_sh(`bash $bld_command`, "cpp_wrapper")
 end
 
-function replace_nothing_jll(lib, jll)
-    if isnothing(lib)
-        eval(:(using $(jll)))
-        jll_mod = getfield(Main, jll)
-        lib = joinpath(jll_mod.artifact_dir, "lib")
-    end
-    return lib
+function _find_jll_artifact_dir(jll)
+    eval(:(using $(jll)))
+    jll_mod = getfield(Main, jll)
+    root = jll_mod.artifact_dir
+    return root
 end
 
-function replace_nothing_conda_jll(mode, lib, jll)
-    if isnothing(lib)
-        if mode == CNPreferences.MODE_CONDA
-            lib = joinpath(load_preference(CNPreferences, "cunumeric_conda_env", nothing), "lib")
-        else
-            eval(:(using $(jll)))
-            jll_mod = getfield(Main, jll)
-            lib = joinpath(jll_mod.artifact_dir, "lib")
-        end
-    end
-    return lib
-end
-
-function build(mode)
-    if mode == CNPreferences.MODE_JLL
-        @warn "No reason to Build on JLL mode. Exiting Build"
-        return nothing
-    end
-    pkg_root = abspath(joinpath(@__DIR__, "../"))
+function _start_build()
+    pkg_root = up_dir(@__DIR__)
     deps_dir = joinpath(@__DIR__)
 
     build_log = joinpath(deps_dir, "build.log")
@@ -178,30 +127,67 @@ function build(mode)
     end
 
     @info "cuNumeric.jl: Parsed Package Dir as: $(pkg_root)"
-
-    legate_lib = Legate.get_install_liblegate()
-    cupynumeric_lib = load_preference(CNPreferences, "CUPYNUMERIC_LIB", nothing)
-    blas_lib = load_preference(CNPreferences, "BLAS_LIB", nothing)
-
-    cupynumeric_lib = replace_nothing_conda_jll(mode, cupynumeric_lib, :cupynumeric_jll)
-    blas_lib = replace_nothing_jll(blas_lib, :OpenBLAS32_jll)
-
-    if mode == CNPreferences.MODE_DEVELOPER
-        install_lib = joinpath(pkg_root, "lib", "cunumeric_jl_wrapper", "build")
-        build_jlcxxwrap(pkg_root)
-        cupynumeric_root = up_dir(cupynumeric_lib)
-        if !cupynumeric_valid(cupynumeric_root)
-            error(
-                "cuNumeric.jl: cupynumeric library at $(cupynumeric_root) is not a supported version. 
-                 Supported versions are: $(SUPPORTED_CUPYNUMERIC_VERSIONS).",
-            )
-        end
-        build_cpp_wrapper(
-            pkg_root, cupynumeric_root, up_dir(legate_lib), up_dir(blas_lib),
-            install_lib,
-        )
-    end
+    return pkg_root
 end
 
-const mode = load_preference(CNPreferences, "cunumeric_mode", CNPreferences.MODE_JLL)
-build(mode)
+"""
+    build CxxWrap and cunumeric_jl_wrapper
+"""
+function build_deps(pkg_root, cupynumeric_root, blas_root)
+    legate_lib = Legate.get_install_liblegate()
+    install_lib = joinpath(pkg_root, "lib", "cunumeric_jl_wrapper", "build")
+    if !cupynumeric_valid(cupynumeric_root)
+        error(
+            "cuNumeric.jl: Unsupported cuNumeric version at $(cupynumeric_root). " *
+            "Installed version: $(installed_version) not in range supported: " *
+            "$(MIN_CUNUMERIC_VERSION)-$(MAX_CUNUMERIC_VERSION).",
+        )
+    end
+    build_jlcxxwrap(pkg_root, cupynumeric_root)
+    build_cpp_wrapper(
+        pkg_root, cupynumeric_root, up_dir(legate_lib), blas_root,
+        install_lib,
+    ) # $pkg_root/lib/cunumeric_jl_wrapper
+end
+
+function build(::CNPreferences.JLL)
+    @warn "No reason to Build on JLL mode. Exiting Build"
+    return nothing
+end
+
+function build(::CNPreferences.Conda)
+    @warn "Conda Build does not currently pass our CI. Proceed with caution."
+    pkg_root = _start_build()
+
+    cupynumeric_root = load_preference(CNPreferences, "cunumeric_conda_env", nothing)
+    if isnothing(cupynumeric_root)
+        error("This shouldn't happen. cunumeric_conda_env = nothing?")
+    end
+
+    is_cupynumeric_installed(cupynumeric_root; throw_errors=true)
+    build_deps(pkg_root, cupynumeric_root, cupynumeric_root) # blas is same root as cupynumeric
+end
+
+function build(::CNPreferences.Developer)
+    pkg_root = _start_build()
+
+    # can be nothing so this errors if not set
+    cupynumeric_root = load_preference(CNPreferences, "cunumeric_path", nothing)
+    blas_lib = load_preference(CNPreferences, "BLAS_LIB", nothing)
+    if isnothing(cupynumeric_root)
+        # we are using cupynumeric_jll
+        cupynumeric_root = _find_jll_artifact_dir(:cupynumeric_jll)
+    else
+        # this means we have a custom path set
+        is_cupynumeric_installed(cupynumeric_root; throw_errors=true)
+    end
+
+    if isnothing(blas_lib)
+        blas_lib = _find_jll_artifact_dir(:OpenBLAS32_jll)
+    end
+
+    build_deps(pkg_root, cupynumeric_root, up_dir(blas_lib))
+end
+
+const mode_str = load_preference(CNPreferences, "cunumeric_mode", CNPreferences.MODE_JLL)
+build(CNPreferences.to_mode(mode_str))
