@@ -1,4 +1,4 @@
-ENV["LEGATE_CONFIG"] = "--cpus=2 --show-config --logging legate=debug,level=2  --show-progress  --show-memory-usage  --profile"
+ENV["LEGATE_CONFIG"] = "--cpus=2 --show-config --logging legate=debug,level=2 --show-progress  --show-memory-usage  --profile"
 
 using Distributed;
 addprocs(4)
