@@ -1,0 +1,34 @@
+function init_workers_impl(; auto_setup::Bool=true)
+    w = Distributed.workers()
+    if isempty(w)
+        @warn "No Distributed.jl workers found. Did you call addprocs()?"
+        return nothing
+    end
+
+    println("Setting up cuNumeric on $(length(w)) workers...")
+
+    if !auto_setup
+        println("✓ Skipping automatic p2p setup (auto_setup=false)")
+        return nothing
+    end
+
+    # Get cuNumeric package directory to load port utilities
+    cunumeric_pkgid = Base.PkgId(Base.UUID("0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"), "cuNumeric")
+    cunumeric_path = dirname(dirname(Base.locate_package(cunumeric_pkgid)))
+    port_path = joinpath(cunumeric_path, "ext", "DistributedExt", "ports.jl")
+
+    # Use @everywhere with myid() check (not @everywhere workers() - that doesn't work!)
+    Base.eval(Main, :(@everywhere begin
+        if myid() != 1
+            include($port_path)
+            setup_legate_env()
+            using cuNumeric
+            println("Number of runtimes: ", cuNumeric.get_number_of_runtimes())
+        end
+    end))
+
+    println("✓ P2p environment configured on all workers")
+    println("✓ cuNumeric loaded on all workers with p2p networking")
+
+    return nothing
+end

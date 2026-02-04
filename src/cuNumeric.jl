@@ -219,4 +219,9 @@ function __init__()
     ensure_runtime!()
 end
 
+# Placeholder for Distributed extension
+function init_workers(; kwargs...)
+    error("init_workers requires the Distributed package. Please run: using Distributed")
+end
+
 end #module cuNumeric

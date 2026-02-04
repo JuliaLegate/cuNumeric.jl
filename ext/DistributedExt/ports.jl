@@ -1,20 +1,5 @@
 using Sockets
 
-"""
-    @everywhere_but_repl expr
-
-Execute `expr` on all workers except process 1.
-"""
-# macro everywhere_but_repl(ex)
-#     esc(
-#         quote
-#             @everywhere begin
-#                 ex
-#             end
-#         end
-#     )
-# end
-
 #
 # Helper: find (IP:PORT) for a given PID by inspecting Linux sockets
 #
@@ -74,23 +59,21 @@ function legate_peers()
 end
 
 function setup_legate_env()
-    if myid() != 1
-        all_addrs = legate_peers()
-        self_addr = all_addrs[1]
+    all_addrs = legate_peers()
+    self_addr = all_addrs[1]
 
-        # Exclude self and join remaining peers
-        peer_addrs = join(all_addrs[2:end], " ")
+    # Exclude self and join remaining peers
+    peer_addrs = join(all_addrs[2:end], " ")
 
-        # Set environment variables
-        ENV["WORKER_SELF_INFO"] = "$self_addr"
-        ENV["WORKER_PEERS_INFO"] = "$peer_addrs"
-        ENV["REALM_UCP_BOOTSTRAP_PLUGIN"] = "realm_bootstrap_p2p.so"
-        ENV["REALM_UCP_BOOTSTRAP_MODE"] = "p2p"
+    # Set environment variables
+    ENV["WORKER_SELF_INFO"] = "$self_addr"
+    ENV["WORKER_PEERS_INFO"] = "$peer_addrs"
+    ENV["REALM_UCP_BOOTSTRAP_PLUGIN"] = "realm_bootstrap_p2p.so"
+    ENV["REALM_UCP_BOOTSTRAP_MODE"] = "p2p"
 
-        # Optional: print to check
-        println("Self: ", ENV["WORKER_SELF_INFO"])
-        println("Peers: ", ENV["WORKER_PEERS_INFO"])
-        println("Bootstrap plugin: ", ENV["REALM_UCP_BOOTSTRAP_PLUGIN"])
-        println("Bootstrapping mode: ", ENV["REALM_UCP_BOOTSTRAP_MODE"])
-    end
+    # Optional: print to check
+    println("Self: ", ENV["WORKER_SELF_INFO"])
+    println("Peers: ", ENV["WORKER_PEERS_INFO"])
+    println("Bootstrap plugin: ", ENV["REALM_UCP_BOOTSTRAP_PLUGIN"])
+    println("Bootstrapping mode: ", ENV["REALM_UCP_BOOTSTRAP_MODE"])
 end

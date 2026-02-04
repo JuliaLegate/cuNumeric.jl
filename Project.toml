@@ -26,18 +26,22 @@ libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
 
 [weakdeps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
+Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
 
 [extensions]
-CUDAExt = "CUDA"
+DistributedExt = ["Distributed", "Sockets"]
 
 [compat]
 CNPreferences = "0.1.2"
 CUDA = "5.9"
 CxxWrap = "0.17"
+Distributed = "1.11.0"
 Legate = "0.1.0"
 LegatePreferences = "0.1.5"
 MacroTools = "0.5.16"
 OpenBLAS32_jll = "0.3"
+Sockets = "1.11.0"
 StatsBase = "0.34"
 cunumeric_jl_wrapper_jll = "26.01.00"
 cupynumeric_jll = "26.01.00"
