@@ -78,10 +78,19 @@ c++filt -t _ZN3p2p7P2PComm4InitEv
 p2p::P2PComm::Init()
 ```
 
+The `realm_bootstrap_p2p.so` plugin library has **undefined symbols** for the `P2PComm` class:
+
 ```bash
-(myenv) david@dubliner:~/cuNumeric.jl$ nm -D $CONDA_PREFIX/lib/realm_bootstrap_p2p.so | grep -i p2p
+$ nm -D $CONDA_PREFIX/lib/realm_bootstrap_p2p.so | grep -i p2p
                  U _ZN3p2p7P2PComm4InitEv
                  U _ZN3p2p7P2PComm8ShutdownEv
                  U _ZN3p2p7P2PComm9AllgatherEPvihS1_ih
                  U _ZN3p2p7P2PCommC1ERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEERKSt6vectorIS6_SaIS6_EES8_
 ```
+
+The implementation is in separate source files:
+- [`p2p_comm.h`](https://github.com/StanfordLegion/realm/blob/main/src/realm/ucx/bootstrap/p2p_comm.h) / [`p2p_comm.cc`](https://github.com/StanfordLegion/realm/blob/main/src/realm/ucx/bootstrap/p2p_comm.cc) - The P2PComm class
+
+**The problem:** The conda-built `realm_bootstrap_p2p.so` plugin only contains the `bootstrap_p2p.cc` code, but is **missing** the `p2p_comm.cc` implementation and mesh networking code.
+
+This appears to be a **build configuration issue** in the Legate conda package (my guess).
