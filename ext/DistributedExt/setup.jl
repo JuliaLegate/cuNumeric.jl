@@ -1,3 +1,35 @@
+"""
+    addprocs(n::Integer; kwargs...)
+
+Convenience wrapper that combines `Distributed.addprocs()` and `cuNumeric.init_workers()`.
+Starts workers and automatically configures them for distributed cuNumeric with p2p networking.
+
+# Example
+```julia
+using Distributed
+using cuNumeric
+
+# Start and configure workers in one call
+cuNumeric.addprocs(4)
+
+# Ready to use distributed cuNumeric!
+@everywhere workers() begin
+    a = cuNumeric.rand(100)
+end
+```
+
+All keyword arguments are passed through to `Distributed.addprocs()`.
+"""
+function addprocs_impl(n::Integer; kwargs...)
+    # Start workers
+    pids = Distributed.addprocs(n; kwargs...)
+
+    # Configure them for cuNumeric
+    init_workers_impl()
+
+    return pids
+end
+
 function init_workers_impl(; auto_setup::Bool=true)
     w = Distributed.workers()
     if isempty(w)

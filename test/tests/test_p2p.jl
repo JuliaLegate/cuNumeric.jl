@@ -3,10 +3,7 @@ ENV["LEGATE_CONFIG"] = "--cpus=2 --show-config --logging legate=debug,level=2 --
 using Distributed
 using cuNumeric
 
-addprocs(4)
-
-# Set up peer-specific env vars and load cuNumeric on workers
-cuNumeric.init_workers()
+cuNumeric.addprocs(4)
 
 # Test on workers - cuNumeric will load with p2p networking
 @everywhere workers() begin
