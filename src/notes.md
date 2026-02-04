@@ -77,3 +77,11 @@ The undefined symbol is:
 c++filt -t _ZN3p2p7P2PComm4InitEv
 p2p::P2PComm::Init()
 ```
+
+```bash
+(myenv) david@dubliner:~/cuNumeric.jl$ nm -D $CONDA_PREFIX/lib/realm_bootstrap_p2p.so | grep -i p2p
+                 U _ZN3p2p7P2PComm4InitEv
+                 U _ZN3p2p7P2PComm8ShutdownEv
+                 U _ZN3p2p7P2PComm9AllgatherEPvihS1_ih
+                 U _ZN3p2p7P2PCommC1ERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEERKSt6vectorIS6_SaIS6_EES8_
+```
