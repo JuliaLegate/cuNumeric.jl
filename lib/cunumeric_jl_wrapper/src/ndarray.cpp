@@ -38,7 +38,7 @@ struct CN_Store {
 };
 
 size_t nda_get_number_of_runtimes() {
-  Machine legion_machine{Machine::get_machine()};
+  Legion::Machine legion_machine{Legion::Machine::get_machine()};
   return legion_machine.get_address_space_count();
 }
 
