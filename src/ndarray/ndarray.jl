@@ -243,12 +243,16 @@ Base.IndexStyle(::NDArray) = IndexCartesian()
 
 function Base.show(io::IO, arr::NDArray{T,0}) where {T}
     println(io, "0-dimensional NDArray{$(T),0}")
-    print(io, arr[]) #! should I assert scalar??
+    allowscalar() do
+        print(io, arr[])
+    end
 end
 
 function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T,0}) where {T}
     println(io, "0-dimensional NDArray{$(T),0}")
-    print(io, arr[]) #! should I assert scalar??
+    allowscalar() do
+        print(io, arr[])
+    end
 end
 
 function Base.show(io::IO, arr::NDArray{T,D}) where {T,D}
@@ -595,22 +599,19 @@ Fills `arr` with AbstractFloats uniformly at random.
 
 Create a new `NDArray` of element type Float64, filled with uniform random values.
 
-This function currently supports only `Float64` with uniform distribution.
+The backend currently supports only `Float64` with uniform distribution.
 In order to support other Floats, we type convert for the user automatically.
 This can create extra allocations.
 
 # Examples
 ```@repl
-cuNumeric.rand(NDArray, 2, 2)
-cuNumeric.rand(NDArray, (4, 1))
+cuNumeric.rand(2, 2)
+cuNumeric.rand((4, 1))
 A = cuNumeric.zeros(2, 2); cuNumeric.rand!(A)
 ```
 """
 Random.rand!(arr::NDArray{Float64}) = cuNumeric.nda_random(arr, 0)
-rand(::Type{NDArray}, dims::Dims) = cuNumeric.nda_random_array(UInt64.(collect(dims)))
-rand(::Type{NDArray}, dims::Int...) = cuNumeric.rand(NDArray, dims)
-rand(dims::Dims) = cuNumeric.rand(NDArray, dims)
-rand(dims::Int...) = cuNumeric.rand(NDArray, dims)
+Random.rand!(arr::NDArray{T}) where T = error("rand! only supports NDArray{Float64} for now. Cast with cuNumeric.as_type.")
 
 function rand(::Type{T}, dims::Dims) where {T<:AbstractFloat}
     arrfp64 = cuNumeric.nda_random_array(UInt64.(collect(dims)))
@@ -619,6 +620,8 @@ function rand(::Type{T}, dims::Dims) where {T<:AbstractFloat}
 end
 
 rand(::Type{T}, dims::Int...) where {T<:AbstractFloat} = cuNumeric.rand(T, dims)
+rand(dims::Dims) = cuNumeric.rand(DEFAULT_FLOAT, dims)
+rand(dims::Int...) = cuNumeric.rand(DEFAULT_FLOAT, dims)
 
 #### OPERATIONS ####
 @doc"""

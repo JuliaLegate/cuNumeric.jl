@@ -6,14 +6,12 @@
 # found in examples/daxpy.jl
 using cuNumeric
 
-arr = cuNumeric.rand(NDArray, 20)
+arr = cuNumeric.rand(20)
 
-α = 1.32
-b = 2.0
+α = 1.32f0
+b = 2.0f0
 
-arr2 = α*arr + b
-
-arr2[:] # disp array
+arr2 = α .* arr .+ b
 ```
 ## Monte-Carlo Integration
 
@@ -34,18 +32,24 @@ Since we cannot uniformly sample form negative to positive infinity, we truncate
 # found in examples/integrate.jl
 using cuNumeric
 
-integrand = (x) -> exp(-square(x))
+# Note that we do not yet support broadcasting
+# custom functions, so the braodcasting MUST
+# be done inside the function
+integrand = (x) -> exp.(-x.^2)
 
 N = 1_000_000
 
-x_max = 5.0
+x_max = 10.0f0
 domain = [-x_max, x_max]
 Ω = domain[2] - domain[1]
 
-samples = Ω*cuNumeric.rand(NDArray, N) - x_max 
+samples = Ω*cuNumeric.rand(N) .- x_max 
+
+# Reductions return 0D NDArrays instead 
+# of a scalar to avoid blocking runtime
 estimate = (Ω/N) * sum(integrand(samples))
 
-println("Monte-Carlo Estimate: $(estimate[1])")
+println("Monte-Carlo Estimate: $(estimate)")
 println("Analytical: $(sqrt(pi))")
 ```
 ## Gray Scott Reaction Diffusion
@@ -54,26 +58,36 @@ println("Analytical: $(sqrt(pi))")
 using cuNumeric
 using Plots
 
-struct Params
-    dx::Float64
-    dt::Float64
-    c_u::Float64
-    c_v::Float64
-    f::Float64
-    k::Float64
+struct Params{T}
+    dx::T
+    dt::T
+    c_u::T
+    c_v::T
+    f::T
+    k::T
 
-    function Params(dx=1, c_u=1.0, c_v=0.3, f=0.03, k=0.06)
-        new(dx, dx/5, c_u, c_v, f, k)
+    function Params(dx=1.0f0, c_u=1.0f0, c_v=0.3f0, f=0.03f0, k=0.06f0)
+        new{Float32}(dx, dx/5, c_u, c_v, f, k)
     end
 end
 
-function step(u, v, u_new, v_new, args::Params)
+function bc!(u_new, v_new, u, v)
+    u_new[:,1] = u[:,end-1]
+    u_new[:,end] = u[:,2]
+    u_new[1,:] = u[end-1,:]
+    u_new[end,:] = u[2,:]
+    v_new[:,1] = v[:,end-1]
+    v_new[:,end] = v[:,2]
+    v_new[1,:] = v[end-1,:]
+    v_new[end,:] = v[2,:]
+end
+
+function step!(u, v, u_new, v_new, args::Params)
     # calculate F_u and F_v functions
-    # currently we don't have NDArray^x working yet. 
-    F_u = ((-u[2:end-1, 2:end-1].*(v[2:end-1, 2:end-1] .* v[2:end-1, 2:end-1])) +
-            args.f*(1 .- u[2:end-1, 2:end-1]))
-    F_v = ((u[2:end-1, 2:end-1].*(v[2:end-1, 2:end-1] .* v[2:end-1, 2:end-1])) -
-            (args.f+args.k)*v[2:end-1, 2:end-1])
+    F_u = ((-u[2:end-1, 2:end-1].*(v[2:end-1, 2:end-1] .^ 2)) .+
+            args.f*(1.0f0 .- u[2:end-1, 2:end-1]))
+    F_v = ((u[2:end-1, 2:end-1].*(v[2:end-1, 2:end-1] .^ 2)) .-
+            (args.f+args.k).*v[2:end-1, 2:end-1])
     # 2-D Laplacian of f using array slicing, excluding boundaries
     # For an N x N array f, f_lap is the Nend x Nend array in the "middle"
     u_lap = ((u[3:end, 2:end-1] - 2*u[2:end-1, 2:end-1] + u[1:end-2, 2:end-1]) ./ args.dx^2 
@@ -86,23 +100,15 @@ function step(u, v, u_new, v_new, args::Params)
     v_new[2:end-1, 2:end-1] = ((args.c_v * v_lap) + F_v) * args.dt + v[2:end-1, 2:end-1]
 
     # Apply periodic boundary conditions
-    u_new[:,1] = u[:,end-1]
-    u_new[:,end] = u[:,2]
-    u_new[1,:] = u[end-1,:]
-    u_new[end,:] = u[2,:]
-    v_new[:,1] = v[:,end-1]
-    v_new[:,end] = v[:,2]
-    v_new[1,:] = v[end-1,:]
-    v_new[end,:] = v[2,:]
+    bc!(u_new, v_new, u, v)
 end
 
 function gray_scott()
-    anim = Animation()
+    #anim = Animation()
 
     N = 100
     dims = (N, N)
 
-    FT = Float64
     args = Params()
 
     n_steps = 2000 # number of steps to take
@@ -113,11 +119,11 @@ function gray_scott()
     u_new = cuNumeric.zeros(dims)
     v_new = cuNumeric.zeros(dims)
 
-    u[1:15,1:15] = cuNumeric.random(FT, (15,15))
-    v[1:15,1:15] = cuNumeric.random(FT, (15,15))
+    u[1:15,1:15] = cuNumeric.rand(15,15)
+    v[1:15,1:15] = cuNumeric.rand(15,15)
 
     for n in 1:n_steps
-        step(u, v, u_new, v_new, args)
+        step!(u, v, u_new, v_new, args)
         # update u and v 
         # this doesn't copy, this switching references 
         u, u_new = u_new, u
@@ -130,9 +136,10 @@ function gray_scott()
         end
     end
     gif(anim, "gray-scott.gif", fps=10)
+    return u, v
 
 end
 
-gray_scott()
+u, v = gray_scott()
 ```
 ![Simulation Output](./gray-scott.gif)
