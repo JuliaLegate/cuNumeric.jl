@@ -18,14 +18,34 @@
 =#
 
 using Test
-using cuNumeric
-
 using LinearAlgebra
-using CUDA
-import CUDA: i32
-
 using Random
 import Random: rand
+
+const VERBOSE = get(ENV, "VERBOSE", "1") != "0"
+const run_gpu_tests = (get(ENV, "GPUTESTS", "1") != "0") && (get(ENV, "NO_CUDA", "OFF") != "ON")
+@info "Run GPU Tests: $(run_gpu_tests)"
+
+if run_gpu_tests
+    using CUDA
+    import CUDA: i32
+    VERBOSE && println(CUDA.versioninfo())
+end
+
+if run_gpu_tests && !CUDA.functional()
+    error(
+        "You asked for CUDA tests, but they are disabled because no functional CUDA device was detected."
+    )
+end
+
+using cuNumeric
+VERBOSE && cuNumeric.versioninfo()
+
+# TODO
+# After loading cuNumeric, we should verify that the Legate config has set a GPU device
+# Right now, if you have a gpu device, but your LEGATE_CONFIG is cpu only,
+# @cuda_task will not be defined and tests will fail confusingly.
+# We should error out more gracefully in this situation.
 
 include("tests/util.jl")
 include("tests/axpy.jl")
@@ -38,27 +58,6 @@ include("tests/binary_tests.jl")
 include("tests/scoping.jl")
 include("tests/scoping-advanced.jl")
 
-const VERBOSE = false
-
-const run_gpu_tests = get(ENV, "GPUTESTS", "1") != "0"
-const run_cuda_tests = run_gpu_tests && CUDA.functional()
-
-if VERBOSE
-    cuNumeric.versioninfo()
-end
-
-if run_gpu_tests && VERBOSE
-    println(CUDA.versioninfo())
-end
-
-if run_gpu_tests && !CUDA.functional()
-    error(
-        "You asked for CUDA tests, but they are disabled because no functional CUDA device was detected."
-    )
-end
-
-@info "Run CUDA Tests: $(run_cuda_tests)"
-
 @testset verbose = true "AXPY" begin
     N = 100
     @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)
@@ -69,6 +68,10 @@ end
 
 @testset verbose = true "Operators" begin
     @testset elementwise()
+end
+
+@testset verbose = true "Linear Algebra Tests" begin
+    include("tests/linalg.jl")
 end
 
 @testset verbose = true "GEMM" begin
@@ -398,12 +401,12 @@ end
     end
 end
 
-if run_cuda_tests
-    include("tests/cuda/vecadd.jl")
-    @testset verbose = true "CUDA Tests" begin
-        cuda_unaryop(rtol(Float32))
-        cuda_binaryop(rtol(Float32))
-    end
+if run_gpu_tests
+    # @testset verbose = true "CUDA Tests" begin
+    #     cuda_unaryop(rtol(Float32))
+    #     cuda_binaryop(rtol(Float32))
+    # end
+    @warn "CUDA tests are turned off inside Pkg.test for now. --check-bounds=yes causes issues."
 else
     @warn "The CUDA tests will not be run as a CUDA-enabled device is not available"
 end

@@ -39,7 +39,7 @@ function version_config_setup()
     name = get(project, "name", "unknown")
     version = get(project, "version", "unknown")
     uuid = get(project, "uuid", "unknown")
-    compiler = get_cxx_version(libpath)
+    compiler = get_cxx_version(CUPYNUMERIC_LIB_PATH)
 
     julia_ver = VERSION
     hostname = gethostname()
@@ -47,23 +47,13 @@ function version_config_setup()
 
     liblegate = Legate.LEGATE_LIBDIR
     liblegatewrapper = Legate.LEGATE_WRAPPER_LIBDIR
-    if Legate.LegatePreferences.MODE == "jll"
-        other_dirs = Legate.find_dependency_paths(Legate.JLL())
-    else
-        other_dirs = Dict(
-            "HDF5" => "unknown",
-            "MPI" => "unknown",
-            "NCCL" => "unknown",
-            "CUDA_DRIVER" => "unknown",
-            "CUDA_RUNTIME" => "unknown",
-        )
-    end
+    other_dirs = Dict()
 
-    libblas = BLAS_LIB
-    libcutensor = CUTENSOR_LIB
-    libcupynumeric = CUPYNUMERIC_LIB
-    libtblis = TBLIS_LIB
-    libcunumericwrapper = CUNUMERIC_WRAPPER_LIB
+    cn_mode = CNPreferences.to_mode(CNPreferences.MODE)
+    legate_mode = LegatePreferences.to_mode(LegatePreferences.MODE)
+    dirs1 = cuNumeric.find_dependency_paths(typeof(cn_mode))
+    dirs2 = Legate.find_dependency_paths(typeof(legate_mode))
+    other_dirs = merge(dirs1, dirs2)
 
     str = """
     ───────────────────────────────────────────────
@@ -77,22 +67,26 @@ function version_config_setup()
     Hostname:         $hostname
     Julia Version:    $julia_ver
     C++ Compiler:     $compiler
-    CUDA Driver:      $(other_dirs["CUDA_DRIVER"])
-    CUDA Runtime:     $(other_dirs["CUDA_RUNTIME"])
+    CUDA Driver:      $(get(other_dirs,"CUDA_DRIVER","unknown"))
+    CUDA Runtime:     $(get(other_dirs,"CUDA_RUNTIME","unknown"))
 
     Library Paths:
       Legate:         $liblegate
-      cuPyNumeric:    $libcupynumeric
-      BLAS:           $libblas
-      TBLIS:          $libtblis
-      CUTENSOR:       $libcutensor
-      NCCL:           $(other_dirs["NCCL"])
-      MPI:            $(other_dirs["MPI"])
-      HDF5:           $(other_dirs["HDF5"])
+      cuPyNumeric:    $(CUPYNUMERIC_LIBDIR)
+      BLAS:           $(get(other_dirs,"BLAS","unknown"))
+      TBLIS:          $(get(other_dirs,"TBLIS","unknown"))
+      CUTENSOR:       $(get(other_dirs,"CUTENSOR","unknown"))
+      NCCL:           $(get(other_dirs,"NCCL","unknown"))
+      MPI:            $(get(other_dirs,"MPI","unknown"))
+      HDF5:           $(get(other_dirs,"HDF5","unknown"))
 
     Wrappers:
-      cuNumeric       $libcunumericwrapper
+      cuNumeric       $(CUPYNUMERIC_WRAPPER_LIBDIR)
       Legate          $liblegatewrapper
+    
+    Modes:
+      cuNumeric:      $(CNPreferences.MODE)
+      Legate:         $(LegatePreferences.MODE)
     ───────────────────────────────────────────────
     """
     return str

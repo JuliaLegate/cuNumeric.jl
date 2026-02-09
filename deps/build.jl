@@ -114,7 +114,7 @@ function build_jlcxxwrap(repo_root)
 end
 
 function build_cpp_wrapper(
-    repo_root, cupynumeric_loc, legate_loc, blas_lib, install_root
+    repo_root, cupynumeric_loc, legate_loc, blas_loc, install_root
 )
     @info "libcunumeric_jl_wrapper: Building C++ Wrapper Library"
     if isdir(install_root)
@@ -126,7 +126,7 @@ function build_cpp_wrapper(
     build_cpp_wrapper = joinpath(repo_root, "scripts/build_cpp_wrapper.sh")
     nthreads = Threads.nthreads()
 
-    bld_command = `$build_cpp_wrapper $repo_root $cupynumeric_loc $legate_loc $blas_lib $install_root $nthreads`
+    bld_command = `$build_cpp_wrapper $repo_root $cupynumeric_loc $legate_loc $blas_loc $install_root $nthreads`
 
     # write out a bash script for debugging
     cmd_str = join(bld_command.exec, " ")
@@ -197,7 +197,7 @@ function build(mode)
             )
         end
         build_cpp_wrapper(
-            pkg_root, cupynumeric_root, up_dir(legate_lib), blas_lib,
+            pkg_root, cupynumeric_root, up_dir(legate_lib), up_dir(blas_lib),
             install_lib,
         )
     end

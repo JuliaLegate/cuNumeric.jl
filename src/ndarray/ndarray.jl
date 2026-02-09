@@ -20,6 +20,60 @@
 export unwrap
 
 @doc"""
+    cuNumeric.transpose(arr::NDArray)
+
+Return a new `NDArray` that is the transpose of the input `arr`.
+"""
+function transpose(arr::NDArray)
+    return nda_transpose(arr)
+end
+
+@doc"""
+    cuNumeric.eye(rows::Int; T=Float32)
+
+Create a 2D identity `NDArray` of size `rows x rows` with element type `T`.
+"""
+function eye(rows::Int; T::Type{S}=Float64) where {S}
+    return nda_eye(Int32(rows), S)
+end
+
+@doc"""
+    cuNumeric.trace(arr::NDArray; offset=0, a1=0, a2=1, T=Float32)
+
+Compute the trace of the `NDArray` along the specified axes.
+"""
+function trace(arr::NDArray; offset::Int=0, a1::Int=0, a2::Int=1, T::Type{S}=Float32) where {S}
+    return nda_trace(arr, Int32(offset), Int32(a1), Int32(a2), S)
+end
+
+@doc"""
+    cuNumeric.diag(arr::NDArray; k=0)
+
+Extract the k-th diagonal from a 2D `NDArray`.
+"""
+function diag(arr::NDArray; k::Int=0)
+    return nda_diag(arr, Int32(k))
+end
+
+@doc"""
+    cuNumeric.ravel(arr::NDArray)
+
+Return a flattened 1D view of the input `NDArray`.
+"""
+function ravel(arr::NDArray)
+    return nda_ravel(arr)
+end
+
+@doc"""
+    cuNumeric.unique(arr::NDArray)
+
+Return a new `NDArray` containing the unique elements of the input `arr`.
+"""
+function unique(arr::NDArray)
+    return nda_unique(arr)
+end
+
+@doc"""
     Base.copy(arr::NDArray)
 
 Create and return a deep copy of the given `NDArray`.
