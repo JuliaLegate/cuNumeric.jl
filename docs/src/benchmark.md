@@ -14,10 +14,10 @@ In this benchmark we will try to understand the weak scaling behavior of the SGE
 using cuNumeric
 
 function initialize_cunumeric(N, M)
-    A = cuNumeric.as_type(cuNumeric.rand(NDArray, N, M), Float32)
-    B = cuNumeric.as_type(cuNumeric.rand(NDArray, M, N), Float32)
+    A = cuNumeric.rand(Float32, N, M)
+    B = cuNumeric.rand(Float32, M, N)
     C = cuNumeric.zeros(Float32, N, N)
-    GC.gc() # remove the intermediate FP64 arrays
+    GC.gc() # remove any intermediate arrays
     return A, B, C
 end
 
@@ -58,10 +58,11 @@ function gemm_cunumeric(N, M, n_samples, n_warmup)
     return mean_time_ms, gflops
 end
 
+N = 100
 n_samples = 10
 n_warmup = 2
 
-mean_time_ms, gflops = gemm_cunumeric(N, n_samples, n_warmup)
+mean_time_ms, gflops = gemm_cunumeric(N, N, n_samples, n_warmup)
 ```
 
 Since there is no programatic way to set the hardware configuration we must manipulate the environment variables described in [Setting Hardware Configuration](@ref) through shell scripts to make a weak scaling plot. These variables must be set before we launch the Julia runtime where we will run our benchmark. Therefore, I do not recommend generating scaling plots from the REPL because you would have to start and stop the REPL each time to re-configure the hardware settings. To make benchmarking easier, we provide a small shell script, `run_benchmark.sh`, located in `cuNumeric.jl/pkg/benchmark`. This script will automatically set the `LEGATE_CONFIG` according to the passed flags and run the specified benchmark file.

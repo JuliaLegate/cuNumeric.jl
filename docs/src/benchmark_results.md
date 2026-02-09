@@ -25,7 +25,7 @@ Monte-Carlo integration is embaressingly parallel and should scale perfectly. We
 
 Code Outline:
 ```julia
-integrand = (x) -> exp(-square(x))
+integrand = (x) -> exp.(-x.^2)
 val = (V/N) * sum(integrand(x))
 ```
 
