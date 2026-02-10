@@ -390,8 +390,8 @@ end
                 @test cuNumeric.compare(c_base, c_scoped, atol(T), rtol(T))
             end
 
-            u_rand = cuNumeric.rand(T, NDArray, (15, 15))
-            v_rand = cuNumeric.rand(T, NDArray, (15, 15))
+            u_rand = cuNumeric.rand(T, (15, 15))
+            v_rand = cuNumeric.rand(T, (15, 15))
 
             u, v = gray_scott_base(T, N, u_rand, v_rand)
             u_scoped, v_scoped = gray_scott(T, N, u_rand, v_rand)
