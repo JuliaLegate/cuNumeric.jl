@@ -27,7 +27,6 @@ To see information about your cuNumeric install run the `versioninfo` function.
 cuNumeric.versioninfo()
 ```
 
-
 ### Monte-Carlo Example
 ```julia
 using cuNumeric
@@ -46,3 +45,6 @@ estimate = (Ω/N) * sum(integrand(samples))
 println("Monte-Carlo Estimate: $(estimate)")
 ```
 
+### Requirements
+
+We require an x86 Linux platform and Julia 1.10 or 1.11. For GPU support we require an NVIDIA GPU and a CUDA driver which supports CUDA 13.0. ARM support is theoretically possible, but we do not make binaries or test on ARM. Please open an issue if ARM support is of interest.
