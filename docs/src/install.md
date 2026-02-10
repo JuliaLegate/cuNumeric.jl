@@ -2,6 +2,27 @@
 
 To make customization of the build options easier we have the `CNPreferences.jl` package to generate the `LocalPreferences.toml` which is read by the build script to determine which build option to use. CNPreferences.jl will also enforce that Julia is restarted for changes to take effect.
 
+
+
+## Julia Installation
+
+cuNumeric supports Julia 1.10 and 1.11. We recommend installing Julia with [juliaup](https://github.com/JuliaLang/juliaup):
+
+```
+curl -fsSL https://install.julialang.org | sh -s -- --default-channel 1.11
+```
+
+This will install version 1.11 by default since that is what we have tested against. To verify 1.11 is the default run either of the following (you may need to source bashrc):
+```bash
+juliaup status
+julia --version
+```
+
+If 1.11 is not your default, please set it to be the default. Other versions of Julia are untested.
+```bash
+juliaup default 1.11
+```
+
 ## Default Build (jlls)
 
 cuNumeric.jl is not registered yet. The easiest way to install is using `Pkg.develop`. cuNumeric.jl leverages [Binary Builder](https://github.com/JuliaPackaging/Yggdrasil) for many of its dependencies.
@@ -69,3 +90,20 @@ julia --project -e 'using CNPreferences; CNPreferences.use_conda("<env-path>")'
 ```
 
 By default, this will also revert any LegatePreferences you have set. It will revert Legate.jl to use JLLs. You can disable this behavior with `transitive = false` in the `use_conda()` function.
+
+
+
+
+## 3. Contribution to cuNumeric.jl
+
+To start, please [open an issue](https://github.com/JuliaLegate/cuNumeric.jl/issues) that describes the problem or feature you plan to address.
+
+To contribute to cuNumeric.jl, we recommend cloning the repository and manually triggering the build process with `Pkg.build` or adding it to one of your existing environments with `Pkg.develop`. 
+This will cause the wrapper to be built from source, bypassing the `cunumeric_jl_wrapper_jll` prebuilt binary.
+
+```bash
+git clone https://github.com/JuliaLegate/cuNumeric.jl.git
+julia --project=. -e 'using Pkg; Pkg.develop(path = "cuNumeric.jl/lib/CNPreferences")'
+julia --project=. -e 'using Pkg; Pkg.develop(path = "cuNumeric.jl")'
+julia --project=. -e 'using CNPreferences; CNPreferences.use_developer_mode()'
+julia --project=. -e 'using Pkg; Pkg.build()'
