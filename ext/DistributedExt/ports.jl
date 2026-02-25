@@ -63,12 +63,12 @@ function setup_legate_env()
     self_addr = all_addrs[1]
 
     # Exclude self and join remaining peers
-    peer_addrs = join(all_addrs[2:end], " ")
+    peer_addrs = join(sort(all_addrs[1:end]), " ")
 
     # Set environment variables
     ENV["WORKER_SELF_INFO"] = "$self_addr"
     ENV["WORKER_PEERS_INFO"] = "$peer_addrs"
-    ENV["REALM_UCP_BOOTSTRAP_PLUGIN"] = "realm_bootstrap_p2p.so"
+    ENV["REALM_UCP_BOOTSTRAP_PLUGIN"] = "realm_ucp_bootstrap_p2p.so"
     ENV["REALM_UCP_BOOTSTRAP_MODE"] = "p2p"
 
     # Optional: print to check
