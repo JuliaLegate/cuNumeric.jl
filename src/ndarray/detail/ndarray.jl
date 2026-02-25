@@ -77,28 +77,28 @@ end
 #     return NDArray(ptr, T = T, n_dim = 1)
 # end
 
-NDArray(value::T) where {T<:SUPPORTED_TYPES} = nda_full_array(UInt64[], value)
+NDArray(value::T) where {T<:SUPPORTED_TYPES} = nda_full_array((), value)
 
 # construction 
-function nda_zeros_array(shape::Vector{UInt64}, ::Type{T}) where {T}
-    n_dim = Int32(length(shape))
+function nda_zeros_array(dims::Dims{N}, ::Type{T}) where {T, N}
+    shape = collect(UInt64, dims)
     legate_type = Legate.to_legate_type(T)
     ptr = ccall((:nda_zeros_array, libnda),
         NDArray_t, (Int32, Ptr{UInt64}, Legate.LegateTypeAllocated),
-        n_dim, shape, legate_type)
-    return NDArray(ptr; T=T, n_dim=n_dim)
+        Int32(N), shape, legate_type)
+    return NDArray(ptr; T=T, n_dim=N)
 end
 
-function nda_full_array(shape::Vector{UInt64}, value::T) where {T}
-    n_dim = Int32(length(shape))
+function nda_full_array(dims::Dims{N}, value::T) where {T, N}
+    shape = collect(UInt64, dims)
     type = Legate.to_legate_type(T)
 
     ptr = ccall((:nda_full_array, libnda),
         NDArray_t,
         (Int32, Ptr{UInt64}, Legate.LegateTypeAllocated, Ptr{Cvoid}),
-        n_dim, shape, type, Ref(value))
+        Int32(N), shape, type, Ref(value))
 
-    return NDArray(ptr; T=T, n_dim=n_dim)
+    return NDArray(ptr; T=T, n_dim=N)
 end
 
 function nda_random(arr::NDArray, gen_code)
@@ -408,7 +408,10 @@ end
 
 Return the size of the given `NDArray`. This will include the padded size.
 """
-padded_shape(arr::NDArray) = Tuple(Int.(cuNumeric.nda_array_shape(arr)))
+function padded_shape(arr::NDArray{<:Any,N}) where {N}
+    shp = cuNumeric.nda_array_shape(arr) 
+    return ntuple(i -> Int(shp[i]), Val(N))
+end
 
 @doc"""
     shape(arr::NDArray)
