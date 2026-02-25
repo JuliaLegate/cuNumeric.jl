@@ -14,12 +14,11 @@ makedocs(;
     ),
     pages=[
         "Home" => "index.md",
-        "Build Options" => "install.md",
+        "Install Guide" => "install.md",
         "Examples" => "examples.md",
         "Performance Tips" => "perf.md",
         "Back End Details" => "usage.md",
-        "Benchmarks" => "benchmark_results.md",
-        "How to Benchmark" => "benchmark.md",
+        "Benchmarks" => "benchmark.md",
         "Public API" => "api.md",
     ],
 )
