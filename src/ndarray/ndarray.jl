@@ -594,9 +594,8 @@ function ones(dims::Int...)
     return ones(DEFAULT_FLOAT, dims)
 end
 
-#* UNSTABLE
 function ones(::Type{T}) where {T}
-    return cuNumeric.fill((), T(1))
+    return cuNumeric.fill(T(1), ())
 end
 
 function ones()
