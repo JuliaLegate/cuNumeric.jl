@@ -50,7 +50,7 @@ mutable struct NDArray{T, N, PADDED} <: AbstractNDArray{T,N}
 end
 
 # Dynamic fallback, not great but required if we cannot infer things
-NDArray(ptr::NDArray_t) = NDArray(ptr, get_julia_type(ptr), Val(get_n_dim(ptr)))
+NDArray(ptr::NDArray_t; T = get_julia_type(ptr), N::Integer = get_n_dim(ptr)) = NDArray(ptr, T, Val(N))
 
 # struct WrappedNDArray{T,N} <: AbstractNDArray{T,N}
 #     ndarr::NDArray{T,N}
@@ -108,12 +108,12 @@ function nda_random(arr::NDArray, gen_code)
         arr.ptr, Int32(gen_code))
 end
 
-function nda_random_array(shape::Vector{UInt64})
-    n_dim = Int32(length(shape))
+function nda_random_array(dims::Dims{N}) where {N}
+    shape = collect(UInt64, dims)
     ptr = ccall((:nda_random_array, libnda),
         NDArray_t, (Int32, Ptr{UInt64}),
-        n_dim, shape)
-    return NDArray(ptr, get_julia_type(ptr), Val(n_dim))
+        Int32(N), shape)
+    return NDArray(ptr, Float64, Val(N)) #* T is always Float64 cause of cupynumeric
 end
 
 function nda_get_slice(arr::NDArray{T,N}, slices::Vector{Slice}) where {T,N}

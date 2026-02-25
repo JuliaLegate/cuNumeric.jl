@@ -624,14 +624,13 @@ A = cuNumeric.zeros(2, 2); cuNumeric.rand!(A)
 ```
 """
 Random.rand!(arr::NDArray{Float64}) = cuNumeric.nda_random(arr, 0)
-rand(::Type{NDArray}, dims::Dims) = cuNumeric.nda_random_array(UInt64.(collect(dims)))
+rand(::Type{NDArray}, dims::Dims) = cuNumeric.nda_random_array(dims)
 rand(::Type{NDArray}, dims::Int...) = cuNumeric.rand(NDArray, dims)
 rand(dims::Dims) = cuNumeric.rand(NDArray, dims)
 rand(dims::Int...) = cuNumeric.rand(NDArray, dims)
 
 function rand(::Type{T}, dims::Dims) where {T<:AbstractFloat}
-    arrfp64 = cuNumeric.nda_random_array(UInt64.(collect(dims)))
-    # if T == Float64, as_type should do minimial work # TODO check this.
+    arrfp64 = cuNumeric.nda_random_array(dims)
     return cuNumeric.as_type(arrfp64, T)
 end
 
