@@ -4,66 +4,47 @@
 [![codecov](https://codecov.io/github/julialegate/cuNumeric.jl/branch/main/graph/badge.svg)](https://app.codecov.io/github/JuliaLegate/cuNumeric.jl)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
-> [!WARNING]  
-> Leagte.jl and cuNumeric.jl are under active development at the moment. This is a pre-release API and is subject to change. Stability is not guaranteed until the first official release. We are actively working to improve the build experience to be more seamless and Julia-friendly. In parallel, we're developing a comprehensive testing framework to ensure reliability and robustness. Our public beta launch is targeted for Fall 2025.
 
 The cuNumeric.jl package wraps the [cuPyNumeric](https://github.com/nv-legate/cupynumeric) C++ API from NVIDIA to bring simple distributed computing on GPUs and CPUs to Julia! We provide a simple array abstraction, the `NDArray`, which supports most of the operations you would expect from a normal Julia array.
 
-This project is in alpha and we do not commit to anything necessarily working as you would expect. The current build process requires several external dependencies which are not registered on BinaryBuilder.jl yet. The build instructions and minimum pre-requesites are as follows:
+> [!WARNING]  
+> Leagte.jl and cuNumeric.jl are under active development. This is a pre-release API and is subject to change. Stability is not guaranteed until the first official release. We are actively working to improve the build experience to be more seamless and Julia-friendly. In parallel, we're developing a comprehensive testing framework to ensure reliability and robustness.
 
-### Minimum prereqs
-- Ubuntu 20.04 or RHEL 8
-- Julia 1.11
-
-### 1. Install Julia through [JuliaUp](https://github.com/JuliaLang/juliaup)
-```
-curl -fsSL https://install.julialang.org | sh -s -- --default-channel 1.11
-```
-
-This will install version 1.11 by default since that is what we have tested against. To verify 1.11 is the default run either of the following (you may need to source bashrc):
-```bash
-juliaup status
-julia --version
-```
-
-If 1.11 is not your default, please set it to be the default. Other versions of Julia are untested.
-```bash
-juliaup default 1.11
-```
-
-### 2. Download cuNumeric.jl (quick setup)
-cuNumeric.jl is not on the general registry yet. To add cuNumeric.jl to your environment run:
+### Quick Start
+cuNumeric.jl can be installed with the Julia package manager. From the Julia REPL, type `]` to enter the Pkg REPL mode and run:
 ```julia
-using Pkg; Pkg.develop(url = "https://github.com/JuliaLegate/cuNumeric.jl")
+pkg> add cuNumeric
 ```
-By default, this will use [legate_jll](https://github.com/JuliaBinaryWrappers/legate_jll.jl/) and [cupynumeric_jll](https://github.com/JuliaBinaryWrappers/cupynumeric_jll.jl/). 
-
-For more build configurations and options, please visit our [installation guide](https://julialegate.github.io/cuNumeric.jl/dev/install).
-
-#### 2b. Contributing to cuNumeric.jl
-To contribute to cuNumeric.jl, we recommend cloning the repository and adding it to one of your existing environments with `Pkg.develop`.
-```bash
-git clone https://github.com/JuliaLegate/cuNumeric.jl.git 
-julia --project=. -e 'using Pkg; Pkg.develop(path = "cuNumeric.jl/lib/CNPreferences")'
-julia --project=. -e 'using Pkg; Pkg.develop(path = "cuNumeric.jl")'
-julia --project=. -e 'using CNPreferences; CNPreferences.use_developer_mode()'
-julia --project=. -e 'using Pkg; Pkg.build()'
-```
-
-To learn more about contributing to Legate.jl, check out the [Legate.jl README.md](https://github.com/JuliaLegate/Legate.jl?tab=readme-ov-file#2-download-legatejl)
-
-### 3. Test the Julia Package
-Run this command in the Julia environment where cuNumeric.jl is installed.
+Or, using the `Pkg` API:
 ```julia
-using Pkg; Pkg.test("cuNumeric")
+using Pkg; Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "main")
 ```
-With everything working, its the perfect time to checkout some of our [examples](https://julialegate.github.io/cuNumeric.jl/dev/examples)!
+The first run might take awhile as it has to install multiple large dependencies such as the CUDA SDK (if you have an NVIDIA GPU). For more install instructions, please visit out install guide in the documentation.
 
+To see information about your cuNumeric install run the `versioninfo` function.
 
-## Contact
-For technical questions, please either contact 
-`krasow(at)u.northwestern.edu` OR
-`emeitz(at)andrew.cmu.edu`
+```julia
+cuNumeric.versioninfo()
+```
 
-If the issue is building the package, please include the `build.log` and `.err` files found in `cuNumeric.jl/deps/` 
+### Monte-Carlo Example
+```julia
+using cuNumeric
 
+integrand = (x) -> exp.(-x.^2)
+
+N = 1_000_000
+
+x_max = 10.0f0
+domain = [-x_max, x_max]
+Ω = domain[2] - domain[1]
+
+samples = Ω*cuNumeric.rand(N) .- x_max 
+estimate = (Ω/N) * sum(integrand(samples))
+
+println("Monte-Carlo Estimate: $(estimate)")
+```
+
+### Requirements
+
+We require an x86 Linux platform and Julia 1.10 or 1.11. For GPU support we require an NVIDIA GPU and a CUDA driver which supports CUDA 13.0. ARM support is theoretically possible, but we do not make binaries or test on ARM. Please open an issue if ARM support is of interest.

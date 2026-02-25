@@ -2,6 +2,8 @@ using Documenter, DocumenterVitepress
 using cuNumeric
 using CNPreferences
 
+ci = get(ENV, "CI", "") == "true"
+
 makedocs(;
     sitename="cuNumeric.jl",
     authors="Ethan Meitz and David Krasowska",
@@ -12,20 +14,22 @@ makedocs(;
     ),
     pages=[
         "Home" => "index.md",
-        "Build Options" => "install.md",
+        "Install Guide" => "install.md",
         "Examples" => "examples.md",
         "Performance Tips" => "perf.md",
         "Back End Details" => "usage.md",
-        "Benchmarks" => "benchmark_results.md",
-        "How to Benchmark" => "benchmark.md",
+        "Benchmarks" => "benchmark.md",
         "Public API" => "api.md",
     ],
 )
 
-DocumenterVitepress.deploydocs(;
-    repo="github.com/JuliaLegate/cuNumeric.jl",
-    target=joinpath(@__DIR__, "build"),
-    branch="gh-pages",
-    devbranch="main",
-    push_preview=true,
-)
+if ci
+    @info "Deploying Docs to GitHub Pages"
+    DocumenterVitepress.deploydocs(;
+        repo="github.com/JuliaLegate/cuNumeric.jl",
+        target=joinpath(@__DIR__, "build"),
+        branch="gh-pages",
+        devbranch="main",
+        push_preview=true,
+    )
+end

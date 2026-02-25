@@ -1,10 +1,4 @@
 
-
-## About NDArrays
-
-
-
-
 ## Setting Hardware Configuration
 
 There is no programatic way to set the hardware configuration used by CuPyNumeric (as of 24.11). By default, the hardware configuration is set automatically by Legate. This configuration can be manipulated through the following environment variables:
