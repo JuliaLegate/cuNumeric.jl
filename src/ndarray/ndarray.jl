@@ -559,7 +559,6 @@ function zeros()
     return zeros(DEFAULT_FLOAT)
 end
 
-#* TYPE USNTABLE CAUSE SIZE IS RIGHT NOW
 function zeros_like(arr::NDArray{T,N}) where {T,N}
     return zeros(T, Base.size(arr))
 end
