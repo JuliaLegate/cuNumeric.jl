@@ -1,7 +1,3 @@
-
-# ndarray_cuda_type(::NDArray{T,2}) where {T} = CuDeviceMatrix{T,1}
-# ndarray_cuda_type(::NDArray{T,N}) where {T,N} = CuDeviceArray{T,N,1}
-
 function ndarray_cuda_type(A::NDArray{T,N}) where {T,N}
     if N == 1
         CuDeviceVector{T,1}
@@ -78,27 +74,6 @@ function check_sz(arr, maxshape)
     end
 end
 
-# allignment contrainsts are transitive.
-# we can allign all the inputs and then alligns all the outputs
-# then allign one input with one output
-# This reduces the need for a cartesian product.
-function add_default_alignment(
-    task::Legate.AutoTask, inputs::Vector{Legate.Variable}, outputs::Vector{Legate.Variable}
-)
-    # Align all inputs to the first input
-    for i in 2:length(inputs)
-        Legate.add_constraint(task, Legate.align(inputs[i], inputs[1]))
-    end
-    # Align all outputs to the first output
-    for i in 2:length(outputs)
-        Legate.add_constraint(task, Legate.align(outputs[i], outputs[1]))
-    end
-    # Align first output with first input
-    if !isempty(inputs) && !isempty(outputs)
-        Legate.add_constraint(task, Legate.align(outputs[1], inputs[1]))
-    end
-end
-
 function Launch(kernel::cuNumeric.CUDATask, inputs::Tuple{Vararg{NDArray}},
     outputs::Tuple{Vararg{NDArray}}, scalars::Tuple{Vararg{Any}}; blocks, threads)
 
@@ -141,7 +116,7 @@ function Launch(kernel::cuNumeric.CUDATask, inputs::Tuple{Vararg{NDArray}},
     end
 
     # all inputs are alligned with all outputs
-    add_default_alignment(task, input_vars, output_vars)
+    Legate.add_default_alignment(task, input_vars, output_vars)
     Legate.submit_auto_task(rt, task)
 end
 

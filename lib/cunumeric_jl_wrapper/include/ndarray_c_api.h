@@ -20,6 +20,9 @@ typedef struct {
 typedef struct CN_NDArray CN_NDArray;
 typedef struct CN_Type CN_Type;
 typedef struct CN_Scalar CN_Scalar;
+typedef struct CN_Store CN_Store;
+
+CN_NDArray* nda_store_to_ndarray(CN_Store* st);
 
 uint64_t nda_query_device_memory();
 

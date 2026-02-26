@@ -29,7 +29,6 @@
 #include "jlcxx/stl.hpp"
 #include "legate.h"
 #include "legion.h"
-#include "mathtypes/half.h"
 #include "realm.h"
 #include "types.h"
 #include "ufi.h"
@@ -47,35 +46,16 @@ legate::LogicalArray* get_store(CN_NDArray* arr) {
   return new legate::LogicalArray(std::move(res));
 }
 
-struct GetPtrFunctor {
-  template <legate::Type::Code CODE, int DIM>
-  void* operator()(legate::LogicalArray* arr) {
-#ifndef HAVE_CUDA
-    // Check if FLOAT16 is being used without CUDA support
-    if (CODE == legate::Type::Code::FLOAT16) {
-      throw std::runtime_error(
-          "FLOAT16 type is not supported when building without CUDA");
-    }
-#endif
-    using CppT = typename legate_util::code_to_cxx<CODE>::type;
-    auto rf = arr->get_physical_array();
-    auto shp = rf.shape<DIM>();
-    return rf.data().write_accessor<CppT, DIM>().ptr(Realm::Point<DIM>(shp.lo));
-  }
-};
-
-inline void* get_ptr(legate::LogicalArray* arr) {
-  int dim = arr->dim();
-  legate::Type::Code code = arr->type().code();
-  return legate::double_dispatch(dim, code, GetPtrFunctor{}, arr);
-}
-
 legate::Library get_lib() {
   auto runtime = cupynumeric::CuPyNumericRuntime::get_runtime();
   return runtime->get_library();
 }
 
-#ifdef HAVE_CUDA
+void* nda_store_to_ndarray(legate::LogicalStore st) {
+  return static_cast<void*>(new CN_NDArray{cupynumeric::as_array(st)});
+}
+
+#if LEGATE_DEFINED(LEGATE_USE_CUDA)
 void register_tasks() {
   auto library = get_lib();
   ufi::LoadPTXTask::register_variants(library);
@@ -109,11 +89,8 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
 
   mod.add_type<CN_NDArray>("CN_NDArray");
   mod.method("_get_store", &get_store);
-  mod.method("_get_ptr", &get_ptr);
   mod.method("get_lib", &get_lib);
-#ifdef HAVE_CUDA
-  mod.method("register_tasks", &register_tasks);
-#endif
+  mod.method("nda_store_to_ndarray", &nda_store_to_ndarray);
 
   auto ndarray_accessor =
       mod.add_type<Parametric<TypeVar<1>, TypeVar<2>>>("NDArrayAccessor");
@@ -127,7 +104,8 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
         v.push_back(std::make_shared<CN_NDArray>(x));
       });
 
-#ifdef HAVE_CUDA
+#if LEGATE_DEFINED(LEGATE_USE_CUDA)
+  mod.method("register_tasks", &register_tasks);
   wrap_cuda_methods(mod);
 #endif
 }
