@@ -267,7 +267,7 @@ end
 
 function Base.show(io::IO, arr::NDArray{T,D}) where {T,D}
     println(io, "NDArray{$(T),$(D)}")
-    Base.print_matrix(io, Array(arr))
+    Base.print_array(io, Array(arr))
 end
 
 function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T}) where {T}
