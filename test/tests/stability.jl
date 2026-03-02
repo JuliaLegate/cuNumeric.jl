@@ -1,4 +1,4 @@
-@testset "core" begin
+@testset verbose = true "core" begin
     a = cuNumeric.zeros(5)
     b = cuNumeric.zeros(Float64, 3, 4)
     @inferred size(a)
@@ -7,7 +7,7 @@
     @inferred cuNumeric.shape(b)
 end
 
-@testset "construction" begin
+@testset verbose = true "construction" begin
     # zeros, zeros_like, ones, rand, fill, trues, falses\
     for constructor in (:zeros, :ones)
         @eval begin
@@ -38,7 +38,7 @@ end
     @inferred cuNumeric.rand(Float32, 5)
 end
 
-@testset "conversion" begin
+@testset verbose = true "conversion" begin
     # cast to array, as_type
     a = cuNumeric.zeros(Float64, 5, 5)
     @inferred Array(a)
@@ -47,7 +47,7 @@ end
     @inferred cuNumeric.as_type(a, Int64)
 end
 
-@testset "indexing" begin
+@testset verbose = true "indexing" begin
     # getindex, setindex!, copy, copyto!, fill!, as_type
     a = cuNumeric.zeros(Float32, 5, 5)
     b = cuNumeric.zeros(Int32, 11)
@@ -62,7 +62,7 @@ end
     end
 end
 
-@testset "broadcasting" begin
+@testset verbose = true "broadcasting" begin
     a = cuNumeric.ones(Float32, 3, 3)
     b = cuNumeric.ones(Int32, 3, 3)
     @inferred 5 .* a
