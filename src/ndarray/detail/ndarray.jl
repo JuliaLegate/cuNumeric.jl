@@ -143,12 +143,12 @@ function nda_array_shape(arr::NDArray)
 end
 
 # modify
-function nda_reshape_array(arr::NDArray{T}, newshape::Vector{UInt64}) where {T}
-    n_dim = Int32(length(newshape))
+function nda_reshape_array(arr::NDArray{T}, newdims::Dims{N}) where {T, N}
+    newshape = collect(UInt64, newdims)
     ptr = ccall((:nda_reshape_array, libnda),
         NDArray_t, (NDArray_t, Int32, Ptr{UInt64}),
-        arr.ptr, n_dim, newshape)
-    return NDArray(ptr, T, Val(n_dim))
+        arr.ptr, Int32(N), newshape)
+    return NDArray(ptr, T, Val(N))
 end
 
 function nda_astype(arr::NDArray{OLD_T,N}, ::Type{NEW_T}) where {OLD_T,NEW_T,N}

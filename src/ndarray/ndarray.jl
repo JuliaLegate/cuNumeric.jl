@@ -652,14 +652,13 @@ reshape(arr, 12)
 
 #*USNTABLE USE Val{false} IF WE REALLY WANT THIS FLAG
 function reshape(arr::NDArray, i::Dims{N}; copy::Bool=false) where {N}
-    reshaped = nda_reshape_array(arr, UInt64.(collect(i)))
+    reshaped = nda_reshape_array(arr, i)
     return copy ? copy(reshaped) : reshaped
 end
 
 #*USNTABLE USE Val{false} IF WE REALLY WANT THIS FLAG
-function reshape(arr::NDArray, i::Int64; copy::Bool=false)
-    reshaped = nda_reshape_array(arr, UInt64.([i]))
-    return copy ? copy(reshaped) : reshaped
+function reshape(arr::NDArray, i::Int...; copy::Bool=false)
+    return reshape(arr, i; copy = copy)
 end
 
 # Ignore the scalar indexing here...
