@@ -101,13 +101,13 @@ global const unary_op_map_no_args = Dict{Function,UnaryOpCode}(
 ### SPECIAL CASES ###
 
 # Needed to support != 
-Base.:(!)(input::NDArray{Bool,0}) = nda_unary_op(similar(input), cuNumeric.LOGICAL_NOT, input)
-Base.:(!)(input::NDArray{Bool,1}) = nda_unary_op(similar(input), cuNumeric.LOGICAL_NOT, input)
+Base.:(!)(input::NDArray{Bool,0}) = nda_unary_op!(similar(input), cuNumeric.LOGICAL_NOT, input)
+Base.:(!)(input::NDArray{Bool,1}) = nda_unary_op!(similar(input), cuNumeric.LOGICAL_NOT, input)
 
 # Non-broadcasted version of negation
 function Base.:(-)(input::NDArray{T}) where {T}
     out = cuNumeric.zeros(T, size(input))
-    return nda_unary_op(out, cuNumeric.NEGATIVE, input)
+    return nda_unary_op!(out, cuNumeric.NEGATIVE, input)
 end
 
 function Base.:(-)(input::NDArray{Bool})
@@ -121,7 +121,7 @@ end
 @inline function __broadcast(
     f::typeof(Base.literal_pow), out::NDArray{O}, _, input::NDArray{T}, ::Type{Val{2}}
 ) where {T,O}
-    return nda_unary_op(out, cuNumeric.SQUARE, input)
+    return nda_unary_op!(out, cuNumeric.SQUARE, input)
 end
 
 @inline function __broadcast(
@@ -129,13 +129,13 @@ end
 ) where {O}
     nda_move(out, O(1) ./ checked_promote_arr(input, O)) #! REPLACE WITH RECIP ONCE FIXED
     return out
-    # return nda_unary_op(out, cuNumeric.RECIPROCAL, input)
+    # return nda_unary_op!(out, cuNumeric.RECIPROCAL, input)
 end
 
 @inline function __broadcast(::typeof(Base.inv), out::NDArray{O}, input::NDArray) where {O}
     nda_move(out, O(1) ./ checked_promote_arr(input, O)) #! REPLACE WITH RECIP ONCE FIXED
     return out
-    # return nda_unary_op(out, cuNumeric.RECIPROCAL, checked_promote_arr(input,O))
+    # return nda_unary_op!(out, cuNumeric.RECIPROCAL, checked_promote_arr(input,O))
 end
 
 #! NEEDS TO SUPPORT inv and ^ -1
@@ -150,7 +150,7 @@ end
 
 # Only supported for Bools
 @inline function __broadcast(f::typeof(Base.:(!)), out::NDArray{Bool}, input::NDArray{Bool})
-    return nda_unary_op(out, cuNumeric.LOGICAL_NOT, input)
+    return nda_unary_op!(out, cuNumeric.LOGICAL_NOT, input)
 end
 
 # Generate hidden broadcasted version of unary ops.
@@ -159,7 +159,7 @@ for (julia_fn, op_code) in unary_op_map_no_args
         @inline function __broadcast(
             f::typeof($julia_fn), out::NDArray{T}, input::NDArray{T}
         ) where {T}
-            return nda_unary_op(out, $(op_code), input)
+            return nda_unary_op!(out, $(op_code), input)
         end
     end
 end
@@ -172,7 +172,7 @@ for (julia_fn, op_code) in floaty_unary_ops_no_args
         @inline function __broadcast(
             f::typeof($julia_fn), out::NDArray{T}, input::NDArray{T}
         ) where {T}
-            return nda_unary_op(out, $(op_code), input)
+            return nda_unary_op!(out, $(op_code), input)
         end
 
         # If input is not already float, promote to that
