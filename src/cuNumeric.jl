@@ -1,4 +1,4 @@
-#= Copyright 2025 Northwestern University, 
+#= Copyright 2026 Northwestern University, 
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
  *
  * Author(s): David Krasowska <krasow@u.northwestern.edu>
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
+ *            Nader Rahhal <naderrahhal2026@u.northwestern.edu>
 =#
 
 module cuNumeric
@@ -34,8 +35,20 @@ const DEFAULT_INT = Int32
 
 const SUPPORTED_INT_TYPES = Union{Int32,Int64}
 const SUPPORTED_FLOAT_TYPES = Union{Float32,Float64}
-const SUPPORTED_NUMERIC_TYPES = Union{SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES}
-const SUPPORTED_TYPES = Union{SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES,Bool} #* TODO Test UInt, Complex
+const SUPPORTED_COMPLEX_TYPES = Union{ComplexF32,ComplexF64}
+const SUPPORTED_NUMERIC_TYPES = Union{
+    SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES
+}
+# const SUPPORTED_TYPES = Union{SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES,Bool} #* TODO Test UInt, Complex
+
+const SUPPORTED_TYPES = Union{
+    Bool,
+    Int8,Int16,Int32,Int64,
+    UInt8,UInt16,UInt32,UInt64,
+    Float16,Float32,Float64,
+    ComplexF32,ComplexF64,
+    String,
+}
 
 # const MAX_DIM = 6 # idk what we compiled?
 
@@ -123,6 +136,7 @@ include("ndarray/broadcast.jl")
 include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
+include("ndarray/experimental.jl")
 
 # scoping macro
 include("scoping.jl")
@@ -169,15 +183,13 @@ end
 const RUNTIME_INACTIVE = -1
 const RUNTIME_ACTIVE = 0
 const _runtime_ref = Ref{Int}(RUNTIME_INACTIVE)
-const _start_lock  = ReentrantLock()
+const _start_lock = ReentrantLock()
 
 runtime_started() = _runtime_ref[] == RUNTIME_ACTIVE
 
 function _start_runtime()
-
     Libdl.dlopen(CUPYNUMERIC_LIB_PATH, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
     Libdl.dlopen(CUPYNUMERIC_WRAPPER_LIB_PATH, Libdl.RTLD_GLOBAL | Libdl.RTLD_NOW)
-
 
     AA = ArgcArgv(String[])
     # AA = ArgcArgv([Base.julia_cmd()[1]])
@@ -187,7 +199,6 @@ function _start_runtime()
     cuNumeric.init_gc!()
 
     Base.atexit(my_on_exit)
-
 
     return RUNTIME_ACTIVE
 end
@@ -223,9 +234,17 @@ function __init__()
 
     global cuNumeric_config_str = version_config_setup()
 
-    _is_precompiling() && return
+    _is_precompiling() && return nothing
 
     ensure_runtime!()
+
+    # Register existing C++ library with Legate runtime for UFI support
+    lib = get_lib()
+    Legate._ufi_interface_register(lib)
+
+    async_handle = Legate._get_async_handle()
+    request_ptr = Legate._get_request_ptr()
+    Legate._initialize_async_system(async_handle, request_ptr)
 end
 
 end #module cuNumeric
