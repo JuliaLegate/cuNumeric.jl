@@ -129,11 +129,21 @@ function Base.:(*)(rhs1::NDArray{Bool,2}, rhs2::NDArray{Bool,2})
     )
 end
 
-function Base.:(*)(rhs1::NDArray{<:Integer,2}, rhs2::NDArray{<:Integer,2})
-    #* this is a stupid.....
-    throw(
-        ArgumentError("cuNumeric.jl does not support matrix multiplication of two Integer arrays")
-    )
+function Base.:(*)(rhs1::NDArray{A,2}, rhs2::NDArray{B,2}) where {A<:Integer, B<:Integer}
+
+    size(rhs1, 2) == size(rhs2, 1) || throw(DimensionMismatch("Matrix dimensions incompatible: $(size(rhs1)) × $(size(rhs2))"))
+
+    ResultType = __my_promote_type(A, B)
+    IntermediateType = Float64
+
+    A_float = cuNumeric.as_type(rhs1, IntermediateType)
+    B_float = cuNumeric.as_type(rhs2, IntermediateType)
+
+    C_float = A_float * B_float
+    C_int = cuNumeric.as_type(C_float, ResultType)
+
+    return C_int
+
 end
 
 @doc"""
