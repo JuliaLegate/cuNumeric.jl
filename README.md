@@ -8,7 +8,7 @@
 The cuNumeric.jl package wraps the [cuPyNumeric](https://github.com/nv-legate/cupynumeric) C++ API from NVIDIA to bring simple distributed computing on GPUs and CPUs to Julia! We provide a simple array abstraction, the `NDArray`, which supports most of the operations you would expect from a normal Julia array.
 
 > [!WARNING]  
-> Leagte.jl and cuNumeric.jl are under active development. This is a pre-release API and is subject to change. Stability is not guaranteed until the first official release. We are actively working to improve the build experience to be more seamless and Julia-friendly. In parallel, we're developing a comprehensive testing framework to ensure reliability and robustness.
+> cuNumeric.jl is under active development. This is an alpha API and is subject to change. Stability is not guaranteed until the first official release. We are actively working to improve the build experience to be more seamless and Julia-friendly.
 
 ### Quick Start
 cuNumeric.jl can be installed with the Julia package manager. From the Julia REPL, type `]` to enter the Pkg REPL mode and run:
