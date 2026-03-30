@@ -214,7 +214,7 @@ size(arr)
 size(arr, 2)
 ```
 """
-Base.size(arr::NDArray) = cuNumeric.shape(arr)
+Base.size(arr::NDArray{<:Any, N}) where N = cuNumeric.shape(arr)
 Base.size(arr::NDArray, dim::Int) = Base.size(arr)[dim]
 
 @doc"""
@@ -257,7 +257,7 @@ end
 
 function Base.show(io::IO, arr::NDArray{T,D}) where {T,D}
     println(io, "NDArray{$(T),$(D)}")
-    Base.print_matrix(io, Array(arr))
+    Base.print_array(io, Array(arr))
 end
 
 function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T}) where {T}
@@ -298,7 +298,7 @@ Assignment also supports:
 
 # Examples
 ```@repl
-A = cuNumeric.full((3, 3), 1.0);
+A = cuNumeric.fill(1.0, (3, 3));
 A[1, 2]
 A[1:2, 2:3] = cuNumeric.ones(2, 2);
 A[:, 1] = 5.0;
@@ -455,25 +455,27 @@ Base.fill!(arr::NDArray{T}, val::T) where {T} = nda_fill_array(arr, val)
 
 #### INITIALIZATION OF NDARRAYS ####
 @doc"""
-    cuNumeric.full(dims::Tuple, val)
-    cuNumeric.full(dim::Int, val)
+    cuNumeric.fill(val::T, dims::Dims)
+    cuNumeric.fill(val::T, dims::Int...)
 
 Create an `NDArray` filled with the scalar value `val`, with the shape specified by `dims`.
 
 # Examples
 ```@repl
-cuNumeric.full((2, 3), 7.5)
-cuNumeric.full(4, 0)
+cuNumeric.fill(7.5, (2, 3))
+cuNumeric.fill(0, 4)
 ```
 """
-function full(dims::Dims, val::T) where {T<:SUPPORTED_TYPES}
-    shape = collect(UInt64, dims)
-    return nda_full_array(shape, val)
+function fill(val::T, dims::Dims) where {T<:SUPPORTED_TYPES}
+    return nda_full_array(dims, val)
 end
 
-function full(dim::Int, val::T) where {T<:SUPPORTED_TYPES}
-    shape = UInt64[dim]
-    return nda_full_array(shape, val)
+function fill(val::T, dims::Int...) where {T<:SUPPORTED_TYPES}
+    return fill(val, dims)
+end
+
+function fill(val::T, dim::Int) where {T<:SUPPORTED_TYPES}
+    return fill(val, (dim,))
 end
 
 @doc"""
@@ -488,9 +490,9 @@ Create an `NDArray` filled with the true, with the shape specified by `dims`.
 cuNumeric.trues(2, 3)
 ```
 """
-trues(dim::Int) = cuNumeric.full(dim, true)
-trues(dims::Dims) = cuNumeric.full(dims, true)
-trues(dims::Int...) = cuNumeric.full(dims, true)
+trues(dim::Int) = cuNumeric.fill(true, dim)
+trues(dims::Dims) = cuNumeric.fill(true, dims)
+trues(dims::Int...) = cuNumeric.fill(true, dims)
 
 @doc"""
     cuNumeric.falses(dims::Tuple, val)
@@ -504,9 +506,10 @@ Create an `NDArray` filled with the false, with the shape specified by `dims`.
 cuNumeric.falses(2, 3)
 ```
 """
-falses(dim::Int) = cuNumeric.full(dim, false)
-falses(dims::Dims) = cuNumeric.full(dims, false)
-falses(dims::Int...) = cuNumeric.full(dims, false)
+falses(dims::Dims) = cuNumeric.fill(false, dims)
+falses(dims::Int...) = cuNumeric.fill(false, dims)
+falses(dim::Int) = cuNumeric.fill(false, dim)
+
 
 @doc"""
     cuNumeric.zeros([T=Float32,] dims::Int...)
@@ -522,9 +525,8 @@ cuNumeric.zeros(Float64, 3)
 cuNumeric.zeros(Int32, (2,3))
 ```
 """
-function zeros(::Type{T}, dims::Dims) where {T<:SUPPORTED_TYPES}
-    shape = collect(UInt64, dims)
-    return nda_zeros_array(shape, T)
+function zeros(::Type{T}, dims::Dims{N}) where {T<:SUPPORTED_TYPES, N}
+    return nda_zeros_array(dims, T)
 end
 
 function zeros(::Type{T}, dims::Int...) where {T<:SUPPORTED_TYPES}
@@ -540,15 +542,15 @@ function zeros(dims::Int...)
 end
 
 function zeros(::Type{T}) where {T}
-    return nda_zeros_array(UInt64[], T)
+    return nda_zeros_array((), T)
 end
 
 function zeros()
     return zeros(DEFAULT_FLOAT)
 end
 
-function zeros_like(arr::NDArray)
-    return zeros(eltype(arr), Base.size(arr))
+function zeros_like(arr::NDArray{T,N}) where {T,N}
+    return zeros(T, Base.size(arr))
 end
 
 @doc"""
@@ -566,7 +568,7 @@ cuNumeric.ones(Int32, (2, 3))
 ```
 """
 function ones(::Type{T}, dims::Dims) where {T}
-    return full(dims, T(1))
+    return nda_full_array(dims, T(1))
 end
 
 function ones(::Type{T}, dims::Int...) where {T}
@@ -582,11 +584,11 @@ function ones(dims::Int...)
 end
 
 function ones(::Type{T}) where {T}
-    return full((), T(1))
+    return cuNumeric.fill(T(1), ())
 end
 
 function ones()
-    return zeros(DEFAULT_FLOAT)
+    return ones(DEFAULT_FLOAT)
 end
 
 @doc"""
@@ -614,8 +616,7 @@ Random.rand!(arr::NDArray{Float64}) = cuNumeric.nda_random(arr, 0)
 Random.rand!(arr::NDArray{T}) where T = error("rand! only supports NDArray{Float64} for now. Cast with cuNumeric.as_type.")
 
 function rand(::Type{T}, dims::Dims) where {T<:AbstractFloat}
-    arrfp64 = cuNumeric.nda_random_array(UInt64.(collect(dims)))
-    # if T == Float64, as_type should do minimial work # TODO check this.
+    arrfp64 = cuNumeric.nda_random_array(dims)
     return cuNumeric.as_type(arrfp64, T)
 end
 
@@ -638,14 +639,15 @@ reshape(arr, 12)
 ```
 """
 
+#*USNTABLE USE Val{false} IF WE REALLY WANT THIS FLAG
 function reshape(arr::NDArray, i::Dims{N}; copy::Bool=false) where {N}
-    reshaped = nda_reshape_array(arr, UInt64.(collect(i)))
+    reshaped = nda_reshape_array(arr, i)
     return copy ? copy(reshaped) : reshaped
 end
 
-function reshape(arr::NDArray, i::Int64; copy::Bool=false)
-    reshaped = nda_reshape_array(arr, UInt64.([i]))
-    return copy ? copy(reshaped) : reshaped
+#*USNTABLE USE Val{false} IF WE REALLY WANT THIS FLAG
+function reshape(arr::NDArray, i::Int...; copy::Bool=false)
+    return reshape(arr, i; copy = copy)
 end
 
 # Ignore the scalar indexing here...

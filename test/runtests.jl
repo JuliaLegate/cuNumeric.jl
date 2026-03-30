@@ -380,6 +380,10 @@ end
     end
 end
 
+@testset verbose = true "Type Stability" begin
+    include("tests/stability.jl")
+end
+
 @testset verbose = true "Scoping" begin
     N = 100
 
