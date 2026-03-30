@@ -1,3 +1,46 @@
+# Benchmark Results
+
+For JuliaCon2025 we benchmarks cuNumeric.jl on 8 A100 GPUs (single-node) and compared it to the Python library cuPyNumeric and other relevant benchmarks depending on the problem. All results shown are weak scaling. We hope to have multi-node benchmarks soon!
+
+
+```@contents
+Pages = ["benchmark_results.md"]
+Depth = 2:2
+```
+
+## SGEMM
+
+Code Outline:
+```julia
+mul!(C, A, B)
+```
+
+GEMM Efficiency            |  GEMM GFLOPS
+:-------------------------:|:-------------------------:
+![GEMM Efficiency](images/gemm_efficiency.svg)  |  ![GEMM GFLOPS](images/gemm_gflops.svg)
+
+## Monte-Carlo Integration
+
+Monte-Carlo integration is embaressingly parallel and should scale perfectly. We do not know the exact number of operations in `exp` so the GFLOPs is off by a constant factor. 
+
+Code Outline:
+```julia
+integrand = (x) -> exp.(-x.^2)
+val = (V/N) * sum(integrand(x))
+```
+
+MC Efficiency            |  MC GFLOPS
+:-------------------------:|:-------------------------:
+![MC Efficiency](images/mc_eff.svg)  |  ![MC GFLOPS](images/mc_ops.svg)
+
+
+## Gray-Scott (2D)
+
+Solving a PDE requires halo-exchanges and lots of data movement. In this benchmark we fall an order of magnitude short of the `ImplicitGlobalGrid.jl` library which specifically targets multi-node, multi-GPU halo exchanges. We attribute this to the lack of kernel fusion in cuNumeric.jl
+
+![GS GFLOPS](images/gs_gflops_diffeq.svg)
+
+
 # Benchmarking cuNumeric.jl Programs
 
 Since there is no programatic way to set the hardware configuration (as of 24.11) benchmarking cuNumeric.jl code is a bit tedious. As an introduction, we walk through a benchmark of matrix multiplication (SGEMM). All the code for this benchmark can be found in the `cuNumeric.jl/pkg/benchmark` directory.
@@ -14,10 +57,10 @@ In this benchmark we will try to understand the weak scaling behavior of the SGE
 using cuNumeric
 
 function initialize_cunumeric(N, M)
-    A = cuNumeric.as_type(cuNumeric.rand(NDArray, N, M), Float32)
-    B = cuNumeric.as_type(cuNumeric.rand(NDArray, M, N), Float32)
+    A = cuNumeric.rand(Float32, N, M)
+    B = cuNumeric.rand(Float32, M, N)
     C = cuNumeric.zeros(Float32, N, N)
-    GC.gc() # remove the intermediate FP64 arrays
+    GC.gc() # remove any intermediate arrays
     return A, B, C
 end
 
@@ -58,10 +101,11 @@ function gemm_cunumeric(N, M, n_samples, n_warmup)
     return mean_time_ms, gflops
 end
 
+N = 100
 n_samples = 10
 n_warmup = 2
 
-mean_time_ms, gflops = gemm_cunumeric(N, n_samples, n_warmup)
+mean_time_ms, gflops = gemm_cunumeric(N, N, n_samples, n_warmup)
 ```
 
 Since there is no programatic way to set the hardware configuration we must manipulate the environment variables described in [Setting Hardware Configuration](@ref) through shell scripts to make a weak scaling plot. These variables must be set before we launch the Julia runtime where we will run our benchmark. Therefore, I do not recommend generating scaling plots from the REPL because you would have to start and stop the REPL each time to re-configure the hardware settings. To make benchmarking easier, we provide a small shell script, `run_benchmark.sh`, located in `cuNumeric.jl/pkg/benchmark`. This script will automatically set the `LEGATE_CONFIG` according to the passed flags and run the specified benchmark file.

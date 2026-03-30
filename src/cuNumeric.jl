@@ -19,8 +19,30 @@
 
 module cuNumeric
 
-include("utilities/depends.jl")
+using Preferences
+using CNPreferences
+import LegatePreferences
+using Legate
+using Libdl
+using CxxWrap
 
+using cupynumeric_jll
+using cunumeric_jl_wrapper_jll
+
+import Base: axes, convert, copy, copyto!, inv, isfinite, sqrt, -, +, *, ==, !=,
+    isapprox, read, view, maximum, minimum, prod, sum, getindex, setindex!,
+    sum, prod
+
+using LinearAlgebra
+import LinearAlgebra: mul!
+
+using Random
+import Random: rand!
+
+using StatsBase
+import StatsBase: var, mean
+
+# this might be fragile for local builds
 const HAS_CUDA = cupynumeric_jll.host_platform["cuda"] != "none"
 
 if !HAS_CUDA
@@ -152,16 +174,6 @@ end
 
 global cuNumeric_config_str::String = ""
 
-@doc"""
-    versioninfo()
-
-Prints the cuNumeric build configuration summary, including package
-metadata, Julia and compiler version, and paths to core dependencies.
-"""
-function versioninfo()
-    println(cuNumeric_config_str)
-end
-
 ### These functions guard against a user trying
 ### to start multiple runtimes and also to allow
 ## package extensions which always try to re-load
@@ -220,8 +232,6 @@ function __init__()
     CNPreferences.check_unchanged()
 
     @initcxx
-
-    global cuNumeric_config_str = version_config_setup()
 
     _is_precompiling() && return
 

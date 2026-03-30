@@ -188,9 +188,6 @@ Base.eltype(arr::NDArray{T}) where {T} = T
 
 Return the number of dimensions of the `NDArray`.
 
-Both functions query the underlying cuNumeric API to get
-the dimensionality of the array.
-
 # Examples
 ```@repl
 arr = cuNumeric.rand(2, 3, 4);
@@ -210,9 +207,6 @@ Return the size of the given `NDArray`.
 - `Base.size(arr)` returns a tuple of dimensions of the array.
 - `Base.size(arr, dim)` returns the size of the array along the specified dimension `dim`.
 
-These override Base's size methods for the `NDArray` type,
-using the underlying cuNumeric API to query array shape.
-
 # Examples
 ```@repl
 arr = cuNumeric.rand(3, 4, 5);
@@ -229,10 +223,6 @@ Base.size(arr::NDArray, dim::Int) = Base.size(arr)[dim]
     Base.lastindex(arr::NDArray)
 
 Provide the first and last valid indices along a given dimension `dim` for `NDArray`.
-
-- `firstindex` always returns 1, since Julia arrays are 1-indexed.
-- `lastindex` returns the size of the array along the specified dimension.
-- `lastindex(arr)` returns the size along the first dimension.
 
 # Examples
 ```@repl
@@ -526,7 +516,7 @@ falses(dim::Int) = cuNumeric.fill(false, dim)
     cuNumeric.zeros([T=Float32,] dims::Tuple)
 
 Create an NDArray with element type `T`, of all zeros with size specified by `dims`.
-This function mirrors the signature of `Base.zeros`, and defaults to `Float32` when the type is omitted.
+The default type is Float32 if not specified.
 
 # Examples
 ```@repl
@@ -568,7 +558,7 @@ end
     cuNumeric.ones([T=Float32,] dims::Tuple)
 
 Create an NDArray with element type `T`, of all zeros with size specified by `dims`.
-This function has the same signature as `Base.ones`, so be sure to call it as `cuNuermic.ones`.
+The default type is Float32 if not specified.
 
 # Examples
 ```@repl
@@ -611,22 +601,19 @@ Fills `arr` with AbstractFloats uniformly at random.
 
 Create a new `NDArray` of element type Float64, filled with uniform random values.
 
-This function uses the same signature as `Base.rand` with a custom backend,
-and currently supports only `Float64` with uniform distribution (`code = 0`).
+The backend currently supports only `Float64` with uniform distribution.
 In order to support other Floats, we type convert for the user automatically.
+This can create extra allocations.
 
 # Examples
 ```@repl
-cuNumeric.rand(NDArray, 2, 2)
-cuNumeric.rand(NDArray, (4, 1))
+cuNumeric.rand(2, 2)
+cuNumeric.rand((4, 1))
 A = cuNumeric.zeros(2, 2); cuNumeric.rand!(A)
 ```
 """
 Random.rand!(arr::NDArray{Float64}) = cuNumeric.nda_random(arr, 0)
-rand(::Type{NDArray}, dims::Dims) = cuNumeric.nda_random_array(dims)
-rand(::Type{NDArray}, dims::Int...) = cuNumeric.rand(NDArray, dims)
-rand(dims::Dims) = cuNumeric.rand(NDArray, dims)
-rand(dims::Int...) = cuNumeric.rand(NDArray, dims)
+Random.rand!(arr::NDArray{T}) where T = error("rand! only supports NDArray{Float64} for now. Cast with cuNumeric.as_type.")
 
 function rand(::Type{T}, dims::Dims) where {T<:AbstractFloat}
     arrfp64 = cuNumeric.nda_random_array(dims)
@@ -634,6 +621,8 @@ function rand(::Type{T}, dims::Dims) where {T<:AbstractFloat}
 end
 
 rand(::Type{T}, dims::Int...) where {T<:AbstractFloat} = cuNumeric.rand(T, dims)
+rand(dims::Dims) = cuNumeric.rand(DEFAULT_FLOAT, dims)
+rand(dims::Int...) = cuNumeric.rand(DEFAULT_FLOAT, dims)
 
 #### OPERATIONS ####
 @doc"""
@@ -678,7 +667,6 @@ Currently supports arrays up to 3 dimensions. For higher dimensions, returns `fa
     This function uses scalar indexing and should not be used in production code. This is meant for testing.
 
 
-
 # Examples
 ```@repl
 a = cuNumeric.ones(2, 2)
@@ -708,7 +696,6 @@ Returns `false` otherwise (including if sizes differ, with a warning).
 !!! warning
 
     This function uses scalar indexing and should not be used in production code. This is meant for testing.
-
 
 
 # Examples
@@ -743,7 +730,6 @@ a common comparison function.
 !!! warning
 
     This function uses scalar indexing and should not be used in production code. This is meant for testing.
-
 
 
 # Examples
