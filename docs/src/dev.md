@@ -1,6 +1,10 @@
 # Developing cuNumeric.jl
 
-There are two primary ways to develop `cuNumeric.jl`:
-- Clone the git repo and only work with `cuNumeric.jl`
-- Add `cuNumeric.jl` to another environment to test functionality with other packages
-
+To contribute to cuNumeric.jl, we recommend cloning the repository and adding it to one of your existing environments with `Pkg.develop`.
+```bash
+git clone https://github.com/JuliaLegate/cuNumeric.jl.git 
+julia --project=. -e 'using Pkg; Pkg.develop(path = "cuNumeric.jl/lib/CNPreferences")'
+julia --project=. -e 'using Pkg; Pkg.develop(path = "cuNumeric.jl")'
+julia --project=. -e 'using CNPreferences; CNPreferences.use_developer_mode()'
+julia --project=. -e 'using Pkg; Pkg.build()'
+```

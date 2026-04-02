@@ -1,4 +1,4 @@
-#= Copyright 2025 Northwestern University, 
+#= Copyright 2026 Northwestern University, 
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,13 +20,34 @@
 module cuNumeric
 
 include(joinpath(@__DIR__, "../deps/version.jl"))
-include("utilities/depends.jl")
 include("utilities/preference.jl")
 
-const HAS_CUDA = LegatePreferences.has_cuda_gpu()
+using Preferences
+using CNPreferences
+import LegatePreferences
+using Legate
+using Libdl
+using CxxWrap
 
+using cupynumeric_jll
+using cunumeric_jl_wrapper_jll
+
+import Base: axes, convert, copy, copyto!, inv, isfinite, sqrt, -, +, *, ==, !=,
+    isapprox, read, view, maximum, minimum, prod, sum, getindex, setindex!,
+    sum, prod
+
+using LinearAlgebra
+import LinearAlgebra: mul!
+
+using Random
+import Random: rand!
+
+using StatsBase
+import StatsBase: var, mean
+
+const HAS_CUDA = LegatePreferences.has_cuda_gpu()
 if !HAS_CUDA
-    @warn "cuPyNumeric JLL does not have CUDA. If you have an NVIDIA GPU something might be wrong."
+    @warn "We couldn't find a CUDA-enabled GPU. If you have an NVIDIA GPU something might be wrong."
 end
 
 const DEFAULT_FLOAT = Float32
@@ -145,16 +166,6 @@ function my_on_exit()
 end
 
 global cuNumeric_config_str::String = ""
-
-@doc"""
-    versioninfo()
-
-Prints the cuNumeric build configuration summary, including package
-metadata, Julia and compiler version, and paths to core dependencies.
-"""
-function versioninfo()
-    println(cuNumeric_config_str)
-end
 
 ### These functions guard against a user trying
 ### to start multiple runtimes and also to allow
