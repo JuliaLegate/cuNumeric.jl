@@ -77,7 +77,7 @@ jobs:
 
       - name: Setup Conda env
         run: |
-          conda create -n myenv -c conda-forge -c legate cupynumeric=25.10.00 python=3.11 -y
+          conda create -n myenv -c conda-forge -c legate cupynumeric=25.11.00 python=3.11 -y
       
       - name: Load Julia packages from cache
         id: julia-cache

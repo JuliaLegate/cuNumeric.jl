@@ -139,7 +139,7 @@ function build_deps(pkg_root, cupynumeric_root)
     if !cupynumeric_valid(cupynumeric_root)
         error(
             "cuNumeric.jl: Unsupported cuNumeric version at $(cupynumeric_root). " *
-            "Installed version: $(installed_version) not in range supported: " *
+            "Installed version: $(get_cupynumeric_version(cupynumeric_root)) not in range supported: " *
             "$(MIN_CUNUMERIC_VERSION)-$(MAX_CUNUMERIC_VERSION).",
         )
     end
