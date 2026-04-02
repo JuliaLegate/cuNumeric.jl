@@ -85,6 +85,14 @@ jobs:
         with:
             cache-name: julia-developer-conda-test
 
+      - name: Install CMake 3.30.7
+        run: |
+          mkdir -p $HOME/.local
+          cd $WORKSPACE
+          wget https://github.com/Kitware/CMake/releases/download/v3.30.7/cmake-3.30.7-linux-x86_64.sh --no-check-certificate
+          sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=$HOME/.local
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
       - name: Set LD_PRELOAD for CONDA
         run: |
           CONDA_PATH=$(conda info --base)
