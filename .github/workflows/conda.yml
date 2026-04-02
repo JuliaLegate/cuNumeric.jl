@@ -50,7 +50,7 @@ jobs:
         run: source /etc/profile
 
       - name: Install basic utils
-        run: apt-get update && apt-get install -y wget curl git build-essential libdw-dev libdwarf-dev
+        run: apt-get update && apt-get install -y wget curl git build-essential
 
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
@@ -89,7 +89,7 @@ jobs:
         run: |
           CONDA_PATH=$(conda info --base)
           MYENV_PATH=$CONDA_PATH/envs/myenv
-          echo "LD_PRELOAD=$MYENV_PATH/lib/libdw.so.1:$MYENV_PATH/lib/libstdc++.so.6:$LD_PRELOAD" >> $GITHUB_ENV
+          echo "LD_PRELOAD=$MYENV_PATH/lib/libdw.so.1:$MYENV_PATH/lib/libdwarf.so:$MYENV_PATH/lib/libelf.so.1:$MYENV_PATH/lib/libstdc++.so.6:$LD_PRELOAD" >> $GITHUB_ENV
           echo "MYENV_PATH=$MYENV_PATH" >> $GITHUB_ENV
           
       - name: Setup cuNumeric.jl and Legate.jl
