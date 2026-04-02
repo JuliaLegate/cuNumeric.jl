@@ -217,13 +217,9 @@ _is_precompiling() = ccall(:jl_generating_output, Cint, ()) != 0
 
 # Runtime initilization
 function __init__()
-    # @info "cuNumeric __init__" pid=getpid() tid=Threads.threadid() precomp=_is_precompiling()
-
     CNPreferences.check_unchanged()
 
     @initcxx
-
-    global cuNumeric_config_str = version_config_setup()
 
     _is_precompiling() && return nothing
 
