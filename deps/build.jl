@@ -133,7 +133,7 @@ end
 """
     build CxxWrap and cunumeric_jl_wrapper
 """
-function build_deps(pkg_root, cupynumeric_root, blas_root)
+function build_deps(pkg_root, cupynumeric_root)
     legate_lib = Legate.get_install_liblegate()
     install_lib = joinpath(pkg_root, "lib", "cunumeric_jl_wrapper", "build")
     if !cupynumeric_valid(cupynumeric_root)
@@ -145,7 +145,7 @@ function build_deps(pkg_root, cupynumeric_root, blas_root)
     end
     build_jlcxxwrap(pkg_root, cupynumeric_root)
     build_cpp_wrapper(
-        pkg_root, cupynumeric_root, up_dir(legate_lib), blas_root,
+        pkg_root, cupynumeric_root, up_dir(legate_lib),
         install_lib,
     ) # $pkg_root/lib/cunumeric_jl_wrapper
 end
@@ -165,7 +165,7 @@ function build(::CNPreferences.Conda)
     end
 
     is_cupynumeric_installed(cupynumeric_root; throw_errors=true)
-    build_deps(pkg_root, cupynumeric_root, cupynumeric_root) # blas is same root as cupynumeric
+    build_deps(pkg_root, cupynumeric_root)
 end
 
 function build(::CNPreferences.Developer)
@@ -173,7 +173,6 @@ function build(::CNPreferences.Developer)
 
     # can be nothing so this errors if not set
     cupynumeric_root = load_preference(CNPreferences, "cunumeric_path", nothing)
-    blas_lib = load_preference(CNPreferences, "BLAS_LIB", nothing)
     if isnothing(cupynumeric_root)
         # we are using cupynumeric_jll
         cupynumeric_root = _find_jll_artifact_dir(:cupynumeric_jll)
@@ -182,11 +181,7 @@ function build(::CNPreferences.Developer)
         is_cupynumeric_installed(cupynumeric_root; throw_errors=true)
     end
 
-    if isnothing(blas_lib)
-        blas_lib = _find_jll_artifact_dir(:OpenBLAS32_jll)
-    end
-
-    build_deps(pkg_root, cupynumeric_root, up_dir(blas_lib))
+    build_deps(pkg_root, cupynumeric_root)
 end
 
 const mode_str = load_preference(CNPreferences, "cunumeric_mode", CNPreferences.MODE_JLL)
