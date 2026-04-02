@@ -89,7 +89,8 @@ jobs:
         run: |
           CONDA_PATH=$(conda info --base)
           MYENV_PATH=$CONDA_PATH/envs/myenv
-          echo "LD_PRELOAD=$MYENV_PATH/lib/libdw.so.1:$MYENV_PATH/lib/libdwarf.so:$MYENV_PATH/lib/libelf.so.1:$MYENV_PATH/lib/libstdc++.so.6:$LD_PRELOAD" >> $GITHUB_ENV
+          echo "LD_PRELOAD=$MYENV_PATH/lib/libstdc++.so.6:$LD_PRELOAD" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$MYENV_PATH/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
           echo "MYENV_PATH=$MYENV_PATH" >> $GITHUB_ENV
           
       - name: Setup cuNumeric.jl and Legate.jl
