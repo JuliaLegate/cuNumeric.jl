@@ -87,20 +87,23 @@ jobs:
 
       - name: Set LD_PRELOAD for CONDA
         run: |
-          echo "LD_PRELOAD=/github/home/miniconda3/envs/myenv/lib/libstdc++.so:$LD_PRELOAD" >> $GITHUB_ENV
+          CONDA_PATH=$(conda info --base)
+          MYENV_PATH=$CONDA_PATH/envs/myenv
+          echo "LD_PRELOAD=$MYENV_PATH/lib/libstdc++.so.6:$LD_PRELOAD" >> $GITHUB_ENV
+          echo "MYENV_PATH=$MYENV_PATH" >> $GITHUB_ENV
           
       - name: Setup cuNumeric.jl and Legate.jl
         run: |
           conda run --no-capture-output -n myenv julia --color=yes -e '
               using Pkg;
               Pkg.add("LegatePreferences")
-              using LegatePreferences; LegatePreferences.use_conda("/github/home/miniconda3/envs/myenv");
+              using LegatePreferences; LegatePreferences.use_conda(ENV["MYENV_PATH"]);
           '
 
           conda run --no-capture-output -n myenv julia --color=yes -e '
               using Pkg;
               Pkg.develop(PackageSpec(path = "lib/CNPreferences"))
-              using CNPreferences; CNPreferences.use_conda("/github/home/miniconda3/envs/myenv");
+              using CNPreferences; CNPreferences.use_conda(ENV["MYENV_PATH"]);
               Pkg.develop(PackageSpec(path = "."))
           '
 
