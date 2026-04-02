@@ -19,12 +19,9 @@
 
 module cuNumeric
 
-include(joinpath(@__DIR__, "../deps/version.jl"))
-include("utilities/preference.jl")
-
 using Preferences
 using CNPreferences
-import LegatePreferences
+using LegatePreferences: LegatePreferences
 using Legate
 using Libdl
 using CxxWrap
@@ -44,6 +41,9 @@ import Random: rand!
 
 using StatsBase
 import StatsBase: var, mean
+
+include(joinpath(@__DIR__, "../deps/version.jl"))
+include("utilities/preference.jl")
 
 const HAS_CUDA = LegatePreferences.has_cuda_gpu()
 if !HAS_CUDA
