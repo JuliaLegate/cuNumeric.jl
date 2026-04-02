@@ -77,6 +77,7 @@ function build_jlcxxwrap(repo_root, cupynumeric_root)
 
     @info "libcxxwrap: Running build script: $build_libcxxwrap"
     run_sh(`bash $build_libcxxwrap $repo_root`, "libcxxwrap")
+    mkpath(dirname(version_path))
     open(version_path, "w") do io
         write(io, string(get_cupynumeric_version(cupynumeric_root)))
     end

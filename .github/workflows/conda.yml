@@ -106,6 +106,8 @@ jobs:
               using CNPreferences; CNPreferences.use_conda(ENV["MYENV_PATH"]);
               Pkg.develop(PackageSpec(path = "."))
           '
+          conda run --color=yes -n myenv julia --color=yes -e 'using Pkg; Pkg.build("cuNumeric")'
+
 
       - name: Perform Test
         run: |
