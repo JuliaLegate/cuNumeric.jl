@@ -2,7 +2,6 @@
 - Implement `unary_reduction` over arbitrary dims
 - Out-parameter `binary_op`
 - Replace `as_type` with `Base.convert`
-- Integer powers (e.g x^3)
 - Support Ints on methods that takes floats
 - Programatic manipulation of Legate hardware config (not currently possible)
 - Float32 random number generation (not possible in current C++ API)
