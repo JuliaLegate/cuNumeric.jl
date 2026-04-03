@@ -10,6 +10,7 @@ end
 
 # Opaque pointer
 const NDArray_t = Ptr{Cvoid}
+const CN_Store_t = Ptr{Cvoid}
 
 # destroy
 nda_destroy_array(ptr::NDArray_t) = ccall((:nda_destroy_array, libnda),
@@ -32,15 +33,15 @@ The NDArray type represents a multi-dimensional array in cuNumeric.
 It is a wrapper around a Legate array and provides various methods for array manipulation and operations. 
 Finalizer calls `nda_destroy_array` to clean up the underlying Legate array when the NDArray is garbage collected.
 """
-mutable struct NDArray{T, N, PADDED} <: AbstractNDArray{T,N}
+mutable struct NDArray{T,N,PADDED} <: AbstractNDArray{T,N}
     ptr::NDArray_t
     nbytes::Int64
     padding::Union{Nothing,NTuple{N,Int}}
 
-    function NDArray(ptr::NDArray_t, ::Type{T}, ::Val{N}) where {T, N}
+    function NDArray(ptr::NDArray_t, ::Type{T}, ::Val{N}) where {T,N}
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
-        handle = new{T,N, false}(ptr, nbytes, nothing)
+        handle = new{T,N,false}(ptr, nbytes, nothing)
         finalizer(handle) do h
             cuNumeric.nda_destroy_array(h.ptr)
             cuNumeric.register_free!(h.nbytes)
@@ -50,7 +51,7 @@ mutable struct NDArray{T, N, PADDED} <: AbstractNDArray{T,N}
 end
 
 # Dynamic fallback, not great but required if we cannot infer things
-NDArray(ptr::NDArray_t; T = get_julia_type(ptr), N::Integer = get_n_dim(ptr)) = NDArray(ptr, T, Val(N))
+NDArray(ptr::NDArray_t; T=get_julia_type(ptr), N::Integer=get_n_dim(ptr)) = NDArray(ptr, T, Val(N))
 
 # struct WrappedNDArray{T,N} <: AbstractNDArray{T,N}
 #     ndarr::NDArray{T,N}
@@ -81,7 +82,7 @@ NDArray(ptr::NDArray_t; T = get_julia_type(ptr), N::Integer = get_n_dim(ptr)) = 
 NDArray(value::T) where {T<:SUPPORTED_TYPES} = nda_full_array((), value)
 
 # construction 
-function nda_zeros_array(dims::Dims{N}, ::Type{T}) where {T, N}
+function nda_zeros_array(dims::Dims{N}, ::Type{T}) where {T,N}
     shape = collect(UInt64, dims)
     legate_type = Legate.to_legate_type(T)
     ptr = ccall((:nda_zeros_array, libnda),
@@ -90,7 +91,7 @@ function nda_zeros_array(dims::Dims{N}, ::Type{T}) where {T, N}
     return NDArray(ptr, T, Val(N))
 end
 
-function nda_full_array(dims::Dims{N}, value::T) where {T, N}
+function nda_full_array(dims::Dims{N}, value::T) where {T,N}
     shape = collect(UInt64, dims)
     type = Legate.to_legate_type(T)
 
@@ -143,7 +144,7 @@ function nda_array_shape(arr::NDArray)
 end
 
 # modify
-function nda_reshape_array(arr::NDArray{T}, newdims::Dims{N}) where {T, N}
+function nda_reshape_array(arr::NDArray{T}, newdims::Dims{N}) where {T,N}
     newshape = collect(UInt64, newdims)
     ptr = ccall((:nda_reshape_array, libnda),
         NDArray_t, (NDArray_t, Int32, Ptr{UInt64}),
@@ -309,28 +310,27 @@ function nda_transpose(arr::NDArray)
 end
 
 function nda_attach_external(arr::AbstractArray{T,N}) where {T,N}
-    ptr = Base.unsafe_convert(Ptr{Cvoid}, arr)
-    nbytes = sizeof(T) * length(arr)
-    shape = collect(UInt64, size(arr))
-    legate_type = Legate.to_legate_type(T)
-
-    nda_ptr = ccall((:nda_attach_external, libnda),
-        NDArray_t, (Ptr{Cvoid}, UInt64, Int32, Ptr{UInt64}, Legate.LegateTypeAllocated),
-        ptr, nbytes, N, shape, legate_type)
-
-    return NDArray(nda_ptr, T, Val(N))
+    st = Legate.attach_external(arr)
+    # Use the CxxWrap method for type-safe interaction
+    # This returns a raw pointer compatible with the NDArray constructor
+    nda_ptr = cuNumeric.nda_store_to_ndarray(st.handle)
+    return NDArray(nda_ptr; T=T, N=N)
 end
 
 # return underlying logical store to the NDArray obj
 function get_store(arr::NDArray)
-    cxx_ptr = CxxWrap.CxxPtr{cuNumeric.CN_NDArray}(arr.ptr)
+    cxx_ptr = CxxWrap.CxxPtr{CN_NDArray}(arr.ptr)
     store = _get_store(cxx_ptr)
-    return CxxWrap.CxxRef(store)
+    return store
 end
 
-function get_ptr(arr::NDArray)
-    st = get_store(arr)
-    return _get_ptr(CxxWrap.CxxPtr(st))
+function get_ptr(arr::NDArray{T,N}) where {T,N}
+    # Get the raw Legate array impl
+    st_handle = get_store(arr) # CxxPtr{LogicalArrayImpl}
+    # Wrap it in the high-level LogicalArray struct expected by Legate.get_ptr
+    # st_handle[] dereferences the CxxPtr to get the LogicalArrayImpl object
+    la = Legate.LogicalArray{T,N}(st_handle[], size(arr))
+    return Legate.get_ptr(la)
 end
 
 @doc"""
@@ -402,7 +402,6 @@ function slice_array(slices::Vararg{Tuple{Union{Int,Nothing},Union{Int,Nothing}}
     return v
 end
 
-
 @doc"""
     shape(arr::NDArray)
 
@@ -410,10 +409,10 @@ end
 
 Return the size of the given `NDArray`.
 """
-shape(arr::NDArray{<:Any, N, true}) where N = arr.padding
+shape(arr::NDArray{<:Any,N,true}) where {N} = arr.padding
 
-function shape(arr::NDArray{<:Any, N, false}) where {N}
-    shp = cuNumeric.nda_array_shape(arr) 
+function shape(arr::NDArray{<:Any,N,false}) where {N}
+    shp = cuNumeric.nda_array_shape(arr)
     return ntuple(i -> Int(shp[i]), Val(N))
 end
 

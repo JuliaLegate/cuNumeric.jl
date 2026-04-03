@@ -271,18 +271,7 @@ CN_NDArray* nda_get_slice(CN_NDArray* arr, const CN_Slice* slices,
   return new CN_NDArray{NDArray(std::move(result))};
 }
 
-CN_NDArray* nda_attach_external(const void* ptr, size_t size, int dim,
-                                const uint64_t* shape, CN_Type type) {
-  std::vector<uint64_t> shp_vec(shape, shape + dim);
-  legate::Shape shp = legate::Shape(shp_vec);
-
-  legate::ExternalAllocation alloc =
-      legate::ExternalAllocation::create_sysmem(ptr, size);
-  legate::mapping::DimOrdering ordering =
-      legate::mapping::DimOrdering::fortran_order();
-
-  auto store = legate::Runtime::get_runtime()->create_store(shp, type.obj,
-                                                            alloc, ordering);
-  return new CN_NDArray{cupynumeric::as_array(store)};
+CN_NDArray* nda_store_to_ndarray(CN_Store* st) {
+  return new CN_NDArray{cupynumeric::as_array(st->obj)};
 }
 }  // extern "C"

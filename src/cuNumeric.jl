@@ -22,7 +22,7 @@ module cuNumeric
 
 using Preferences
 using CNPreferences
-import LegatePreferences
+using LegatePreferences: LegatePreferences
 using Legate
 using Libdl
 using CxxWrap
@@ -43,14 +43,13 @@ import Random: rand!
 using StatsBase
 import StatsBase: var, mean
 
-# this might be fragile for local builds
-const HAS_CUDA = cupynumeric_jll.host_platform["cuda"] != "none"
+include(joinpath(@__DIR__, "../deps/version.jl"))
+include("utilities/preference.jl")
 
+const HAS_CUDA = LegatePreferences.has_cuda_gpu()
 if !HAS_CUDA
-    @warn "cuPyNumeric JLL does not have CUDA. If you have an NVIDIA GPU something might be wrong."
+    @warn "We couldn't find a CUDA-enabled GPU. If you have an NVIDIA GPU something might be wrong."
 end
-
-const SUPPORTED_CUPYNUMERIC_VERSIONS = ["25.10.00", "25.11.00"]
 
 const DEFAULT_FLOAT = Float32
 const DEFAULT_INT = Int32
@@ -74,39 +73,33 @@ const SUPPORTED_TYPES = Union{
 
 # const MAX_DIM = 6 # idk what we compiled?
 
-include("utilities/preference.jl")
-
 # Sets the LEGATE_LIB_PATH and WRAPPER_LIB_PATH preferences based on mode
 # This will also include the relevant JLLs if necessary.
-@static if CNPreferences.MODE == "jll"
+MODE = load_preference(CNPreferences, "cunumeric_mode", CNPreferences.MODE_JLL)
+@static if MODE == CNPreferences.MODE_JLL
     using cupynumeric_jll, cunumeric_jl_wrapper_jll
     find_paths(
-        CNPreferences.MODE;
+        MODE;
         cupynumeric_jll_module=cupynumeric_jll,
         cupynumeric_jll_wrapper_module=cunumeric_jl_wrapper_jll,
     )
-elseif CNPreferences.MODE == "developer"
+elseif MODE == CNPreferences.MODE_DEVELOPER
     use_cupynumeric_jll = load_preference(CNPreferences, "legate_use_jll", true)
     if use_cupynumeric_jll
         using cupynumeric_jll
         find_paths(
-            CNPreferences.MODE;
+            MODE;
             cupynumeric_jll_module=cupynumeric_jll,
             cupynumeric_jll_wrapper_module=nothing,
         )
     else
-        find_paths(CNPreferences.MODE)
+        find_paths(MODE)
     end
-elseif CNPreferences.MODE == "conda"
-    using cunumeric_jl_wrapper_jll
-    find_paths(
-        CNPreferences.MODE,
-        cupynumeric_jll_module=nothing,
-        cupynumeric_jll_wrapper_module=cunumeric_jl_wrapper_jll,
-    )
+elseif MODE == CNPreferences.MODE_CONDA
+    find_paths(MODE)
 else
     error(
-        "cuNumeric.jl: Unknown mode $(CNPreferences.MODE). Must be one of 'jll', 'developer', or 'conda'."
+        "cuNumeric.jl: Unknown mode $(MODE). Must be one of 'jll', 'developer', or 'conda'."
     )
 end
 
@@ -237,13 +230,11 @@ _is_precompiling() = ccall(:jl_generating_output, Cint, ()) != 0
 
 # Runtime initilization
 function __init__()
-    # @info "cuNumeric __init__" pid=getpid() tid=Threads.threadid() precomp=_is_precompiling()
-
     CNPreferences.check_unchanged()
 
     @initcxx
 
-    _is_precompiling() && return
+    _is_precompiling() && return nothing
 
     ensure_runtime!()
 end
