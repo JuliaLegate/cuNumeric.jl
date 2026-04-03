@@ -136,7 +136,6 @@ include("ndarray/broadcast.jl")
 include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
-include("ndarray/experimental.jl")
 
 # scoping macro
 include("scoping.jl")
