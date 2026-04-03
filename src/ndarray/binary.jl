@@ -87,7 +87,7 @@ function Base.:(-)(rhs1::NDArray{A,N}, rhs2::NDArray{B,N}) where {A,B,N}
     promote_shape(size(rhs1), size(rhs2))
     T_OUT = __checked_promote_op(-, A, B)
     out = cuNumeric.zeros(T_OUT, size(rhs1))
-    return nda_binary_op(
+    return nda_binary_op!(
         out,
         cuNumeric.SUBTRACT,
         unchecked_promote_arr(rhs1, T_OUT),
@@ -100,7 +100,7 @@ function Base.:(+)(rhs1::NDArray{A,N}, rhs2::NDArray{B,N}) where {A,B,N}
     promote_shape(size(rhs1), size(rhs2))
     T_OUT = __checked_promote_op(+, A, B)
     out = cuNumeric.zeros(T_OUT, size(rhs1))
-    return nda_binary_op(
+    return nda_binary_op!(
         out, cuNumeric.ADD, unchecked_promote_arr(rhs1, T_OUT), unchecked_promote_arr(rhs2, T_OUT)
     )
 end
@@ -108,7 +108,7 @@ end
 function Base.:(*)(val::V, arr::NDArray{A}) where {A,V}
     T = __my_promote_type(A, V)
     out = cuNumeric.zeros(T, size(arr))
-    return nda_binary_op(out, cuNumeric.MULTIPLY, NDArray(T(val)), unchecked_promote_arr(arr, T))
+    return nda_binary_op!(out, cuNumeric.MULTIPLY, NDArray(T(val)), unchecked_promote_arr(arr, T))
 end
 
 function Base.:(*)(arr::NDArray{A}, val::V) where {A,V}
@@ -191,7 +191,7 @@ for (julia_fn, op_code) in binary_op_map
         @inline function __broadcast(
             f::typeof($(julia_fn)), out::NDArray, rhs1::NDArray{T}, rhs2::NDArray{T}
         ) where {T}
-            return nda_binary_op(out, $(op_code), rhs1, rhs2)
+            return nda_binary_op!(out, $(op_code), rhs1, rhs2)
         end
     end
 end
@@ -204,7 +204,7 @@ for (julia_fn, op_code) in floaty_binary_op_map
         @inline function __broadcast(
             f::typeof($(julia_fn)), out::NDArray, rhs1::NDArray{T}, rhs2::NDArray{T}
         ) where {T}
-            return nda_binary_op(out, $(op_code), rhs1, rhs2)
+            return nda_binary_op!(out, $(op_code), rhs1, rhs2)
         end
 
         # If input is not already float, promote to that
@@ -220,7 +220,7 @@ end
     f::typeof(Base.:(+)), out::NDArray{O}, rhs1::NDArray{Bool}, rhs2::NDArray{Bool}
 ) where {O<:Integer}
     assertpromotion(".+", Bool, O)
-    return nda_binary_op(
+    return nda_binary_op!(
         out, cuNumeric.ADD, unchecked_promote_arr(rhs1, O), unchecked_promote_arr(rhs2, O)
     )
 end
@@ -229,7 +229,7 @@ end
     f::typeof(Base.:(-)), out::NDArray{O}, rhs1::NDArray{Bool}, rhs2::NDArray{Bool}
 ) where {O<:Integer}
     assertpromotion(".-", Bool, O)
-    return nda_binary_op(
+    return nda_binary_op!(
         out, cuNumeric.SUBTRACT, unchecked_promote_arr(rhs1, O), unchecked_promote_arr(rhs2, O)
     )
 end
@@ -250,7 +250,7 @@ end
 @inline function __broadcast(
     f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, power::NDArray{T}
 ) where {T}
-    return nda_binary_op(out, cuNumeric.POWER, input, power)
+    return nda_binary_op!(out, cuNumeric.POWER, input, power)
 end
 
 # This is more "Julian" since a user expects map to broadcast
