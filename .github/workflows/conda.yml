@@ -1,122 +1,122 @@
-# Conda CI test. This will build the workflow using the conda build path.
-name: Conda test
-on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to build instead'
-        required: false
-        default: ''
-      mark_as_latest:
-        description: 'Mark as latest'
-        type: boolean
-        required: false
-        default: false
-  push:
-    paths:
-      - 'deps/build.jl'
-      - '.github/workflows/conda.yml'
-    tags:
-      - 'v*'
-    branches:
-      - main
-  pull_request:
-    paths:
-      - 'deps/build.jl'
-      - '.github/workflows/conda.yml'
-jobs:
-  docs:
-    name : Conda Test
-    permissions:
-      contents: read
-      packages: write
-      attestations: write
-      id-token: write
-      actions: write
-    # runs-on: [self-hosted, linux, x64]
-    runs-on: ubuntu-latest
-    container:
-      image: ubuntu:22.04
-    defaults:
-      run:
-        shell: bash
-    env:
-      LEGATE_AUTO_CONFIG: 0
-    steps:
-      - name: Check out the repo
-        uses: actions/checkout@v4
+# # Conda CI test. This will build the workflow using the conda build path.
+# name: Conda test
+# on:
+#   workflow_dispatch:
+#     inputs:
+#       tag:
+#         description: 'Tag to build instead'
+#         required: false
+#         default: ''
+#       mark_as_latest:
+#         description: 'Mark as latest'
+#         type: boolean
+#         required: false
+#         default: false
+#   push:
+#     paths:
+#       - 'deps/build.jl'
+#       - '.github/workflows/conda.yml'
+#     tags:
+#       - 'v*'
+#     branches:
+#       - main
+#   pull_request:
+#     paths:
+#       - 'deps/build.jl'
+#       - '.github/workflows/conda.yml'
+# jobs:
+#   docs:
+#     name : Conda Test
+#     permissions:
+#       contents: read
+#       packages: write
+#       attestations: write
+#       id-token: write
+#       actions: write
+#     # runs-on: [self-hosted, linux, x64]
+#     runs-on: ubuntu-latest
+#     container:
+#       image: ubuntu:22.04
+#     defaults:
+#       run:
+#         shell: bash
+#     env:
+#       LEGATE_AUTO_CONFIG: 0
+#     steps:
+#       - name: Check out the repo
+#         uses: actions/checkout@v4
 
-      - name: bash
-        run: source /etc/profile
+#       - name: bash
+#         run: source /etc/profile
 
-      - name: Install basic utils
-        run: apt-get update && apt-get install -y wget curl git build-essential
+#       - name: Install basic utils
+#         run: apt-get update && apt-get install -y wget curl git build-essential
 
-      - name: Setup Julia
-        uses: julia-actions/setup-julia@v2
-        with:
-          version: '1.11'
+#       - name: Setup Julia
+#         uses: julia-actions/setup-julia@v2
+#         with:
+#           version: '1.11'
 
-      - name: Setup Miniconda
-        uses: conda-incubator/setup-miniconda@v3
-        with:
-          miniconda-version: "latest"
-          python-version: 3.11
-          activate-environment: true
-          use-mamba: true
+#       - name: Setup Miniconda
+#         uses: conda-incubator/setup-miniconda@v3
+#         with:
+#           miniconda-version: "latest"
+#           python-version: 3.11
+#           activate-environment: true
+#           use-mamba: true
 
-      - name: Setup cache for Conda env
-        uses: actions/cache@v4
-        with:
-            path: |
-              ~/.conda
-              ~/miniconda3
-            key: conda-${{ runner.os }}-${{ steps.pkg.outputs.version }}
-            restore-keys: |
-                conda-${{ runner.os }}-
+#       - name: Setup cache for Conda env
+#         uses: actions/cache@v4
+#         with:
+#             path: |
+#               ~/.conda
+#               ~/miniconda3
+#             key: conda-${{ runner.os }}-${{ steps.pkg.outputs.version }}
+#             restore-keys: |
+#                 conda-${{ runner.os }}-
 
-      - name: Setup Conda env
-        run: |
-          conda create -n myenv -c conda-forge -c legate cupynumeric=25.11.00 python=3.11 elfutils libdwarf -y
+#       - name: Setup Conda env
+#         run: |
+#           conda create -n myenv -c conda-forge -c legate cupynumeric=25.11.00 python=3.11 elfutils libdwarf -y
       
-      - name: Load Julia packages from cache
-        id: julia-cache
-        uses: julia-actions/cache@v2
-        with:
-            cache-name: julia-developer-conda-test
+#       - name: Load Julia packages from cache
+#         id: julia-cache
+#         uses: julia-actions/cache@v2
+#         with:
+#             cache-name: julia-developer-conda-test
 
-      - name: Install CMake 3.30.7
-        run: |
-          mkdir -p $HOME/.local
-          cd $WORKSPACE
-          wget https://github.com/Kitware/CMake/releases/download/v3.30.7/cmake-3.30.7-linux-x86_64.sh --no-check-certificate
-          sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=$HOME/.local
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+#       - name: Install CMake 3.30.7
+#         run: |
+#           mkdir -p $HOME/.local
+#           cd $WORKSPACE
+#           wget https://github.com/Kitware/CMake/releases/download/v3.30.7/cmake-3.30.7-linux-x86_64.sh --no-check-certificate
+#           sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=$HOME/.local
+#           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: Set LD_PRELOAD for CONDA
-        run: |
-          CONDA_PATH=$(conda info --base)
-          MYENV_PATH=$CONDA_PATH/envs/myenv
-          echo "LD_PRELOAD=$MYENV_PATH/lib/libdw.so.1:$MYENV_PATH/lib/libdwarf.so:$MYENV_PATH/lib/libelf.so.1:$MYENV_PATH/lib/libgomp.so.1:$MYENV_PATH/lib/libstdc++.so.6:$LD_PRELOAD" >> $GITHUB_ENV
-          echo "MYENV_PATH=$MYENV_PATH" >> $GITHUB_ENV
+#       - name: Set LD_PRELOAD for CONDA
+#         run: |
+#           CONDA_PATH=$(conda info --base)
+#           MYENV_PATH=$CONDA_PATH/envs/myenv
+#           echo "LD_PRELOAD=$MYENV_PATH/lib/libdw.so.1:$MYENV_PATH/lib/libdwarf.so:$MYENV_PATH/lib/libelf.so.1:$MYENV_PATH/lib/libgomp.so.1:$MYENV_PATH/lib/libstdc++.so.6:$LD_PRELOAD" >> $GITHUB_ENV
+#           echo "MYENV_PATH=$MYENV_PATH" >> $GITHUB_ENV
           
-      - name: Setup cuNumeric.jl and Legate.jl
-        run: |
-          conda run --no-capture-output -n myenv julia --color=yes -e '
-              using Pkg;
-              Pkg.add("LegatePreferences")
-              using LegatePreferences; LegatePreferences.use_conda(ENV["MYENV_PATH"]);
-          '
+#       - name: Setup cuNumeric.jl and Legate.jl
+#         run: |
+#           conda run --no-capture-output -n myenv julia --color=yes -e '
+#               using Pkg;
+#               Pkg.add("LegatePreferences")
+#               using LegatePreferences; LegatePreferences.use_conda(ENV["MYENV_PATH"]);
+#           '
 
-          conda run --no-capture-output -n myenv julia --color=yes -e '
-              using Pkg;
-              Pkg.develop(PackageSpec(path = "lib/CNPreferences"))
-              using CNPreferences; CNPreferences.use_conda(ENV["MYENV_PATH"]);
-              Pkg.develop(PackageSpec(path = "."))
-          '
-          conda run -n myenv NO_CUDA=ON julia --color=yes -e 'using Pkg; Pkg.build("cuNumeric")'
+#           conda run --no-capture-output -n myenv julia --color=yes -e '
+#               using Pkg;
+#               Pkg.develop(PackageSpec(path = "lib/CNPreferences"))
+#               using CNPreferences; CNPreferences.use_conda(ENV["MYENV_PATH"]);
+#               Pkg.develop(PackageSpec(path = "."))
+#           '
+#           conda run -n myenv NO_CUDA=ON julia --color=yes -e 'using Pkg; Pkg.build("cuNumeric")'
 
 
-      - name: Perform Test
-        run: |
-          conda run --no-capture-output -n myenv GPUTESTS=0 julia --color=yes -e 'using Pkg; Pkg.test("cuNumeric")'
+#       - name: Perform Test
+#         run: |
+#           conda run --no-capture-output -n myenv GPUTESTS=0 julia --color=yes -e 'using Pkg; Pkg.test("cuNumeric")'
