@@ -114,9 +114,9 @@ jobs:
               using CNPreferences; CNPreferences.use_conda(ENV["MYENV_PATH"]);
               Pkg.develop(PackageSpec(path = "."))
           '
-          conda run -n myenv julia --color=yes -e 'using Pkg; Pkg.build("cuNumeric")'
+          conda run -n myenv NO_CUDA=ON julia --color=yes -e 'using Pkg; Pkg.build("cuNumeric")'
 
 
       - name: Perform Test
         run: |
-          GPUTESTS=0 conda run --no-capture-output -n myenv julia --color=yes -e 'using Pkg; Pkg.test("cuNumeric")'
+          conda run --no-capture-output -n myenv GPUTESTS=0 julia --color=yes -e 'using Pkg; Pkg.test("cuNumeric")'

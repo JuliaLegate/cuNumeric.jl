@@ -310,11 +310,23 @@ function nda_transpose(arr::NDArray)
 end
 
 function nda_attach_external(arr::AbstractArray{T,N}) where {T,N}
-    st = Legate.attach_external(arr)
-    # Use the CxxWrap method for type-safe interaction
-    # This returns a raw pointer compatible with the NDArray constructor
-    nda_ptr = cuNumeric.nda_store_to_ndarray(st.handle)
-    return NDArray(nda_ptr; T=T, N=N)
+    ptr = Base.unsafe_convert(Ptr{Cvoid}, arr)
+    nbytes = sizeof(T) * length(arr)
+    shape = collect(UInt64, size(arr))
+    legate_type = Legate.to_legate_type(T)
+
+    nda_ptr = ccall((:nda_attach_external, libnda),
+        NDArray_t, (Ptr{Cvoid}, UInt64, Int32, Ptr{UInt64}, Legate.LegateTypeAllocated),
+        ptr, nbytes, N, shape, legate_type)
+
+    return NDArray(nda_ptr, T, Val(N))
+
+    # requires new wrapper. this is a test.
+    # st = Legate.attach_external(arr)
+    # # Use the CxxWrap method for type-safe interaction
+    # # This returns a raw pointer compatible with the NDArray constructor
+    # nda_ptr = cuNumeric.nda_store_to_ndarray(st.handle)
+    # return NDArray(nda_ptr; T=T, N=N)
 end
 
 # return underlying logical store to the NDArray obj
