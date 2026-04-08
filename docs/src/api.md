@@ -97,7 +97,7 @@ See `examples/custom_cuda.jl` for a more complete example with multiple kernels.
 
 ```@autodocs
 Modules = [cuNumeric]
-Pages = ["cuda.jl"]
+Pages = ["utilities/cuda_stubs.jl"]
 ```
 
 # CNPreferences
