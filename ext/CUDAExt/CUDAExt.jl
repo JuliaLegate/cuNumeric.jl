@@ -6,7 +6,7 @@ using Legate: Legate
 using CxxWrap: CxxWrap
 using cuNumeric: cuNumeric
 import cuNumeric:
-    @cuda_task, @launch, NDArray
+    @cuda_task, @launch, NDArray, assert_experimental
 
 const KERNEL_OFFSET = sizeof(CUDA.KernelState)
 
