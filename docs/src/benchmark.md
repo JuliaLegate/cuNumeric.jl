@@ -15,9 +15,9 @@ Code Outline:
 mul!(C, A, B)
 ```
 
-GEMM Efficiency            |  GEMM GFLOPS
-:-------------------------:|:-------------------------:
-![GEMM Efficiency](images/gemm_efficiency.svg)  |  ![GEMM GFLOPS](images/gemm_gflops.svg)
+| GEMM Efficiency | GEMM GFLOPS |
+|---|---|
+| ![GEMM Efficiency](images/gemm_efficiency.svg) | ![GEMM GFLOPS](images/gemm_gflops.svg) |
 
 ## Monte-Carlo Integration
 
@@ -29,9 +29,9 @@ integrand = (x) -> exp.(-x.^2)
 val = (V/N) * sum(integrand(x))
 ```
 
-MC Efficiency            |  MC GFLOPS
-:-------------------------:|:-------------------------:
-![MC Efficiency](images/mc_eff.svg)  |  ![MC GFLOPS](images/mc_ops.svg)
+| MC Efficiency | MC GFLOPS |
+|---|---|
+| ![MC Efficiency](images/mc_eff.svg) | ![MC GFLOPS](images/mc_ops.svg) |
 
 
 ## Gray-Scott (2D)
@@ -147,6 +147,6 @@ To generate a weak scaling plot, you must increment the problem size in proporti
 As part of a more complete benchmark we ran our code on up to 8 A100 GPUs (single-node) and compared it to the Python library cuPyNumeric as well as a custom implementation using CUDA.jl. From these resutls we can see that cuNumeric.jl is capable of scaling and saturating the GPU memory bandwidth for matrix multiplication.
 
 
-GEMM Efficiency            |  GEMM GFLOPS
-:-------------------------:|:-------------------------:
-![GEMM Efficiency](images/gemm_efficiency.svg)  |  ![GEMM GFLOPS](images/gemm_gflops.svg)
+| GEMM Efficiency | GEMM GFLOPS |
+|---|---|
+| ![GEMM Efficiency](images/gemm_efficiency.svg) | ![GEMM GFLOPS](images/gemm_gflops.svg) |
