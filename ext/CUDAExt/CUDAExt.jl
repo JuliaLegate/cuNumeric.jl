@@ -3,7 +3,7 @@ module CUDAExt
 using Random
 using CUDA
 using Legate: Legate
-import CxxWrap
+using CxxWrap: CxxWrap
 using cuNumeric: cuNumeric
 import cuNumeric:
     @cuda_task, @launch, NDArray

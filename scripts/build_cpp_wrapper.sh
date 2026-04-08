@@ -33,11 +33,11 @@ CUNUMERIC_WRAPPER_SOURCE=$CUNUMERICJL_ROOT_DIR/lib/cunumeric_jl_wrapper
 BUILD_DIR=$CUNUMERIC_WRAPPER_SOURCE/build
 
 if [[ ! -d "$BUILD_DIR" ]]; then
-    mkdir -p $BUILD_DIR 
+    mkdir -p $BUILD_DIR
 fi
 
 if [[ ! -d "$INSTALL_DIR" ]]; then
-    mkdir -p $INSTALL_DIR 
+    mkdir -p $INSTALL_DIR
 fi
 
 echo $LEGATE_ROOT_DIR

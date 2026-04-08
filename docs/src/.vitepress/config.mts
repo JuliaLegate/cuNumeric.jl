@@ -39,7 +39,7 @@ export default defineConfig({
     // ['script', {src: '/versions.js'], for custom domains, I guess if deploy_url is available.
     ['script', {src: `${baseTemp.base}siteinfo.js`}]
   ],
-  
+
   vite: {
     define: {
       __DEPLOY_ABSPATH__: JSON.stringify('REPLACE_ME_DOCUMENTER_VITEPRESS_DEPLOY_ABSPATH'),
@@ -50,18 +50,18 @@ export default defineConfig({
       }
     },
     optimizeDeps: {
-      exclude: [ 
+      exclude: [
         '@nolebase/vitepress-plugin-enhanced-readabilities/client',
         'vitepress',
         '@nolebase/ui',
-      ], 
-    }, 
-    ssr: { 
-      noExternal: [ 
+      ],
+    },
+    ssr: {
+      noExternal: [
         // If there are other packages that need to be processed by Vite, you can add them here.
         '@nolebase/vitepress-plugin-enhanced-readabilities',
         '@nolebase/ui',
-      ], 
+      ],
     },
   },
   markdown: {

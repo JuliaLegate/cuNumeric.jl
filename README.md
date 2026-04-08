@@ -7,7 +7,7 @@
 
 The cuNumeric.jl package wraps the [cuPyNumeric](https://github.com/nv-legate/cupynumeric) C++ API from NVIDIA to bring simple distributed computing on GPUs and CPUs to Julia! We provide a simple array abstraction, the `NDArray`, which supports most of the operations you would expect from a normal Julia array.
 
-> [!WARNING]  
+> [!WARNING]
 > cuNumeric.jl is under active development. This is an alpha API and is subject to change. Stability is not guaranteed until the first official release. We are actively working to improve the build experience to be more seamless and Julia-friendly.
 
 ### Quick Start
@@ -39,7 +39,7 @@ x_max = 10.0f0
 domain = [-x_max, x_max]
 Ω = domain[2] - domain[1]
 
-samples = Ω*cuNumeric.rand(N) .- x_max 
+samples = Ω*cuNumeric.rand(N) .- x_max
 estimate = (Ω/N) * sum(integrand(samples))
 
 println("Monte-Carlo Estimate: $(estimate)")

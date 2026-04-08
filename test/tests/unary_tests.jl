@@ -9,21 +9,19 @@ const SPECIAL_DOMAINS = Dict(
     Base.sqrt => :positive,
 )
 
-
 function test_unary_operation(func, julia_arr, cunumeric_arr, T)
-    
     T_OUT = Base.promote_op(func, T)
-    
+
     # Pre-allocate output arrays
     cunumeric_in_place = cuNumeric.zeros(T_OUT, size(julia_arr)...)
-    
+
     # Compute results using different methods
     julia_res = func.(julia_arr)
-    
+
     cunumeric_res = func.(cunumeric_arr)
     cunumeric_in_place .= func.(cunumeric_arr)
     cunumeric_res2 = map(func, cunumeric_arr)
-    
+
     allowscalar() do
         @test cuNumeric.compare(julia_res, cunumeric_in_place, atol(T_OUT), rtol(T_OUT))
         @test cuNumeric.compare(julia_res, cunumeric_res, atol(T_OUT), rtol(T_OUT))
@@ -32,12 +30,11 @@ function test_unary_operation(func, julia_arr, cunumeric_arr, T)
 end
 
 function test_unary_function_set(func_dict, T, N)
-
     default_generator = (T == Bool) ? :uniform : :unit_interval
 
     skip_on_integer = (Base.atanh, Base.atan, Base.acos, Base.asin)
     skip_on_bool = (Base.:(-), skip_on_integer...)
-    
+
     @testset "$func" for func in keys(func_dict)
 
         # The are only defined for like 3 integers (-1, 0, 1) so just skip them
@@ -56,8 +53,10 @@ function test_unary_function_set(func_dict, T, N)
         skip && continue
 
         julia_arr_1D, julia_arr_2D = make_julia_arrays(T, N, domain_type)
-        cunumeric_arr_1D, cunumeric_arr_2D = make_cunumeric_arrays([julia_arr_1D], [julia_arr_2D], T, N)
-        
+        cunumeric_arr_1D, cunumeric_arr_2D = make_cunumeric_arrays(
+            [julia_arr_1D], [julia_arr_2D], T, N
+        )
+
         test_unary_operation(func, julia_arr_1D, cunumeric_arr_1D, T)
         test_unary_operation(func, julia_arr_2D, cunumeric_arr_2D, T)
     end

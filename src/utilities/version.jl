@@ -26,7 +26,6 @@ Prints the cuNumeric build configuration summary, including package
 metadata, Julia and compiler version, and paths to core dependencies.
 """
 function versioninfo(io::IO=stdout)
-
     name = string(Base.nameof(@__MODULE__))
     version = string(Base.pkgversion(cuNumeric))
     compiler = get_cxx_version(CUPYNUMERIC_LIB_PATH)
@@ -80,7 +79,7 @@ function versioninfo(io::IO=stdout)
     Wrappers:
       cuNumeric       $(CUPYNUMERIC_WRAPPER_LIBDIR)
       Legate          $liblegatewrapper
-    
+
     Modes:
       cuNumeric:      $(CNPreferences.MODE)
       Legate:         $(LegatePreferences.MODE)

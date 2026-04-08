@@ -21,7 +21,7 @@ GEMM Efficiency            |  GEMM GFLOPS
 
 ## Monte-Carlo Integration
 
-Monte-Carlo integration is embaressingly parallel and should scale perfectly. We do not know the exact number of operations in `exp` so the GFLOPs is off by a constant factor. 
+Monte-Carlo integration is embaressingly parallel and should scale perfectly. We do not know the exact number of operations in `exp` so the GFLOPs is off by a constant factor.
 
 Code Outline:
 ```julia
@@ -45,7 +45,7 @@ Solving a PDE requires halo-exchanges and lots of data movement. In this benchma
 
 Since there is no programatic way to set the hardware configuration (as of 24.11) benchmarking cuNumeric.jl code is a bit tedious. As an introduction, we walk through a benchmark of matrix multiplication (SGEMM). All the code for this benchmark can be found in the `cuNumeric.jl/pkg/benchmark` directory.
 
-> [!WARNING]  
+> [!WARNING]
 > We do not commit to maintaining the benchmark scripts, due to difficulty programatically configuring legate and API overturn as we work on cuNumeric v1.0. The general principles used should work, even if the code does not.
 
 
@@ -73,14 +73,14 @@ function total_space(N, M)
 end
 ```
 
-We cannot use rely on common benchmark tools in Julia like [BenchmarkTools.jl](https://github.com/JuliaCI/BenchmarkTools.jl) or [ChairMarks.jl](https://github.com/LilithHafner/Chairmarks.jl) or even the built in `Base.@time` macro. The asynchronous nature of operations on NDArrays means that function calls will execute almost immediately and program execution must be blocked to properly time a kernel. It is technically possible to time NDArray operations with something like [BenchmarkTools.jl](https://github.com/JuliaCI/BenchmarkTools.jl) by adding a blocking operation (e.g., accessing the result), but the allocations reported by these tools will never be correct and it is safer to use the timing functionality from CuPyNumeric. 
+We cannot use rely on common benchmark tools in Julia like [BenchmarkTools.jl](https://github.com/JuliaCI/BenchmarkTools.jl) or [ChairMarks.jl](https://github.com/LilithHafner/Chairmarks.jl) or even the built in `Base.@time` macro. The asynchronous nature of operations on NDArrays means that function calls will execute almost immediately and program execution must be blocked to properly time a kernel. It is technically possible to time NDArray operations with something like [BenchmarkTools.jl](https://github.com/JuliaCI/BenchmarkTools.jl) by adding a blocking operation (e.g., accessing the result), but the allocations reported by these tools will never be correct and it is safer to use the timing functionality from CuPyNumeric.
 
-The timer built into CuPyNumeric blocks execution until all Legate operations preceding the call that generated the timing object complete. We provide two timing utilities: `get_time_microseconds` and `get_time_nanoseconds`. 
+The timer built into CuPyNumeric blocks execution until all Legate operations preceding the call that generated the timing object complete. We provide two timing utilities: `get_time_microseconds` and `get_time_nanoseconds`.
 
 Now we can write the benchmark code. There are two more parameters we need to set: the number of samples, `n_samples`, and the number of warm-up samples, `n_warnup`. With all this the benchmark loop is:
 
 ```julia
-using LinearAlgebra 
+using LinearAlgebra
 using cuNumeric
 
 function gemm_cunumeric(N, M, n_samples, n_warmup)
@@ -150,4 +150,3 @@ As part of a more complete benchmark we ran our code on up to 8 A100 GPUs (singl
 GEMM Efficiency            |  GEMM GFLOPS
 :-------------------------:|:-------------------------:
 ![GEMM Efficiency](images/gemm_efficiency.svg)  |  ![GEMM GFLOPS](images/gemm_gflops.svg)
-

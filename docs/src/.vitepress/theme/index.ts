@@ -3,9 +3,9 @@ import { h } from 'vue'
 import DefaultTheme from 'vitepress/theme'
 import type { Theme as ThemeConfig } from 'vitepress'
 
-import { 
-  NolebaseEnhancedReadabilitiesMenu, 
-  NolebaseEnhancedReadabilitiesScreenMenu, 
+import {
+  NolebaseEnhancedReadabilitiesMenu,
+  NolebaseEnhancedReadabilitiesScreenMenu,
 } from '@nolebase/vitepress-plugin-enhanced-readabilities/client'
 
 import VersionPicker from "@/VersionPicker.vue"

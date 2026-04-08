@@ -22,7 +22,7 @@ function test_binary_function_set(func_dict, T, N)
 
     @testset "$func" for func in keys(func_dict)
 
-        # This is tested separately 
+        # This is tested separately
         func == Base.:(^) && continue
 
         (func in skip) && continue

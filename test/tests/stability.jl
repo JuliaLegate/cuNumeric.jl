@@ -25,7 +25,7 @@ end
     for constructor in (:trues, :falses)
         @eval begin
             @inferred cuNumeric.$(constructor)(5)
-            @inferred cuNumeric.$(constructor)((5,4))
+            @inferred cuNumeric.$(constructor)((5, 4))
             @inferred cuNumeric.$(constructor)(3, 4, 5)
         end
     end

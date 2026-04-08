@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -94,7 +94,7 @@ Base.copy(arr::NDArray) = nda_copy(arr)
 
 Assign the contents of `other` to `arr` element-wise.
 
-This function overwrites the data in `arr` with the values from `other`.  
+This function overwrites the data in `arr` with the values from `other`.
 Both arrays must have the same shape.
 
 # Examples
@@ -215,7 +215,7 @@ size(arr)
 size(arr, 2)
 ```
 """
-Base.size(arr::NDArray{<:Any, N}) where N = cuNumeric.shape(arr)
+Base.size(arr::NDArray{<:Any,N}) where {N} = cuNumeric.shape(arr)
 Base.size(arr::NDArray, dim::Int) = Base.size(arr)[dim]
 
 @doc"""
@@ -290,7 +290,7 @@ end
 
 Overloads `Base.getindex` and `Base.setindex!` to support multidimensional indexing and slicing on `cuNumeric.NDArray`s.
 
-Slicing supports combinations of `Int`, `UnitRange`, and `Colon()` for selecting ranges of rows and columns. 
+Slicing supports combinations of `Int`, `UnitRange`, and `Colon()` for selecting ranges of rows and columns.
 The use of all colons (`arr[:]`, `arr[:, :]`, etc.) returns a new Julia `Array` containing a copy of the data.
 
 Assignment also supports:
@@ -511,7 +511,6 @@ falses(dims::Dims) = cuNumeric.fill(false, dims)
 falses(dims::Int...) = cuNumeric.fill(false, dims)
 falses(dim::Int) = cuNumeric.fill(false, dim)
 
-
 @doc"""
     cuNumeric.zeros([T=Float32,] dims::Int...)
     cuNumeric.zeros([T=Float32,] dims::Tuple)
@@ -526,7 +525,7 @@ cuNumeric.zeros(Float64, 3)
 cuNumeric.zeros(Int32, (2,3))
 ```
 """
-function zeros(::Type{T}, dims::Dims{N}) where {T<:SUPPORTED_TYPES, N}
+function zeros(::Type{T}, dims::Dims{N}) where {T<:SUPPORTED_TYPES,N}
     return nda_zeros_array(dims, T)
 end
 
@@ -614,7 +613,9 @@ A = cuNumeric.zeros(2, 2); cuNumeric.rand!(A)
 ```
 """
 Random.rand!(arr::NDArray{Float64}) = cuNumeric.nda_random(arr, 0)
-Random.rand!(arr::NDArray{T}) where T = error("rand! only supports NDArray{Float64} for now. Cast with cuNumeric.as_type.")
+function Random.rand!(arr::NDArray{T}) where {T}
+    error("rand! only supports NDArray{Float64} for now. Cast with cuNumeric.as_type.")
+end
 
 function rand(::Type{T}, dims::Dims) where {T<:AbstractFloat}
     arrfp64 = cuNumeric.nda_random_array(dims)
@@ -648,7 +649,7 @@ end
 
 #*USNTABLE USE Val{false} IF WE REALLY WANT THIS FLAG
 function reshape(arr::NDArray, i::Int...; copy::Bool=false)
-    return reshape(arr, i; copy = copy)
+    return reshape(arr, i; copy=copy)
 end
 
 # Ignore the scalar indexing here...
