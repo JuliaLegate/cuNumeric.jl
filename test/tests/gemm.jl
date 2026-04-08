@@ -17,20 +17,17 @@
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 
-
-
 function gemm(N, M, T, max_diff)
-
     if T == Bool
-        a = cuNumeric.trues(5,5)
-        b = cuNumeric.as_type(cuNumeric.trues(5,5), Float32)
-        c = cuNumeric.as_type(cuNumeric.trues(5,5), Float64)
+        a = cuNumeric.trues(5, 5)
+        b = cuNumeric.as_type(cuNumeric.trues(5, 5), Float32)
+        c = cuNumeric.as_type(cuNumeric.trues(5, 5), Float64)
         @test_throws ArgumentError a * a # Bool * Bool not supported
         @allowpromotion d = a * b
         @allowpromotion e = a * c
         @test @allowscalar cuNumeric.compare(5 * ones(Float32, 5, 5), d, 0.0, max_diff)
         @test @allowscalar cuNumeric.compare(5 * ones(Float64, 5, 5), e, 0.0, max_diff)
-        return
+        return nothing
     end
 
     if T <: Integer
@@ -40,10 +37,10 @@ function gemm(N, M, T, max_diff)
         b_jl = ones(Float32, 5, 5)
         @test_throws ArgumentError a * a
         @test @allowscalar cuNumeric.compare(a_jl * b_jl, a * b, 0.0, max_diff)
-        return
+        return nothing
     end
 
-    dims_to_test = [(N,N), (N, M), (M, N)]
+    dims_to_test = [(N, N), (N, M), (M, N)]
 
     @testset for dims in dims_to_test
         # Base julia arrays
@@ -52,18 +49,9 @@ function gemm(N, M, T, max_diff)
         C_out_cpu = zeros(T, dims[1], dims[1])
 
         # cunumeric arrays
-        A = cuNumeric.zeros(T, dims[1], dims[2])
-        B = cuNumeric.zeros(T, dims[2], dims[1])
-        C_out = cuNumeric.zeros(T, dims[1], dims[1]) 
-
-        # Initialize NDArrays with random values
-        # used in Julia arrays
-        @allowscalar for i in 1:dims[1]
-            for j in 1:dims[2]
-                A[i, j] = A_cpu[i, j]
-                B[j, i] = B_cpu[j, i]
-            end
-        end
+        A = cuNumeric.NDArray(A_cpu)
+        B = cuNumeric.NDArray(B_cpu)
+        C_out = cuNumeric.zeros(T, dims[1], dims[1])
 
         # Julia result
         C_cpu = A_cpu * B_cpu
@@ -79,8 +67,8 @@ function gemm(N, M, T, max_diff)
         LinearAlgebra.mul!(C_out, A, B)
 
         allowscalar() do
-            @test isapprox(C, C_cpu, rtol = max_diff)
-            @test isapprox(C, C_out, rtol = max_diff)
+            @test isapprox(C, C_cpu, rtol=max_diff)
+            @test isapprox(C, C_out, rtol=max_diff)
 
             if T != Float64
                 C_wider = cuNumeric.zeros(Float64, dims[1], dims[1])

@@ -19,11 +19,19 @@ end
 
 function test_binary_function_set(func_dict, T, N)
     skip = (Base.lcm, Base.gcd)
+    # not defined for complex.
+    skip_on_complex = (
+        Base.:(<), Base.:(<=), Base.:(>), Base.:(>=), Base.max, Base.min, Base.atan, Base.hypot
+    )
 
     @testset "$func" for func in keys(func_dict)
 
         # This is tested separately 
         func == Base.:(^) && continue
+
+        if T <: Complex && (func in skip_on_complex)
+            continue
+        end
 
         (func in skip) && continue
 

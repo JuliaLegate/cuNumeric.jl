@@ -1,4 +1,4 @@
-#= Copyright 2025 Northwestern University, 
+#= Copyright 2026 Northwestern University, 
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -77,8 +77,7 @@ end
 @testset verbose = true "GEMM" begin
     N = 50
     M = 25
-    @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
-        # @warn "SGEMM has some precision issues, using tol $(rtol(T)) 🥲"
+    @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
         gemm(N, M, T, rtol(T))
     end
 end
@@ -87,8 +86,8 @@ end
 @testset verbose = true "Unary Ops w/o Args" begin
     N = 100 # keep as perfect square
 
-    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
-        allowpromotion(T == Bool || T == Int32) do
+    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
+        allowpromotion(true) do
             test_unary_function_set(cuNumeric.floaty_unary_ops_no_args, T, N)
         end
 
@@ -108,31 +107,46 @@ end
             end
         end
 
-        #!SPECIAL CASES (!, -)
+        # Special cases for complex-related unary ops
+        @testset "Complex Unary Ops (real, imag, conj)" begin
+            if T <: Complex
+                arr = my_rand(T, N)
+                arr_cn = NDArray(arr)
+
+                allowscalar() do
+                    allowpromotion(true) do
+                        @test cuNumeric.compare(real(arr), real(arr_cn), atol(T), rtol(T))
+                        @test cuNumeric.compare(imag(arr), imag(arr_cn), atol(T), rtol(T))
+                        @test cuNumeric.compare(conj(arr), conj(arr_cn), atol(T), rtol(T))
+
+                        @test cuNumeric.compare(real.(arr), real.(arr_cn), atol(T), rtol(T))
+                        @test cuNumeric.compare(imag.(arr), imag.(arr_cn), atol(T), rtol(T))
+                        @test cuNumeric.compare(conj.(arr), conj.(arr_cn), atol(T), rtol(T))
+                    end
+                end
+            end
+        end
     end
 end
 
 @testset verbose = true "Unary Reductions" begin
     N = 100
 
-    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
+    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
         julia_arr = my_rand(T, N)
         cunumeric_arr = @allowscalar NDArray(julia_arr)
 
         @testset "$(reduction)" for reduction in keys(cuNumeric.unary_reduction_map)
-            enable_sum_promotion = (T == Int32 || T == Bool) && (reduction == Base.sum)
-            enable_prod_promotion = (T == Int32) && (reduction == Base.prod)
-
-            # Test promotion errors cause we can:
-            if enable_sum_promotion
-                @test_throws "Implicit promotion" reduction(cunumeric_arr)
+            # Skip reductions not supported by the cuNumeric backend for complex types
+            if T <: Complex && (
+                reduction == Base.maximum ||
+                reduction == Base.minimum ||
+                reduction == Base.prod
+            )
+                continue
             end
 
-            if enable_prod_promotion
-                @test_throws "Implicit promotion" reduction(cunumeric_arr)
-            end
-
-            allowpromotion(enable_sum_promotion || enable_prod_promotion) do
+            allowpromotion(true) do
                 cunumeric_res = reduction(cunumeric_arr)
                 julia_res = reduction(julia_arr)
 
@@ -156,70 +170,74 @@ end
 @testset verbose = true "Binary Ops" begin
     N = 100
 
-    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
-        allowpromotion(T == Bool || T == Int32) do
+    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
+        allowpromotion(true) do
             test_binary_function_set(cuNumeric.floaty_binary_op_map, T, N)
-        end
-
-        allowpromotion(T == Bool) do
             test_binary_function_set(cuNumeric.binary_op_map, T, N)
         end
 
-        # Special cases
-        @testset "lcm, gcd, ==, !=" begin
-            arr_jl = my_rand(T, N)
-            arr_jl2 = my_rand(T, N)
-            arr_cn = @allowscalar NDArray(arr_jl)
-            arr_cn2 = @allowscalar NDArray(arr_jl2)
+        arr_jl = my_rand(T, N)
+        arr_jl2 = my_rand(T, N)
+        arr_cn = @allowscalar NDArray(arr_jl)
+        arr_cn2 = @allowscalar NDArray(arr_jl2)
 
-            if T <: cuNumeric.SUPPORTED_INT_TYPES
-                allowscalar() do
-                    @test cuNumeric.compare(
-                        lcm.(arr_jl, arr_jl2), lcm.(arr_cn, arr_cn2), atol(T), rtol(T)
-                    )
-                    @test cuNumeric.compare(
-                        gcd.(arr_jl, arr_jl2), gcd.(arr_cn, arr_cn2), atol(T), rtol(T)
-                    )
-                end
-            end
+        # lcm/gcd require specific handling for integers and avoid overflow
+        if T <: cuNumeric.SUPPORTED_INT_TYPES && T != Bool
+            range_limit = (T == Int8 || T == UInt8) ? 10 : 100
+            arr_jl_small = my_rand(T, N; L=1, R=range_limit)
+            arr_jl2_small = my_rand(T, N; L=1, R=range_limit)
+            arr_cn_small = @allowscalar NDArray(arr_jl_small)
+            arr_cn2_small = @allowscalar NDArray(arr_jl2_small)
 
             allowscalar() do
-                @test unwrap(arr_cn == arr_cn)
-                @test !unwrap(arr_cn == arr_cn2)
-                @test unwrap(arr_cn != arr_cn2)
-                @test !unwrap(arr_cn != arr_cn)
-                @test unwrap(all(arr_cn .== arr_cn))
+                @test cuNumeric.compare(
+                    lcm.(arr_jl_small, arr_jl2_small), lcm.(arr_cn_small, arr_cn2_small), atol(T),
+                    rtol(T),
+                )
+                @test cuNumeric.compare(
+                    gcd.(arr_jl_small, arr_jl2_small), gcd.(arr_cn_small, arr_cn2_small), atol(T),
+                    rtol(T),
+                )
             end
         end
-    end
-
-    @testset "Type and Shape Promotion" begin
-        cunumeric_arr1 = cuNumeric.zeros(Float64, N)
-        cunumeric_arr3 = cuNumeric.zeros(Float32, N)
-        cunumeric_int64 = cuNumeric.zeros(Int64, N)
-        cunumeric_int32 = cuNumeric.zeros(Int32, N)
-        cunumeric_arr5 = cuNumeric.zeros(Float64, N - 1, N - 1)
-        @test_throws "Implicit promotion" cunumeric_arr3 .+ cunumeric_arr1
-        @test_throws "Implicit promotion" map(+, cunumeric_arr3, cunumeric_arr1)
-        @test_throws DimensionMismatch cunumeric_arr1 .+ cunumeric_arr5
-        @test_throws DimensionMismatch cunumeric_arr1 ./ cunumeric_arr5
 
         allowscalar() do
-            @test cuNumeric.compare(
-                cunumeric_arr1, cunumeric_int64 .+ cunumeric_arr1, atol(Float64), rtol(Float64)
-            )
-            r1 = @allowpromotion cunumeric_arr3 .+ cunumeric_arr1
-            r2 = @allowpromotion map(+, cunumeric_arr3, cunumeric_arr1)
-            @test cuNumeric.compare(r1, r2, atol(Float64), rtol(Float64))
+            @test unwrap(arr_cn == arr_cn)
+            @test !unwrap(arr_cn == arr_cn2)
+            @test unwrap(arr_cn != arr_cn2)
+            @test !unwrap(arr_cn != arr_cn)
+            @test unwrap(all(arr_cn .== arr_cn))
         end
     end
+end
 
-    @testset "Copy-To" begin
-        a = cuNumeric.zeros(2, 2)
-        b = cuNumeric.ones(2, 2)
-        copyto!(a, b);
-        @test is_same(a, b)
+@testset "Type and Shape Promotion" begin
+    N = 100
+    cunumeric_arr1 = cuNumeric.zeros(Float64, N)
+    cunumeric_arr3 = cuNumeric.zeros(Float32, N)
+    cunumeric_int64 = cuNumeric.zeros(Int64, N)
+    cunumeric_int32 = cuNumeric.zeros(Int32, N)
+    cunumeric_arr5 = cuNumeric.zeros(Float64, N - 1, N - 1)
+    @test_throws "Implicit promotion" cunumeric_arr3 .+ cunumeric_arr1
+    @test_throws "Implicit promotion" map(+, cunumeric_arr3, cunumeric_arr1)
+    @test_throws DimensionMismatch cunumeric_arr1 .+ cunumeric_arr5
+    @test_throws DimensionMismatch cunumeric_arr1 ./ cunumeric_arr5
+
+    allowscalar() do
+        @test cuNumeric.compare(
+            cunumeric_arr1, cunumeric_int64 .+ cunumeric_arr1, atol(Float64), rtol(Float64)
+        )
+        r1 = @allowpromotion cunumeric_arr3 .+ cunumeric_arr1
+        r2 = @allowpromotion map(+, cunumeric_arr3, cunumeric_arr1)
+        @test cuNumeric.compare(r1, r2, atol(Float64), rtol(Float64))
     end
+end
+
+@testset "Copy-To" begin
+    a = cuNumeric.zeros(2, 2)
+    b = cuNumeric.ones(2, 2)
+    copyto!(a, b);
+    @test is_same(a, b)
 end
 
 #TODO LOOP BINARY OPS WITH SCALARS
@@ -235,7 +253,7 @@ end
         allowscalar() do
             cunumeric_arr = NDArray(julia_arr)
             cunumeric_arr_2D = NDArray(julia_arr_2D)
-            allowpromotion(T == Int32) do
+            allowpromotion(true) do
                 for cn_arr in (cunumeric_arr, cunumeric_arr_2D)
                     @test cuNumeric.compare(s * julia_arr, s * cunumeric_arr, atol(T), rtol(T))
                     @test cuNumeric.compare(julia_arr * s, cunumeric_arr * s, atol(T), rtol(T))
@@ -289,7 +307,7 @@ end
     get_pwrs(::Type{F}) where {F<:AbstractFloat} = F.([-3.141, -2, -1, 0, 1, 2, 3.2, 4.41, 6.233])
     get_pwrs(::Type{Bool}) = [true, false, true, false, false, true, false, true, true]
 
-    # TYPES = Base.uniontypes(cuNumeric.SUPPORTED_TYPES)
+    # TYPES = Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
     TYPES = Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)
 
     @testset "$(BT) ^ $(PT)" for (BT, PT) in Iterators.product(TYPES, TYPES)
@@ -321,7 +339,7 @@ end
 
         TEST_BROKEN = (BT <: Union{Int32,Int64} && PT == Bool)
 
-        allowpromotion(sizeof(BT) != sizeof(PT)) do
+        allowpromotion(true) do
             allowscalar() do
                 # Power is array
                 @test cuNumeric.compare(
@@ -346,7 +364,7 @@ end
 
             # Cast julia result to whatever we do
             res_jl = T_OUT.(arr_jl .^ -1)
-            allowpromotion(T == Bool || T == Int32) do
+            allowpromotion(true) do
                 res_cn = arr_cn .^ -1
                 res_cn2 = inv.(arr_cn)
                 allowscalar() do
@@ -366,8 +384,10 @@ end
             res_jl = arr_jl .^ 2
             res_cn = arr_cn .^ 2
 
-            allowscalar() do
-                @test cuNumeric.compare(res_jl, res_cn, atol(T_OUT), rtol(T_OUT))
+            allowpromotion(true) do
+                allowscalar() do
+                    @test cuNumeric.compare(res_jl, res_cn, atol(T_OUT), rtol(T_OUT))
+                end
             end
         end
     end

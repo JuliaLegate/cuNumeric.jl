@@ -149,20 +149,17 @@ function (::Type{<:Array})(arr::NDArray{B}) where {B}
 end
 
 # conversion from Base Julia array to NDArray
-function (::Type{<:NDArray{A}})(arr::Array{B}) where {A,B}
-    dims = Base.size(arr)
-    out = cuNumeric.zeros(A, dims)
-    attached = cuNumeric.nda_attach_external(arr)
-    copyto!(out, attached) # copy elems of attached to resulting out
-    return out
+function (::Type{<:NDArray{T}})(arr::Array{T,N}) where {T,N}
+    return cuNumeric.nda_attach_external(arr)
 end
 
-function (::Type{<:NDArray})(arr::Array{B}) where {B}
-    dims = Base.size(arr)
-    out = cuNumeric.zeros(B, dims)
-    attached = cuNumeric.nda_attach_external(arr)
-    copyto!(out, attached)
-    return out
+function (::Type{<:NDArray{A}})(arr::Array{B,N}) where {A,B,N}
+    # If types differ, we cast in Julia first (creating a temp) then attach
+    return cuNumeric.nda_attach_external(A.(arr))
+end
+
+function (::Type{<:NDArray})(arr::Array{T,N}) where {T,N}
+    return cuNumeric.nda_attach_external(arr)
 end
 
 # Base.convert(::Type{<:NDArray{T}}, a::A) where {T, A} = NDArray(T(a))::NDArray{T}
@@ -215,7 +212,7 @@ size(arr)
 size(arr, 2)
 ```
 """
-Base.size(arr::NDArray{<:Any, N}) where N = cuNumeric.shape(arr)
+Base.size(arr::NDArray{<:Any,N}) where {N} = cuNumeric.shape(arr)
 Base.size(arr::NDArray, dim::Int) = Base.size(arr)[dim]
 
 @doc"""
@@ -337,6 +334,16 @@ end
 function Base.setindex!(arr::NDArray{T,N}, value::T, idxs::Vararg{Int,N}) where {T,N}
     assertscalar("setindex!")
     _setindex!(Val{N}(), arr, value, idxs...)
+end
+
+function Base.setindex!(arr::NDArray{Complex{T},N}, value::T, idxs::Vararg{Int,N}) where {T,N}
+    assertscalar("setindex!")
+    _setindex!(Val{N}(), arr, Complex{T}(value), idxs...)
+end
+
+function Base.setindex!(arr::NDArray{T,N}, value, idxs::Vararg{Int,N}) where {T,N}
+    assertscalar("setindex!")
+    _setindex!(Val{N}(), arr, convert(T, value), idxs...)
 end
 
 function _setindex!(::Val{0}, arr::NDArray{T,0}, value::T) where {T<:SUPPORTED_NUMERIC_TYPES}
@@ -511,7 +518,6 @@ falses(dims::Dims) = cuNumeric.fill(false, dims)
 falses(dims::Int...) = cuNumeric.fill(false, dims)
 falses(dim::Int) = cuNumeric.fill(false, dim)
 
-
 @doc"""
     cuNumeric.zeros([T=Float32,] dims::Int...)
     cuNumeric.zeros([T=Float32,] dims::Tuple)
@@ -526,7 +532,7 @@ cuNumeric.zeros(Float64, 3)
 cuNumeric.zeros(Int32, (2,3))
 ```
 """
-function zeros(::Type{T}, dims::Dims{N}) where {T<:SUPPORTED_TYPES, N}
+function zeros(::Type{T}, dims::Dims{N}) where {T<:SUPPORTED_TYPES,N}
     return nda_zeros_array(dims, T)
 end
 
@@ -614,7 +620,9 @@ A = cuNumeric.zeros(2, 2); cuNumeric.rand!(A)
 ```
 """
 Random.rand!(arr::NDArray{Float64}) = cuNumeric.nda_random(arr, 0)
-Random.rand!(arr::NDArray{T}) where T = error("rand! only supports NDArray{Float64} for now. Cast with cuNumeric.as_type.")
+function Random.rand!(arr::NDArray{T}) where {T}
+    error("rand! only supports NDArray{Float64} for now. Cast with cuNumeric.as_type.")
+end
 
 function rand(::Type{T}, dims::Dims) where {T<:AbstractFloat}
     arrfp64 = cuNumeric.nda_random_array(dims)
@@ -648,7 +656,7 @@ end
 
 #*USNTABLE USE Val{false} IF WE REALLY WANT THIS FLAG
 function reshape(arr::NDArray, i::Int...; copy::Bool=false)
-    return reshape(arr, i; copy = copy)
+    return reshape(arr, i; copy=copy)
 end
 
 # Ignore the scalar indexing here...
