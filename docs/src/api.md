@@ -13,6 +13,15 @@ Modules = [cuNumeric]
 Pages = ["ndarray/ndarray.jl", "ndarray/unary.jl", "ndarray/binary.jl", "cuNumeric.jl", "warnings.jl", "util.jl", "memory.jl", "scoping.jl"]
 ```
 
+# CNPreferences
+
+This section details how to set custom build configuration options. To see more details visit our install guide [here](./install.md).
+
+```@autodocs
+Modules = [CNPreferences]
+Pages = ["CNPreferences.jl"]
+```
+
 # CUDA.jl Tasking
 
 Write custom GPU kernels in Julia using CUDA.jl and execute them through the Legate distributed runtime. Your kernels automatically benefit from Legate's data partitioning, dependency tracking, and multi-GPU scheduling.
@@ -28,10 +37,6 @@ The interface has two steps:
 2. **Launch** — [`@launch`](@ref) submits the kernel with grid dimensions, inputs, outputs, and scalars.
 
 `NDArray` arguments are automatically mapped to their CUDA equivalents (`NDArray{T,1}` → `CuDeviceVector{T,1}`, etc.). Scalar arguments are passed through by copy.
-
-!!! note "Argument ordering"
-    Legate passes kernel arguments in the order: **inputs → outputs → scalars**.
-    Your kernel signature must match this ordering.
 
 !!! warning "Inputs vs. outputs"
     Correctly separating `inputs` and `outputs` is critical for Legate's
@@ -76,17 +81,6 @@ end
 
 See `examples/custom_cuda.jl` for a more complete example with multiple kernels.
 
-## `@launch` Keywords
-
-| Keyword   | Type                 | Default  | Description                    |
-|-----------|----------------------|----------|--------------------------------|
-| `task`    | `CUDATask`           | required | Compiled kernel handle         |
-| `blocks`  | `Int` or `Tuple`     | `(1,)`   | CUDA grid dimensions           |
-| `threads` | `Int` or `Tuple`     | `(256,)` | CUDA block dimensions          |
-| `inputs`  | `NDArray` or `Tuple` | `()`     | Read-only input arrays         |
-| `outputs` | `NDArray` or `Tuple` | `()`     | Read-write output arrays       |
-| `scalars` | scalar or `Tuple`    | `()`     | Scalar kernel arguments        |
-
 ## Limitations
 
 - Only `NDArray` objects are supported — raw `CuArray` cannot be passed directly.
@@ -98,15 +92,6 @@ See `examples/custom_cuda.jl` for a more complete example with multiple kernels.
 ```@autodocs
 Modules = [cuNumeric]
 Pages = ["utilities/cuda_stubs.jl"]
-```
-
-# CNPreferences
-
-This section details how to set custom build configuration options. To see more details visit our install guide [here](./install.md).
-
-```@autodocs
-Modules = [CNPreferences]
-Pages = ["CNPreferences.jl"]
 ```
 
 # Internal API
