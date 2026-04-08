@@ -1,4 +1,4 @@
-#= Copyright 2025 Northwestern University,
+#= Copyright 2026 Northwestern University, 
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -49,18 +49,9 @@ function gemm(N, M, T, max_diff)
         C_out_cpu = zeros(T, dims[1], dims[1])
 
         # cunumeric arrays
-        A = cuNumeric.zeros(T, dims[1], dims[2])
-        B = cuNumeric.zeros(T, dims[2], dims[1])
+        A = cuNumeric.NDArray(A_cpu)
+        B = cuNumeric.NDArray(B_cpu)
         C_out = cuNumeric.zeros(T, dims[1], dims[1])
-
-        # Initialize NDArrays with random values
-        # used in Julia arrays
-        @allowscalar for i in 1:dims[1]
-            for j in 1:dims[2]
-                A[i, j] = A_cpu[i, j]
-                B[j, i] = B_cpu[j, i]
-            end
-        end
 
         # Julia result
         C_cpu = A_cpu * B_cpu

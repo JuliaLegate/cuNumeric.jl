@@ -154,7 +154,6 @@ LinearAlgebra.mul!(out, a, b)
 function LinearAlgebra.mul!(
     out::NDArray{T,2}, rhs1::NDArray{A,2}, rhs2::NDArray{B,2}
 ) where {T<:SUPPORTED_NUMERIC_TYPES,A,B}
-    #! This will probably need more checks once we support Complex number
     size(rhs1, 2) == size(rhs2, 1) ||
         throw(DimensionMismatch("Matrix dimensions incompatible: $(size(rhs1)) × $(size(rhs2))"))
     (size(out, 1) == size(rhs1, 1) && size(out, 2) == size(rhs2, 2)) || throw(
@@ -162,12 +161,29 @@ function LinearAlgebra.mul!(
             "mul! output is $(size(out)), but inputs would produce $(size(rhs1,1))×$(size(rhs2,2))"
         ),
     )
-    T_OUT = __my_promote_type(A, B)
-    ((T_OUT <: AbstractFloat) && (T <: Integer)) && throw(
-        ArgumentError(
-            "mul! output has integer type $(T), but inputs promote to floating point type: $(T_OUT)"
-        ),
-    )
+
+    T_REQUIRED = __my_promote_type(A, B)
+    if promote_type(T_REQUIRED, T) != T
+        if (T_REQUIRED <: Complex && !(T <: Complex))
+            throw(
+                ArgumentError(
+                    "Implicit promotion: mul! output has real type $(T), but inputs promote to complex type: $(T_REQUIRED)"
+                ),
+            )
+        elseif (T_REQUIRED <: AbstractFloat && T <: Integer)
+            throw(
+                ArgumentError(
+                    "Implicit promotion: mul! output has integer type $(T), but inputs promote to floating point type: $(T_REQUIRED)"
+                ),
+            )
+        end
+        # General case (e.g. Float64 result into Float32)
+        throw(
+            ArgumentError(
+                "mul! output type $(T) cannot hold the promoted input type $(T_REQUIRED). Implicit promotion to wider type or complex result is disallowed."
+            ),
+        )
+    end
     return nda_three_dot_arg(checked_promote_arr(rhs1, T), checked_promote_arr(rhs2, T), out)
 end
 

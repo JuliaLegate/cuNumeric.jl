@@ -54,22 +54,15 @@ end
 const DEFAULT_FLOAT = Float32
 const DEFAULT_INT = Int32
 
-const SUPPORTED_INT_TYPES = Union{Int32,Int64}
-const SUPPORTED_FLOAT_TYPES = Union{Float32,Float64}
+const SUPPORTED_INT_TYPES = Union{Int8,Int16,Int32,Int64,UInt8,UInt16,UInt32,UInt64}
+const SUPPORTED_FLOAT_TYPES = Union{Float32,Float64} # Float16 not supported yet
 const SUPPORTED_COMPLEX_TYPES = Union{ComplexF32,ComplexF64}
+
 const SUPPORTED_NUMERIC_TYPES = Union{
     SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES
 }
-# const SUPPORTED_TYPES = Union{SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES,Bool} #* TODO Test UInt, Complex
-
-const SUPPORTED_TYPES = Union{
-    Bool,
-    Int8,Int16,Int32,Int64,
-    UInt8,UInt16,UInt32,UInt64,
-    Float16,Float32,Float64,
-    ComplexF32,ComplexF64,
-    String,
-}
+const SUPPORTED_ARRAY_TYPES = Union{Bool,SUPPORTED_NUMERIC_TYPES}
+const SUPPORTED_TYPES = Union{SUPPORTED_ARRAY_TYPES,String}
 
 # const MAX_DIM = 6 # idk what we compiled?
 

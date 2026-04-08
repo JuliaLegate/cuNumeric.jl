@@ -110,6 +110,51 @@ function Base.:(-)(input::NDArray{T}) where {T}
     return nda_unary_op!(out, cuNumeric.NEGATIVE, input)
 end
 
+function Base.real(input::NDArray{T}) where {T<:Complex}
+    T_OUT = Base.promote_op(real, T)
+    out = cuNumeric.zeros(T_OUT, size(input))
+    return nda_unary_op!(out, cuNumeric.REAL, input)
+end
+Base.real(input::NDArray{<:Real}) = input
+
+function Base.imag(input::NDArray{T}) where {T<:Complex}
+    T_OUT = Base.promote_op(imag, T)
+    out = cuNumeric.zeros(T_OUT, size(input))
+    return nda_unary_op!(out, cuNumeric.IMAG, input)
+end
+Base.imag(input::NDArray{T}) where {T<:Real} = cuNumeric.zeros(T, size(input))
+
+function Base.conj(input::NDArray{T}) where {T<:Complex}
+    out = cuNumeric.zeros(T, size(input))
+    return nda_unary_op!(out, cuNumeric.CONJ, input)
+end
+Base.conj(input::NDArray{<:Real}) = input
+
+# Broadcoast support for complex ops
+@inline function __broadcast(f::typeof(Base.real), out::NDArray, input::NDArray{<:Complex})
+    return nda_unary_op!(out, cuNumeric.REAL, input)
+end
+@inline function __broadcast(f::typeof(Base.imag), out::NDArray, input::NDArray{<:Complex})
+    return nda_unary_op!(out, cuNumeric.IMAG, input)
+end
+@inline function __broadcast(f::typeof(Base.conj), out::NDArray, input::NDArray{<:Complex})
+    return nda_unary_op!(out, cuNumeric.CONJ, input)
+end
+
+# Fallbacks for Real types
+@inline function __broadcast(f::typeof(Base.real), out::NDArray, input::NDArray{<:Real})
+    # real(real_array) is just the array
+    return nda_unary_op!(out, cuNumeric.IDENTITY, input)
+end
+@inline function __broadcast(f::typeof(Base.imag), out::NDArray, input::NDArray{<:Real})
+    # imag(real_array) is all zeros
+    return nda_binary_op!(out, cuNumeric.SUBTRACT, input, input)
+end
+@inline function __broadcast(f::typeof(Base.conj), out::NDArray, input::NDArray{<:Real})
+    # conj(real_array) is just the array
+    return nda_unary_op!(out, cuNumeric.IDENTITY, input)
+end
+
 function Base.:(-)(input::NDArray{Bool})
     return -(checked_promote_arr(input, DEFAULT_INT))
 end
@@ -157,8 +202,8 @@ end
 for (julia_fn, op_code) in unary_op_map_no_args
     @eval begin
         @inline function __broadcast(
-            f::typeof($julia_fn), out::NDArray{T}, input::NDArray{T}
-        ) where {T}
+            f::typeof($julia_fn), out::NDArray{A}, input::NDArray{B}
+        ) where {A,B}
             return nda_unary_op!(out, $(op_code), input)
         end
     end

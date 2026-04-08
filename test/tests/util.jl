@@ -1,3 +1,22 @@
+#= Copyright 2026 Northwestern University, 
+ *                   Carnegie Mellon University University
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * Author(s): David Krasowska <krasow@u.northwestern.edu>
+ *            Ethan Meitz <emeitz@andrew.cmu.edu>
+=#
+
 # Domain-aware test data generation
 
 const DOMAIN_GENERATORS = Dict{Symbol,Function}(
@@ -5,7 +24,7 @@ const DOMAIN_GENERATORS = Dict{Symbol,Function}(
     :unit_interval => (T, N) -> T(2) .* rand(T, N) .- one(T),
     :normal => (T, N) -> randn(T, N),
     :uniform => (T, N) -> rand(T, N),
-    :positive => (T, N) -> abs.(rand(T, N)),
+    :positive => (T, N) -> (x=rand(T, N); T <: Signed ? abs.(max.(x, -typemax(T))) : x),
 )
 
 rtol(::Type{Float16}) = 1e-2
@@ -27,8 +46,16 @@ is_same(arr1::Array, arr2::Array) = (arr1 == arr2)
 function my_rand(::Type{F}, dims...; L=F(-1000), R=F(1000)) where {F<:AbstractFloat}
     L .+ (R-L) .* rand(F, dims...)
 end
-function my_rand(::Type{I}, dims...; L=I(-255), R=I(255)) where {I<:Signed}
-    L .+ floor.(I, (R - L + 1) .* rand(dims...))
+function my_rand(::Type{I}, dims...; L=nothing, R=nothing) where {I<:Integer}
+    L_default = I <: Unsigned ? 0 : max(-255, Int64(typemin(I)))
+    R_default = I <: Unsigned ? 255 : min(255, Int64(typemax(I)))
+    L_val = isnothing(L) ? I(L_default) : I(L)
+    R_val = isnothing(R) ? I(R_default) : I(R)
+    res = Float64(L_val) .+ floor.((Float64(R_val) - Float64(L_val) + 1.0) .* rand(dims...))
+    return floor.(I, res)
+end
+function my_rand(::Type{CT}, dims...; L=T(-100), R=T(100)) where {T,CT<:Complex{T}}
+    Complex.(my_rand(T, dims...; L=L, R=R), my_rand(T, dims...; L=L, R=R))
 end
 my_rand(::Type{Bool}, dims...) = rand(Bool, dims...)
 
