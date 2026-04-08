@@ -47,8 +47,8 @@ function __broadcast(f::Function, _, args...)
     )
 end
 
-# Get depth of Broadcast tree recursively 
-# Need to call instantiate first 
+# Get depth of Broadcast tree recursively
+# Need to call instantiate first
 bcast_depth(bc::Base.Broadcast.Broadcasted) = maximum(bcast_depth, bc.args, init=0) + 1;
 bcast_depth(::Any) = 0
 
@@ -60,7 +60,7 @@ function Base.Broadcast.materialize(bc::Broadcasted{<:NDArrayStyle})
 
     #* This be the place to inject kernel fusion via CUDA.jl
     #* Use the function in Base.Broadcast.flatten(bc).
-    #* How can we check all the funcs in this expr 
+    #* How can we check all the funcs in this expr
     #* are supported by CUDA?
 
     return unravel_broadcast_tree(bc)
@@ -89,7 +89,7 @@ function unravel_broadcast_tree(bc::Broadcasted)
     # Recursively materialize/unravel any nested broadcasts
     # until we reach a Broadcasted expression with only
     # NDArray or scalar arguments.
-    # This is the OPPOSITE of kernel fusion 
+    # This is the OPPOSITE of kernel fusion
     materialized_args = __materialize.(bc.args)
 
     # Handle type promotion
@@ -102,14 +102,14 @@ function unravel_broadcast_tree(bc::Broadcasted)
     out = similar(NDArray{T_OUT}, axes(bc))
 
     # If the operation, "bc.f",  is supported by cuNumeric, this
-    # dispatches to a function calling the C-API. 
+    # dispatches to a function calling the C-API.
     # If not it falls back to a pass-through that just calls
     # the Julia function and assumes the user defined a function
-    # composed of supported operations. 
+    # composed of supported operations.
     return __broadcast(bc.f, out, in_args...)
 end
 
-# Support .= 
+# Support .=
 function Base.copyto!(dest::NDArray{T,N}, bc::Broadcasted{<:NDArrayStyle{N}}) where {T,N}
     # Moves result from broadcast (src) to dest. src array is no longer valid
     #! THIS ENABLES FOOT GUN IF USER SPECIFIES INTEGER ARRAY AT OUTPUT

@@ -11,7 +11,6 @@ function kernel_add(a, b, c, N)
     return nothing
 end
 
-
 function kernel_sin(a, b, N)
     i = (blockIdx().x - 1i32) * blockDim().x + threadIdx().x
     if i <= N

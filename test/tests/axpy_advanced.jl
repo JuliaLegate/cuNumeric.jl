@@ -21,10 +21,10 @@
     -- add overloading support for [double/float scalar] * NDArray
     -- equavalence operator between a cuNumeric and Julia array without looping
     --          result == (α_cpu * x_cpu + y_cpu)
-    --          (α_cpu * x_cpu + y_cpu) == 
+    --          (α_cpu * x_cpu + y_cpu) ==
     -- NDArray copy method allocates a new NDArray and copies all elements
     -- NDArray assign method assigns the contents from one NDArray to another NDArray
-    -- x[:] colon notation for reading entire 1D NDArray to a Julia array 
+    -- x[:] colon notation for reading entire 1D NDArray to a Julia array
     -- x[:, :] colon notation for reading entire 2D NDArray to a Julia array
     -- x[:, :] colon notation for filling entire 2D NDArray with scalar
     -- reshape method. we test a reshape from NxN to N*N
@@ -111,7 +111,7 @@ function axpy_advanced(T, N)
 
         result = α .* x .+ y
 
-        # check results 
+        # check results
         @test is_same(result, (α * x_cpu + y_cpu))
         @test is_same(α * x_cpu + y_cpu, result) # LHS and RHS switched
     end

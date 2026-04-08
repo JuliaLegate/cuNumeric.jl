@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -148,7 +148,7 @@ include("ndarray/binary.jl")
 # scoping macro
 include("scoping.jl")
 
-# Utilities 
+# Utilities
 include("utilities/version.jl")
 include("utilities/cuda_stubs.jl")
 include("util.jl")
@@ -192,7 +192,7 @@ function _start_runtime()
     # AA = ArgcArgv([Base.julia_cmd()[1]])
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
 
-    # setup /src/memory.jl 
+    # setup /src/memory.jl
     cuNumeric.init_gc!()
 
     Base.atexit(my_on_exit)

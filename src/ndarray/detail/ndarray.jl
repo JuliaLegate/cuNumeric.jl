@@ -30,7 +30,7 @@ abstract type AbstractNDArray{T<:SUPPORTED_TYPES,N} end
 
 @doc"""
 The NDArray type represents a multi-dimensional array in cuNumeric.
-It is a wrapper around a Legate array and provides various methods for array manipulation and operations. 
+It is a wrapper around a Legate array and provides various methods for array manipulation and operations.
 Finalizer calls `nda_destroy_array` to clean up the underlying Legate array when the NDArray is garbage collected.
 """
 mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
@@ -84,7 +84,7 @@ end
 
 NDArray(value::T) where {T<:SUPPORTED_TYPES} = nda_full_array((), value)
 
-# construction 
+# construction
 function nda_zeros_array(dims::Dims{N}, ::Type{T}) where {T,N}
     shape = collect(UInt64, dims)
     legate_type = Legate.to_legate_type(T)
@@ -197,7 +197,7 @@ function nda_move(dst::NDArray{T,N}, src::NDArray{T,N}) where {T,N}
     register_free!(dst.nbytes)
 end
 
-# operations 
+# operations
 function nda_binary_op!(out::NDArray, op_code::BinaryOpCode, rhs1::NDArray, rhs2::NDArray)
     ccall((:nda_binary_op, libnda),
         Cvoid, (NDArray_t, BinaryOpCode, NDArray_t, NDArray_t),

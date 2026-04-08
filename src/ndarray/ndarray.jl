@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -94,7 +94,7 @@ Base.copy(arr::NDArray) = nda_copy(arr)
 
 Assign the contents of `other` to `arr` element-wise.
 
-This function overwrites the data in `arr` with the values from `other`.  
+This function overwrites the data in `arr` with the values from `other`.
 Both arrays must have the same shape.
 
 # Examples
@@ -287,7 +287,7 @@ end
 
 Overloads `Base.getindex` and `Base.setindex!` to support multidimensional indexing and slicing on `cuNumeric.NDArray`s.
 
-Slicing supports combinations of `Int`, `UnitRange`, and `Colon()` for selecting ranges of rows and columns. 
+Slicing supports combinations of `Int`, `UnitRange`, and `Colon()` for selecting ranges of rows and columns.
 The use of all colons (`arr[:]`, `arr[:, :]`, etc.) returns a new Julia `Array` containing a copy of the data.
 
 Assignment also supports:

@@ -29,7 +29,9 @@ struct Params{T}
     f::T
     k::T
 
-    function Params(::Type{T}, dx=T(0.1), c_u=T(1.0), c_v=T(0.3), f=T(0.03), k=T(0.06)) where {T <: AbstractFloat}
+    function Params(
+        ::Type{T}, dx=T(0.1), c_u=T(1.0), c_v=T(0.3), f=T(0.03), k=T(0.06)
+    ) where {T<:AbstractFloat}
         new{T}(dx, dx/T(5), c_u, c_v, f, k)
     end
 end
@@ -72,7 +74,7 @@ end
 # gray scott
 function step(u, v, u_new, v_new, args::Params)
     # calculate F_u and F_v functions
-    # currently we don't have NDArray^x working yet. 
+    # currently we don't have NDArray^x working yet.
     F_u = (
         (
             -u[2:(end - 1), 2:(end - 1)] .*

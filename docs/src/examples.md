@@ -43,9 +43,9 @@ x_max = 10.0f0
 domain = [-x_max, x_max]
 Ω = domain[2] - domain[1]
 
-samples = Ω*cuNumeric.rand(N) .- x_max 
+samples = Ω*cuNumeric.rand(N) .- x_max
 
-# Reductions return 0D NDArrays instead 
+# Reductions return 0D NDArrays instead
 # of a scalar to avoid blocking runtime
 estimate = (Ω/N) * sum(integrand(samples))
 
@@ -90,9 +90,9 @@ function step!(u, v, u_new, v_new, args::Params)
             (args.f+args.k).*v[2:end-1, 2:end-1])
     # 2-D Laplacian of f using array slicing, excluding boundaries
     # For an N x N array f, f_lap is the Nend x Nend array in the "middle"
-    u_lap = ((u[3:end, 2:end-1] - 2*u[2:end-1, 2:end-1] + u[1:end-2, 2:end-1]) ./ args.dx^2 
+    u_lap = ((u[3:end, 2:end-1] - 2*u[2:end-1, 2:end-1] + u[1:end-2, 2:end-1]) ./ args.dx^2
            + (u[2:end-1, 3:end] - 2*u[2:end-1, 2:end-1] + u[2:end-1, 1:end-2]) ./ args.dx^2)
-    v_lap = ((v[3:end, 2:end-1] - 2*v[2:end-1, 2:end-1] + v[1:end-2, 2:end-1]) ./ args.dx^2 
+    v_lap = ((v[3:end, 2:end-1] - 2*v[2:end-1, 2:end-1] + v[1:end-2, 2:end-1]) ./ args.dx^2
            + (v[2:end-1, 3:end] - 2*v[2:end-1, 2:end-1] + v[2:end-1, 1:end-2]) ./ args.dx^2)
 
     # Forward-Euler time step for all points except the boundaries
@@ -124,8 +124,8 @@ function gray_scott()
 
     for n in 1:n_steps
         step!(u, v, u_new, v_new, args)
-        # update u and v 
-        # this doesn't copy, this switching references 
+        # update u and v
+        # this doesn't copy, this switching references
         u, u_new = u_new, u
         v, v_new = v_new, v
 

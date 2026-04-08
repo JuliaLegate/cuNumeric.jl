@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2025 Northwestern University, 
+# Copyright 2025 Northwestern University,
 #                   Carnegie Mellon University University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -79,7 +79,7 @@ julia -e 'using Pkg; Pkg.activate("."); Pkg.develop(PackageSpec(name="libcxxwrap
 
 # JULIA_CXXWRAP_OVERRIDE=$JULIA_CXXWRAP/override/
 # Delete the default JLL installation of cxxwrap_julia
-rm -rf $JULIA_CXXWRAP 
+rm -rf $JULIA_CXXWRAP
 mkdir $JULIA_CXXWRAP
 
 cmake -S $JULIA_CXXWRAP_SRC -B $JULIA_CXXWRAP -DJulia_EXECUTABLE=$JULIA_PATH -DCMAKE_BUILD_TYPE=Release

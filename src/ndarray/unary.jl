@@ -100,7 +100,7 @@ global const unary_op_map_no_args = Dict{Function,UnaryOpCode}(
 
 ### SPECIAL CASES ###
 
-# Needed to support != 
+# Needed to support !=
 Base.:(!)(input::NDArray{Bool,0}) = nda_unary_op!(similar(input), cuNumeric.LOGICAL_NOT, input)
 Base.:(!)(input::NDArray{Bool,1}) = nda_unary_op!(similar(input), cuNumeric.LOGICAL_NOT, input)
 
@@ -210,7 +210,7 @@ for (julia_fn, op_code) in unary_op_map_no_args
 end
 
 # Some functions always return floats even when given integers
-# in the case where the output is determined to be float, but 
+# in the case where the output is determined to be float, but
 # the input is integer, we first promote the input to float.
 for (julia_fn, op_code) in floaty_unary_ops_no_args
     @eval begin
@@ -235,7 +235,7 @@ end
 #     Base.clamp => Int(cuNumeric.CLIP), #* HAS EXTRA ARGS
 #     Base.floor => cuNumeric.FLOOR, #! Doesnt support Bool, I do not feel like dealing with this right now...
 #     Base.trunc => Int(cuNumeric.TRUNC)  #* HAS EXTRA ARGS
-#     missing => Int(cuNumeric.RINT), #figure out which version of round 
+#     missing => Int(cuNumeric.RINT), #figure out which version of round
 #     missing => Int(cuNumeric.ROUND), #figure out which version of round
 # )
 

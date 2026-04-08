@@ -10,7 +10,6 @@ export allowpromotion, @allowpromotion, assertpromotion, allowscalar, @allowscal
 const requested_scalar_indexing = Ref{Union{Nothing,ScalarIndexing}}(nothing)
 const requested_implicit_promotion = Ref{Union{Nothing,ImplicitPromotion}}(nothing)
 
-
 const _repl_frontend_task = Ref{Union{Nothing,Missing,Task}}()
 function repl_frontend_task()
     if !isassigned(_repl_frontend_task)
@@ -50,7 +49,6 @@ end
 
 default_implicit_promotion() = PromotionDisallowed
 
-
 """
     assertscalar(op::String)
 
@@ -70,7 +68,7 @@ function assertscalar(op::String)
     behavior = behavior::ScalarIndexing
     if behavior === ScalarAllowed
         # fast path
-        return
+        return nothing
     end
 
     _assertscalar(op, behavior)
@@ -82,7 +80,7 @@ end
 Assert that a certain operation `op` performs promotion to a wider type. If this is not allowed, an
 error will be thrown ([`assertpromotion`](@ref)).
 """
-function assertpromotion(op, ::Type{FROM}, ::Type{TO}) where {FROM, TO}
+function assertpromotion(op, ::Type{FROM}, ::Type{TO}) where {FROM,TO}
     behavior = get(task_local_storage(), :ImplicitPromotion, nothing)
     if behavior === nothing
         behavior = requested_implicit_promotion[]
@@ -95,7 +93,7 @@ function assertpromotion(op, ::Type{FROM}, ::Type{TO}) where {FROM, TO}
     behavior = behavior::ImplicitPromotion
     if behavior === PromotionAllowed
         # fast path
-        return
+        return nothing
     end
 
     _assertpromotion(op, behavior, FROM, TO)
@@ -109,10 +107,10 @@ end
         task_local_storage(:ScalarIndexing, ScalarWarned)
     end
 
-    return
+    return nothing
 end
 
-@noinline function _assertpromotion(op, behavior, ::Type{FROM}, ::Type{TO}) where {FROM, TO}
+@noinline function _assertpromotion(op, behavior, ::Type{FROM}, ::Type{TO}) where {FROM,TO}
     if behavior == PromotionDisallowed
         errordouble(op, FROM, TO)
     elseif behavior == PromotionWarn
@@ -120,7 +118,7 @@ end
         task_local_storage(:ImplicitPromotion, PromotionWarned)
     end
 
-    return
+    return nothing
 end
 
 function scalardesc(op)
@@ -132,9 +130,9 @@ function scalardesc(op)
               to enable scalar iteration globally or for the operations in question."""
 end
 
-function promotiondesc(op, ::Type{FROM}, ::Type{TO}) where {FROM, TO}
-    desc = """Invocation of $op resulted in implicit promotion of an NDArray from $(FROM) to 
-              wider type: $(TO). This is typically caused by mixing NDArrays or literals 
+function promotiondesc(op, ::Type{FROM}, ::Type{TO}) where {FROM,TO}
+    desc = """Invocation of $op resulted in implicit promotion of an NDArray from $(FROM) to
+              wider type: $(TO). This is typically caused by mixing NDArrays or literals
               with different precision. This can cause extra copies of data and is slow.
 
               If you want to allow implicit promotion to wider types, use `allowpromotion` or `@allowpromotion`
@@ -147,7 +145,7 @@ end
              $desc""")
 end
 
-@noinline function warnsdouble(op, ::Type{FROM}, ::Type{TO}) where {FROM, TO}
+@noinline function warnsdouble(op, ::Type{FROM}, ::Type{TO}) where {FROM,TO}
     desc = promotiondesc(op, FROM, TO)
     @warn("""Promotiong data to wider type on task $(current_task()).
              $desc""")
@@ -159,7 +157,7 @@ end
              $desc""")
 end
 
-@noinline function errordouble(op, ::Type{FROM}, ::Type{TO}) where {FROM, TO}
+@noinline function errordouble(op, ::Type{FROM}, ::Type{TO}) where {FROM,TO}
     desc = promotiondesc(op, FROM, TO)
     error("""Implicit promotion to wider type is disallowed.
              $desc""")
@@ -170,9 +168,9 @@ end
 # this problem will be introduced in https://github.com/JuliaLang/julia/pull/39217
 macro __tryfinally(ex, fin)
     Expr(:tryfinally,
-       :($(esc(ex))),
-       :($(esc(fin)))
-       )
+        :($(esc(ex))),
+        :($(esc(fin))),
+    )
 end
 
 """
@@ -200,7 +198,7 @@ function allowscalar(allow::Bool=true)
     setting = allow ? ScalarAllowed : ScalarDisallowed
     task_local_storage(:ScalarIndexing, setting)
     requested_scalar_indexing[] = setting
-    return
+    return nothing
 end
 
 """
@@ -219,7 +217,7 @@ allowpromotion
 function allowpromotion(f::Base.Callable, allow::Bool=true)
     setting = allow ? PromotionAllowed : PromotionDisallowed
     task_local_storage(f, :ImplicitPromotion, setting)
-    return
+    return nothing
 end
 
 function allowpromotion(allow::Bool=true)
@@ -230,7 +228,7 @@ function allowpromotion(allow::Bool=true)
     setting = allow ? PromotionAllowed : PromotionDisallowed
     task_local_storage(:ImplicitPromotion, setting)
     requested_implicit_promotion[] = setting
-    return
+    return nothing
 end
 
 """
@@ -247,8 +245,11 @@ macro allowscalar(ex)
         local tls_value = get(task_local_storage(), :ScalarIndexing, nothing)
         task_local_storage(:ScalarIndexing, ScalarAllowed)
         @__tryfinally($(esc(ex)),
-                      isnothing(tls_value) ? delete!(task_local_storage(), :ScalarIndexing)
-                                           : task_local_storage(:ScalarIndexing, tls_value))
+            if isnothing(tls_value)
+                delete!(task_local_storage(), :ScalarIndexing)
+            else
+                task_local_storage(:ScalarIndexing, tls_value)
+            end)
     end
 end
 
@@ -266,7 +267,10 @@ macro allowpromotion(ex)
         local tls_value = get(task_local_storage(), :ImplicitPromotion, nothing)
         task_local_storage(:ImplicitPromotion, PromotionAllowed)
         @__tryfinally($(esc(ex)),
-                      isnothing(tls_value) ? delete!(task_local_storage(), :ImplicitPromotion)
-                                           : task_local_storage(:ImplicitPromotion, tls_value))
+            if isnothing(tls_value)
+                delete!(task_local_storage(), :ImplicitPromotion)
+            else
+                task_local_storage(:ImplicitPromotion, tls_value)
+            end)
     end
 end

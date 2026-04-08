@@ -18,8 +18,8 @@
 =#
 
 #= Purpose of test: daxpy
-    -- Focused on double 2 dimenional. Does not test other types or dims. 
-    -- NDArray intialization 
+    -- Focused on double 2 dimenional. Does not test other types or dims.
+    -- NDArray intialization
     -- NDArray writing and reading scalar indexing
     --          shows both [i, j] and [(i, j)] working
     -- NDArray addition and multiplication

@@ -116,7 +116,7 @@ function cuda_unaryop(max_diff)
     end
 
     task = cuNumeric.@cuda_task kernel_sin(a, b, UInt32(N))
-    # TODO explore getting inplace ops working. 
+    # TODO explore getting inplace ops working.
     cuNumeric.@launch task=task threads=threads blocks=blocks inputs=a outputs=b scalars=UInt32(N)
 
     @test @allowscalar cuNumeric.compare(b, b_cpu, atol(Float32), rtol(Float32))

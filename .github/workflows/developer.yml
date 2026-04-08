@@ -80,7 +80,7 @@ jobs:
           wget https://github.com/Kitware/CMake/releases/download/v3.30.7/cmake-3.30.7-linux-x86_64.sh --no-check-certificate
           sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=$HOME/.local
           echo "$HOME/.local/bin" >> $GITHUB_PATH
-      
+
       - name: Load Julia packages from cache
         id: julia-cache
         uses: julia-actions/cache@v2
