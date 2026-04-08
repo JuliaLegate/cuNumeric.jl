@@ -404,6 +404,10 @@ end
     include("tests/stability.jl")
 end
 
+@testset verbose = true "NDArray Lifetime and Zero-Copy" begin
+    include("tests/lifetime.jl")
+end
+
 @testset verbose = true "Scoping" begin
     N = 100
 
