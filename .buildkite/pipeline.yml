@@ -26,6 +26,7 @@ steps:
         if: build.message !~ /\[skip tests\]/
         timeout_in_minutes: 45
         env:
+          LD_LIBRARY_PATH: ""
           LEGATE_SHOW_CONFIG: "1"
           GPUTESTS: "1"
           LEGATE_TEST: "1"
