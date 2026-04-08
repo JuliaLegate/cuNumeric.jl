@@ -8,7 +8,7 @@ ENV CUDA_VERSION_MAJOR_MINOR="${CUDA_MAJOR}.${CUDA_MINOR}"
 ARG REF=main
 ENV REF=${REF}
 # using bash
-SHELL ["/bin/bash", "-c"] 
+SHELL ["/bin/bash", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
 
 # force turn off legate auto config for precompilation.
@@ -16,7 +16,7 @@ ENV LEGATE_AUTO_CONFIG=0
 
 # much of the CUDA.jl setup is from Tim Besard
 # CUDA.jl Dockerfile https://github.com/JuliaGPU/CUDA.jl/blob/master/Dockerfile
-# Thank you Tim for the reccomendation. 
+# Thank you Tim for the reccomendation.
 
 ARG JULIA_CPU_TARGET=native
 ENV JULIA_CPU_TARGET=${JULIA_CPU_TARGET}
@@ -101,7 +101,7 @@ EOF
 RUN apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-ENV LEGATE_AUTO_CONFIG=1 
+ENV LEGATE_AUTO_CONFIG=1
 
 ENTRYPOINT source /etc/.env && exec /bin/bash
 WORKDIR /workspace

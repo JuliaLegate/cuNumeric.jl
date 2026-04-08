@@ -78,7 +78,7 @@
 #       - name: Setup Conda env
 #         run: |
 #           conda create -n myenv -c conda-forge -c legate cupynumeric=25.11.00 python=3.11 elfutils libdwarf -y
-      
+
 #       - name: Load Julia packages from cache
 #         id: julia-cache
 #         uses: julia-actions/cache@v2
@@ -99,7 +99,7 @@
 #           MYENV_PATH=$CONDA_PATH/envs/myenv
 #           echo "LD_PRELOAD=$MYENV_PATH/lib/libdw.so.1:$MYENV_PATH/lib/libdwarf.so:$MYENV_PATH/lib/libelf.so.1:$MYENV_PATH/lib/libgomp.so.1:$MYENV_PATH/lib/libstdc++.so.6:$LD_PRELOAD" >> $GITHUB_ENV
 #           echo "MYENV_PATH=$MYENV_PATH" >> $GITHUB_ENV
-          
+
 #       - name: Setup cuNumeric.jl and Legate.jl
 #         run: |
 #           conda run --no-capture-output -n myenv julia --color=yes -e '

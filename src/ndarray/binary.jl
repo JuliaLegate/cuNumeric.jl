@@ -15,7 +15,7 @@ The following binary operations are supported and can be applied elementwise to 
   • `>=`
   • `==`
   • `!=`
-  • `atan` 
+  • `atan`
   • `hypot`
   • `max`
   • `min`
@@ -40,7 +40,7 @@ A .^ 2
 """
 
 # Still missing:
-#     # Base.copysign => cuNumeric.COPYSIGN, #* ANNOYING TO TEST 
+#     # Base.copysign => cuNumeric.COPYSIGN, #* ANNOYING TO TEST
 #     #missing => cuNumeric.fmod, #same as mod in Julia?
 #     # Base.isapprox => cuNumeric.ISCLOSE, #* HANDLE rtol, atol kwargs!!!
 #     # Base.ldexp => cuNumeric.LDEXP, #* LHS FLOATS, RHS INTS
@@ -197,7 +197,7 @@ for (julia_fn, op_code) in binary_op_map
 end
 
 # Some functions always return floats even when given integers
-# in the case where the output is determined to be float, but 
+# in the case where the output is determined to be float, but
 # the input is integer, we first promote the input to float.
 for (julia_fn, op_code) in floaty_binary_op_map
     @eval begin

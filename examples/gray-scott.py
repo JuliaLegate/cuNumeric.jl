@@ -8,18 +8,18 @@ import cupynumeric as np
 # import matplotlib.pyplot as plt
 
 def greyScottSys(u, v, dx, dt, c_u, c_v, f, k):
-    # u,v are arrays 
+    # u,v are arrays
     # dx,dt are space and time steps
     # c_u, c_v, f, k are constant paramaters
-    
+
      #create new u array
     u_new = np.zeros_like(u)
     v_new = np.zeros_like(v)
-    
+
     #calculate F_u and F_v functions
     F_u = (-u[1:-1,1:-1]*(v[1:-1,1:-1]**2)) + f*(1-u[1:-1,1:-1])
     F_v = (u[1:-1,1:-1]*(v[1:-1,1:-1]**2)) - (f+k)*v[1:-1,1:-1]
-    
+
     # 2-D Laplacian of f using array slicing, excluding boundaries
     # For an N x N array f, f_lap is the N-1 x N-1 array in the "middle"
     u_lap = (u[2:,1:-1] - 2*u[1:-1,1:-1] + u[:-2,1:-1]) / dx**2\
@@ -69,10 +69,10 @@ frame_interval = 200 # steps to take between making plots
 
 # build a list of images
 for n in range(n_steps) :
-    
+
     ## This may need to be changed.
     u,v = greyScottSys(u, v, dx, dt, c_u, c_v, f, k)
-    
+
     # ## Store frames when n is a multiple of frame_interval
     # if n%frame_interval == 0:
     #     im = plt.imshow(u, vmin=0, vmax=1) # Show a plot of u.

@@ -19,7 +19,7 @@ end
 function step(u, v, u_new, v_new, args::ParamsGS)
     @cunumeric begin
         # calculate F_u and F_v functions
-        # currently we don't have NDArray^x working yet. 
+        # currently we don't have NDArray^x working yet.
         F_u = (
             (
                 -u[2:(end - 1), 2:(end - 1)] .*
@@ -76,7 +76,7 @@ end
 # same as above but without @cunumeric macro
 function step_base(u, v, u_new, v_new, args::ParamsGS)
     # calculate F_u and F_v functions
-    # currently we don't have NDArray^x working yet. 
+    # currently we don't have NDArray^x working yet.
     F_u = (
         (
             -u[2:(end - 1), 2:(end - 1)] .*

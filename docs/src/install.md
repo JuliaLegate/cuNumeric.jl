@@ -40,18 +40,18 @@ pkg> add CNPreferences
 ```
 
 ## Developer mode
-> [!TIP]  
+> [!TIP]
 > This gives the most flexibility in installs. It is meant for developing on cuNumeric.jl.
 
 We support using a custom install version of cupynumeric. See https://docs.nvidia.com/cupynumeric/latest/installation.html for details about different install configurations, or building cupynumeric from source.
 
 We require that you have a g++ capable compiler of C++ 20, and a recent version CMake >= 3.26.
 
-To use developer mode, 
+To use developer mode,
 ```julia
 using CNPreferences; CNPreferences.use_developer_mode(; use_cunumeric_jll=true, cunumeric_path=nothing)
 ```
-By default `use_cunumeric_jll` will be set to true. However, you can set a custom branch and/or use a custom path of cupynumeric. By setting `use_cunumeric_jll=false`, you can set `cunumeric_path` to your custom install. 
+By default `use_cunumeric_jll` will be set to true. However, you can set a custom branch and/or use a custom path of cupynumeric. By setting `use_cunumeric_jll=false`, you can set `cunumeric_path` to your custom install.
 ```julia
 using CNPreferences; CNPreferences.use_developer_mode(;use_cunumeric_jll=false, cunumeric_path="/path/to/cupynumeric/root")
 
@@ -59,8 +59,8 @@ using CNPreferences; CNPreferences.use_developer_mode(;use_cunumeric_jll=false, 
 
 ## Link Against Existing Conda Environment
 
-> [!WARNING]  
-> This feature is not passing our CI currently. Please use with caution. We are failing to currently match proper versions of .so libraries together. Our hope is to get this functional for users already using Legate within conda. 
+> [!WARNING]
+> This feature is not passing our CI currently. Please use with caution. We are failing to currently match proper versions of .so libraries together. Our hope is to get this functional for users already using Legate within conda.
 
 Note, you need conda >= 24.1 to install the conda package. More installation details are found [here](https://docs.nvidia.com/cupynumeric/latest/installation.html).
 
@@ -70,7 +70,7 @@ conda create -n myenv -c conda-forge -c cupynumeric
 # into an existing environment
 conda install -c conda-forge -c cupynumerice
 ```
-Once you have the conda package installed, you can activate here. 
+Once you have the conda package installed, you can activate here.
 ```bash
 conda activate [conda-env-with-cupynumeric]
 ```
