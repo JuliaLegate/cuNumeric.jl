@@ -1,5 +1,3 @@
-### THE SCALAR INDEXING LOGIC IS COPIED FROM GPUArrays.jl ###
-
 export allowpromotion, @allowpromotion, assertpromotion, allowscalar, @allowscalar, assertscalar
 
 @enum ImplicitPromotion PromotionAllowed PromotionWarn PromotionWarned PromotionDisallowed

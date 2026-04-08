@@ -143,6 +143,8 @@ function cuNumeric.ptx_task(ptx::String, kernel_name)
 end
 
 macro cuda_task(call_expr)
+    cuNumeric.assert_experimental()
+
     fname = call_expr.args[1]
     fargs = call_expr.args[2:end]
 
@@ -164,6 +166,8 @@ macro cuda_task(call_expr)
 end
 
 macro launch(args...)
+    cuNumeric.assert_experimental()
+
     allowed_keys = Set([:task, :blocks, :threads, :inputs, :outputs, :scalars])
     kwargs = Dict{Symbol,Any}()
 

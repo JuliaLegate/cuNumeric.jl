@@ -1,5 +1,3 @@
-# TODO reduce number of allocations. Potentially remove assigned_vars somehow
-
 export @cunumeric
 
 @doc"""
