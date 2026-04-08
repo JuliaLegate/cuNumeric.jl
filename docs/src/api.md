@@ -42,6 +42,9 @@ The interface has two steps:
     Correctly separating `inputs` and `outputs` is critical for Legate's
     dependency analysis. If an array is both read and written, list it as an `output`.
 
+!!! warning "Array sizes"
+    Mismatched array sizes are automatically padded to the largest shape. To address this, we plan to add support for other Legate constraints in the future (more information [here](https://docs.nvidia.com/legate/latest/api/cpp/generated/group/group__partitioning.html)).
+
 ## Example
 
 ```julia
@@ -80,12 +83,6 @@ end
 ```
 
 See `examples/custom_cuda.jl` for a more complete example with multiple kernels.
-
-## Limitations
-
-- Only `NDArray` objects are supported — raw `CuArray` cannot be passed directly.
-- Mismatched array sizes are automatically padded to the largest shape.
-- Custom function broadcasting is not supported; write explicit index-based kernels.
 
 ## API Reference
 
