@@ -11,7 +11,7 @@ Depth = 2:2
 ### Supported Unary Operations
 The following unary operations are supported and can be broadcast over `NDArray`:
 
-  • `-`, `!`, `abs`, `acos`, `acosh`, `asin`, `asinh`, `atan`, `atanh`, `cbrt`, `cos`, `cosh`, `deg2rad`, `exp`, `exp2`, `expm1`, `floor`, `isfinite`, `log`, `log10`, `log1p`, `log2`, `rad2deg`, `sign`, `signbit`, `sin`, `sinh`, `sqrt`, `tan`, `tanh`, `^2`, `^-1` or `inv`
+  • `-`, `!`, `abs`, `acos`, `acosh`, `asin`, `asinh`, `atan`, `atanh`, `cbrt`, `conj`, `cos`, `cosh`, `deg2rad`, `exp`, `exp2`, `expm1`, `floor`, `imag`, `isfinite`, `log`, `log10`, `log1p`, `log2`, `rad2deg`, `real`, `sign`, `signbit`, `sin`, `sinh`, `sqrt`, `tan`, `tanh`, `^2`, `^-1` or `inv`,
 
 ##### Differences
 - The `acosh` function in Julia will error on inputs outside of the domain (x >= 1)
