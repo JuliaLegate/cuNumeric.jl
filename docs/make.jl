@@ -14,10 +14,9 @@ makedocs(;
     ),
     pages=[
         "Home" => "index.md",
-        "Install Guide" => "install.md",
         "Examples" => "examples.md",
         "Performance Tips" => "perf.md",
-        "Back End Details" => "usage.md",
+        "Custom Installalation" => "install.md",
         "Benchmarks" => "benchmark.md",
         "Public API" => "api.md",
     ],

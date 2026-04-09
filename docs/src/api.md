@@ -8,6 +8,25 @@ Pages = ["api.md"]
 Depth = 2:2
 ```
 
+### Supported Unary Operations
+The following unary operations are supported and can be broadcast over `NDArray`:
+
+  • `-`, `!`, `abs`, `acos`, `acosh`, `asin`, `asinh`, `atan`, `atanh`, `cbrt`, `conj`, `cos`, `cosh`, `deg2rad`, `exp`, `exp2`, `expm1`, `floor`, `imag`, `isfinite`, `log`, `log10`, `log1p`, `log2`, `rad2deg`, `real`, `sign`, `signbit`, `sin`, `sinh`, `sqrt`, `tan`, `tanh`, `^2`, `^-1` or `inv`,
+
+##### Differences
+- The `acosh` function in Julia will error on inputs outside of the domain (x >= 1)
+    but cuNumeric.jl will return NaN.
+
+
+
+### Supported Binary Operations
+The following binary operations are supported and can be applied elementwise to pairs of `NDArray` values:
+
+  • `+`, `-`, `*`, `/`, `^`, `<`, `<=`, `>`, `>=`, `==`, `!=`, `atan`, `hypot`, `max`, `min`, `lcm`, `gcd`
+
+These operations are applied elementwise by default and follow standard Julia semantics.
+
+
 ```@autodocs
 Modules = [cuNumeric]
 Pages = ["ndarray/ndarray.jl", "ndarray/unary.jl", "ndarray/binary.jl", "cuNumeric.jl", "warnings.jl", "util.jl", "memory.jl", "scoping.jl"]
