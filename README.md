@@ -28,7 +28,7 @@ cuNumeric.versioninfo()
 ```
 
 > [!WARNING]
-> Starting more than one instance of cuNumeric.jl can lead to a hard-crash. The default hardware configuration reserves all available resources. See the [hardware configuration](https://julialegate.github.io/cuNumeric.jl/dev/perf#Setting-Hardware-Configuration) documentation to learn more.
+> Starting more than one instance of cuNumeric.jl can lead to a hard-crash. The default hardware configuration reserves all available resources. For more details, please visit our hardware configuration documentation.
 
 ### Monte-Carlo Example
 ```julia

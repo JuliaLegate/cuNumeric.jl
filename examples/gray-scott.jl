@@ -1,5 +1,5 @@
 using cuNumeric
-# using Plots
+using Plots
 
 struct Params{T}
     dx::T
@@ -63,7 +63,7 @@ function step!(u, v, u_new, v_new, args::Params)
 end
 
 function gray_scott()
-    #anim = Animation()
+    anim = Animation()
 
     N = 100
     dims = (N, N)
@@ -78,8 +78,8 @@ function gray_scott()
     u_new = cuNumeric.zeros(dims)
     v_new = cuNumeric.zeros(dims)
 
-    u[1:15, 1:15] = cuNumeric.rand(15, 15)
-    v[1:15, 1:15] = cuNumeric.rand(15, 15)
+    u[1:15, 1:15] = cuNumeric.rand(Float32, 15, 15)
+    v[1:15, 1:15] = cuNumeric.rand(Float32, 15, 15)
 
     for n in 1:n_steps
         step!(u, v, u_new, v_new, args)
@@ -88,13 +88,12 @@ function gray_scott()
         u, u_new = u_new, u
         v, v_new = v_new, v
 
-        # if n%frame_interval == 0
-        #     u_cpu = u[:, :]
-        #     heatmap(u_cpu, clims=(0, 1))
-        #     frame(anim)
-        # end
+        if n%frame_interval == 0
+            heatmap(Array(u); clims=(0, 1))
+            frame(anim)
+        end
     end
-    # gif(anim, "gray-scott.gif", fps=10)
+    gif(anim, "gray-scott.gif"; fps=10)
     return u, v
 end
 
