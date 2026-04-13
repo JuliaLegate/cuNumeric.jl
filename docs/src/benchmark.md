@@ -22,8 +22,8 @@ mul!(C, A, B)
     <th>GEMM GFLOPS</th>
   </tr>
   <tr>
-    <td><img src="images/gemm_efficiency.svg" alt="GEMM Efficiency"/></td>
-    <td><img src="images/gemm_gflops.svg" alt="GEMM GFLOPS"/></td>
+    <td><img src="./images/gemm_efficiency.svg" alt="GEMM Efficiency"/></td>
+    <td><img src="./images/gemm_gflops.svg" alt="GEMM GFLOPS"/></td>
   </tr>
 </table>
 ```
@@ -45,8 +45,8 @@ val = (V/N) * sum(integrand(x))
     <th>MC GFLOPS</th>
   </tr>
   <tr>
-    <td><img src="images/mc_eff.svg" alt="MC Efficiency"/></td>
-    <td><img src="images/mc_ops.svg" alt="MC GFLOPS"/></td>
+    <td><img src="./images/mc_eff.svg" alt="MC Efficiency"/></td>
+    <td><img src="./images/mc_ops.svg" alt="MC GFLOPS"/></td>
   </tr>
 </table>
 ```
