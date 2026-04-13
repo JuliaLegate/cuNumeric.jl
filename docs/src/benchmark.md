@@ -56,7 +56,16 @@ val = (V/N) * sum(integrand(x))
 
 Solving a PDE requires halo-exchanges and lots of data movement. In this benchmark we fall an order of magnitude short of the `ImplicitGlobalGrid.jl` library which specifically targets multi-node, multi-GPU halo exchanges. We attribute this to the lack of kernel fusion in cuNumeric.jl
 
-![GS GFLOPS](images/gs_gflops_diffeq.svg)
+```@raw html
+<table>
+  <tr>
+    <th>GS GFLOPS</th>
+  </tr>
+  <tr>
+    <td><img src="./images/gs_gflops_diffeq.svg" alt="GS GFLOPS"/></td>
+  </tr>
+</table>
+```
 
 
 # Benchmarking cuNumeric.jl Programs
