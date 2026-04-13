@@ -28,11 +28,7 @@ cuNumeric.versioninfo()
 ```
 
 > [!WARNING]
-> Starting more than one instance of cuNumeric.jl can lead to a hard-crash. The default hardware configuration reserves all available resources. See the
-> ```@raw html
-> <a href="./perf#Setting-Hardware-Configuration" target="_self">hardware configuration</a>
-> ```
-> documentation to learn more.
+> Starting more than one instance of cuNumeric.jl can lead to a hard-crash. The default hardware configuration reserves all available resources. See the ```@raw html <a href="./perf#Setting-Hardware-Configuration" target="_self">hardware configuration</a>``` documentation to learn more.
 
 ### Monte-Carlo Example
 ```julia
