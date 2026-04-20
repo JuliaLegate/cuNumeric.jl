@@ -34,7 +34,7 @@ struct ParamsGS{T<:AbstractFloat}
 end
 
 function step(u, v, u_new, v_new, args::ParamsGS)
-    @cunumeric begin
+    @analyze_lifetimes begin
         # calculate F_u and F_v functions
         # currently we don't have NDArray^x working yet.
         F_u = (
@@ -90,7 +90,7 @@ function step(u, v, u_new, v_new, args::ParamsGS)
     end
 end
 
-# same as above but without @cunumeric macro
+# same as above but without @analyze_lifetimes macro
 function step_base(u, v, u_new, v_new, args::ParamsGS)
     # calculate F_u and F_v functions
     # currently we don't have NDArray^x working yet.
