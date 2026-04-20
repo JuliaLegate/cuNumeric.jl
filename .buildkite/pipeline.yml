@@ -20,6 +20,11 @@ steps:
               dirs:
                 - src
               codecov: true
+        artifact_paths:
+          - "deps/build.log"
+          - "deps/*.log"
+          - "deps/*.err"
+          - "deps/legate-build.log"
         agents:
           queue: "juliagpu"
           cuda: "*"
