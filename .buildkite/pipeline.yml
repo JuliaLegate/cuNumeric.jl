@@ -24,7 +24,6 @@ steps:
           - "deps/build.log"
           - "deps/*.log"
           - "deps/*.err"
-          - "deps/legate-build.log"
         agents:
           queue: "juliagpu"
           cuda: "*"
@@ -36,7 +35,7 @@ steps:
           LEGATE_SHOW_CONFIG: "1"
           GPUTESTS: "1"
           LEGATE_TEST: "1"
-          LEGATE_CONFIG: "--cpus 1 --gpus 1 --utility 1 --fbmem 500"
+          LEGATE_CONFIG: "--cpus 1 --gpus 1 --utility 1 --fbmem 500 --logging legate=debug,level=2"
         matrix:
           setup:
             julia:
