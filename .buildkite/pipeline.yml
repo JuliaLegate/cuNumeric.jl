@@ -20,18 +20,24 @@ steps:
               dirs:
                 - src
               codecov: true
+        artifact_paths:
+          - "deps/build.log"
+          - "deps/*.log"
+          - "deps/*.err"
+          - "*.log"
         agents:
           queue: "juliagpu"
           cuda: "*"
+          cap: "sm_80"
         if: build.message !~ /\[skip tests\]/
-        timeout_in_minutes: 45
+        timeout_in_minutes: 44
         env:
           LD_LIBRARY_PATH: ""
           LEGATE_AUTO_CONFIG: "0"
           LEGATE_SHOW_CONFIG: "1"
           GPUTESTS: "1"
           LEGATE_TEST: "1"
-          LEGATE_CONFIG: "--cpus 1 --gpus 1 --utility 1 --fbmem 500"
+          LEGATE_CONFIG: "--cpus 1 --gpus 1 --utility 1 --fbmem 500 --logging legate=info,level=2 --log-to-file 1"
         matrix:
           setup:
             julia:
