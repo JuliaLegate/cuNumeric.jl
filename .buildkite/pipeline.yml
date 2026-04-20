@@ -29,7 +29,7 @@ steps:
           queue: "juliagpu"
           cuda: "*"
         if: build.message !~ /\[skip tests\]/
-        timeout_in_minutes: 45
+        timeout_in_minutes: 44
         env:
           LD_LIBRARY_PATH: ""
           LEGATE_AUTO_CONFIG: "0"
