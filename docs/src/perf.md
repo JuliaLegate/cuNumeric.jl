@@ -18,6 +18,28 @@ These variables must be set before launching the Julia instance running cuNumeri
 
 To manually set the hardware configuration, `export LEGATE_AUTO_CONFIG=0`, and then define your own config with something like `export LEGATE_CONFIG="--gpus 1 --cpus 10 --ompthreads 10"`. We recommend using the default memory configuration for your machine and only settings the `gpus`, `cpus` and `ompthreads`. More details about the Legate configuration can be found in the [NVIDIA Legate documentation](https://docs.nvidia.com/legate/latest/usage.html#resource-allocation). If you know where Legate is installed on your computer you can also run `legate --help` for more detailed information.
 
+## Reduce Allocations with `@analyze_lifetimes`
+
+Every intermediate `NDArray` (from a slice, broadcast, or function call) allocates a fresh buffer and waits for the Julia GC to free it. Because the GC runs on memory pressure, many dead buffers accumulate and pressure cuNumeric's allocator.
+
+`@analyze_lifetimes` performs a **static last-use analysis** at macro-expansion time and inserts eager `maybe_insert_delete` calls immediately after each temporary's final use. Freed buffers are returned to cuNumeric's pool and recycled by the next same-sized allocation, skipping new buffer allocation.
+
+```julia
+@analyze_lifetimes begin
+    result = A[1:end, :] .+ B[1:end, :]
+    C .= result .* 2.0
+end
+```
+
+**Benchmark** (Gray–Scott reaction–diffusion, 512×512, 10 000 steps):
+
+```
+               user     system   elapsed   CPU    max RSS
+without   106.50 s   23.87 s   58.66 s   222%   3786 MB
+with       61.74 s   13.66 s   27.84 s   270%   2999 MB
+```
+
+~2× wall-clock speedup and ~800 MB lower peak memory with no algorithmic changes.
 
 ## Kernel Fusion
 cuPyNumeric does not fuse independent operations automatically, even in broadcast expressions. This is a priority for a future release.

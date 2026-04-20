@@ -48,6 +48,22 @@ estimate = (Ω/N) * sum(integrand(samples))
 println("Monte-Carlo Estimate: $(estimate)")
 ```
 
+### Helping the Garbage Collector
+
+
+Every intermediate `NDArray` (from a slice, broadcast, or function call) allocates a fresh buffer and waits for the Julia GC to free it. Because the GC runs on memory pressure, many dead buffers accumulate and pressure cuNumeric's allocator.
+
+`@analyze_lifetimes` performs a **static last-use analysis** at macro-expansion time and inserts eager `maybe_insert_delete` calls immediately after each temporary's final use. Freed buffers are returned to cuNumeric's pool and recycled by the next same-sized allocation, skipping new buffer allocation.
+
+This macro can improve runtime and reduce memory overheads.
+
+```julia
+@analyze_lifetimes begin
+    result = A[1:end, :] .+ B[1:end, :]
+    C .= result .* 2.0
+end
+```
+
 ### Requirements
 
 We require an x86 Linux platform and Julia  >=1.10. For GPU support we require an NVIDIA GPU and a CUDA driver which supports CUDA 13.0. ARM support is theoretically possible, but we do not make binaries or test on ARM. Please open an issue if ARM support is of interest.

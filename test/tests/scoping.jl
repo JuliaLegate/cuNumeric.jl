@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -47,8 +47,8 @@ function run_slice_test(op, op_scoped, FT, N; f=0.04, k=0.06, dx=1.0)
     return base, scoped
 end
 
-binary_scope(op) = (a, b, out) -> @cunumeric out[:, :] = op(a, b)
-slice_scope(op) = (u, v, out, args) -> @cunumeric out[:, :] = op(u, v, args)
+binary_scope(op) = (a, b, out) -> @analyze_lifetimes out[:, :] = op(a, b)
+slice_scope(op) = (u, v, out, args) -> @analyze_lifetimes out[:, :] = op(u, v, args)
 
 const OPS = Dict(
     :add => (+),

@@ -1,14 +1,14 @@
-export @cunumeric
+export @analyze_lifetimes
 
 @doc"""
-    @cunumeric expr
+    @analyze_lifetimes expr
 
 Wraps a block of code so that all temporary `NDArray` allocations
 (e.g. from slicing or function calls) are tracked and safely freed
 at the end of the block. Ensures proper cleanup of GPU memory by
 inserting `maybe_insert_delete` calls automatically.
 """
-macro cunumeric(block)
+macro @analyze_lifetimes(block)
     esc(process_ndarray_scope(block))
 end
 
