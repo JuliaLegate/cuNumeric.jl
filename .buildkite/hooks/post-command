@@ -79,3 +79,4 @@ if [[ -n "$legate_log" && -f "$legate_log" ]]; then
 fi
 
 exit 0
+
