@@ -8,7 +8,7 @@ Wraps a block of code so that all temporary `NDArray` allocations
 at the end of the block. Ensures proper cleanup of GPU memory by
 inserting `maybe_insert_delete` calls automatically.
 """
-macro @analyze_lifetimes(block)
+macro analyze_lifetimes(block)
     esc(process_ndarray_scope(block))
 end
 
