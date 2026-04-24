@@ -152,8 +152,9 @@ include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
 
-# scoping macro
+# special features
 include("scoping.jl")
+include("fusion.jl")
 
 # Utilities
 include("utilities/version.jl")
