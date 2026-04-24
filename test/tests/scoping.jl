@@ -86,6 +86,28 @@ const SLICE_OPS = Dict(
     ),
 )
 
+function test_scoping_regressions(T, N)
+    A = cuNumeric.ones(T, (N, N))
+    B = cuNumeric.ones(T, (N, N))
+    C = cuNumeric.zeros(T, (N, N))
+
+    @testset "In-place assignment" begin
+        @analyze_lifetimes begin
+            result = A[1:end, :] .+ B[1:end, :]
+            C .= result .* T(2.0)
+        end
+        # Test values: (1+1) * 2 = 4
+        @test all(Array(C) .== T(4.0))
+    end
+
+    @testset "Macro as RHS" begin
+        # Test values: (1+1)^2 = 4
+        res = @analyze_lifetimes (A .+ B) .^ 2
+        @test res isa cuNumeric.NDArray
+        @test all(Array(res) .== T(4.0))
+    end
+end
+
 function run_all_ops(FT, N)
     results = Dict()
 
@@ -100,6 +122,9 @@ function run_all_ops(FT, N)
         c_base, c_scoped = run_slice_test(op, slice_scope(op), FT, N)
         results[name] = (c_base, c_scoped)
     end
+
+    # Regression tests
+    test_scoping_regressions(FT, N)
 
     return results
 end
