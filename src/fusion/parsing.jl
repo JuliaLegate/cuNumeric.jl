@@ -363,7 +363,7 @@ end
 
 is_fusion_scalar(::Number) = true
 is_fusion_scalar(_) = false
-is_fusion_array(::AbstractArray) = true
+is_fusion_array(::NDArray) = true
 is_fusion_array(_) = false
 is_fusion_arg(x) = is_fusion_array(x) || is_fusion_scalar(x)
 
