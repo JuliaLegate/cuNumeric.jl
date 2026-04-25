@@ -33,15 +33,28 @@ The NDArray type represents a multi-dimensional array in cuNumeric.
 It is a wrapper around a Legate array and provides various methods for array manipulation and operations.
 Finalizer calls `nda_destroy_array` to clean up the underlying Legate array when the NDArray is garbage collected.
 """
-mutable struct NDArray{T,N,PADDED} <: AbstractNDArray{T,N}
+mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
     ptr::NDArray_t
     nbytes::Int64
     padding::Union{Nothing,NTuple{N,Int}}
+    parent::P
 
     function NDArray(ptr::NDArray_t, ::Type{T}, ::Val{N}) where {T,N}
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
-        handle = new{T,N,false}(ptr, nbytes, nothing)
+        handle = new{T,N,false,Nothing}(ptr, nbytes, nothing, nothing)
+        finalizer(handle) do h
+            cuNumeric.nda_destroy_array(h.ptr)
+            cuNumeric.register_free!(h.nbytes)
+        end
+        return handle
+    end
+
+    # Explicit parent inner constructor
+    function NDArray(ptr::NDArray_t, ::Type{T}, ::Val{N}, parent::P) where {T,N,P}
+        nbytes = cuNumeric.nda_nbytes(ptr)
+        cuNumeric.register_alloc!(nbytes)
+        handle = new{T,N,false,P}(ptr, nbytes, nothing, parent)
         finalizer(handle) do h
             cuNumeric.nda_destroy_array(h.ptr)
             cuNumeric.register_free!(h.nbytes)
@@ -49,24 +62,14 @@ mutable struct NDArray{T,N,PADDED} <: AbstractNDArray{T,N}
         return handle
     end
 end
+# this here is to avoid if else patterns 
+@inline _NDArray(ptr, T, v, ::Nothing) = NDArray(ptr, T, v)
+@inline _NDArray(ptr, T, v, parent) = NDArray(ptr, T, v, parent)
 
-# Dynamic fallback, not great but required if we cannot infer things
-NDArray(ptr::NDArray_t; T=get_julia_type(ptr), N::Integer=get_n_dim(ptr)) = NDArray(ptr, T, Val(N))
-
-# struct WrappedNDArray{T,N} <: AbstractNDArray{T,N}
-#     ndarr::NDArray{T,N}
-#     jlarr::Array{T,N}
-
-#     function WrappedNDArray(ndarray::NDArray{T,N}, jlarray::Array{T,N}) where {T,N}
-#         ndarr = ndarray
-#         jlarr = jlarray
-#     end
-
-#     function WrappedNDArray(ndarray::NDArray{T,N}) where {T,N}
-#         ndarr = ndarray
-#         jlarr = nothing
-#     end
-# end
+# Dynamic fallback
+function NDArray(ptr::NDArray_t; T=get_julia_type(ptr), N::Integer=get_n_dim(ptr), parent=nothing)
+    return _NDArray(ptr, T, Val(N), parent)
+end
 
 #! JUST USE FULL TO MAKE a 0D?
 # $ cuNumeric.nda_full_array(UInt64[], 2.0f0)
@@ -314,7 +317,7 @@ function nda_attach_external(arr::AbstractArray{T,N}) where {T,N}
     # Use the CxxWrap method for type-safe interaction
     # This returns a raw pointer compatible with the NDArray constructor
     nda_ptr = cuNumeric.nda_store_to_ndarray(st.handle)
-    return NDArray(nda_ptr; T=T, N=N)
+    return NDArray(nda_ptr, T, Val(N), arr)
 end
 
 # return underlying logical store to the NDArray obj
@@ -448,8 +451,8 @@ Emits warnings when array sizes or element types differ.
 - Iterates over elements using `CartesianIndices` to compare element-wise difference.
 """
 function compare(
-    julia_array::AbstractArray{T,N}, arr::NDArray{T,N}, atol::Real, rtol::Real
-) where {T,N}
+    julia_array::AbstractArray{T1,N}, arr::NDArray{T2,N}, atol::Real, rtol::Real
+) where {T1,T2,N}
     if (shape(arr) != Base.size(julia_array))
         @warn "NDArray has shape $(shape(arr)) and Julia array has shape $(Base.size(julia_array))!\n"
         return false
@@ -468,8 +471,8 @@ function compare(
 end
 
 function compare(
-    arr::NDArray{T,N}, julia_array::AbstractArray{T,N}, atol::Real, rtol::Real
-) where {T,N}
+    arr::NDArray{T2,N}, julia_array::AbstractArray{T1,N}, atol::Real, rtol::Real
+) where {T1,T2,N}
     return compare(julia_array, arr, atol, rtol)
 end
 

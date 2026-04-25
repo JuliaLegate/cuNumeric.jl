@@ -72,21 +72,23 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   using jlcxx::ParameterList;
   using jlcxx::Parametric;
   using jlcxx::TypeVar;
+  using legate_util::HalfType;
 
   // Map C++ complex types to Julia complex types
   mod.map_type<std::complex<double>>("ComplexF64");
   mod.map_type<std::complex<float>>("ComplexF32");
+  mod.map_type<HalfType>("Float16");
 
   // These are the types/dims used to generate templated functions
   // i.e. only these types/dims can be used from Julia side
-  using fp_types = ParameterList<double, float>;
+  using fp_types = ParameterList<double, float, HalfType>;
   using int_types = ParameterList<int8_t, int16_t, int32_t, int64_t>;
   using uint_types = ParameterList<uint8_t, uint16_t, uint32_t, uint64_t>;
 
   using all_types =
       ParameterList<double, float, int8_t, int16_t, int32_t, int64_t, uint8_t,
                     uint16_t, uint32_t, uint64_t, bool, std::complex<double>,
-                    std::complex<float>>;
+                    std::complex<float>, HalfType>;
   using allowed_dims = ParameterList<
       std::integral_constant<int_t, 1>, std::integral_constant<int_t, 2>,
       std::integral_constant<int_t, 3>, std::integral_constant<int_t, 4>>;

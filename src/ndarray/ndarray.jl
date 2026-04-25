@@ -149,20 +149,17 @@ function (::Type{<:Array})(arr::NDArray{B}) where {B}
 end
 
 # conversion from Base Julia array to NDArray
-function (::Type{<:NDArray{A}})(arr::Array{B}) where {A,B}
-    dims = Base.size(arr)
-    out = cuNumeric.zeros(A, dims)
-    attached = cuNumeric.nda_attach_external(arr)
-    copyto!(out, attached) # copy elems of attached to resulting out
-    return out
+function (::Type{<:NDArray{T}})(arr::Array{T,N}) where {T,N}
+    return cuNumeric.nda_attach_external(arr)
 end
 
-function (::Type{<:NDArray})(arr::Array{B}) where {B}
-    dims = Base.size(arr)
-    out = cuNumeric.zeros(B, dims)
-    attached = cuNumeric.nda_attach_external(arr)
-    copyto!(out, attached)
-    return out
+function (::Type{<:NDArray{A}})(arr::Array{B,N}) where {A,B,N}
+    # If types differ, we cast in Julia first (creating a temp) then attach
+    return cuNumeric.nda_attach_external(A.(arr))
+end
+
+function (::Type{<:NDArray})(arr::Array{T,N}) where {T,N}
+    return cuNumeric.nda_attach_external(arr)
 end
 
 # Base.convert(::Type{<:NDArray{T}}, a::A) where {T, A} = NDArray(T(a))::NDArray{T}
@@ -337,6 +334,16 @@ end
 function Base.setindex!(arr::NDArray{T,N}, value::T, idxs::Vararg{Int,N}) where {T,N}
     assertscalar("setindex!")
     _setindex!(Val{N}(), arr, value, idxs...)
+end
+
+function Base.setindex!(arr::NDArray{Complex{T},N}, value::T, idxs::Vararg{Int,N}) where {T,N}
+    assertscalar("setindex!")
+    _setindex!(Val{N}(), arr, Complex{T}(value), idxs...)
+end
+
+function Base.setindex!(arr::NDArray{T,N}, value, idxs::Vararg{Int,N}) where {T,N}
+    assertscalar("setindex!")
+    _setindex!(Val{N}(), arr, convert(T, value), idxs...)
 end
 
 function _setindex!(::Val{0}, arr::NDArray{T,0}, value::T) where {T<:SUPPORTED_NUMERIC_TYPES}

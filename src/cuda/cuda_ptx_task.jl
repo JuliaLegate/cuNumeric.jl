@@ -46,12 +46,12 @@ function add_padding(arr::NDArray, i::Int64; copy=false)
 end
 
 function check_sz!(arr, maxshape; copy=false)
-    sz = size(arr)
+    sz = cuNumeric.size(arr)
     if maxshape != nothing
         # currently require all ndarray inputs to be equal
         alligned_equal_size = sz == maxshape
         if !alligned_equal_size
-            add_padding(arr, maxshape; copy=copy)
+            cuNumeric.add_padding(arr, maxshape; copy=copy)
             new_size = padded_shape(arr)
             @warn "[Padding Added] $sz output is now $new_size"
         end
@@ -65,6 +65,11 @@ function check_sz(arr, maxshape)
         alligned_equal_size = sz == maxshape
         @assert alligned_equal_size
     end
+end
+
+function nda_to_logical_array(arr::NDArray{T,N}) where {T,N}
+    st_handle = cuNumeric.get_store(arr)
+    return Legate.LogicalArray{T,N}(st_handle[], size(arr))
 end
 
 function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
@@ -85,16 +90,16 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
     input_vars = Vector{Legate.Variable}()
     for arr in inputs
         check_sz!(arr, max_shape; copy=true)
-        store = cuNumeric.get_store(arr)
-        p = Legate.add_input(task, store)
+        la = nda_to_logical_array(arr)
+        p = Legate.add_input(task, la)
         push!(input_vars, p)
     end
 
     output_vars = Vector{Legate.Variable}()
     for arr in outputs
         check_sz!(arr, max_shape; copy=false)
-        store = cuNumeric.get_store(arr)
-        p = Legate.add_output(task, store)
+        la = nda_to_logical_array(arr)
+        p = Legate.add_output(task, la)
         push!(output_vars, p)
     end
 
@@ -108,8 +113,8 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
         Legate.add_scalar(task, Legate.Scalar(s)) # 7+ -> ARG_OFFSET
     end
 
-    # all inputs are alligned with all outputs
-    Legate.add_default_alignment(task, input_vars, output_vars)
+    # all inputs are aligned with all outputs
+    Legate.default_alignment(task, input_vars, output_vars)
     Legate.submit_auto_task(rt, task)
 end
 
@@ -172,6 +177,8 @@ mytask = @cuda_task my_kernel(A, B, C)
 ```
 """
 macro cuda_task(call_expr)
+    cuNumeric.assert_experimental()
+
     fname = call_expr.args[1]
     fargs = call_expr.args[2:end]
 
@@ -230,6 +237,8 @@ mytask = @cuda_task my_kernel(A, B, C)
 ```
 """
 macro launch(args...)
+    cuNumeric.assert_experimental()
+
     allowed_keys = Set([:task, :blocks, :threads, :inputs, :outputs, :scalars])
     kwargs = Dict{Symbol,Any}()
 

@@ -29,7 +29,7 @@
 #include "types.h"
 #include "ufi.h"
 
-#define CUDA_DEBUG 1
+#define CUDA_DEBUG 0
 
 #define BLOCK_START 1
 #define THREAD_START 4

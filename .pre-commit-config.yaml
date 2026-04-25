@@ -1,3 +1,4 @@
+default_stages: [pre-commit]
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
@@ -21,3 +22,12 @@ repos:
         entry: julia --project=. -e 'using JuliaFormatter; format(ARGS, verbose=true)'
         language: system
         types: [julia]
+
+      - id: update-githash
+        name: Update .githash
+        description: "Write the current git commit hash to .githash"
+        entry: bash -c 'git rev-parse HEAD > .githash'
+        language: system
+        always_run: true
+        pass_filenames: false
+        stages: [post-commit]
