@@ -27,6 +27,10 @@ using Legate
 using Libdl
 using CxxWrap
 
+using CUDATools: CUDATools
+using CUDACore: CUDACore
+import CUDACore: CuArray
+
 using cupynumeric_jll
 using cunumeric_jl_wrapper_jll
 
@@ -152,11 +156,12 @@ include("ndarray/linalg.jl")
 
 # special features
 include("scoping.jl")
-include("fusion.jl")
+include("cuda/cuda_util.jl")
+include("cuda/cuda_ptx_task.jl")
+include("fusion/parsing.jl")
 
 # Utilities
 include("utilities/version.jl")
-include("utilities/cuda_stubs.jl")
 include("util.jl")
 
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147
@@ -240,7 +245,11 @@ function __init__()
     # legate/cunumeric when using registry CI machines.
     get(ENV, "JULIA_REGISTRYCI_AUTOMERGE", false) == "true" && return nothing
 
+    # Start runtime, but only if not pre-compiling
     ensure_runtime!()
+
+    # Requries runtime to be started
+    _setup_cuda_tasking()
 end
 
 end #module cuNumeric
