@@ -106,6 +106,41 @@ function test_scoping_regressions(T, N)
         @test res isa cuNumeric.NDArray
         @test all(Array(res) .== T(4.0))
     end
+
+    @testset "Chained intermediates freed" begin
+        # t1 = A .+ A → 2.0; t2 = t1 .* t1 → 4.0
+        res = @analyze_lifetimes begin
+            t1 = A .+ A
+            t1 .* t1
+        end
+        @test res isa cuNumeric.NDArray
+        @test all(Array(res) .== T(4.0))
+    end
+
+    @testset "Slice as function argument" begin
+        # A[2:N, 2:N] are all 1.0; adding two slices → 2.0
+        res = @analyze_lifetimes A[2:N, 2:N] .+ A[2:N, 2:N]
+        @test res isa cuNumeric.NDArray
+        @test all(Array(res) .== T(2.0))
+    end
+
+    @testset "Boundary condition write-back" begin
+        # Write column 1 of A (all 1.0) into column 1 of C (initially 0.0)
+        @analyze_lifetimes C[:, 1] = A[:, 1]
+        @test all(Array(C[:, 1]) .== T(1.0))
+        # Reset for other tests
+        C .= T(0.0)
+    end
+
+    @testset "Sequential slice-LHS setindex! block" begin
+        D = cuNumeric.zeros(T, (N, N))
+        @analyze_lifetimes begin
+            D[:, 1] = A[:, end]
+            D[:, end] = A[:, 1]
+        end
+        @test all(Array(D[:, 1]) .== T(1.0))
+        @test all(Array(D[:, end]) .== T(1.0))
+    end
 end
 
 function run_all_ops(FT, N)
