@@ -214,6 +214,7 @@ size(arr, 2)
 """
 Base.size(arr::NDArray{<:Any,N}) where {N} = cuNumeric.shape(arr)
 Base.size(arr::NDArray, dim::Int) = Base.size(arr)[dim]
+Base.isempty(arr::NDArray) = any(==(0), size(arr))
 
 @doc"""
     Base.firstindex(arr::NDArray, dim::Int)
@@ -240,9 +241,8 @@ Base.view(arr::NDArray, inds...) = arr[inds...] # NDArray slices are views by de
 Base.IndexStyle(::NDArray) = IndexCartesian()
 
 function Base.show(io::IO, arr::NDArray{T,0}) where {T}
-    println(io, "0-dimensional NDArray{$(T),0}")
     allowscalar() do
-        print(io, arr[])
+        print(io, "NDArray{$(T),0}(", repr(arr[]), ")")
     end
 end
 
@@ -253,13 +253,13 @@ function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T,0}) where {T}
     end
 end
 
-function Base.show(io::IO, arr::NDArray{T,D}) where {T,D}
-    println(io, "NDArray{$(T),$(D)}")
-    Base.print_array(io, Array(arr))
+function Base.show(io::IO, arr::NDArray{T,N}) where {T,N}
+    print(io, "NDArray{$(T),$(N)} with size ", size(arr))
 end
 
-function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T}) where {T}
-    Base.show(io, arr)
+function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T,N}) where {T,N}
+    println(io, "NDArray{$(T),$(N)} with size ", size(arr))
+    Base.print_array(io, Array(arr))
 end
 
 function Base.print(arr::NDArray{T}) where {T}

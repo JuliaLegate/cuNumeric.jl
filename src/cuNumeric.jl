@@ -30,6 +30,7 @@ using CxxWrap
 using CUDATools: CUDATools
 using CUDACore: CUDACore
 import CUDACore: CuArray
+import KernelAbstractions: @kernel, @index
 
 using cupynumeric_jll
 using cunumeric_jl_wrapper_jll
@@ -150,6 +151,7 @@ include("ndarray/unary.jl")
 include("ndarray/binary.jl")
 
 # special features
+const FUSE_BROADCAST_EXPRS = load_preference(CNPreferences, "FUSE_BROADCAST_EXPRS", true)
 include("scoping.jl")
 include("cuda/cuda_util.jl")
 include("cuda/cuda_ptx_task.jl")
