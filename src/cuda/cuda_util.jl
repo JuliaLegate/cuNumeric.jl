@@ -15,5 +15,5 @@ ndarray_cuda_type(::Type{<:NDArray{T,N}}) where {T,N} = CuDeviceArray{T,N,1}
 
 function ndarray_cuda_type(::Type{T}) where {T}
     Base.isbitstype(T) || throw(ArgumentError("Unsupported argument type: $(T)"))
-    T
+    return T
 end
