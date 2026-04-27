@@ -11,9 +11,31 @@ function _setup_cuda_tasking()
     end
 end
 
-ndarray_cuda_type(::Type{<:NDArray{T,N}}) where {T,N} = CuDeviceArray{T,N,1}
+# Other memeory types here: https://github.com/JuliaGPU/CUDA.jl/blob/345c1600ebd561135148bb04ee2657f521a40e25/CUDACore/src/device/pointer.jl#L7
+function ndarray_cuda_type(::Type{<:NDArray{T,N}}) where {T,N}
+    CUDACore.CuDeviceArray{T,N,CUDACore.AS.Global}
+end
 
 function ndarray_cuda_type(::Type{T}) where {T}
     Base.isbitstype(T) || throw(ArgumentError("Unsupported argument type: $(T)"))
     return T
+end
+
+"""
+    map_cuda_type(::Type{T})::Type
+
+Recursively rewrite cuNumeric broadcast-related types so they can be treated as CUDA-friendly
+types for code generation (e.g. mapping `NDArray{...}` to `CuDeviceArray{...}` inside
+`Base.Broadcast.Broadcasted{...}` type parameters).
+"""
+map_cuda_type(::Type{T}) where {T} = T
+
+map_cuda_type(::Type{<:NDArray{T,N}}) where {T,N} = ndarray_cuda_type(NDArray{T,N})
+
+function map_cuda_type(::Type{T}) where {T<:Tuple}
+    return Tuple{map_cuda_type.(T.parameters)...}
+end
+
+function map_cuda_type(::Type{Base.Broadcast.Broadcasted{S,Ax,F,Args}}) where {S,Ax,F,Args}
+    return Base.Broadcast.Broadcasted{map_cuda_type(S),Ax,F,map_cuda_type(Args)}
 end

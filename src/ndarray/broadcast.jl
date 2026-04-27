@@ -4,6 +4,11 @@ struct NDArrayStyle{N} <: AbstractArrayStyle{N} end
 Base.BroadcastStyle(::Type{<:NDArray{<:Any,N}}) where {N} = NDArrayStyle{N}()
 Base.BroadcastStyle(::NDArrayStyle{N}, ::NDArrayStyle{M}) where {N,M} = NDArrayStyle{max(N, M)}()
 
+# Some other functions in cuda_util.jl
+function map_cuda_type(::Type{cuNumeric.NDArrayStyle{N}}) where {N}
+    CUDACore.CuArrayStyle{N,CUDACore.DeviceMemory}
+end # Also can be HostMemory or UnifiedMemory
+
 function _nd_forbid_mix()
     throw(
         ArgumentError(
@@ -53,24 +58,6 @@ end
 bcast_depth(bc::Base.Broadcast.Broadcasted) = maximum(bcast_depth, bc.args, init=0) + 1;
 bcast_depth(::Any) = 0
 
-# Copied from GPUArrays: https://github.com/JuliaGPU/GPUArrays.jl/blob/a9df2ba41ca2358c1de2f3cc6b020578bf6e39b1/src/host/broadcast.jl#L60-L63
-# Defined with KernelAbstractions.jl. Makes it easier to generate indexing for
-# various dimensions of inputs/outputs. Assumes broadcast is `Base.Broadcast.process`ed so that
-# dest/bc have singleton dimensions inserted and we can index 1-1 like this.
-@kernel function broadcast_kernel_cartesian(dest, bc)
-    I = @index(Global, Cartesian)
-    @inbounds dest[I] = bc[I]
-end
-
-@kernel function broadcast_kernel_linear(dest, bc)
-    I = @index(Global, Linear)
-    @inbounds dest[I] = bc[I]
-end
-
-# No compilation here, just generating CUDA specific kernel.
-const GPU_CARTESIAN_KERNEL = broadcast_kernel_cartesian(CUDACore.CUDAKernels.CUDABackend())
-const GPU_LINEAR_KERNEL = broadcast_kernel_linear(CUDACore.CUDAKernels.CUDABackend())
-
 struct BrokenBroadcast{T} end
 Base.convert(::Type{BrokenBroadcast{T}}, x) where {T} = BrokenBroadcast{T}()
 Base.convert(::Type{BrokenBroadcast{T}}, x::BrokenBroadcast{T}) where {T} = x
@@ -112,6 +99,7 @@ function __materialize(bc::Broadcasted{<:NDArrayStyle})
     unravel_broadcast_tree(bc)
 end
 
+# Un-fused implementation of broadcast tree
 function unravel_broadcast_tree(bc::Broadcasted)
 
     # Recursively materialize/unravel any nested broadcasts
@@ -135,25 +123,6 @@ function unravel_broadcast_tree(bc::Broadcasted)
     # the Julia function and assumes the user defined a function
     # composed of supported operations.
     return __broadcast(bc.f, out, in_args...)
-end
-
-function fuse_broadcast_tree!(dest::NDArray, bc::Broadcasted)
-    bc = Base.Broadcast.preprocess(dest, bc)
-
-    # Get proper kernel
-    broadcast_kernel =
-        if ndims(dest) == 1 ||
-            (isa(IndexStyle(dest), IndexLinear) &&
-            isa(IndexStyle(bc), IndexLinear))
-            GPU_LINEAR_KERNEL
-        else
-            GPU_CARTESIAN_KERNEL
-        end
-
-    #! DO I NEED TO DO TYPE PROMOTION CHECKS??
-    # ndims check for 0D support
-    broadcast_kernel(dest, bc; ndrange=ndims(dest) > 0 ? size(dest) : (1,))
-    return dest
 end
 
 @inline function _copyto!(dest::NDArray, bc::Broadcasted)

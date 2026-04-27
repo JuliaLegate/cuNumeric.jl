@@ -31,6 +31,7 @@ using CUDATools: CUDATools
 using CUDACore: CUDACore
 import CUDACore: CuArray
 import KernelAbstractions: @kernel, @index
+import KernelAbstractions as KA
 
 using cupynumeric_jll
 using cunumeric_jl_wrapper_jll
@@ -143,23 +144,22 @@ include("warnings.jl")
 # NDArray internal
 include("ndarray/detail/ndarray.jl")
 
-# NDArray interface
+# Utilities
+include("cuda/cuda_util.jl")
+include("utilities/version.jl")
+include("util.jl")
+
+const FUSE_BROADCAST_EXPRS = load_preference(CNPreferences, "FUSE_BROADCAST_EXPRS", true)
+
+# Functionality
 include("ndarray/promotion.jl")
+include("cuda/cuda_ptx_task.jl")
+include("ndarray/broadcast_fusion.jl")
 include("ndarray/broadcast.jl")
 include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
-
-# special features
-const FUSE_BROADCAST_EXPRS = load_preference(CNPreferences, "FUSE_BROADCAST_EXPRS", true)
 include("scoping.jl")
-include("cuda/cuda_util.jl")
-include("cuda/cuda_ptx_task.jl")
-include("fusion/parsing.jl")
-
-# Utilities
-include("utilities/version.jl")
-include("util.jl")
 
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147
 mutable struct ArgcArgv
