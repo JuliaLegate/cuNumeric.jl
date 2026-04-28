@@ -28,6 +28,7 @@ namespace ufi {
 enum TaskIDs {
   LOAD_PTX_TASK = 143432,
   RUN_PTX_TASK = 143433,
+  RUN_PTX_BROADCAST_TASK = 143434,
 };
 
 class LoadPTXTask : public legate::LegateTask<LoadPTXTask> {
@@ -42,6 +43,14 @@ class RunPTXTask : public legate::LegateTask<RunPTXTask> {
  public:
   static inline const auto TASK_CONFIG =
       legate::TaskConfig{legate::LocalTaskID{ufi::RUN_PTX_TASK}};
+
+  static void gpu_variant(legate::TaskContext context);
+};
+
+class RunPTXBroadcastTask : public legate::LegateTask<RunPTXBroadcastTask> {
+ public:
+  static inline const auto TASK_CONFIG =
+      legate::TaskConfig{legate::LocalTaskID{ufi::RUN_PTX_BROADCAST_TASK}};
 
   static void gpu_variant(legate::TaskContext context);
 };

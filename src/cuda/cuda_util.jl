@@ -39,3 +39,7 @@ end
 function map_cuda_type(::Type{Base.Broadcast.Broadcasted{S,Ax,F,Args}}) where {S,Ax,F,Args}
     return Base.Broadcast.Broadcasted{map_cuda_type(S),Ax,F,map_cuda_type(Args)}
 end
+
+function map_cuda_type(::Type{Base.Broadcast.Extruded{X,K,D}}) where {X,K,D}
+    return Base.Broadcast.Extruded{map_cuda_type(X),K,D}
+end

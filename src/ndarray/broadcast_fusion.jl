@@ -17,8 +17,35 @@ end
 const GPU_CARTESIAN_KERNEL = broadcast_kernel_cartesian(CUDACore.CUDAKernels.CUDABackend())
 const GPU_LINEAR_KERNEL = broadcast_kernel_linear(CUDACore.CUDAKernels.CUDABackend())
 
-const _BCAST_PTX_CACHE = Dict{Tuple{Any,DataType,DataType,Any},Tuple{CUDATask,Int,Int}}()
+struct FusedBroadcastMetadata
+    ctx::Any # KA.CompilerMetadata
+    threads::Int
+    blocks::Int
+    cuda_task::CUDATask
+end
+
+const _BCAST_PTX_CACHE = Dict{Tuple{Any,DataType,DataType,Any},FusedBroadcastMetadata}()
 const _BCAST_PTX_CACHE_LOCK = ReentrantLock()
+
+_isbits_size_str(::Type{T}) where {T} = isbitstype(T) ? string(sizeof(T)) : "n/a"
+
+function _collect_cudevicearray_offsets!(offsets::Vector{Int}, ::Type{T}, base::Int=0) where {T}
+    if T <: CUDACore.CuDeviceArray
+        push!(offsets, base)
+        return offsets
+    end
+    if isbitstype(T) && fieldcount(T) > 0
+        for i in 1:fieldcount(T)
+            FT = fieldtype(T, i)
+            _collect_cudevicearray_offsets!(offsets, FT, base + Int(fieldoffset(T, i)))
+        end
+    end
+    return offsets
+end
+
+function _collect_cudevicearray_offsets(::Type{T}) where {T}
+    return Tuple(_collect_cudevicearray_offsets!(Int[], T, 0))
+end
 
 function _default_broadcast_threads(ndrange)
     n = prod(ndrange)
@@ -83,33 +110,43 @@ function get_ptx(
 
     blocks = length(KA.blocks(iterspace))
     threads = length(KA.workitems(iterspace))
-    blocks == 0 && return "", 0, 0
+    blocks == 0 && return "", 0, 0, ctx
 
     buf = IOBuffer()
     CUDATools.code_ptx(buf, obj.f, (typeof(ctx), DEST_T, BC_T); raw=false, kernel=true)
-    return String(take!(buf)), threads, blocks
+    return String(take!(buf)), threads, blocks, ctx
 end
 
 function get_cuda_task(
     obj::KA.Kernel{CUDACore.CUDAKernels.CUDABackend},
-    ::Type{DEST_T},
-    ::Type{BC_T};
+    dest::D,
+    bc::B,
     ndrange,
-) where {DEST_T,BC_T}
-    key = (obj, DEST_T, BC_T, ndrange)
+) where {D<:NDArray,B<:Base.Broadcast.Broadcasted}
+    DEST_T = map_cuda_type(D)
+    BC_T = map_cuda_type(B)
+
+    key = (obj, D, B, ndrange)
     lock(_BCAST_PTX_CACHE_LOCK) do
         # Also stores in cache if not found in Dict
         return get!(_BCAST_PTX_CACHE, key) do
-            ptx, blocks, threads = get_ptx(obj, DEST_T, BC_T; ndrange=ndrange)
-            func_name = extract_kernel_name(_ptx)
+            ptx, threads, blocks, ctx = get_ptx(obj, DEST_T, BC_T; ndrange=ndrange)
+            func_name = extract_kernel_name(ptx)
+            # println(ptx)
             ptx_task(ptx, func_name)
-            (CUDATask(func_name, (DEST_T, BC_T)), blocks, threads)
+            cuda_task = CUDATask(func_name, (DEST_T, BC_T))
+            FusedBroadcastMetadata(ctx, threads, blocks, cuda_task)
         end
     end
 end
 
 function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcast.Broadcasted}
+
+    #! HOW DOES THIS BEHAVE WHEN BC HAS 2 RESULT ARRAYS?
+
     bc = Base.Broadcast.preprocess(dest, bc)
+    bc = Base.Broadcast.instantiate(bc)
+    bc = Base.Broadcast.flatten(bc)
 
     # Get proper kernel
     broadcast_kernel =
@@ -123,15 +160,30 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
 
     ndrange = ndims(dest) > 0 ? size(dest) : (1,)
 
-    # Create "fake" type signatures to compile kernel with CUDA.jl infrastructure
-    DEST_T = map_cuda_type(typeof(dest))
-    BC_T = map_cuda_type(B)
-
     # Lookup in cache, if not found, compile and cache
-    cuda_task, threads, blocks = get_cuda_task(broadcast_kernel, DEST_T, BC_T; ndrange=ndrange)
-    # TODO: register with Legate runtime like @cuda_task does
+    fused_kernel_metadata = get_cuda_task(broadcast_kernel, dest, bc, ndrange)
+    input_deps = Tuple(arg for arg in bc.args if arg isa NDArray)
+    bc_gpu = CUDACore.cudaconvert(bc)
+    bc_ndarray_offsets = _collect_cudevicearray_offsets(typeof(bc_gpu))
+    @assert length(bc_ndarray_offsets) == length(input_deps)
 
-    # https://github.com/JuliaGPU/CUDA.jl/blob/345c1600ebd561135148bb04ee2657f521a40e25/CUDACore/src/CUDAKernels.jl#L111
+    launch_broadcast(
+        fused_kernel_metadata.cuda_task,
+        input_deps,
+        (dest,),
+        (bc_gpu,);
+        blocks=(fused_kernel_metadata.blocks,),
+        threads=(fused_kernel_metadata.threads,),
+        prefix_scalars=(fused_kernel_metadata.ctx,),
+        kernel_input_args_count=0,
+        kernel_output_args_count=1,
+        bc_ndarray_offsets=bc_ndarray_offsets,
+    )
+
+    #! DOUBLE CHECK bc.args ACTAULLY GIVES BACK ARRAYS
+    #! HOW TO GET SCALARS???
+    # scalars = ????
+    # launch(cuda_task, bc.args, (dest,), scalars; blocks, threads)
 
     #! DO I NEED TO DO TYPE PROMOTION CHECKS??
 
