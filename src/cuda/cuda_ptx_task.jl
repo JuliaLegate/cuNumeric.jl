@@ -2,7 +2,7 @@ export @cuda_task, @launch, CUDATask
 
 struct CUDATask
     func::String
-    argtypes::NTuple{N,Type} where {N}
+    argtypes::NTuple{N,Type} where {N} #! THIS IS TYPE UNSTABLE
 end
 
 #! JUST PASS TYPES HERE INSTEAD OF CALLING typeof()
@@ -118,7 +118,8 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
     Legate.submit_auto_task(rt, task)
 end
 
-function launch(kernel::CUDATask, inputs, outputs, scalars; blocks, threads)
+function launch(kernel::CUDATask, inputs, outputs, scalars;
+    blocks, threads)
     Launch(kernel,
         isa(inputs, Tuple) ? inputs : (inputs,),
         isa(outputs, Tuple) ? outputs : (outputs,),
@@ -126,6 +127,66 @@ function launch(kernel::CUDATask, inputs, outputs, scalars; blocks, threads)
         blocks=isa(blocks, Tuple) ? blocks : (blocks,),
         threads=isa(threads, Tuple) ? threads : (threads,),
     )
+end
+
+function launch_broadcast(kernel::CUDATask, inputs, outputs, scalars;
+    blocks, threads, prefix_scalars=(),
+    kernel_input_args_count=0,
+    kernel_output_args_count=length(isa(outputs, Tuple) ? outputs : (outputs,)),
+    bc_ndarray_offsets=())
+    input_tup = isa(inputs, Tuple) ? inputs : (inputs,)
+    output_tup = isa(outputs, Tuple) ? outputs : (outputs,)
+    scalar_tup = isa(scalars, Tuple) ? scalars : (scalars,)
+    prefix_tup = isa(prefix_scalars, Tuple) ? prefix_scalars : (prefix_scalars,)
+    offsets_tup = isa(bc_ndarray_offsets, Tuple) ? bc_ndarray_offsets : (bc_ndarray_offsets,)
+
+    ndarrays = vcat(input_tup..., output_tup...)
+    mx = findmax(arr -> arr.nbytes, ndarrays)
+    max_shape = size(ndarrays[mx[2]])
+    @assert !isnothing(max_shape)
+
+    rt = Legate.get_runtime()
+    lib = cuNumeric.get_lib()
+    taskid = cuNumeric.RUN_PTX_BROADCAST
+    task = Legate.create_auto_task(rt, lib, taskid)
+
+    input_vars = Vector{Legate.Variable}()
+    for arr in input_tup
+        check_sz!(arr, max_shape; copy=true)
+        la = nda_to_logical_array(arr)
+        p = Legate.add_input(task, la)
+        push!(input_vars, p)
+    end
+
+    output_vars = Vector{Legate.Variable}()
+    for arr in output_tup
+        check_sz!(arr, max_shape; copy=false)
+        la = nda_to_logical_array(arr)
+        p = Legate.add_output(task, la)
+        push!(output_vars, p)
+    end
+
+    Legate.add_scalar(task, Legate.string_to_scalar(kernel.func)) # 0
+    cuNumeric.add_xyz_scalars(task, to_stdvec(UInt32, blocks))  # 1,2,3
+    cuNumeric.add_xyz_scalars(task, to_stdvec(UInt32, threads)) # 4,5,6
+    Legate.add_scalar(task, Legate.Scalar(UInt32(length(prefix_tup)))) # 7
+    Legate.add_scalar(task, Legate.Scalar(UInt32(kernel_input_args_count))) # 8
+    Legate.add_scalar(task, Legate.Scalar(UInt32(kernel_output_args_count))) # 9
+    Legate.add_scalar(task, Legate.Scalar(UInt32(length(offsets_tup)))) # 10
+
+    for off in offsets_tup
+        Legate.add_scalar(task, Legate.Scalar(UInt32(off)))
+    end
+
+    for s in prefix_tup
+        Legate.add_scalar(task, Legate.Scalar(s))
+    end
+    for s in scalar_tup
+        Legate.add_scalar(task, Legate.Scalar(s))
+    end
+
+    Legate.default_alignment(task, input_vars, output_vars)
+    Legate.submit_auto_task(rt, task)
 end
 
 function ptx_task(ptx::String, kernel_name)
@@ -269,7 +330,8 @@ macro launch(args...)
     esc(
         quote
             cuNumeric.launch(
-                $task, $inputs, $outputs, $scalars; blocks=($blocks), threads=($threads)
+                $task, $inputs, $outputs, $scalars;
+                blocks=($blocks), threads=($threads),
             )
         end,
     )
