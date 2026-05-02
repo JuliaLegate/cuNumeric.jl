@@ -4,8 +4,12 @@ version = "0.1.0"
 
 [deps]
 CNPreferences = "3e078157-ea10-49d5-bf32-908f777cd46f"
+CUDACore = "bd0ed864-bdfe-4181-a5ed-ce625a5fdea2"
+CUDATools = "9ec180c6-1c07-47c7-9e6e-ebefa4d1f6d0"
 CxxWrap = "1f15a43c-97ca-5a2a-ae31-89f07a497df4"
+ExpressionExplorer = "21656369-7473-754a-2065-74616d696c43"
 JuliaFormatter = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
+KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 Legate = "1238f2cf-6593-4d60-9aca-2f5364e49909"
 LegatePreferences = "8028f36a-2b64-49e9-aa04-2d0933fd2ed9"
 Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
@@ -20,17 +24,14 @@ cunumeric_jl_wrapper_jll = "49048992-29d2-5fd1-994f-9cecf112d624"
 cupynumeric_jll = "2862d674-414d-5b0b-a494-b21f8deca547"
 libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
 
-[weakdeps]
-CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
-
-[extensions]
-CUDAExt = "CUDA"
-
 [compat]
 CNPreferences = "0.1.2"
-CUDA = "5.9"
+CUDACore = "6.0.0"
+CUDATools = "6.0.0"
 CxxWrap = "0.17"
+ExpressionExplorer = "1.1.4"
 JuliaFormatter = "2.3.0"
+KernelAbstractions = "0.9.41"
 Legate = "0.1.2"
 LegatePreferences = "0.1.6"
 MacroTools = "0.5.16"
@@ -40,5 +41,5 @@ Preferences = "1"
 Random = "1"
 StatsBase = "0.34"
 cunumeric_jl_wrapper_jll = "25.10.3"
-cupynumeric_jll = "25.10.2"
+cupynumeric_jll = "25.10.3"
 julia = "1.10"

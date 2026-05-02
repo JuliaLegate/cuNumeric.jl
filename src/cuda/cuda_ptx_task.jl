@@ -1,0 +1,354 @@
+export @cuda_task, @launch, CUDATask
+
+struct CUDATask
+    func::String
+    argtypes::NTuple{N,Type} where {N} #! THIS IS TYPE UNSTABLE
+end
+
+#! JUST PASS TYPES HERE INSTEAD OF CALLING typeof()
+map_ndarray_cuda_types(args...) = tuple(map(ndarray_cuda_type, typeof.(args))...)
+
+function to_stdvec(::Type{T}, vec) where {T}
+    stdvec = CxxWrap.StdVector{T}()
+    for x in vec
+        push!(stdvec, T(x))
+    end
+    return stdvec
+end
+
+function add_padding(arr::NDArray, dims::Dims{N}; copy=false) where {N}
+    old_size = size(arr)
+
+    @assert all(dims .>= old_size) "newdims must be ≥ current dims elementwise"
+    new = zeros(eltype(arr), dims)
+
+    if copy # due to being an input. we don't need to copy outputs
+        indices = ntuple(d -> 1:old_size[d], length(old_size))
+        assign(new[indices...], arr)
+    end
+
+    nda_destroy_array(arr.ptr)
+    register_free!(arr.nbytes)
+
+    # update pointer & update metadata
+    arr.ptr = new.ptr
+    arr.nbytes = new.nbytes
+    arr.padding = old_size # remember the prior (before the padding)
+
+    # julia GC will call finalizer, but we manually cleaned it
+    new.ptr = Ptr{Cvoid}(0)
+    new.nbytes = 0
+    new.padding = nothing
+end
+
+function add_padding(arr::NDArray, i::Int64; copy=false)
+    add_padding(arr, (i,); copy=copy)
+end
+
+function check_sz!(arr, maxshape; copy=false)
+    sz = cuNumeric.size(arr)
+    if maxshape != nothing
+        # currently require all ndarray inputs to be equal
+        alligned_equal_size = sz == maxshape
+        if !alligned_equal_size
+            cuNumeric.add_padding(arr, maxshape; copy=copy)
+            new_size = padded_shape(arr)
+            @warn "[Padding Added] $sz output is now $new_size"
+        end
+    end
+end
+
+function check_sz(arr, maxshape)
+    sz = cuNumeric.size(arr)
+    if maxshape != nothing
+        # currently require all ndarray inputs to be equal
+        alligned_equal_size = sz == maxshape
+        @assert alligned_equal_size
+    end
+end
+
+function nda_to_logical_array(arr::NDArray{T,N}) where {T,N}
+    st_handle = cuNumeric.get_store(arr)
+    return Legate.LogicalArray{T,N}(st_handle[], size(arr))
+end
+
+function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
+    outputs::Tuple{Vararg{NDArray}}, scalars::Tuple{Vararg{Any}}; blocks, threads)
+
+    # we find the largest input/output.
+    ndarrays = vcat(inputs..., outputs...)
+    mx = findmax(arr -> arr.nbytes, ndarrays) # returns (nbytes, position)
+    max_size = mx[1] # first elem nbytes
+    max_shape = size(ndarrays[mx[2]]) # second elem max position
+    @assert !isnothing(max_shape)
+
+    rt = Legate.get_runtime()
+    lib = cuNumeric.get_lib()
+    taskid = cuNumeric.RUN_PTX
+    task = Legate.create_auto_task(rt, lib, taskid)
+
+    input_vars = Vector{Legate.Variable}()
+    for arr in inputs
+        check_sz!(arr, max_shape; copy=true)
+        la = nda_to_logical_array(arr)
+        p = Legate.add_input(task, la)
+        push!(input_vars, p)
+    end
+
+    output_vars = Vector{Legate.Variable}()
+    for arr in outputs
+        check_sz!(arr, max_shape; copy=false)
+        la = nda_to_logical_array(arr)
+        p = Legate.add_output(task, la)
+        push!(output_vars, p)
+    end
+
+    # next 3 lines are reserved scalars in the RUN_PTX task
+    Legate.add_scalar(task, Legate.string_to_scalar(kernel.func)) # 0
+    cuNumeric.add_xyz_scalars(task, to_stdvec(UInt32, blocks))  # bx,by,bz 1,2,3
+    cuNumeric.add_xyz_scalars(task, to_stdvec(UInt32, threads)) # tx,ty,tz 4,5,6
+
+    # any user defined scalars in the launch macro
+    for s in scalars
+        Legate.add_scalar(task, Legate.Scalar(s)) # 7+ -> ARG_OFFSET
+    end
+
+    # all inputs are aligned with all outputs
+    Legate.default_alignment(task, input_vars, output_vars)
+    Legate.submit_auto_task(rt, task)
+end
+
+function launch(kernel::CUDATask, inputs, outputs, scalars;
+    blocks, threads)
+    Launch(kernel,
+        isa(inputs, Tuple) ? inputs : (inputs,),
+        isa(outputs, Tuple) ? outputs : (outputs,),
+        isa(scalars, Tuple) ? scalars : (scalars,);
+        blocks=isa(blocks, Tuple) ? blocks : (blocks,),
+        threads=isa(threads, Tuple) ? threads : (threads,),
+    )
+end
+
+struct BroadcastPatchInfo
+    broadcast_size::Int
+    inputs::Tuple
+    array_offsets::Tuple{Vararg{Int}}
+    array_input_indices::Tuple{Vararg{Int}}
+    scalar_offsets::Tuple{Vararg{Int}}
+    scalar_values::Tuple
+end
+
+function launch_broadcast(kernel::CUDATask, outputs, patch_info::BroadcastPatchInfo;
+    blocks, threads, prefix_scalars=(),
+    kernel_input_args_count=0,
+    kernel_output_args_count=length(isa(outputs, Tuple) ? outputs : (outputs,)))
+    input_tup = patch_info.inputs
+    output_tup = isa(outputs, Tuple) ? outputs : (outputs,)
+    scalar_tup = patch_info.scalar_values
+    prefix_tup = isa(prefix_scalars, Tuple) ? prefix_scalars : (prefix_scalars,)
+
+    length(patch_info.array_offsets) == length(patch_info.array_input_indices) ||
+        throw(ArgumentError("Broadcast array patch offsets and input indices must match"))
+
+    isempty(output_tup) && throw(ArgumentError("Broadcast launch requires an output array"))
+    max_shape = size(first(output_tup))
+    @assert !isnothing(max_shape)
+
+    rt = Legate.get_runtime()
+    lib = cuNumeric.get_lib()
+    taskid = cuNumeric.RUN_PTX_BROADCAST
+    task = Legate.create_auto_task(rt, lib, taskid)
+
+    input_vars = Vector{Legate.Variable}()
+    for arr in input_tup
+        check_sz(arr, max_shape)
+        la = nda_to_logical_array(arr)
+        p = Legate.add_input(task, la)
+        push!(input_vars, p)
+    end
+
+    output_vars = Vector{Legate.Variable}()
+    for arr in output_tup
+        check_sz(arr, max_shape)
+        la = nda_to_logical_array(arr)
+        p = Legate.add_output(task, la)
+        push!(output_vars, p)
+    end
+
+    Legate.add_scalar(task, Legate.string_to_scalar(kernel.func)) # 0
+    cuNumeric.add_xyz_scalars(task, to_stdvec(UInt32, blocks))  # 1,2,3
+    cuNumeric.add_xyz_scalars(task, to_stdvec(UInt32, threads)) # 4,5,6
+    Legate.add_scalar(task, Legate.Scalar(UInt32(length(prefix_tup)))) # 7
+    Legate.add_scalar(task, Legate.Scalar(UInt32(kernel_input_args_count))) # 8
+    Legate.add_scalar(task, Legate.Scalar(UInt32(kernel_output_args_count))) # 9
+    Legate.add_scalar(task, Legate.Scalar(UInt32(length(patch_info.array_offsets)))) # 10
+    Legate.add_scalar(task, Legate.Scalar(UInt32(length(patch_info.scalar_offsets)))) # 11
+    Legate.add_scalar(task, Legate.Scalar(UInt32(patch_info.broadcast_size))) # 12
+
+    for (off, input_index) in zip(patch_info.array_offsets, patch_info.array_input_indices)
+        Legate.add_scalar(task, Legate.Scalar(UInt32(off)))
+        Legate.add_scalar(task, Legate.Scalar(UInt32(input_index)))
+    end
+
+    for off in patch_info.scalar_offsets
+        Legate.add_scalar(task, Legate.Scalar(UInt32(off)))
+    end
+
+    for s in prefix_tup
+        Legate.add_scalar(task, Legate.Scalar(s))
+    end
+    for s in scalar_tup
+        Legate.add_scalar(task, Legate.Scalar(s))
+    end
+
+    Legate.default_alignment(task, input_vars, output_vars)
+    Legate.submit_auto_task(rt, task)
+end
+
+function ptx_task(ptx::String, kernel_name)
+    rt = Legate.get_runtime()
+    lib = cuNumeric.get_lib() # grab lib of legate app
+    # this taskid is directly tied to cpp code in our setup
+    taskid = cuNumeric.LOAD_PTX
+    task = Legate.create_auto_task(rt, lib, taskid)
+    # assign task arguments
+    Legate.add_scalar(task, Legate.string_to_scalar(ptx))
+    Legate.add_scalar(task, Legate.string_to_scalar(kernel_name))
+    Legate.submit_auto_task(rt, task)
+end
+
+"""
+    @cuda_task(f(args...))
+
+Compile a Julia GPU kernel to PTX, register it with the Legate runtime,
+and return a `CUDATask` object for later launch.
+
+# Arguments
+- `f` — The name of the Julia CUDA.jl GPU kernel function to compile.
+- `args...` — Example arguments to the kernel, used to determine the
+  argument type signature when generating PTX.
+
+# Description
+This macro automates the process of:
+1. Inferring the CUDA argument types for the given `args` using
+   `map_ndarray_cuda_types`.
+2. Using `CUDA.code_ptx` to compile the specified GPU kernel
+   (`f`) into raw PTX text for the inferred types.
+3. Extracting the kernel's function symbol name from the PTX using
+   `extract_kernel_name`.
+4. Registering the compiled PTX and kernel name with the Legate runtime
+   via `ptx_task`, making it available for GPU execution.
+5. Returning a `CUDATask` struct that stores the kernel name and type signature,
+   which can be used to configure and launch the kernel later.
+
+# Notes
+- The `args...` are not executed; they are used solely for type inference.
+- This macro is intended for use with the Legate runtime and
+  assumes a CUDA context is available.
+- Make sure your kernel code is GPU-compatible and does not rely on
+  unsupported Julia features.
+
+# Example
+```julia
+mytask = @cuda_task my_kernel(A, B, C)
+```
+"""
+macro cuda_task(call_expr)
+    cuNumeric.assert_experimental()
+
+    fname = call_expr.args[1]
+    fargs = call_expr.args[2:end]
+
+    esc(quote
+        local _buf = IOBuffer()
+        local _types = map_ndarray_cuda_types($(fargs...))
+        # generate ptx using CUDA.jl
+        CUDATools.code_ptx(_buf, $fname, _types; raw=false, kernel=true)
+
+        local _ptx = String(take!(_buf))
+        local _func_name = extract_kernel_name(_ptx)
+
+        # issue ptx_task within legate runtime to register cufunction ptr with cucontext
+        ptx_task(_ptx, _func_name)
+
+        # create a cuNumeric.CUDAtask that stores some info for a launch config
+        CUDATask(_func_name, _types)
+    end)
+end
+
+"""
+    @launch(; task, blocks=(1,), threads=(256,), inputs=(), outputs=(), scalars=())
+
+Launch a GPU kernel (previously registered via [`@cuda_task`](@ref))  through the Legate runtime.
+
+# Keywords
+- `task` — A `CUDATask` object, typically returned by [`@cuda_task`](@ref).
+- `blocks`  — Tuple or single element specifying the CUDA grid dimensions. Defaults to `(1,)`.
+- `threads` — Tuple or single element specifying the CUDA block dimensions. Defaults to `(256,)`.
+- `inputs`  — Tuple or single element of input NDArray objects.
+- `outputs` — Tuple or single element of output NDArray objects.
+- `scalars` — Tuple or single element of scalar values.
+
+# Description
+The `@launch` macro validates the provided keywords, ensuring only
+the allowed set (`:task`, `:blocks`, `:threads`, `:inputs`, `:outputs`, `:scalars`)
+are present. It then expands to a call to `cuNumeric.launch`,
+passing the given arguments to the Legate runtime for execution.
+
+This macro is meant to provide a concise, declarative syntax for
+launching GPU kernels, separating kernel compilation (via `@cuda_task`)
+from execution configuration.
+
+# Notes
+- `task` **must** be a kernel registered with the runtime, usually from `@cuda_task`.
+- All keyword arguments must be specified as assignments, e.g. `blocks=(2,2)` not positional arguments.
+- Defaults are chosen for single-block, 256-thread 1D launches.
+- The macro escapes its body so that the values of inputs/outputs/scalars are captured
+  from the surrounding scope at macro expansion time.
+
+# Example
+```julia
+mytask = @cuda_task my_kernel(A, B, C)
+
+@launch task=mytask blocks=(8,8) threads=(32,32) inputs=(A, B) outputs=(C)
+```
+"""
+macro launch(args...)
+    cuNumeric.assert_experimental()
+
+    allowed_keys = Set([:task, :blocks, :threads, :inputs, :outputs, :scalars])
+    kwargs = Dict{Symbol,Any}()
+
+    for ex in args
+        if !(ex isa Expr && ex.head == :(=))
+            error("All arguments must be keyword assignments, e.g. task=..., threads=...")
+        end
+        key = ex.args[1]
+        val = ex.args[2]
+
+        if !(key in allowed_keys)
+            error("@launch macro received unexpected keyword: $(key)")
+        end
+
+        kwargs[key] = val
+    end
+
+    if !haskey(kwargs, :task)
+        error("@launch macro requires 'task=...' to be provided.")
+    end
+    task = kwargs[:task]
+    blocks = get(kwargs, :blocks, :((1)))
+    threads = get(kwargs, :threads, :((256)))
+    inputs = get(kwargs, :inputs, :(()))
+    outputs = get(kwargs, :outputs, :(()))
+    scalars = get(kwargs, :scalars, :(()))
+
+    esc(
+        quote
+            cuNumeric.launch(
+                $task, $inputs, $outputs, $scalars;
+                blocks=($blocks), threads=($threads),
+            )
+        end,
+    )
+end

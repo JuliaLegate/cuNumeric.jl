@@ -61,6 +61,7 @@ void register_tasks() {
   auto library = get_lib();
   ufi::LoadPTXTask::register_variants(library);
   ufi::RunPTXTask::register_variants(library);
+  ufi::RunPTXBroadcastTask::register_variants(library);
 }
 #endif
 

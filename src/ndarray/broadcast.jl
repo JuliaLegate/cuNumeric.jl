@@ -4,6 +4,11 @@ struct NDArrayStyle{N} <: AbstractArrayStyle{N} end
 Base.BroadcastStyle(::Type{<:NDArray{<:Any,N}}) where {N} = NDArrayStyle{N}()
 Base.BroadcastStyle(::NDArrayStyle{N}, ::NDArrayStyle{M}) where {N,M} = NDArrayStyle{max(N, M)}()
 
+# Some other functions in cuda_util.jl
+function map_cuda_type(::Type{cuNumeric.NDArrayStyle{N}}) where {N}
+    CUDACore.CuArrayStyle{N,CUDACore.DeviceMemory}
+end # Also can be HostMemory or UnifiedMemory
+
 function _nd_forbid_mix()
     throw(
         ArgumentError(
@@ -38,6 +43,7 @@ function Base.similar(bc::Broadcasted{NDArrayStyle{N}}, ::Type{ElType}) where {N
 end
 
 function __broadcast(f::Function, _, args...)
+    #! WITH FUSION I THINK WE CAN SUPPORT THIS BY JUST CALLING MAP or MAP!
     error(
         """
         Tried to broadcast $(f). cuNumeric.jl does not support broadcasting user-defined functions yet. Please re-define \
@@ -52,18 +58,27 @@ end
 bcast_depth(bc::Base.Broadcast.Broadcasted) = maximum(bcast_depth, bc.args, init=0) + 1;
 bcast_depth(::Any) = 0
 
-function Base.Broadcast.materialize(bc::Broadcasted{<:NDArrayStyle})
+struct BrokenBroadcast{T} end
+Base.convert(::Type{BrokenBroadcast{T}}, x) where {T} = BrokenBroadcast{T}()
+Base.convert(::Type{BrokenBroadcast{T}}, x::BrokenBroadcast{T}) where {T} = x
+Base.eltype(::Type{BrokenBroadcast{T}}) where {T} = T
+
+function Broadcast.copy(bc::Broadcasted{<:NDArrayStyle{0}})
+    ElType = Broadcast.combine_eltypes(bc.f, bc.args)
+    if ElType == Union{}
+        ElType = Nothing
+    end
+    dest = copyto!(similar(bc, ElType), bc)
+    #! CHECK THIS DOESNT CAUSE ISSUES DUE TO BLOCKING NATURE
+    return @allowscalar dest[CartesianIndex()]
+end
+
+@inline function Broadcast.copy(bc::Broadcasted{<:NDArrayStyle})
     ElType = Broadcast.combine_eltypes(bc.f, bc.args)
     if ElType == Union{} || !Base.allocatedinline(ElType)
-        error("Cannot broadcast $(bc.f) over NDArrays with eltypes: $(eltype.(bc.args))")
+        ElType = BrokenBroadcast{ElType}
     end
-
-    #* This be the place to inject kernel fusion via CUDA.jl
-    #* Use the function in Base.Broadcast.flatten(bc).
-    #* How can we check all the funcs in this expr
-    #* are supported by CUDA?
-
-    return unravel_broadcast_tree(bc)
+    copyto!(similar(bc, ElType), bc)
 end
 
 # Recursion base cases
@@ -84,6 +99,7 @@ function __materialize(bc::Broadcasted{<:NDArrayStyle})
     unravel_broadcast_tree(bc)
 end
 
+# Un-fused implementation of broadcast tree
 function unravel_broadcast_tree(bc::Broadcasted)
 
     # Recursively materialize/unravel any nested broadcasts
@@ -109,10 +125,32 @@ function unravel_broadcast_tree(bc::Broadcasted)
     return __broadcast(bc.f, out, in_args...)
 end
 
-# Support .=
-function Base.copyto!(dest::NDArray{T,N}, bc::Broadcasted{<:NDArrayStyle{N}}) where {T,N}
-    # Moves result from broadcast (src) to dest. src array is no longer valid
-    #! THIS ENABLES FOOT GUN IF USER SPECIFIES INTEGER ARRAY AT OUTPUT
-    nda_move(dest, checked_promote_arr(Base.Broadcast.materialize(bc), T))
-    return dest
+@inline function _copyto!(dest::NDArray, bc::Broadcasted)
+    axes(dest) == axes(bc) || Broadcast.throwdm(axes(dest), axes(bc))
+    isempty(dest) && return dest
+    if eltype(dest) <: BrokenBroadcast
+        throw(
+            ArgumentError(
+                "Broadcast operation resulting in $(eltype(eltype(dest))) is not NDArray compatible"
+            ),
+        )
+    end
+
+    #! IF THIS IS KNOWN AT COMPILE TIME WE CAN GENERATE
+    #! THIS CODE WITHOUT THE IF STATEMENT
+    if FUSE_BROADCAST_EXPRS
+        #! DO I NEED TO DO TYPE PROMOTION CHECKS BEFORE RETURNING?
+        #! WE MIGHT NEED TO CHECK IF ON GPU OR CPU AND FALLBACK
+        return fuse_broadcast_tree!(dest, bc)
+    else
+        temp_result = unravel_broadcast_tree(bc)
+        nda_move(dest, checked_promote_arr(temp_result, eltype(dest)))
+        return dest
+    end
 end
+
+# Support .=
+@inline Base.copyto!(dest::NDArray, bc::Broadcasted{Nothing}) = _copyto!(dest, bc)
+@inline Base.copyto!(dest::NDArray, bc::Broadcasted{<:NDArrayStyle}) = _copyto!(dest, bc)
+
+#! TODO ADD MAP FUSED IMPLEMENTATIONS
