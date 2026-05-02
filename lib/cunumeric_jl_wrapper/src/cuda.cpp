@@ -39,7 +39,9 @@
 #define KERNEL_INPUT_ARG_COUNT_INDEX 8
 #define KERNEL_OUTPUT_ARG_COUNT_INDEX 9
 #define BC_NDARRAY_PATCH_COUNT_INDEX 10
-#define BCAST_ARG_OFFSET 11
+#define BC_SCALAR_PATCH_COUNT_INDEX 11
+#define BC_BLOB_SIZE_INDEX 12
+#define BCAST_ARG_OFFSET 13
 
 // global padding for CUDA.jl kernel state
 std::size_t padded_bytes_kernel_state = 16;
@@ -247,6 +249,10 @@ scalars and which should be marked as inputs.
   std::uint32_t bc_ndarray_patch_count =
       context.scalar(BC_NDARRAY_PATCH_COUNT_INDEX)
           .value<std::uint32_t>();  // 10
+  std::uint32_t bc_scalar_patch_count =
+      context.scalar(BC_SCALAR_PATCH_COUNT_INDEX).value<std::uint32_t>();  // 11
+  std::uint32_t bc_blob_size =
+      context.scalar(BC_BLOB_SIZE_INDEX).value<std::uint32_t>();  // 12
 
   const std::size_t num_inputs = context.num_inputs();
   const std::size_t num_outputs = context.num_outputs();
@@ -254,9 +260,14 @@ scalars and which should be marked as inputs.
 
   assert(kernel_input_args_count <= num_inputs);
   assert(kernel_output_args_count <= num_outputs);
-  assert(bc_ndarray_patch_count <= num_inputs);
-  assert(BCAST_ARG_OFFSET + bc_ndarray_patch_count + prefix_scalar_count <=
-         num_scalars);
+  const std::size_t array_patch_start = BCAST_ARG_OFFSET;
+  const std::size_t scalar_patch_start =
+      array_patch_start + 2 * bc_ndarray_patch_count;
+  const std::size_t prefix_start = scalar_patch_start + bc_scalar_patch_count;
+  const std::size_t prefix_end = prefix_start + prefix_scalar_count;
+  const std::size_t scalar_values_start = prefix_end;
+
+  assert(scalar_values_start + bc_scalar_patch_count <= num_scalars);
 
   auto kernel = lookup_kernel_function(kernel_name, stream_);
   CUfunction func = kernel.second;
@@ -264,18 +275,14 @@ scalars and which should be marked as inputs.
   std::size_t max_buffer_size =
       padded_bytes_kernel_state +
       (kernel_input_args_count + kernel_output_args_count) *
-          sizeof(CuDeviceArray<REALM_MAX_DIM>);
-  for (std::size_t i = BCAST_ARG_OFFSET + bc_ndarray_patch_count;
-       i < num_scalars; ++i) {
+          sizeof(CuDeviceArray<REALM_MAX_DIM>) +
+      bc_blob_size;
+  for (std::size_t i = prefix_start; i < prefix_end; ++i) {
     max_buffer_size += context.scalar(i).size();
   }
 
   std::vector<char> arg_buffer(max_buffer_size);
   char *p = arg_buffer.data() + padded_bytes_kernel_state;
-
-  const std::size_t patch_offsets_start = BCAST_ARG_OFFSET;
-  const std::size_t prefix_start = patch_offsets_start + bc_ndarray_patch_count;
-  const std::size_t prefix_end = prefix_start + prefix_scalar_count;
 
   for (std::size_t i = prefix_start; i < prefix_end; ++i) {
     const auto &scalar = context.scalar(i);
@@ -286,28 +293,32 @@ scalars and which should be marked as inputs.
   append_array_args(p, context, kernel_input_args_count, true);
   append_array_args(p, context, kernel_output_args_count, false);
 
-  for (std::size_t i = prefix_end; i < num_scalars; ++i) {
-    const auto &scalar = context.scalar(i);
-    if (i == prefix_end && bc_ndarray_patch_count > 0) {
-      std::vector<char> patched_bc(scalar.size());
-      memcpy(patched_bc.data(), scalar.ptr(), scalar.size());
-      for (std::size_t j = 0; j < bc_ndarray_patch_count; ++j) {
-        std::uint32_t offset =
-            context.scalar(patch_offsets_start + j).value<std::uint32_t>();
-        assert(offset <= scalar.size());
-        char *begin = patched_bc.data() + offset;
-        char *end = begin;
-        write_array_descriptor(end, context.input(j), true);
-        assert(static_cast<std::size_t>(end - patched_bc.data()) <=
-               scalar.size());
-      }
-      memcpy(p, patched_bc.data(), patched_bc.size());
-      p += patched_bc.size();
-    } else {
-      memcpy(p, scalar.ptr(), scalar.size());
-      p += scalar.size();
-    }
+  std::vector<char> patched_bc(bc_blob_size, 0);
+
+  for (std::size_t j = 0; j < bc_ndarray_patch_count; ++j) {
+    std::uint32_t offset =
+        context.scalar(array_patch_start + 2 * j).value<std::uint32_t>();
+    std::uint32_t input_index =
+        context.scalar(array_patch_start + 2 * j + 1).value<std::uint32_t>();
+    assert(input_index < num_inputs);
+    assert(offset <= patched_bc.size());
+    char *begin = patched_bc.data() + offset;
+    char *end = begin;
+    write_array_descriptor(end, context.input(input_index), true);
+    assert(static_cast<std::size_t>(end - patched_bc.data()) <=
+           patched_bc.size());
   }
+
+  for (std::size_t j = 0; j < bc_scalar_patch_count; ++j) {
+    std::uint32_t offset =
+        context.scalar(scalar_patch_start + j).value<std::uint32_t>();
+    const auto &scalar_value = context.scalar(scalar_values_start + j);
+    assert(offset + scalar_value.size() <= patched_bc.size());
+    memcpy(patched_bc.data() + offset, scalar_value.ptr(), scalar_value.size());
+  }
+
+  memcpy(p, patched_bc.data(), patched_bc.size());
+  p += patched_bc.size();
 
   std::size_t buffer_size = p - arg_buffer.data();
 
