@@ -129,20 +129,29 @@ function launch(kernel::CUDATask, inputs, outputs, scalars;
     )
 end
 
-function launch_broadcast(kernel::CUDATask, inputs, outputs, scalars;
+struct BroadcastPatchInfo
+    broadcast_size::Int
+    inputs::Tuple
+    array_offsets::Tuple{Vararg{Int}}
+    array_input_indices::Tuple{Vararg{Int}}
+    scalar_offsets::Tuple{Vararg{Int}}
+    scalar_values::Tuple
+end
+
+function launch_broadcast(kernel::CUDATask, outputs, patch_info::BroadcastPatchInfo;
     blocks, threads, prefix_scalars=(),
     kernel_input_args_count=0,
-    kernel_output_args_count=length(isa(outputs, Tuple) ? outputs : (outputs,)),
-    bc_ndarray_offsets=())
-    input_tup = isa(inputs, Tuple) ? inputs : (inputs,)
+    kernel_output_args_count=length(isa(outputs, Tuple) ? outputs : (outputs,)))
+    input_tup = patch_info.inputs
     output_tup = isa(outputs, Tuple) ? outputs : (outputs,)
-    scalar_tup = isa(scalars, Tuple) ? scalars : (scalars,)
+    scalar_tup = patch_info.scalar_values
     prefix_tup = isa(prefix_scalars, Tuple) ? prefix_scalars : (prefix_scalars,)
-    offsets_tup = isa(bc_ndarray_offsets, Tuple) ? bc_ndarray_offsets : (bc_ndarray_offsets,)
 
-    ndarrays = vcat(input_tup..., output_tup...)
-    mx = findmax(arr -> arr.nbytes, ndarrays)
-    max_shape = size(ndarrays[mx[2]])
+    length(patch_info.array_offsets) == length(patch_info.array_input_indices) ||
+        throw(ArgumentError("Broadcast array patch offsets and input indices must match"))
+
+    isempty(output_tup) && throw(ArgumentError("Broadcast launch requires an output array"))
+    max_shape = size(first(output_tup))
     @assert !isnothing(max_shape)
 
     rt = Legate.get_runtime()
@@ -152,7 +161,7 @@ function launch_broadcast(kernel::CUDATask, inputs, outputs, scalars;
 
     input_vars = Vector{Legate.Variable}()
     for arr in input_tup
-        check_sz!(arr, max_shape; copy=true)
+        check_sz(arr, max_shape)
         la = nda_to_logical_array(arr)
         p = Legate.add_input(task, la)
         push!(input_vars, p)
@@ -160,7 +169,7 @@ function launch_broadcast(kernel::CUDATask, inputs, outputs, scalars;
 
     output_vars = Vector{Legate.Variable}()
     for arr in output_tup
-        check_sz!(arr, max_shape; copy=false)
+        check_sz(arr, max_shape)
         la = nda_to_logical_array(arr)
         p = Legate.add_output(task, la)
         push!(output_vars, p)
@@ -172,9 +181,16 @@ function launch_broadcast(kernel::CUDATask, inputs, outputs, scalars;
     Legate.add_scalar(task, Legate.Scalar(UInt32(length(prefix_tup)))) # 7
     Legate.add_scalar(task, Legate.Scalar(UInt32(kernel_input_args_count))) # 8
     Legate.add_scalar(task, Legate.Scalar(UInt32(kernel_output_args_count))) # 9
-    Legate.add_scalar(task, Legate.Scalar(UInt32(length(offsets_tup)))) # 10
+    Legate.add_scalar(task, Legate.Scalar(UInt32(length(patch_info.array_offsets)))) # 10
+    Legate.add_scalar(task, Legate.Scalar(UInt32(length(patch_info.scalar_offsets)))) # 11
+    Legate.add_scalar(task, Legate.Scalar(UInt32(patch_info.broadcast_size))) # 12
 
-    for off in offsets_tup
+    for (off, input_index) in zip(patch_info.array_offsets, patch_info.array_input_indices)
+        Legate.add_scalar(task, Legate.Scalar(UInt32(off)))
+        Legate.add_scalar(task, Legate.Scalar(UInt32(input_index)))
+    end
+
+    for off in patch_info.scalar_offsets
         Legate.add_scalar(task, Legate.Scalar(UInt32(off)))
     end
 

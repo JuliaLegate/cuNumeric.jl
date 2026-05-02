@@ -21,6 +21,11 @@ using Pkg
 using Preferences
 using Legate
 using CNPreferences
+using CUDACore: CUDACore
+
+# Maybe needed as build deps
+using cupynumeric_jll: cupynumeric_jll
+using OpenBLAS32_jll: OpenBLAS32_jll
 
 const BuildTools = Legate.BuildTools
 
@@ -72,9 +77,17 @@ function build(::CNPreferences.Conda)
     pkg_root = BuildTools.start_build("cuNumeric.jl", @__DIR__)
 
     cupynumeric_root = load_preference(CNPreferences, "cunumeric_conda_env", nothing)
+    cuda_toolkit_root = load_preference(CNPreferences, "CUDA_TOOLKIT_ROOT", nothing)
     if isnothing(cupynumeric_root)
         error("This shouldn't happen. cunumeric_conda_env = nothing?")
     end
+    if isnothing(cuda_toolkit_root)
+        error(
+            "CUDA_TOOLKIT_ROOT must be set by CNPreferences to point to the CUDA linked in your cupynumeric build."
+        )
+    end
+
+    #!TODO SET LocalPreferences.toml to use local CUDA libraries
 
     is_cupynumeric_installed(cupynumeric_root; throw_errors=true)
     build_deps(pkg_root, cupynumeric_root, cupynumeric_root)

@@ -27,40 +27,45 @@ end
 const _BCAST_PTX_CACHE = Dict{Tuple{Any,DataType,DataType,Any},FusedBroadcastMetadata}()
 const _BCAST_PTX_CACHE_LOCK = ReentrantLock()
 
-_isbits_size_str(::Type{T}) where {T} = isbitstype(T) ? string(sizeof(T)) : "n/a"
+cudevice_array_offset(::Type{T}) where {T<:CUDACore.CuDeviceArray} = 0
+cudevice_array_offset(::Type{T}) where {T<:Base.Broadcast.Extruded} = Int(fieldoffset(T, 1))
 
-function _collect_cudevicearray_offsets!(offsets::Vector{Int}, ::Type{T}, base::Int=0) where {T}
-    if T <: CUDACore.CuDeviceArray
-        push!(offsets, base)
-        return offsets
-    end
-    if isbitstype(T) && fieldcount(T) > 0
-        for i in 1:fieldcount(T)
-            FT = fieldtype(T, i)
-            _collect_cudevicearray_offsets!(offsets, FT, base + Int(fieldoffset(T, i)))
+stores_cudevicearray(::Type{T}) where {T<:CUDACore.CuDeviceArray} = true
+stores_cudevicearray(::Type{T}) where {T<:Base.Broadcast.Extruded} = true
+stores_cudevicearray(::Type{T}) where {T<:Number} = false
+function stores_cudevicearray(::Type{T}) where {T}
+    throw(error("Broadcast fusion. Don't know what to do with type: $T"))
+end
+
+function find_cudevicearray_offsets_and_indices(::Type{BC_ARGS}) where {BC_ARGS}
+    offsets = Vector{Int}()
+    indices = Vector{Int}()
+    for (i, T) in enumerate(fieldtypes(BC_ARGS))
+        if stores_cudevicearray(T)
+            offset = fieldoffset(BC_ARGS, i) + cudevice_array_offset(T)
+            push!(offsets, offset)
+            push!(indices, i)
         end
     end
-    return offsets
+    return tuple(offsets...), tuple(indices...)
 end
 
-function _collect_cudevicearray_offsets(::Type{T}) where {T}
-    return Tuple(_collect_cudevicearray_offsets!(Int[], T, 0))
+function find_scalar_offsets_and_indices(::Type{BC_ARGS}) where {BC_ARGS}
+    offsets = Vector{Int}()
+    indices = Vector{Int}()
+    for (i, T) in enumerate(fieldtypes(BC_ARGS))
+        if (T <: Number)
+            offset = fieldoffset(BC_ARGS, i)
+            push!(offsets, offset)
+            push!(indices, i)
+        end
+    end
+    return tuple(offsets...), tuple(indices...)
 end
 
-function _default_broadcast_threads(ndrange)
-    n = prod(ndrange)
-    return min(256, max(1, n))
-end
-
-function _cufunction_from_types(f, types_tuple_type; maxthreads=nothing, always_inline=false)
-    return CUDACore.cufunction(
-        f,
-        types_tuple_type;
-        kernel=true,
-        maxthreads=maxthreads,
-        always_inline=always_inline,
-    )
-end
+get_ndarray(x::T) where {T<:NDArray} = x
+get_ndarray(x::T) where {T<:Base.Broadcast.Extruded} = x.x
+get_ndarray(x) = throw(error("Broadcast fusion. Don't know what to do with type: $T"))
 
 """
     get_ptx(obj::KA.Kernel{CUDABackend}, ::Type{DEST_T}, ::Type{BC_T};
@@ -101,9 +106,6 @@ function get_ptx(
     config = CUDACore.launch_configuration(host_kernel.fun; max_threads=prod(ndrange))
     threads = config.threads
 
-    # if fancy thing doesnt work we can use this
-    # threads = _default_broadcast_threads(ndrange)
-
     workgroupsize = CUDACore.CUDAKernels.threads_to_workgroupsize(threads, ndrange)
     iterspace, dynamic = KA.partition(obj, ndrange, workgroupsize)
     ctx = KA.mkcontext(obj, ndrange, iterspace)
@@ -113,7 +115,7 @@ function get_ptx(
     blocks == 0 && return "", 0, 0, ctx
 
     buf = IOBuffer()
-    CUDATools.code_ptx(buf, obj.f, (typeof(ctx), DEST_T, BC_T); raw=false, kernel=true)
+    CUDATools.code_ptx(buf, obj.f, (typeof(ctx), DEST_T, BC_T); raw=false, kernel=true, ptx=v"7.8")
     return String(take!(buf)), threads, blocks, ctx
 end
 
@@ -162,30 +164,57 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
 
     # Lookup in cache, if not found, compile and cache
     fused_kernel_metadata = get_cuda_task(broadcast_kernel, dest, bc, ndrange)
-    input_deps = Tuple(arg for arg in bc.args if arg isa NDArray)
-    bc_gpu = CUDACore.cudaconvert(bc)
-    bc_ndarray_offsets = _collect_cudevicearray_offsets(typeof(bc_gpu))
-    @assert length(bc_ndarray_offsets) == length(input_deps)
 
-    launch_broadcast(
-        fused_kernel_metadata.cuda_task,
-        input_deps,
-        (dest,),
-        (bc_gpu,);
-        blocks=(fused_kernel_metadata.blocks,),
-        threads=(fused_kernel_metadata.threads,),
-        prefix_scalars=(fused_kernel_metadata.ctx,),
-        kernel_input_args_count=0,
-        kernel_output_args_count=1,
-        bc_ndarray_offsets=bc_ndarray_offsets,
+    # Replace NDArrays with CuDeviceArrays in the Broadcasted type so we can figure out bit-offsets
+    spoofed_bc_type = map_cuda_type(typeof(bc))
+    fieldname(spoofed_bc_type, 3) == :args ||
+        throw(ArgumentError("Broadcasted field 3 is not args. Failed to fuse broadcast."))
+    args_offset = Int(fieldoffset(spoofed_bc_type, 3))
+
+    # Replace NDArrays with CuDeviceArrays in the Broadcasted type so we can figure out bit-offsets
+    spoofed_bc_args_type = map_cuda_type(typeof(bc.args))
+
+    #!TODO FIGURE OUT HOW TO HANDLE AXES
+    #! TODO FIGURE OUT IF ITS SAFE TO IGNORE FIRST TWO FIELDS OF BROADCASTED TYPE
+
+    # STEP 1: Figure out bit-offsets for CuDeviceArrays and scalars in args of spoofed type.
+    # The spoofed type has the same fields and alignment that the PTX kernel expects.
+    cudevicearray_offsets, cudevicearray_indices = find_cudevicearray_offsets_and_indices(
+        spoofed_bc_args_type
+    )
+    scalar_offsets, scalar_indices = find_scalar_offsets_and_indices(spoofed_bc_args_type)
+    cudevicearray_offsets = args_offset .+ cudevicearray_offsets
+    scalar_offsets = args_offset .+ scalar_offsets
+    # STEP 2: Get NDarrays corresponding to the offsets in the spoofed type.
+    input_ndarrays = ntuple(
+        i -> get_ndarray(bc.args[cudevicearray_indices[i]]), length(cudevicearray_indices)
+    )
+    input_scalars = ntuple(i -> bc.args[scalar_indices[i]], length(scalar_indices))
+    patch_info = BroadcastPatchInfo(
+        sizeof(spoofed_bc_type),
+        input_ndarrays,
+        cudevicearray_offsets,
+        ntuple(i -> i - 1, length(input_ndarrays)),
+        scalar_offsets,
+        input_scalars,
     )
 
-    #! DOUBLE CHECK bc.args ACTAULLY GIVES BACK ARRAYS
-    #! HOW TO GET SCALARS???
-    # scalars = ????
-    # launch(cuda_task, bc.args, (dest,), scalars; blocks, threads)
+    println("Array Offsets: ", cudevicearray_offsets)
+    println("Scalar Offsets: ", scalar_offsets)
+    println("Input NDArrays: ", input_ndarrays)
+    println("Input Scalars: ", input_scalars)
+
+    # launch_broadcast(
+    #     fused_kernel_metadata.cuda_task,
+    #     (dest,),
+    #     patch_info;
+    #     blocks=(fused_kernel_metadata.blocks,),
+    #     threads=(fused_kernel_metadata.threads,),
+    #     prefix_scalars=(fused_kernel_metadata.ctx,),
+    #     kernel_input_args_count=0,
+    #     kernel_output_args_count=1,
+    # )
 
     #! DO I NEED TO DO TYPE PROMOTION CHECKS??
-
     return dest
 end
