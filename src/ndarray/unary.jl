@@ -248,8 +248,15 @@ for (base_func, op_code) in unary_reduction_map
         function $(Symbol(base_func))(input::NDArray{T}) where {T}
             T_OUT = Base.promote_op($base_func, Vector{T})
             is_wider_type(T_OUT, T) && assertpromotion($base_func, T, T_OUT)
-            out = cuNumeric.zeros(T_OUT) #0D result (not right if reducing along dims)
+            out = cuNumeric.zeros(T_OUT)
             return nda_unary_reduction(out, $(op_code), unchecked_promote_arr(input, T_OUT))
+        end
+
+        function $(Symbol(base_func))(input::NDArray{T,N}; dims) where {T,N}
+            T_OUT = Base.promote_op($base_func, Vector{T})
+            is_wider_type(T_OUT, T) && assertpromotion($base_func, T, T_OUT)
+            axes = collect(Int32, (d - 1 for d in (dims isa Integer ? (dims,) : dims)))
+            return nda_unary_reduction_axes($(op_code), unchecked_promote_arr(input, T_OUT), axes, false)
         end
     end
 end

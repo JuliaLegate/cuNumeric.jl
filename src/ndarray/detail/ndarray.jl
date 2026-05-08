@@ -219,6 +219,14 @@ function nda_unary_reduction(out::NDArray, op_code::UnaryRedCode, input::NDArray
     return out
 end
 
+function nda_unary_reduction_axes(op_code::UnaryRedCode, input::NDArray{T,N}, axes::Vector{Int32}, keepdims::Bool) where {T,N}
+    axes_c = collect(Int32, axes)
+    ptr = ccall((:nda_unary_reduction_axes, libnda),
+        NDArray_t, (UnaryRedCode, NDArray_t, Ptr{Int32}, Int32, Cint),
+        op_code, input.ptr, axes_c, Int32(length(axes_c)), keepdims)
+    return NDArray(ptr)
+end
+
 function nda_array_equal(rhs1::NDArray{T,N}, rhs2::NDArray{T,N}) where {T,N}
     ptr = ccall((:nda_array_equal, libnda),
         NDArray_t, (NDArray_t, NDArray_t),
