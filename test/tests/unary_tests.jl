@@ -90,19 +90,21 @@ function test_unary_function_set(func_dict, T, N)
 end
 
 function test_unary_reduction_dims(func, julia_arr::AbstractArray{T,N}, cunumeric_arr::NDArray{T,N}) where {T,N}
-    for d in 1:N
-        julia_res = func(julia_arr, dims=d)
-        cunumeric_res = func(cunumeric_arr, dims=d)
-        allowscalar() do
-            @test cuNumeric.compare(julia_res, cunumeric_res, atol(T), rtol(T))
+    allowpromotion(true) do
+        for d in 1:N
+            julia_res = func(julia_arr, dims=d)
+            cunumeric_res = func(cunumeric_arr, dims=d)
+            allowscalar() do
+                @test cuNumeric.compare(julia_res, cunumeric_res, atol(T), rtol(T))
+            end
         end
-    end
 
-    if N >= 2
-        julia_res = func(julia_arr, dims=(1,2))
-        cunumeric_res = func(cunumeric_arr, dims=(1,2))
-        allowscalar() do
-            @test cuNumeric.compare(julia_res, cunumeric_res, atol(T), rtol(T))
+        if N >= 2
+            julia_res = func(julia_arr, dims=(1,2))
+            cunumeric_res = func(cunumeric_arr, dims=(1,2))
+            allowscalar() do
+                @test cuNumeric.compare(julia_res, cunumeric_res, atol(T), rtol(T))
+            end
         end
     end
 end
