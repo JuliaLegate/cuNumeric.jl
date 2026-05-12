@@ -108,6 +108,7 @@ function test_unary_reduction_dims(func, julia_arr::AbstractArray{T,N}, cunumeri
 end
 
 @testset "unary reductions with dims" begin
+    N = 100
     for T in (Float32, Float64, Int32, Int64)
         julia_arr_1D, julia_arr_2D = make_julia_arrays(T, N, :unit_interval)
         cunumeric_arr_1D, cunumeric_arr_2D = make_cunumeric_arrays(
