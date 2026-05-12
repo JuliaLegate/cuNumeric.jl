@@ -256,7 +256,7 @@ for (base_func, op_code) in unary_reduction_map
             T_OUT = Base.promote_op($base_func, Vector{T})
             is_wider_type(T_OUT, T) && assertpromotion($base_func, T, T_OUT)
             axes = collect(Int32, (d - 1 for d in (dims isa Integer ? (dims,) : dims)))
-            return nda_unary_reduction_axes($(op_code), unchecked_promote_arr(input, T_OUT), axes, false)
+            return nda_unary_reduction_axes($(op_code), unchecked_promote_arr(input, T_OUT), axes, true)
         end
     end
 end
