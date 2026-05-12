@@ -114,7 +114,7 @@ end
         cunumeric_arr_1D, cunumeric_arr_2D = make_cunumeric_arrays(
             [julia_arr_1D], [julia_arr_2D], T, N
         )
-        @testset "$func $T" for (func, _) in unary_reduction_map
+        @testset "$func $T" for (func, _) in cuNumeric.unary_reduction_map
             test_unary_reduction_dims(func, julia_arr_1D, cunumeric_arr_1D)
             test_unary_reduction_dims(func, julia_arr_2D, cunumeric_arr_2D)
         end
