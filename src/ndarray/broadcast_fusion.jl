@@ -1,21 +1,34 @@
 
-# Copied from GPUArrays: https://github.com/JuliaGPU/GPUArrays.jl/blob/a9df2ba41ca2358c1de2f3cc6b020578bf6e39b1/src/host/broadcast.jl#L60-L63
-# Defined with KernelAbstractions.jl. Makes it easier to generate indexing for
-# various dimensions of inputs/outputs. Assumes broadcast is `Base.Broadcast.process`ed so that
-# dest/bc have singleton dimensions inserted and we can index 1-1 like this.
-@kernel function broadcast_kernel_cartesian(dest, bc)
-    I = @index(Global, Cartesian)
-    @inbounds dest[I] = bc[I]
+# The indexing in these kernels is based off this internal function from julia/broadcast.jl
+
+# Base.@propagate_inbounds function _broadcast_getindex(bc::Broadcasted{<:Any,<:Any,<:Any,<:Any}, I)
+#     args = _getindex(bc.args, I)
+#     return _broadcast_getindex_evalf(bc.f, args...)
+# end
+
+function make_linear_kernel(dest, bc::Base.Broadcast.Broadcasted)
+    f = bc.f
+
+    @kernel function broadcast_kernel_linear_splat(dest, args...)
+        I = @index(Global, Linear)
+        @inbounds args_modified = Base.Broadcast._getindex(args, I)
+        @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+    end
+
+    return broadcast_kernel_linear_splat
 end
 
-@kernel function broadcast_kernel_linear(dest, bc)
-    I = @index(Global, Linear)
-    @inbounds dest[I] = bc[I]
-end
+function make_cartesian_kernel(dest, bc::Base.Broadcast.Broadcasted)
+    f = bc.f
 
-# No compilation here, just generating CUDA specific kernel.
-const GPU_CARTESIAN_KERNEL = broadcast_kernel_cartesian(CUDACore.CUDAKernels.CUDABackend())
-const GPU_LINEAR_KERNEL = broadcast_kernel_linear(CUDACore.CUDAKernels.CUDABackend())
+    @kernel function broadcast_kernel_cartesian_splat(dest, args...)
+        I = @index(Global, Cartesian)
+        @inbounds args_modified = Base.Broadcast._getindex(args, I)
+        @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+    end
+
+    return broadcast_kernel_cartesian_splat
+end
 
 struct FusedBroadcastMetadata
     ctx::Any # KA.CompilerMetadata
@@ -67,19 +80,12 @@ get_ndarray(x::T) where {T<:NDArray} = x
 get_ndarray(x::T) where {T<:Base.Broadcast.Extruded} = x.x
 get_ndarray(x) = throw(error("Broadcast fusion. Don't know what to do with type: $T"))
 
-"""
-    get_ptx(obj::KA.Kernel{CUDABackend}, ::Type{DEST_T}, ::Type{BC_T};
-                         ndrange) -> (ptx::String, threads::Int, blocks::Int)
-
-Compile a KA CUDA kernel (kernel-body `obj.f(ctx, ...)`) using *types only* for `DEST_T` and `BC_T`,
-choose a workgroup size (threads) using CUDA occupancy when possible, and return the generated PTX.
-"""
-function get_ptx(
+function _threads_from_occupancy(
     obj::KA.Kernel{CUDACore.CUDAKernels.CUDABackend},
     ::Type{DEST_T},
-    ::Type{BC_T};
+    ARG_TYPES...;
     ndrange,
-) where {DEST_T,BC_T}
+) where {DEST_T}
     backend = KA.backend(obj)
 
     ndrange, workgroupsize, iterspace, dynamic = KA.launch_config(obj, ndrange, nothing)
@@ -93,9 +99,8 @@ function get_ptx(
             nothing
         end
 
-    # Determine threads via occupancy if we can compile from types; otherwise use a broadcast-friendly heuristic.
-    threads = _default_broadcast_threads(ndrange)
-    tt = Base.to_tuple_type((typeof(ctx), DEST_T, BC_T))
+    # Determine threads via occupancy
+    tt = Base.to_tuple_type((typeof(ctx), DEST_T, ARG_TYPES...))
     host_kernel = CUDACore.cufunction(
         obj.f,
         tt;
@@ -112,10 +117,33 @@ function get_ptx(
 
     blocks = length(KA.blocks(iterspace))
     threads = length(KA.workitems(iterspace))
-    blocks == 0 && return "", 0, 0, ctx
 
+    return threads, blocks, ctx
+end
+
+"""
+    get_ptx(obj::KA.Kernel{CUDABackend}, ::Type{DEST_T}, ::Type{BC_T};
+                         ndrange) -> (ptx::String, threads::Int, blocks::Int)
+
+Compile a KA CUDA kernel (kernel-body `obj.f(ctx, ...)`) using *types only* for `DEST_T` and `BC_T`,
+choose a workgroup size (threads) using CUDA occupancy when possible, and return the generated PTX.
+"""
+function get_ptx(
+    obj::KA.Kernel{CUDACore.CUDAKernels.CUDABackend},
+    ::Type{DEST_T},
+    arg_types...;
+    ndrange,
+) where {DEST_T,BC_T}
+    println(Base.isbitstype.(arg_types))
+    threads, blocks, ctx = _threads_from_occupancy(obj, DEST_T, arg_types...; ndrange=ndrange)
+    blocks == 0 && return "", 0, 0, ctx #! MAYBE ERROR HERE?
+
+    # Generate PTX
     buf = IOBuffer()
-    CUDATools.code_ptx(buf, obj.f, (typeof(ctx), DEST_T, BC_T); raw=false, kernel=true, ptx=v"7.8")
+    #!TODO REMOVE THE MANUAL PTX VERSION HERE!
+    CUDATools.code_ptx(buf, obj.f, (typeof(ctx), DEST_T, arg_types...);
+        raw=false, kernel=true, ptx=v"7.8")
+
     return String(take!(buf)), threads, blocks, ctx
 end
 
@@ -126,17 +154,17 @@ function get_cuda_task(
     ndrange,
 ) where {D<:NDArray,B<:Base.Broadcast.Broadcasted}
     DEST_T = map_cuda_type(D)
-    BC_T = map_cuda_type(B)
+    ARG_TYPES = map_cuda_type.(typeof.(bc.args))
 
     key = (obj, D, B, ndrange)
     lock(_BCAST_PTX_CACHE_LOCK) do
         # Also stores in cache if not found in Dict
         return get!(_BCAST_PTX_CACHE, key) do
-            ptx, threads, blocks, ctx = get_ptx(obj, DEST_T, BC_T; ndrange=ndrange)
+            ptx, threads, blocks, ctx = get_ptx(obj, DEST_T, ARG_TYPES...; ndrange=ndrange)
             func_name = extract_kernel_name(ptx)
-            # println(ptx)
+            println(ptx)
             ptx_task(ptx, func_name)
-            cuda_task = CUDATask(func_name, (DEST_T, BC_T))
+            cuda_task = CUDATask(func_name, (DEST_T, ARG_TYPES...))
             FusedBroadcastMetadata(ctx, threads, blocks, cuda_task)
         end
     end
@@ -146,6 +174,7 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
 
     #! HOW DOES THIS BEHAVE WHEN BC HAS 2 RESULT ARRAYS?
 
+    # Normalize the Braodcasted type
     bc = Base.Broadcast.preprocess(dest, bc)
     bc = Base.Broadcast.instantiate(bc)
     bc = Base.Broadcast.flatten(bc)
@@ -155,66 +184,82 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
         if ndims(dest) == 1 ||
             (isa(IndexStyle(dest), IndexLinear) &&
             isa(IndexStyle(bc), IndexLinear))
-            GPU_LINEAR_KERNEL
+            make_linear_kernel(dest, bc)
         else
-            GPU_CARTESIAN_KERNEL
+            make_cartesian_kernel(dest, bc)
         end
 
     ndrange = ndims(dest) > 0 ? size(dest) : (1,)
 
+    # Tell KernelAsbtractions.jl we are using CUDA.jl
+    bck_cuda = broadcast_kernel(CUDACore.CUDAKernels.CUDABackend())
+
     # Lookup in cache, if not found, compile and cache
-    fused_kernel_metadata = get_cuda_task(broadcast_kernel, dest, bc, ndrange)
+    fkm = get_cuda_task(bck_cuda, dest, bc, ndrange)
 
     # Replace NDArrays with CuDeviceArrays in the Broadcasted type so we can figure out bit-offsets
     spoofed_bc_type = map_cuda_type(typeof(bc))
     fieldname(spoofed_bc_type, 3) == :args ||
         throw(ArgumentError("Broadcasted field 3 is not args. Failed to fuse broadcast."))
-    args_offset = Int(fieldoffset(spoofed_bc_type, 3))
 
-    # Replace NDArrays with CuDeviceArrays in the Broadcasted type so we can figure out bit-offsets
+    args_offset = Int(fieldoffset(spoofed_bc_type, 3))
+    args_offset == 0 ||
+        throw(
+            ArgumentError(
+                "Broadcast fusion only supports Broadcasted layouts where args starts at offset 0; got offset $args_offset. This is likely a bug in the compiler."
+            ),
+        )
+
+    # Spoof NDArrays with CuDeviceArrays in the Broadcasted type
     spoofed_bc_args_type = map_cuda_type(typeof(bc.args))
 
-    #!TODO FIGURE OUT HOW TO HANDLE AXES
-    #! TODO FIGURE OUT IF ITS SAFE TO IGNORE FIRST TWO FIELDS OF BROADCASTED TYPE
-
-    # STEP 1: Figure out bit-offsets for CuDeviceArrays and scalars in args of spoofed type.
-    # The spoofed type has the same fields and alignment that the PTX kernel expects.
+    # Figure out where input arrays are
     cudevicearray_offsets, cudevicearray_indices = find_cudevicearray_offsets_and_indices(
         spoofed_bc_args_type
     )
+
+    # Figure out where scalars are
     scalar_offsets, scalar_indices = find_scalar_offsets_and_indices(spoofed_bc_args_type)
-    cudevicearray_offsets = args_offset .+ cudevicearray_offsets
-    scalar_offsets = args_offset .+ scalar_offsets
-    # STEP 2: Get NDarrays corresponding to the offsets in the spoofed type.
+
     input_ndarrays = ntuple(
         i -> get_ndarray(bc.args[cudevicearray_indices[i]]), length(cudevicearray_indices)
     )
     input_scalars = ntuple(i -> bc.args[scalar_indices[i]], length(scalar_indices))
-    patch_info = BroadcastPatchInfo(
-        sizeof(spoofed_bc_type),
+
+    #! I AM NOT SURE IT IS CORRECT TO ASSUME SCALARS ARE ALWAYS AFTER NDARARYS
+    #! THE PTX KERNEL SIGNATURE BEFORE MODIFICATION BY CUDA.jl:
+    #! (fkm.ctx, dest, bc.args...)
+
+    launch(
+        fkm.cuda_task,
         input_ndarrays,
-        cudevicearray_offsets,
-        ntuple(i -> i - 1, length(input_ndarrays)),
-        scalar_offsets,
-        input_scalars,
+        (dest,),
+        input_scalars;
+        blocks=fkm.blocks,
+        threads=fkm.threads,
     )
-
-    println("Array Offsets: ", cudevicearray_offsets)
-    println("Scalar Offsets: ", scalar_offsets)
-    println("Input NDArrays: ", input_ndarrays)
-    println("Input Scalars: ", input_scalars)
-
-    # launch_broadcast(
-    #     fused_kernel_metadata.cuda_task,
-    #     (dest,),
-    #     patch_info;
-    #     blocks=(fused_kernel_metadata.blocks,),
-    #     threads=(fused_kernel_metadata.threads,),
-    #     prefix_scalars=(fused_kernel_metadata.ctx,),
-    #     kernel_input_args_count=0,
-    #     kernel_output_args_count=1,
-    # )
 
     #! DO I NEED TO DO TYPE PROMOTION CHECKS??
     return dest
 end
+
+# STEP 1: Figure out bit-offsets for CuDeviceArrays and scalars in args of spoofed type.
+# The spoofed type has the same fields and alignment that the PTX kernel expects.
+# cudevicearray_offsets, cudevicearray_indices =
+#     find_cudevicearray_offsets_and_indices(spoofed_bc_args_type)
+
+# scalar_offsets, scalar_indices = find_scalar_offsets_and_indices(spoofed_bc_args_type)
+
+# # STEP 2: Get NDarrays corresponding to the offsets in the spoofed type.
+# input_ndarrays = ntuple(
+#     i -> get_ndarray(bc.args[cudevicearray_indices[i]]), length(cudevicearray_indices)
+# )
+# input_scalars = ntuple(i -> bc.args[scalar_indices[i]], length(scalar_indices))
+# patch_info = BroadcastPatchInfo(
+#     sizeof(spoofed_bc_type),
+#     input_ndarrays,
+#     cudevicearray_offsets,
+#     ntuple(i -> i - 1, length(input_ndarrays)),
+#     scalar_offsets,
+#     input_scalars,
+# )
