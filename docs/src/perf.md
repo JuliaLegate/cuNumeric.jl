@@ -25,6 +25,11 @@ Every intermediate `NDArray` (from a slice, broadcast, or function call) allocat
 `@analyze_lifetimes` performs a **static last-use analysis** at macro-expansion time and inserts eager `maybe_insert_delete` calls immediately after each temporary's final use. Freed buffers are returned to cuNumeric's pool and recycled by the next same-sized allocation, skipping new buffer allocation.
 
 ```julia
+T = Float32
+A = cuNumeric.ones(T, (N, N))
+B = cuNumeric.ones(T, (N, N))
+C = cuNumeric.zeros(T, (N, N))
+
 @analyze_lifetimes begin
     result = A[1:end, :] .+ B[1:end, :]
     C .= result .* 2.0
