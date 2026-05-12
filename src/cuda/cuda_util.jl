@@ -30,7 +30,7 @@ types for code generation (e.g. mapping `NDArray{...}` to `CuDeviceArray{...}` i
 """
 map_cuda_type(::Type{T}) where {T} = T
 
-map_cuda_type(::Type{<:NDArray{T,N}}) where {T,N} = ndarray_cuda_type(NDArray{T,N})
+map_cuda_type(::Type{<:NDArray{T,N}}) where {T,N} = CUDACore.CuDeviceArray{T,N,CUDACore.AS.Global}
 
 function map_cuda_type(::Type{T}) where {T<:Tuple}
     return Tuple{map_cuda_type.(T.parameters)...}
