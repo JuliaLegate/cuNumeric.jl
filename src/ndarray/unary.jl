@@ -242,33 +242,46 @@ global const unary_reduction_map = Dict{Function,UnaryRedCode}(
 
 #! IT WOULD BE NICE IF THESE JUST RETURNED SCALARS WHEN APPROPRIATE
 # #*TODO HOW TO GET THESE ACTING ON CERTAIN DIMS
+
+function _unary_reduction_impl(base_func, op_code, input::NDArray{T}, ::Colon) where {T}
+    T_OUT = Base.promote_op(base_func, Vector{T})
+    is_wider_type(T_OUT, T) && assertpromotion(base_func, T, T_OUT)
+    out = cuNumeric.zeros(T_OUT)
+    return nda_unary_reduction(out, op_code, unchecked_promote_arr(input, T_OUT))
+end
+
+function _unary_reduction_impl(base_func, op_code, input::NDArray{T,N}, dims) where {T,N}
+    T_OUT = Base.promote_op(base_func, Vector{T})
+    is_wider_type(T_OUT, T) && assertpromotion(base_func, T, T_OUT)
+    axes = collect(Int32, (d - 1 for d in (dims isa Integer ? (dims,) : dims)))
+    return nda_unary_reduction_axes(op_code, unchecked_promote_arr(input, T_OUT), axes, true)
+end
+
 # Generate code for all unary reductions.
 for (base_func, op_code) in unary_reduction_map
     @eval begin
-        function $(Symbol(base_func))(input::NDArray{T}) where {T}
-            T_OUT = Base.promote_op($base_func, Vector{T})
-            is_wider_type(T_OUT, T) && assertpromotion($base_func, T, T_OUT)
-            out = cuNumeric.zeros(T_OUT)
-            return nda_unary_reduction(out, $(op_code), unchecked_promote_arr(input, T_OUT))
-        end
-
-        function $(Symbol(base_func))(input::NDArray{T,N}; dims) where {T,N}
-            T_OUT = Base.promote_op($base_func, Vector{T})
-            is_wider_type(T_OUT, T) && assertpromotion($base_func, T, T_OUT)
-            axes = collect(Int32, (d - 1 for d in (dims isa Integer ? (dims,) : dims)))
-            return nda_unary_reduction_axes($(op_code), unchecked_promote_arr(input, T_OUT), axes, true)
+        function $(Symbol(base_func))(input::NDArray{T,N}; dims=Colon()) where {T,N}
+            return _unary_reduction_impl($base_func, $(op_code), input, dims)
         end
     end
 end
 
-function Base.all(input::NDArray{Bool})
+function _bool_reduction_impl(op_code, input::NDArray{Bool}, ::Colon)
     out = cuNumeric.zeros(Bool)
-    return nda_unary_reduction(out, cuNumeric.ALL, input)
+    return nda_unary_reduction(out, op_code, input)
 end
 
-function Base.any(input::NDArray{Bool})
-    out = cuNumeric.zeros(Bool)
-    return nda_unary_reduction(out, cuNumeric.ANY, input)
+function _bool_reduction_impl(op_code, input::NDArray{Bool}, dims)
+    axes = collect(Int32, (d - 1 for d in (dims isa Integer ? (dims,) : dims)))
+    return nda_unary_reduction_axes(op_code, input, axes, true)
+end
+
+function Base.all(input::NDArray{Bool}; dims=Colon())
+    return _bool_reduction_impl(cuNumeric.ALL, input, dims)
+end
+
+function Base.any(input::NDArray{Bool}; dims=Colon())
+    return _bool_reduction_impl(cuNumeric.ANY, input, dims)
 end
 
 #! ONLY ADD ONCE REDUCTIONS RETURN A SCALAR
