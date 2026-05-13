@@ -264,6 +264,9 @@ function _unary_reduction_impl(base_func, op_code, input::NDArray{T,N}, dims) wh
     T_OUT = Base.promote_op(base_func, Vector{T})
     is_wider_type(T_OUT, T) && assertpromotion(base_func, T, T_OUT)
     axes = collect(Int32, (d - 1 for d in (dims isa Integer ? (dims,) : dims)))
+    if length(axes) > 1
+        error("$(base_func): reducing over multiple dimensions is not yet supported. Got dims=$dims")
+    end
     return nda_unary_reduction_axes(op_code, unchecked_promote_arr(input, T_OUT), axes, true)
 end
 
