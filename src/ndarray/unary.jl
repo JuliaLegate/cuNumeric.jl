@@ -260,13 +260,21 @@ function _unary_reduction_impl(base_func, op_code, input::NDArray{T}, ::Colon) w
     return nda_unary_reduction(out, op_code, unchecked_promote_arr(input, T_OUT))
 end
 
-function _unary_reduction_impl(base_func, op_code, input::NDArray{T,N}, dims) where {T,N}
+function _unary_reduction_impl(base_func, op_code, input::NDArray{T,N}, dims::Integer) where {T,N}
     T_OUT = Base.promote_op(base_func, Vector{T})
     is_wider_type(T_OUT, T) && assertpromotion(base_func, T, T_OUT)
-    axes = collect(Int32, (d - 1 for d in (dims isa Integer ? (dims,) : dims)))
-    if length(axes) > 1
+    axes = Int32[dims - 1]
+    return nda_unary_reduction_axes(op_code, unchecked_promote_arr(input, T_OUT), axes, true)
+end
+
+function _unary_reduction_impl(base_func, op_code, input::NDArray{T,N}, dims::Tuple) where {T,N}
+    if length(dims) > 1
         error("$(base_func): reducing over multiple dimensions is not yet supported. Got dims=$dims")
     end
+    # single element tuple
+    T_OUT = Base.promote_op(base_func, Vector{T})
+    is_wider_type(T_OUT, T) && assertpromotion(base_func, T, T_OUT)
+    axes = Int32[dims[1] - 1]
     return nda_unary_reduction_axes(op_code, unchecked_promote_arr(input, T_OUT), axes, true)
 end
 
