@@ -209,8 +209,10 @@ The following unary reduction operations are supported and can be applied direct
   • `prod`
   • `sum`
 
-
 These operations follow standard Julia semantics.
+
+Reduction over specific dimensions is supported via the `dims` keyword argument,
+following the same semantics as Julia's base reduction functions.
 
 Examples
 --------
@@ -220,6 +222,14 @@ A = cuNumeric.ones(5)
 
 maximum(A)
 sum(A)
+
+# Reduce over a specific dimension
+B = cuNumeric.ones(3, 4)
+sum(B, dims=1)    # 1×4 result
+sum(B, dims=2)    # 3×1 result
+
+# Reduce over multiple dimensions
+sum(B, dims=(1,2))  # 1×1 result
 ```
 """
 global const unary_reduction_map = Dict{Function,UnaryRedCode}(
