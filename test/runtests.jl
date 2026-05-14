@@ -169,16 +169,25 @@ end
 
 @testset verbose=true "Unary Reductions with Dims" begin
     N = 100
-    for T in (Float32, Float64, Int32, Int64)
-        @testset "T = $T" begin
-            julia_arr_1D, julia_arr_2D = make_julia_arrays(T, N, :unit_interval)
-            cunumeric_arr_1D, cunumeric_arr_2D = make_cunumeric_arrays(
-                [julia_arr_1D], [julia_arr_2D], T, N
+
+    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
+        julia_arr_1D, julia_arr_2D = make_julia_arrays(T, N, :unit_interval)
+        cunumeric_arr_1D, cunumeric_arr_2D = make_cunumeric_arrays(
+            [julia_arr_1D], [julia_arr_2D], T, N
+        )
+
+        @testset "$(func)" for (func, _) in cuNumeric.unary_reduction_map
+            # Skip reductions not supported by the cuNumeric backend for complex types
+            if T <: Complex && (
+                func == Base.maximum ||
+                func == Base.minimum ||
+                func == Base.prod
             )
-            for (func, _) in cuNumeric.unary_reduction_map
-                test_unary_reduction_dims(func, julia_arr_1D, cunumeric_arr_1D)
-                test_unary_reduction_dims(func, julia_arr_2D, cunumeric_arr_2D)
+                continue
             end
+
+            test_unary_reduction_dims(func, julia_arr_1D, cunumeric_arr_1D)
+            test_unary_reduction_dims(func, julia_arr_2D, cunumeric_arr_2D)
         end
     end
 end
