@@ -167,7 +167,7 @@ end
     end
 end
 
-@testset "Unary Reductions with Dims" begin
+@testset verbose=true "Unary Reductions with Dims" begin
     N = 100
     for T in (Float32, Float64, Int32, Int64)
         @testset "T = $T" begin
