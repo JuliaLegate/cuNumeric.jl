@@ -171,10 +171,11 @@ end
     N = 100
 
     @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
-        julia_arr_1D, julia_arr_2D = make_julia_arrays(T, N, :unit_interval)
-        cunumeric_arr_1D, cunumeric_arr_2D = make_cunumeric_arrays(
-            [julia_arr_1D], [julia_arr_2D], T, N
-        )
+        julia_arr_1D = my_rand(T, N)
+        julia_arr_2D = my_rand(T, (isqrt(N), isqrt(N)))
+
+        cunumeric_arr_1D = @allowscalar NDArray(julia_arr_1D)
+        cunumeric_arr_2D = @allowscalar NDArray(julia_arr_2D)
 
         @testset "$(func)" for (func, _) in cuNumeric.unary_reduction_map
             # Skip reductions not supported by the cuNumeric backend for complex types
