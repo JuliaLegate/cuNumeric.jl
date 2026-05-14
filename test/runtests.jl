@@ -172,7 +172,7 @@ end
 
     @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
         julia_arr_1D = my_rand(T, N)
-        julia_arr_2D = my_rand(T, (isqrt(N), isqrt(N)))
+        julia_arr_2D = my_rand(T, isqrt(N), isqrt(N))
 
         cunumeric_arr_1D = @allowscalar NDArray(julia_arr_1D)
         cunumeric_arr_2D = @allowscalar NDArray(julia_arr_2D)
