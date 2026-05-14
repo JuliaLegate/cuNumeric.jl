@@ -89,17 +89,18 @@ jobs:
 
       - name: Setup cuNumeric.jl with build from src wrappers
         run: |
-          julia --color=yes --project -e '
+          julia --color=yes -e '
+              using Pkg;
+              Pkg.develop(PackageSpec(path = "lib/CNPreferences"))
+              using CNPreferences; CNPreferences.use_developer_mode();
+              Pkg.develop(PackageSpec(path = "."))
+          '
+          julia --color=yes --project=test -e '
               using Pkg;
               Pkg.develop(PackageSpec(path = "lib/CNPreferences"))
               using CNPreferences; CNPreferences.use_developer_mode();
           '
-          julia --color=yes -e '
-              using Pkg;
-              Pkg.develop(PackageSpec(path = "lib/CNPreferences"))
-              Pkg.develop(PackageSpec(path = "."))
-              Pkg.build("cuNumeric")
-          '
+          julia --color=yes -e 'using Pkg; Pkg.build("cuNumeric")'
 
       - name: Perform Test
         run: |
