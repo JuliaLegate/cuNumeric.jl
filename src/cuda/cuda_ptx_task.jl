@@ -73,7 +73,8 @@ function nda_to_logical_array(arr::NDArray{T,N}) where {T,N}
 end
 
 function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
-    outputs::Tuple{Vararg{NDArray}}, scalars::Tuple{Vararg{Any}}; blocks, threads)
+    outputs::Tuple{Vararg{NDArray}}, scalars::Tuple{Vararg{Any}};
+    blocks, threads, taskid=cuNumeric.RUN_PTX, ctx=nothing)
 
     # we find the largest input/output.
     ndarrays = vcat(inputs..., outputs...)
@@ -84,7 +85,6 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
 
     rt = Legate.get_runtime()
     lib = cuNumeric.get_lib()
-    taskid = cuNumeric.RUN_PTX
     task = Legate.create_auto_task(rt, lib, taskid)
 
     input_vars = Vector{Legate.Variable}()
@@ -103,14 +103,22 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
         push!(output_vars, p)
     end
 
-    # next 3 lines are reserved scalars in the RUN_PTX task
+    # Reserved scalars: kernel_name (0), blocks (1,2,3), threads (4,5,6)
     Legate.add_scalar(task, Legate.string_to_scalar(kernel.func)) # 0
-    cuNumeric.add_xyz_scalars(task, to_stdvec(UInt32, blocks))  # bx,by,bz 1,2,3
-    cuNumeric.add_xyz_scalars(task, to_stdvec(UInt32, threads)) # tx,ty,tz 4,5,6
+    cuNumeric.add_xyz_scalars(task, to_stdvec(UInt32, blocks))    # 1,2,3
+    cuNumeric.add_xyz_scalars(task, to_stdvec(UInt32, threads))   # 4,5,6
 
-    # any user defined scalars in the launch macro
+    # CompilerMetadata ctx for broadcast tasks (scalar 7, raw bytes)
+    if !isnothing(ctx)
+        ref = Ref(ctx)
+        GC.@preserve ref begin
+            cuNumeric.add_scalar_from_ptr(task, Base.unsafe_convert(Ptr{Cvoid}, ref), sizeof(ctx))
+        end
+    end
+
+    # User-defined scalars
     for s in scalars
-        Legate.add_scalar(task, Legate.Scalar(s)) # 7+ -> ARG_OFFSET
+        Legate.add_scalar(task, Legate.Scalar(s))
     end
 
     # all inputs are aligned with all outputs
@@ -119,13 +127,15 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
 end
 
 function launch(kernel::CUDATask, inputs, outputs, scalars;
-    blocks, threads)
+    blocks, threads, taskid=cuNumeric.RUN_PTX, ctx=nothing)
     Launch(kernel,
         isa(inputs, Tuple) ? inputs : (inputs,),
         isa(outputs, Tuple) ? outputs : (outputs,),
         isa(scalars, Tuple) ? scalars : (scalars,);
         blocks=isa(blocks, Tuple) ? blocks : (blocks,),
         threads=isa(threads, Tuple) ? threads : (threads,),
+        taskid=taskid,
+        ctx=ctx,
     )
 end
 

@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -57,6 +57,7 @@ include("tests/unary_tests.jl")
 include("tests/binary_tests.jl")
 include("tests/scoping.jl")
 include("tests/scoping-advanced.jl")
+include("tests/broadcast_fusion_tests.jl")
 
 @testset verbose = true "AXPY" begin
     N = 100
@@ -430,11 +431,15 @@ end
 end
 
 if run_gpu_tests
+    @testset verbose = true "Broadcast Fusion" begin
+        test_broadcast_fusion()
+    end
+
     # @testset verbose = true "CUDA Tests" begin
     #     cuda_unaryop(rtol(Float32))
     #     cuda_binaryop(rtol(Float32))
     # end
-    @warn "CUDA tests are turned off inside Pkg.test for now. --check-bounds=yes causes issues."
+    @warn "CUDA @cuda_task tests are turned off inside Pkg.test for now. --check-bounds=yes causes issues."
 else
     @warn "The CUDA tests will not be run as a CUDA-enabled device is not available"
 end
