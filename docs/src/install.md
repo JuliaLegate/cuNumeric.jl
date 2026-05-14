@@ -49,11 +49,11 @@ We require that you have a g++ capable compiler of C++ 20, and a recent version 
 
 To use developer mode,
 ```julia
-using CNPreferences; CNPreferences.use_developer_mode(; use_cunumeric_jll=true, cunumeric_path=nothing)
+using CNPreferences; CNPreferences.use_developer_mode(; use_jll=true, path=nothing)
 ```
-By default `use_cunumeric_jll` will be set to true. However, you can set a custom branch and/or use a custom path of cupynumeric. By setting `use_cunumeric_jll=false`, you can set `cunumeric_path` to your custom install.
+By default `use_cunumeric_jll` will be set to true. However, you can set a custom branch and/or use a custom path of cupynumeric. By setting `use_jll=false`, you can set `path` to your custom install.
 ```julia
-using CNPreferences; CNPreferences.use_developer_mode(;use_cunumeric_jll=false, cunumeric_path="/path/to/cupynumeric/root")
+using CNPreferences; CNPreferences.use_developer_mode(;use_jll=false, path="/path/to/cupynumeric/root")
 
 ```
 

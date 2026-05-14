@@ -28,7 +28,6 @@ steps:
         agents:
           queue: "juliagpu"
           cuda: "*"
-          cap: "sm_80"
         if: build.message !~ /\[skip tests\]/
         timeout_in_minutes: 44
         env:
