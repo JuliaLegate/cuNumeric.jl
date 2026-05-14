@@ -134,7 +134,7 @@ function get_ptx(
     arg_types...;
     ndrange,
 ) where {DEST_T,BC_T}
-    println(Base.isbitstype.(arg_types))
+    # println(Base.isbitstype.(arg_types))
     threads, blocks, ctx = _threads_from_occupancy(obj, DEST_T, arg_types...; ndrange=ndrange)
     blocks == 0 && return "", 0, 0, ctx #! MAYBE ERROR HERE?
 
@@ -161,10 +161,13 @@ function get_cuda_task(
         # Also stores in cache if not found in Dict
         return get!(_BCAST_PTX_CACHE, key) do
             ptx, threads, blocks, ctx = get_ptx(obj, DEST_T, ARG_TYPES...; ndrange=ndrange)
-            func_name = extract_kernel_name(ptx)
-            println(ptx)
-            ptx_task(ptx, func_name)
-            cuda_task = CUDATask(func_name, (DEST_T, ARG_TYPES...))
+            orig_name = extract_kernel_name(ptx)
+            # Append a PTX content hash to make each name unique.
+            unique_name = orig_name * "_" * string(hash(ptx); base=16)
+            ptx = replace(ptx, orig_name => unique_name)
+            # println(ptx)
+            ptx_task(ptx, unique_name)
+            cuda_task = CUDATask(unique_name, (DEST_T, ARG_TYPES...))
             FusedBroadcastMetadata(ctx, threads, blocks, cuda_task)
         end
     end
@@ -213,30 +216,59 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
     # Spoof NDArrays with CuDeviceArrays in the Broadcasted type
     spoofed_bc_args_type = map_cuda_type(typeof(bc.args))
 
-    # Figure out where input arrays are
-    cudevicearray_offsets, cudevicearray_indices = find_cudevicearray_offsets_and_indices(
-        spoofed_bc_args_type
-    )
+    # Build the arg_map: for each kernel arg (after ctx), record its source.
+    # Convention: index into combined [outputs..., inputs...] for NDArrays.
+    #   idx < num_outputs → output[idx]
+    #   idx >= num_outputs → input[idx - num_outputs]
+    # Scalar values are passed separately after the mapping.
+    #
+    # PTX kernel signature: f(kernel_state, ctx, dest, bc.args...)
+    # So the arg_map covers: [dest, bc.args...] in order.
 
-    # Figure out where scalars are
-    scalar_offsets, scalar_indices = find_scalar_offsets_and_indices(spoofed_bc_args_type)
+    num_outputs = 1  # dest is always the single output
 
-    input_ndarrays = ntuple(
-        i -> get_ndarray(bc.args[cudevicearray_indices[i]]), length(cudevicearray_indices)
-    )
-    input_scalars = ntuple(i -> bc.args[scalar_indices[i]], length(scalar_indices))
+    # Deduplicate NDArray inputs: map each unique NDArray to a unique input index.
+    # The arg_map can reference the same input index multiple times (e.g. a .+ a).
+    unique_ndarrays = NDArray[]
+    ndarray_to_input_idx = Dict{UInt,Int}()  # objectid → input index
 
-    #! I AM NOT SURE IT IS CORRECT TO ASSUME SCALARS ARE ALWAYS AFTER NDARARYS
-    #! THE PTX KERNEL SIGNATURE BEFORE MODIFICATION BY CUDA.jl:
-    #! (fkm.ctx, dest, bc.args...)
+    arg_map = Int32[]
+    actual_scalars = Any[]
+
+    # First arg in PTX (after ctx) is always dest = output[0]
+    push!(arg_map, Int32(0))  # output[0]
+
+    # Then bc.args... in order
+    for (i, arg) in enumerate(bc.args)
+        if stores_cudevicearray(map_cuda_type(typeof(arg)))
+            nda = get_ndarray(arg)
+            oid = objectid(nda)
+            if !haskey(ndarray_to_input_idx, oid)
+                push!(unique_ndarrays, nda)
+                ndarray_to_input_idx[oid] = length(unique_ndarrays) - 1  # 0-based
+            end
+            input_idx = ndarray_to_input_idx[oid]
+            push!(arg_map, Int32(num_outputs + input_idx))  # offset by num_outputs
+        else
+            # Scalar — record its position and save the value
+            push!(arg_map, Int32(-1 - length(actual_scalars)))  # negative = scalar
+            push!(actual_scalars, arg)
+        end
+    end
+
+    input_ndarrays = tuple(unique_ndarrays...)
+
+    # @show arg_map actual_scalars length(unique_ndarrays)
 
     launch(
         fkm.cuda_task,
         input_ndarrays,
         (dest,),
-        input_scalars;
+        (Int32(length(arg_map)), arg_map..., actual_scalars...);
         blocks=fkm.blocks,
         threads=fkm.threads,
+        taskid=cuNumeric.RUN_PTX_BROADCAST,
+        ctx=fkm.ctx,
     )
 
     #! DO I NEED TO DO TYPE PROMOTION CHECKS??
