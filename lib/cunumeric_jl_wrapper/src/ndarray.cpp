@@ -237,6 +237,23 @@ void nda_unary_reduction(CN_NDArray* out, CuPyNumericUnaryRedCode op_code,
   out->obj.unary_reduction(op_code, input->obj);
 }
 
+CN_NDArray* nda_unary_reduction_axes(CuPyNumericUnaryRedCode op_code, CN_NDArray* input, const int32_t* axes, int32_t num_axes, bool keepdims) {
+    std::vector<int32_t> axis_vec(axes, axes + num_axes);
+    NDArray result = input->obj._perform_unary_reduction(
+        static_cast<int32_t>(op_code),
+        input->obj,
+        axis_vec,
+        std::nullopt,  // dtype
+        std::nullopt,  // res_dtype
+        std::nullopt,  // out
+        keepdims,
+        {},            // args
+        std::nullopt,  // initial
+        std::nullopt   // where
+    );
+    return new CN_NDArray{NDArray(std::move(result))};
+}
+
 NDArray get_slice(NDArray arr, std::vector<legate::Slice> slices) {
   switch (slices.size()) {
     case 1: {

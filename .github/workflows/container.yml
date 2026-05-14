@@ -18,6 +18,7 @@ on:
       - main
 jobs:
   push_to_registry:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     name: Container for ${{ matrix.platform }} - Julia ${{ matrix.julia }} - CUDA ${{ matrix.cuda }}
     permissions:
       contents: read

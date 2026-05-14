@@ -19,8 +19,6 @@ on:
       - 'deps/build.jl'
       - 'Project.toml'
       - 'lib/CNPreferences/src/**'
-      - '.github/workflows/ci.yml'
-      - 'Dockerfile' # container.yml depends on this
     tags:
       - 'v*'
     branches:
@@ -32,11 +30,25 @@ on:
       - 'deps/build.jl'
       - 'Project.toml'
       - 'lib/CNPreferences/src/**'
-      - '.github/workflows/ci.yml'
-      - 'Dockerfile' # container.yml depends on this
 jobs:
+  check_changes:
+    name: Check for wrapper changes
+    runs-on: ubuntu-latest
+    outputs:
+      wrapper_changed: ${{ steps.filter.outputs.wrapper }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            wrapper:
+              - 'lib/cunumeric_jl_wrapper/**'
+
   test:
     name: Julia ${{ matrix.julia }} - ${{ matrix.os }}
+    needs: check_changes
+    if: ${{ needs.check_changes.outputs.wrapper_changed != 'true' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
