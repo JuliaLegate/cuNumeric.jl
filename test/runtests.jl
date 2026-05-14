@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -164,6 +164,22 @@ end
         cunumeric_bools = NDArray(julia_bools)
         @test any(julia_bools) == any(cunumeric_bools)[]
         @test all(julia_bools) == all(cunumeric_bools)[]
+    end
+end
+
+@testset "Unary Reductions with Dims" begin
+    N = 100
+    for T in (Float32, Float64, Int32, Int64)
+        @testset "T = $T" begin
+            julia_arr_1D, julia_arr_2D = make_julia_arrays(T, N, :unit_interval)
+            cunumeric_arr_1D, cunumeric_arr_2D = make_cunumeric_arrays(
+                [julia_arr_1D], [julia_arr_2D], T, N
+            )
+            for (func, _) in cuNumeric.unary_reduction_map
+                test_unary_reduction_dims(func, julia_arr_1D, cunumeric_arr_1D)
+                test_unary_reduction_dims(func, julia_arr_2D, cunumeric_arr_2D)
+            end
+        end
     end
 end
 

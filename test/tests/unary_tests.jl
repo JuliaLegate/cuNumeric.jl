@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -89,36 +89,22 @@ function test_unary_function_set(func_dict, T, N)
     end
 end
 
-function test_unary_reduction_dims(func, julia_arr::AbstractArray{T,N}, cunumeric_arr::NDArray{T,N}) where {T,N}
+function test_unary_reduction_dims(
+    func, julia_arr::AbstractArray{T,N}, cunumeric_arr::NDArray{T,N}
+) where {T,N}
     allowpromotion(true) do
         for d in 1:N
-            julia_res = func(julia_arr, dims=d)
-            cunumeric_res = func(cunumeric_arr, dims=d)
+            julia_res = func(julia_arr; dims=d)
+            cunumeric_res = func(cunumeric_arr; dims=d)
             allowscalar() do
                 @test cuNumeric.compare(julia_res, cunumeric_res, atol(T), rtol(T))
             end
         end
 
+        # we are testing a multi axis reduction. This will throw a runtime error.
+        # https://github.com/nv-legate/cupynumeric/blob/main/src/cupynumeric/ndarray.cc#L1132
         if N >= 2
-            julia_res = func(julia_arr, dims=(1,2))
-            cunumeric_res = func(cunumeric_arr, dims=(1,2))
-            allowscalar() do
-                @test cuNumeric.compare(julia_res, cunumeric_res, atol(T), rtol(T))
-            end
-        end
-    end
-end
-
-@testset "unary reductions with dims" begin
-    N = 100
-    for T in (Float32, Float64, Int32, Int64)
-        julia_arr_1D, julia_arr_2D = make_julia_arrays(T, N, :unit_interval)
-        cunumeric_arr_1D, cunumeric_arr_2D = make_cunumeric_arrays(
-            [julia_arr_1D], [julia_arr_2D], T, N
-        )
-        @testset "$func $T" for (func, _) in cuNumeric.unary_reduction_map
-            test_unary_reduction_dims(func, julia_arr_1D, cunumeric_arr_1D)
-            test_unary_reduction_dims(func, julia_arr_2D, cunumeric_arr_2D)
+            @test_throws Exception func(cunumeric_arr, dims=(1, 2))
         end
     end
 end
