@@ -93,10 +93,14 @@ jobs:
               using Pkg;
               Pkg.develop(PackageSpec(path = "lib/CNPreferences"))
               using CNPreferences; CNPreferences.use_developer_mode();
-              Pkg.develop(PackageSpec(path = "."))
           '
-          julia --color=yes --project -e 'using Pkg; Pkg.build()'
+          julia --color=yes -e '
+              using Pkg;
+              Pkg.develop(PackageSpec(path = "lib/CNPreferences"))
+              Pkg.develop(PackageSpec(path = "."))
+              Pkg.build("cuNumeric")
+          '
 
       - name: Perform Test
         run: |
-          GPUTESTS=0 julia --color=yes --project -e 'using Pkg; Pkg.test()'
+          GPUTESTS=0 julia --color=yes -e 'using Pkg; Pkg.test("cuNumeric")'
