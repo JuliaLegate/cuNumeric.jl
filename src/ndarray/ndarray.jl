@@ -763,3 +763,11 @@ end
 function Base.isapprox(arr::NDArray{T}, arr2::NDArray{T}; atol=0, rtol=0) where {T}
     return compare(arr, arr2, atol, rtol)
 end
+
+function write_hdf5(arr::NDArray, path::String, dataset::String)
+
+end
+
+function read_hdf5(path::String, dataset::String)
+
+end
