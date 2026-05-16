@@ -764,10 +764,17 @@ function Base.isapprox(arr::NDArray{T}, arr2::NDArray{T}; atol=0, rtol=0) where 
     return compare(arr, arr2, atol, rtol)
 end
 
-function write_hdf5(arr::NDArray, path::String, dataset::String)
-
+function write_hdf5(arr::NDArray{T,N}, path::String, dataset::String) where {T,N}
+    st_handle = get_store(arr)
+    la = Legate.LogicalArray{T,N}(st_handle[], size(arr))
+    Legate.write_hdf5(la, path, dataset)
 end
 
 function read_hdf5(path::String, dataset::String)
-
+    la = Legate.read_hdf5(path, dataset)
+    T = eltype(la)
+    N = Int(Legate.dim(la))
+    st = Legate.data(la.handle)  # call data on the raw impl
+    ptr = nda_store_to_ndarray(st)  # pass directly
+    return NDArray(ptr, T, Val(N), nothing)
 end
