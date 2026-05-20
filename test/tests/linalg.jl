@@ -102,3 +102,40 @@ end
 
     @test sort(Array(out)) == sort(ref)
 end
+
+@testset "solve diagonal" begin
+    n = 4
+    A = cuNumeric.zeros(Float64, n, n)
+    b = cuNumeric.zeros(Float64, n, 1)
+    cuNumeric.@allowscalar for i in 1:n
+        A[i, i] = 4.0
+        b[i, 1] = 1.0
+    end
+    x = cuNumeric.solve(A, b)
+    allowscalar() do
+        @test cuNumeric.compare(fill(0.25, n, 1), x, atol(Float64), rtol(Float64))
+    end
+end
+
+@testset "solve identity" begin
+    n = 4
+    A = cuNumeric.NDArray(Matrix{Float64}(I, n, n))
+    b = cuNumeric.NDArray(reshape(collect(1.0:n), n, 1))
+    x = cuNumeric.solve(A, b)
+    ref = reshape(collect(1.0:n), n, 1)
+    allowscalar() do
+        @test cuNumeric.compare(ref, x, atol(Float64), rtol(Float64))
+    end
+end
+
+@testset "solve general" begin
+    A_ref = [2.0 1.0; 5.0 7.0]
+    b_ref = [11.0; 13.0;;]
+    A = cuNumeric.NDArray(A_ref)
+    b = cuNumeric.NDArray(b_ref)
+    x = cuNumeric.solve(A, b)
+    ref = A_ref \ b_ref
+    allowscalar() do
+        @test cuNumeric.compare(ref, x, atol(Float64), rtol(Float64))
+    end
+end

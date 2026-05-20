@@ -68,6 +68,7 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   wrap_unary_ops(mod);
   wrap_binary_ops(mod);
   wrap_unary_reds(mod);
+  wrap_linalg_ops(mod);
 
   using jlcxx::ParameterList;
   using jlcxx::Parametric;
