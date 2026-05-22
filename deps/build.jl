@@ -67,17 +67,22 @@ end
 function build_jlcxxwrap(repo_root, cupynumeric_root)
     build_libcxxwrap = joinpath(repo_root, "scripts/install_cxxwrap.sh")
     version_path = joinpath(DEPOT_PATH[1], "dev/libcxxwrap_julia_jll/override/LEGATE_INSTALL.txt")
-    if isfile(version_path)
-        version = VersionNumber(strip(read(version_path, String)))
-        @info "libcxxwrap: Found cuNumeric $version"
-        if is_supported_version(version)
-            @info "libcxxwrap: Found supported version built with cuNumeric.jl: $version"
-            return nothing
+    jlcxxwrap_libpath = joinpath(DEPOT_PATH[1], "dev/libcxxwrap_julia_jll/override/lib/libjlcxxwrap_julia.so")
+    if isfile(jlcxxwrap_libpath)
+        if isfile(version_path)
+            version = VersionNumber(strip(read(version_path, String)))
+            @info "libcxxwrap: Found cuNumeric $version"
+            if is_supported_version(version)
+                @info "libcxxwrap: Found supported version built with cuNumeric.jl: $version"
+                return nothing
+            else
+                @info "libcxxwrap: Unsupported version found: $version. Rebuilding..."
+            end
         else
-            @info "libcxxwrap: Unsupported version found: $version. Rebuilding..."
+            @info "libcxxwrap: No version file found. Starting build..."
         end
     else
-        @info "libcxxwrap: No version file found. Starting build..."
+        @info "libcxxwrap: No jlcxxwrap_julia library found. Starting build..."
     end
 
     @info "libcxxwrap: Running build script: $build_libcxxwrap"
@@ -89,7 +94,7 @@ function build_jlcxxwrap(repo_root, cupynumeric_root)
 end
 
 function build_cpp_wrapper(
-    repo_root, cupynumeric_loc, legate_loc, blas_loc, install_root, cuda_header_loc, cuda_driver_loc
+    repo_root, cupynumeric_loc, legate_loc, blas_loc, install_root
 )
     @info "libcunumeric_jl_wrapper: Building C++ Wrapper Library"
     if isdir(install_root)
@@ -100,7 +105,7 @@ function build_cpp_wrapper(
     build_cpp_wrapper = joinpath(repo_root, "scripts/build_cpp_wrapper.sh")
     nthreads = Threads.nthreads()
 
-    bld_command = `$build_cpp_wrapper $repo_root $cupynumeric_loc $legate_loc $blas_loc $cuda_header_loc $cuda_driver_loc $install_root $nthreads`
+    bld_command = `$build_cpp_wrapper $repo_root $cupynumeric_loc $legate_loc $blas_loc $install_root $nthreads`
 
     # write out a bash script for debugging
     cmd_str = join(bld_command.exec, " ")
@@ -161,7 +166,7 @@ end
 """
     build CxxWrap and cunumeric_jl_wrapper
 """
-function build_deps(pkg_root, cupynumeric_root, blas_root, cuda_header_path, cuda_driver_path)
+function build_deps(pkg_root, cupynumeric_root, blas_root)
     legate_lib = Legate.get_install_liblegate()
     install_lib = joinpath(pkg_root, "lib", "cunumeric_jl_wrapper", "build")
     if !cupynumeric_valid(cupynumeric_root)
@@ -174,7 +179,7 @@ function build_deps(pkg_root, cupynumeric_root, blas_root, cuda_header_path, cud
     build_jlcxxwrap(pkg_root, cupynumeric_root)
     build_cpp_wrapper(
         pkg_root, cupynumeric_root, up_dir(legate_lib), blas_root,
-        install_lib, cuda_header_path, cuda_driver_path,
+        install_lib
     ) # $pkg_root/lib/cunumeric_jl_wrapper
 end
 
@@ -201,7 +206,7 @@ function build(::CNPreferences.Conda)
     #!TODO SET LocalPreferences.toml to use local CUDA libraries
 
     is_cupynumeric_installed(cupynumeric_root; throw_errors=true)
-    build_deps(pkg_root, cupynumeric_root, cupynumeric_root, cuda_toolkit_root) # blas is same root as cupynumeric
+    build_deps(pkg_root, cupynumeric_root, cupynumeric_root) # blas is same root as cupynumeric
 end
 
 function build(::CNPreferences.Developer)
@@ -216,8 +221,8 @@ function build(::CNPreferences.Developer)
     if isnothing(cupynumeric_root)
         # We are using cupynumeric_jll.
         cupynumeric_root = cupynumeric_jll.artifact_dir
-        cuda_header_path = dirname(cupynumeric_jll.cuda_header)
-        cuda_driver_path = joinpath(CUDACore.CUDA_Driver_jll.artifact_dir, "lib", "libcuda.so")
+        # cuda_header_path = dirname(cupynumeric_jll.cuda_header)
+        # cuda_driver_path = joinpath(CUDACore.CUDA_Driver_jll.artifact_dir, "lib", "libcuda.so")
     else
         # User provided a custom cupynumeric install.
         is_cupynumeric_installed(cupynumeric_root; throw_errors=true)
@@ -228,8 +233,8 @@ function build(::CNPreferences.Developer)
             )
 
         # Local full CUDA toolkit path.
-        cuda_header_path = _cuda_include_dir_from_toolkit(cuda_toolkit_root)
-        cuda_driver_path = _cuda_driver_lib_from_toolkit(cuda_toolkit_root)
+        # cuda_header_path = _cuda_include_dir_from_toolkit(cuda_toolkit_root)
+        # cuda_driver_path = _cuda_driver_lib_from_toolkit(cuda_toolkit_root)
     end
 
     if isnothing(blas_lib_dir)
@@ -239,9 +244,7 @@ function build(::CNPreferences.Developer)
     build_deps(
         pkg_root,
         cupynumeric_root,
-        blas_lib_dir,
-        cuda_header_path,
-        cuda_driver_path,
+        blas_lib_dir
     )
 end
 

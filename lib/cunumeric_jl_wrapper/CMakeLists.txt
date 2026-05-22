@@ -3,7 +3,6 @@ project(cuNumericWrapper)
 
 set(cuNumericWrapperVersion 0.0.1)
 message(STATUS "Project version: v${cuNumericWrapperVersion}")
-
 set(CXX_CUNUMERICJL_WRAPPER cunumeric_jl_wrapper)
 set(C_INTERFACE_LIB cunumeric_c_wrapper)
 
@@ -12,30 +11,30 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
-option(NOCUDA "Build without CUDA support (skip src/cuda.cpp)" OFF)
+# ---- New: NOCUDA option ----
+option(NOCUDA "Build without CUDA support (skip CUDAToolkit and src/cuda.cpp)" OFF)
 option(BINARYBUILDER "Building with binary builder" ON)
 
-# Always needed
+
+# Always needed (unless your packages themselves require CUDA at configure time)
 find_package(legate REQUIRED)
 find_package(cupynumeric REQUIRED)
 
 # CxxWrap Stuff
 if(NOT BINARYBUILDER)
-    execute_process(
-        COMMAND julia -e "println(DEPOT_PATH[1])"
-        OUTPUT_VARIABLE JULIA_DEP_PATH
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
+execute_process(
+  COMMAND julia -e "println(DEPOT_PATH[1])"
+  OUTPUT_VARIABLE JULIA_DEP_PATH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
 
-    set(JlCxx_DIR "${JULIA_DEP_PATH}/dev/libcxxwrap_julia_jll/override")
-    message(STATUS "Setting JlCxx_DIR to ${JlCxx_DIR} (not using BinaryBuilder)")
+set(JlCxx_DIR "${JULIA_DEP_PATH}/dev/libcxxwrap_julia_jll/override")
+message(STATUS "Setting JlCxx_DIR to ${JlCxx_DIR} (not using BinaryBuilder)")
 endif()
 
 find_package(JlCxx REQUIRED)
-
 get_target_property(JlCxx_location JlCxx::cxxwrap_julia LOCATION)
 get_filename_component(JlCxx_location ${JlCxx_location} DIRECTORY)
-
 set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib;${JlCxx_location}")
 message(STATUS "Found JlCxx at ${JlCxx_location}")
 
@@ -45,34 +44,21 @@ set(SOURCES
     src/types.cpp
 )
 
-# CUDA Driver API only: requires cuda.h and libcuda.so, not a full CUDA Toolkit.
+# Conditionally add CUDA bits
 if(NOT NOCUDA)
-    set(CUDA_DRIVER_INCLUDE_DIR "" CACHE PATH "Directory containing cuda.h")
-    set(CUDA_DRIVER_LIBRARY "" CACHE FILEPATH "Full path to libcuda.so")
-
-    add_library(CUDA_driver_manual UNKNOWN IMPORTED)
-    set_target_properties(CUDA_driver_manual PROPERTIES
-        IMPORTED_LOCATION "${CUDA_DRIVER_LIBRARY}"
-        INTERFACE_INCLUDE_DIRECTORIES "${CUDA_DRIVER_INCLUDE_DIR}"
-    )
-
+    find_package(CUDAToolkit 13.0 REQUIRED)
     list(APPEND SOURCES src/cuda.cpp)
     add_compile_definitions(HAVE_CUDA)
     set(HAVE_CUDA TRUE)
-
     message(STATUS "CUDA enabled: adding src/cuda.cpp")
-    message(STATUS "CUDA driver include dir: ${CUDA_DRIVER_INCLUDE_DIR}")
-    message(STATUS "CUDA driver library:     ${CUDA_DRIVER_LIBRARY}")
 else()
     set(HAVE_CUDA FALSE)
-    message(STATUS "NOCUDA=ON: skipping src/cuda.cpp")
+    message(STATUS "NOCUDA=ON: skipping CUDAToolkit and src/cuda.cpp")
 endif()
 
 # Library: C++ wrapper
 add_library(${CXX_CUNUMERICJL_WRAPPER} SHARED ${SOURCES})
-set_target_properties(${CXX_CUNUMERICJL_WRAPPER} PROPERTIES
-    VERSION ${cuNumericWrapperVersion}
-)
+set_target_properties(${CXX_CUNUMERICJL_WRAPPER} PROPERTIES VERSION ${cuNumericWrapperVersion})
 
 target_link_libraries(${CXX_CUNUMERICJL_WRAPPER} PRIVATE
     cupynumeric::cupynumeric
@@ -81,11 +67,12 @@ target_link_libraries(${CXX_CUNUMERICJL_WRAPPER} PRIVATE
     JlCxx::cxxwrap_julia_stl
 )
 
+# Include dirs (conditionally add CUDA include path)
 target_include_directories(${CXX_CUNUMERICJL_WRAPPER} PRIVATE include)
-
 if(HAVE_CUDA)
-    target_link_libraries(${CXX_CUNUMERICJL_WRAPPER} PRIVATE CUDA_driver_manual)
+    target_include_directories(${CXX_CUNUMERICJL_WRAPPER} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
 endif()
+
 
 install(TARGETS ${CXX_CUNUMERICJL_WRAPPER} DESTINATION lib)
 
@@ -96,9 +83,7 @@ set(C_SOURCES
 )
 
 add_library(${C_INTERFACE_LIB} SHARED ${C_SOURCES})
-set_target_properties(${C_INTERFACE_LIB} PROPERTIES
-    VERSION ${cuNumericWrapperVersion}
-)
+set_target_properties(${C_INTERFACE_LIB} PROPERTIES VERSION ${cuNumericWrapperVersion})
 
 target_link_libraries(${C_INTERFACE_LIB} PRIVATE
     cupynumeric::cupynumeric
@@ -106,9 +91,8 @@ target_link_libraries(${C_INTERFACE_LIB} PRIVATE
 )
 
 target_include_directories(${C_INTERFACE_LIB} PRIVATE include)
-
 if(HAVE_CUDA)
-    target_link_libraries(${C_INTERFACE_LIB} PRIVATE CUDA_driver_manual)
+    target_include_directories(${C_INTERFACE_LIB} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
 endif()
 
 install(TARGETS ${C_INTERFACE_LIB} DESTINATION lib)
