@@ -50,52 +50,77 @@ function solve_batched(a::NDArray{T,N}, b::NDArray, x::NDArray) where {T,N}
     Legate.submit_manual_task(rt, task)
 end
 
-function solve(a::NDArray{T,N}, b::NDArray{S,M}) where {T,N,S,M}
-    if N < 2
-        throw(ArgumentError("$(N)-dimensional array given. Array must be at least two-dimensional"))
-    end
-    if M < 1
-        throw(ArgumentError("$(M)-dimensional array given. Array must be at least one-dimensional"))
-    end
-    if T == Float16 || S == Float16
-        throw(ArgumentError("array type float16 is unsupported in linalg"))
-    end
-    if size(a)[end-1] != size(a)[end]
+# Dimension guards
+function solve(a::NDArray{T,1}, b::NDArray{S,M}) where {T,S,M}
+    throw(ArgumentError("1-dimensional array given. Array must be at least two-dimensional"))
+end
+
+function solve(a::NDArray{T,0}, b::NDArray{S,M}) where {T,S,M}
+    throw(ArgumentError("0-dimensional array given. Array must be at least two-dimensional"))
+end
+
+function solve(a::NDArray{T,N}, b::NDArray{S,0}) where {T,N,S}
+    throw(ArgumentError("0-dimensional array given. Array must be at least one-dimensional"))
+end
+
+# Float16 guards
+function solve(a::NDArray{Float16,N}, b::NDArray{S,M}) where {N,S,M}
+    throw(ArgumentError("array type float16 is unsupported in linalg"))
+end
+
+function solve(a::NDArray{T,N}, b::NDArray{Float16,M}) where {T,N,M}
+    throw(ArgumentError("array type float16 is unsupported in linalg"))
+end
+
+# 2D case: (m,m),(m)->( m)
+function solve(a::NDArray{T,2}, b::NDArray{S,1}) where {T,S}
+    size(a)[end-1] != size(a)[end] &&
         throw(ArgumentError("Last 2 dimensions of the array must be square"))
-    end
-    if N == 2 && size(a)[2] != size(b)[1]
-        if M == 1
-            throw(ArgumentError(
-                "Input operand 1 has a mismatch in its dimension 0, " *
-                "with signature (m,m),(m)->(m) (size $(size(b)[1]) " *
-                "is different from $(size(a)[2]))"
-            ))
-        else
-            throw(ArgumentError(
-                "Input operand 1 has a mismatch in its dimension 0, " *
-                "with signature (m,m),(m,n)->(m,n) (size $(size(b)[1]) " *
-                "is different from $(size(a)[2]))"
-            ))
-        end
-    end
-    if N > 2
-        if N != M
-            throw(ArgumentError(
-                "Batched matrices require signature (...,m,m),(...,m,n)->(...,m,n)"
-            ))
-        end
-        if size(a)[end] != size(b)[end-1]
-            throw(ArgumentError(
-                "Input operand 1 has a mismatch in its dimension " *
-                "$(M-2), with signature (...,m,m),(...,m,n)->(...,m,n)" *
-                " (size $(size(b)[end-1]) is different from $(size(a)[end]))"
-            ))
-        end
-    end
-    if prod(size(a)) == 0 || prod(size(b)) == 0
-        return zeros(T, size(b)...)
-    end
+    size(a)[2] != size(b)[1] &&
+        throw(ArgumentError(
+            "Input operand 1 has a mismatch in its dimension 0, " *
+            "with signature (m,m),(m)->(m) (size $(size(b)[1]) " *
+            "is different from $(size(a)[2]))"
+        ))
+    prod(size(a)) == 0 || prod(size(b)) == 0 && return zeros(T, size(b)...)
     x = zeros(T, size(b)...)
     solve_batched(a, b, x)
     return x
+end
+
+# 2D case: (m,m),(m,n)->(m,n)
+function solve(a::NDArray{T,2}, b::NDArray{S,2}) where {T,S}
+    size(a)[end-1] != size(a)[end] &&
+        throw(ArgumentError("Last 2 dimensions of the array must be square"))
+    size(a)[2] != size(b)[1] &&
+        throw(ArgumentError(
+            "Input operand 1 has a mismatch in its dimension 0, " *
+            "with signature (m,m),(m,n)->(m,n) (size $(size(b)[1]) " *
+            "is different from $(size(a)[2]))"
+        ))
+    prod(size(a)) == 0 || prod(size(b)) == 0 && return zeros(T, size(b)...)
+    x = zeros(T, size(b)...)
+    solve_batched(a, b, x)
+    return x
+end
+
+# Batched case: (...,m,m),(...,m,n)->(...,m,n)
+function solve(a::NDArray{T,N}, b::NDArray{S,N}) where {T,S,N}
+    size(a)[end-1] != size(a)[end] &&
+        throw(ArgumentError("Last 2 dimensions of the array must be square"))
+    size(a)[end] != size(b)[end-1] &&
+        throw(ArgumentError(
+            "Input operand 1 has a mismatch in its dimension " *
+            "$(N-2), with signature (...,m,m),(...,m,n)->(...,m,n)" *
+            " (size $(size(b)[end-1]) is different from $(size(a)[end]))"
+        ))
+    prod(size(a)) == 0 || prod(size(b)) == 0 && return zeros(T, size(b)...)
+    x = zeros(T, size(b)...)
+    solve_batched(a, b, x)
+    return x
+end
+
+# Mismatched batch dimensions
+function solve(a::NDArray{T,N}, b::NDArray{S,M}) where {T,N,S,M}
+    throw(ArgumentError("Batched matrices require signature (...,m,m),(...,m,n)->(...,m,n)"))
 end
