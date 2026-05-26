@@ -55,7 +55,7 @@ if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
         -D CUPYNUMERIC_PATH="$CUPYNUMERIC_ROOT_DIR" \
         -D BLAS_LIBRARIES="$BLAS_LIB_DIR/libopenblas.so" \
         -D PROJECT_INSTALL_PATH="$INSTALL_DIR" \
-        -D CMAKE_BUILD_TYPE=Releases
+        -D CMAKE_BUILD_TYPE=Release
 else
     echo "Skipping configure (already done in $BUILD_DIR)"
 fi
