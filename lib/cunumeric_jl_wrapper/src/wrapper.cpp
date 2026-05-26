@@ -42,10 +42,7 @@ struct WrapCppOptional {
   }
 };
 
-legate::LogicalArray* get_store(CN_NDArray* arr) {
-  auto res = arr->obj.get_store();
-  return new legate::LogicalArray(std::move(res));
-}
+legate::LogicalArray get_store(CN_NDArray* arr) { return arr->obj.get_store(); }
 
 legate::Library get_lib() {
   auto runtime = cupynumeric::CuPyNumericRuntime::get_runtime();
