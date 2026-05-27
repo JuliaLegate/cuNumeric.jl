@@ -2,6 +2,9 @@ name = "cuNumeric"
 uuid = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
 version = "0.1.0"
 
+[workspace]
+projects = ["test", "dev"]
+
 [deps]
 CNPreferences = "3e078157-ea10-49d5-bf32-908f777cd46f"
 CUDA_SDK_jll = "6cbf2f2e-7e60-5632-ac76-dca2274e0be0"

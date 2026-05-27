@@ -1,0 +1,5 @@
+[deps]
+CUDA_SDK_jll = "6cbf2f2e-7e60-5632-ac76-dca2274e0be0"
+
+[compat]
+CUDA_SDK_jll = "13"

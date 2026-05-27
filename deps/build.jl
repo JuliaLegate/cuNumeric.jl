@@ -17,6 +17,7 @@
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 
+using Pkg
 using Preferences
 using Legate
 using CNPreferences
@@ -84,7 +85,22 @@ function build(::CNPreferences.Developer)
 
     if isnothing(cupynumeric_root)
         cupynumeric_root = BuildTools.find_jll_artifact_dir(:cupynumeric_jll)
+
+        switch = false
+        dev_project = joinpath(pkg_root, "dev")
+        # this code will activate the dev environment that has CUDA_SDK_jll
+        # we should only activate / switch IF cupynumeric_jll has a host_platform that supports CUDA
+        if isdir(dev_project) && BuildTools.detect_jll_cuda_enabled(cupynumeric_jll)
+            Pkg.activate(dev_project)
+            Pkg.instantiate()
+            switch = true
+        end
+
         cuda_enabled, cuda_root = BuildTools.resolve_jll_cuda(cupynumeric_jll)
+
+        if (switch)
+            Pkg.activate(pkg_root)
+        end
     else
         is_cupynumeric_installed(cupynumeric_root; throw_errors=true)
         cuda_enabled, cuda_root = BuildTools.resolve_custom_cuda("cupynumeric")

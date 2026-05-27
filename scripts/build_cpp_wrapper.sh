@@ -49,6 +49,7 @@ CUDA_TOOLKIT_ROOT=${CUDA_TOOLKIT_ROOT:-}
 CUDA_ARGS=()
 if [[ -n "$CUDA_TOOLKIT_ROOT" ]]; then
     CUDA_ARGS+=("-DCUDAToolkit_ROOT=${CUDA_TOOLKIT_ROOT}")
+    CUDA_ARGS+=("-DCMAKE_LIBRARY_PATH=${CUDA_TOOLKIT_ROOT}/lib/stubs")
 fi
 
 if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
