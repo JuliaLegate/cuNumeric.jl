@@ -44,18 +44,25 @@ echo $LEGATE_ROOT_DIR
 
 # Default to OFF (CUDA support enabled), but allow override via environment variable
 NO_CUDA=${NO_CUDA:-OFF}
+CUDA_TOOLKIT_ROOT=${CUDA_TOOLKIT_ROOT:-}
+
+CUDA_ARGS=()
+if [[ -n "$CUDA_TOOLKIT_ROOT" ]]; then
+    CUDA_ARGS+=("-DCUDAToolkit_ROOT=${CUDA_TOOLKIT_ROOT}")
+fi
 
 if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
     echo "Configuring project..."
     cmake -S "$CUNUMERIC_WRAPPER_SOURCE" -B "$BUILD_DIR" \
         -D BINARYBUILDER=OFF \
-        -D NOCUDA=$NO_CUDA \
+        -D NO_CUDA=$NO_CUDA \
         -D CMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
         -D CMAKE_PREFIX_PATH="$CUPYNUMERIC_ROOT_DIR;$LEGATE_ROOT_DIR;" \
         -D CUPYNUMERIC_PATH="$CUPYNUMERIC_ROOT_DIR" \
         -D BLAS_LIBRARIES="$BLAS_LIB_DIR/libopenblas.so" \
         -D PROJECT_INSTALL_PATH="$INSTALL_DIR" \
-        -D CMAKE_BUILD_TYPE=Release
+        -D CMAKE_BUILD_TYPE=Release \
+        "${CUDA_ARGS[@]}"
 else
     echo "Skipping configure (already done in $BUILD_DIR)"
 fi

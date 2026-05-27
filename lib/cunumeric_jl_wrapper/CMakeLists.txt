@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.22.1 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.26.4 FATAL_ERROR)
+
 project(cuNumericWrapper)
 
 set(cuNumericWrapperVersion 0.0.1)
@@ -11,8 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
-# ---- New: NOCUDA option ----
-option(NOCUDA "Build without CUDA support (skip CUDAToolkit and src/cuda.cpp)" OFF)
+option(NO_CUDA "Build without CUDA support (skip CUDAToolkit and src/cuda.cpp)" OFF)
 option(BINARYBUILDER "Building with binary builder" ON)
 
 
@@ -45,7 +45,7 @@ set(SOURCES
 )
 
 # Conditionally add CUDA bits
-if(NOT NOCUDA)
+if(NOT NO_CUDA)
     find_package(CUDAToolkit 13.0 REQUIRED)
     list(APPEND SOURCES src/cuda.cpp)
     add_compile_definitions(HAVE_CUDA)
@@ -53,7 +53,7 @@ if(NOT NOCUDA)
     message(STATUS "CUDA enabled: adding src/cuda.cpp")
 else()
     set(HAVE_CUDA FALSE)
-    message(STATUS "NOCUDA=ON: skipping CUDAToolkit and src/cuda.cpp")
+    message(STATUS "NO_CUDA=ON: skipping CUDAToolkit and src/cuda.cpp")
 endif()
 
 # Library: C++ wrapper
