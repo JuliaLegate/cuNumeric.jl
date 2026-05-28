@@ -42,11 +42,10 @@ fi
 
 echo $LEGATE_ROOT_DIR
 
-# Default to OFF (CUDA support enabled), but allow override via environment variable
-NO_CUDA=${NO_CUDA:-OFF}
+LEGATE_WRAPPER_ENABLE_CUDA=${LEGATE_WRAPPER_ENABLE_CUDA:-ON}
 CUDA_TOOLKIT_ROOT=${CUDA_TOOLKIT_ROOT:-}
 
-CUDA_ARGS=()
+CUDA_ARGS=("-DLEGATE_WRAPPER_ENABLE_CUDA=${LEGATE_WRAPPER_ENABLE_CUDA}")
 if [[ -n "$CUDA_TOOLKIT_ROOT" ]]; then
     CUDA_ARGS+=("-DCUDAToolkit_ROOT=${CUDA_TOOLKIT_ROOT}")
     CUDA_ARGS+=("-DCMAKE_LIBRARY_PATH=${CUDA_TOOLKIT_ROOT}/lib/stubs")
@@ -56,7 +55,6 @@ if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
     echo "Configuring project..."
     cmake -S "$CUNUMERIC_WRAPPER_SOURCE" -B "$BUILD_DIR" \
         -D BINARYBUILDER=OFF \
-        -D NO_CUDA=$NO_CUDA \
         -D CMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
         -D CMAKE_PREFIX_PATH="$CUPYNUMERIC_ROOT_DIR;$LEGATE_ROOT_DIR;" \
         -D CUPYNUMERIC_PATH="$CUPYNUMERIC_ROOT_DIR" \

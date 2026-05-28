@@ -33,7 +33,9 @@ function build_cpp_wrapper(
     @info "libcunumeric_jl_wrapper: Building C++ Wrapper Library"
     isdir(install_root) && (rm(install_root; recursive=true); mkdir(install_root))
     bld_command = `$(joinpath(repo_root, "scripts/build_cpp_wrapper.sh")) $repo_root $cupynumeric_loc $legate_loc $blas_loc $install_root $(Threads.nthreads())`
-    BuildTools.run_build_script(repo_root, bld_command; cuda_root, cuda_enabled, log_dir=@__DIR__)
+    BuildTools.run_build_wrapper_script(
+        repo_root, bld_command; cuda_root, cuda_enabled, log_dir=@__DIR__
+    )
 end
 
 function build_deps(pkg_root, cupynumeric_root, blas_root; cuda_root=nothing, cuda_enabled=true)
@@ -57,6 +59,7 @@ function build_deps(pkg_root, cupynumeric_root, blas_root; cuda_root=nothing, cu
         install_lib;
         cuda_root, cuda_enabled,
     )
+    BuildTools.set_jll_artifact_override(:cunumeric_jl_wrapper_jll, install_lib)
 end
 
 function build(::CNPreferences.JLL)
@@ -84,26 +87,13 @@ function build(::CNPreferences.Developer)
     blas_lib = load_preference(CNPreferences, "BLAS_LIB", nothing)
 
     if isnothing(cupynumeric_root)
-        cupynumeric_root = BuildTools.find_jll_artifact_dir(:cupynumeric_jll)
-
-        switch = false
-        dev_project = joinpath(pkg_root, "dev")
-        # this code will activate the dev environment that has CUDA_SDK_jll
-        # we should only activate / switch IF cupynumeric_jll has a host_platform that supports CUDA
-        if isdir(dev_project) && BuildTools.detect_jll_cuda_enabled(cupynumeric_jll)
-            Pkg.activate(dev_project)
-            Pkg.instantiate()
-            switch = true
-        end
-
-        cuda_enabled, cuda_root = BuildTools.resolve_jll_cuda(cupynumeric_jll)
-
-        if (switch)
-            Pkg.activate(pkg_root)
-        end
+        cupynumeric_root, cuda_root = BuildTools.setup_jll_build_env(
+            pkg_root, BuildTools.CUNUMERIC_JLL_DEP
+        )
+        cuda_enabled = !isnothing(cuda_root) # cuda_root resolving to nothing means there is no cuda
     else
         is_cupynumeric_installed(cupynumeric_root; throw_errors=true)
-        cuda_enabled, cuda_root = BuildTools.resolve_custom_cuda("cupynumeric")
+        cuda_enabled, cuda_root = BuildTools.resolve_custom_cuda("cupynumeric") # cuda_root is nothing.
     end
 
     blas_lib = something(blas_lib, BuildTools.find_jll_artifact_dir(:OpenBLAS32_jll))
