@@ -95,7 +95,7 @@ jobs:
           MSG=$(printf '%s\n%s' \
             "${{ github.event.head_commit.message }}" \
             "${{ github.event.pull_request.body }}")
-          BRANCH=$(echo "$MSG" | grep -oP '(?<=\[legate-branch: )[^\]]+' | head -1 || true)
+          BRANCH=$(echo "$MSG" | grep -oiP 'legate[-_]branch:\s*\K\S+' | head -1 | tr -d '[]' || true)
           echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
           if [[ -n "$BRANCH" ]]; then
             echo "Using Legate.jl branch override: $BRANCH"
