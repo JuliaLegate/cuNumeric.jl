@@ -141,21 +141,9 @@ function find_dependency_paths(::Type{CNPreferences.JLL})
 end
 
 function find_dependency_paths(::Type{CNPreferences.Developer})
-    results = Dict{String,String}()
-    paths_to_search = [CUPYNUMERIC_LIBDIR]
-    if isdefined(@__MODULE__, :cupynumeric_jll)
-        append!(paths_to_search, getfield(@__MODULE__, :cupynumeric_jll).LIBPATH_list)
-    end
-    for (name, lib) in DEPS_MAP
-        results[name] = dirname(Libdl.find_library(lib, paths_to_search))
-    end
-    return results
+    isdefined(@__MODULE__, :cupynumeric_jll) || return Dict{String,String}()
+    paths = getfield(@__MODULE__, :cupynumeric_jll).LIBPATH_list
+    return Dict(name => dirname(Libdl.find_library(lib, paths)) for (name, lib) in DEPS_MAP)
 end
 
-function find_dependency_paths(::Type{CNPreferences.Conda})
-    results = Dict{String,String}()
-    for (name, lib) in DEPS_MAP
-        results[name] = dirname(Libdl.find_library(lib, [CUPYNUMERIC_LIBDIR]))
-    end
-    return results
-end
+find_dependency_paths(::Type{CNPreferences.Conda}) = Dict{String,String}()
