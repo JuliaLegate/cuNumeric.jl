@@ -1,7 +1,0 @@
-[deps]
-cupynumeric_jll = "2862d674-414d-5b0b-a494-b21f8deca547"
-CUDA_SDK_jll = "6cbf2f2e-7e60-5632-ac76-dca2274e0be0"
-
-[compat]
-cupynumeric_jll = "25.10"
-CUDA_SDK_jll = "13"
