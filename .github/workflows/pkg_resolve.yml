@@ -17,4 +17,6 @@ jobs:
       - uses: julia-actions/cache@v2
 
       - name: Pkg.resolve
-        run: julia --project -e 'using Pkg; Pkg.Registry.update(); Pkg.resolve()'
+        run: |
+          rm -f Manifest.toml
+          julia --project -e 'using Pkg; Pkg.Registry.add("General"); Pkg.resolve()'
