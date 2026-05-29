@@ -38,8 +38,12 @@ on:
       - 'lib/CNPreferences/src/**'
       - '.github/workflows/developer.yml'
 jobs:
+  pkg_resolve:
+    uses: ./.github/workflows/pkg_resolve.yml
+
   docs:
-    name : Developer CI test
+    name: Developer CI test
+    needs: pkg_resolve
     permissions:
       contents: read
       packages: write

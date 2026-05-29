@@ -1,6 +1,6 @@
 name = "cuNumeric"
 uuid = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
-version = "0.1.0"
+version = "0.1.1"
 
 [deps]
 CNPreferences = "3e078157-ea10-49d5-bf32-908f777cd46f"
@@ -39,6 +39,6 @@ Pkg = "1"
 Preferences = "1"
 Random = "1"
 StatsBase = "0.34"
-cunumeric_jl_wrapper_jll = "25.10.3"
+cunumeric_jl_wrapper_jll = "25.10.4"
 cupynumeric_jll = "25.10.3"
 julia = "1.10"

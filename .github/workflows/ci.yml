@@ -31,6 +31,9 @@ on:
       - 'Project.toml'
       - 'lib/CNPreferences/src/**'
 jobs:
+  pkg_resolve:
+    uses: ./.github/workflows/pkg_resolve.yml
+
   check_changes:
     name: Check for wrapper changes
     runs-on: ubuntu-latest
@@ -47,7 +50,7 @@ jobs:
 
   test:
     name: Julia ${{ matrix.julia }} - ${{ matrix.os }}
-    needs: check_changes
+    needs: [pkg_resolve, check_changes]
     if: ${{ github.base_ref == 'main' || needs.check_changes.outputs.wrapper_changed != 'true' }}
     runs-on: ${{ matrix.os }}
     strategy:

@@ -1,0 +1,20 @@
+name: Pkg Resolve
+
+on:
+  workflow_call:
+
+jobs:
+  resolve:
+    name: Pkg.resolve
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.10'
+
+      - uses: julia-actions/cache@v2
+
+      - name: Pkg.resolve
+        run: julia --project -e 'using Pkg; Pkg.resolve()'
