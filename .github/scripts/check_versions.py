@@ -12,7 +12,6 @@ REPO_ROOT = Path(subprocess.run(
     capture_output=True, text=True, check=True,
 ).stdout.strip())
 
-# ── repo-specific config ─────────────────────────────────────────────────────
 # To reuse this script for another package (e.g. Legate.jl), change only this block.
 
 PACKAGE_NAME = "cuNumeric"
@@ -30,8 +29,6 @@ SUBPKG_COMPAT_KEY   = "CNPreferences"
 SUBPKG_SRC_PREFIXES = (
     "lib/CNPreferences/src/",
 )
-
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 def parse_version(v: str) -> tuple:
