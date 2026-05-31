@@ -15,8 +15,13 @@ function get_cxx_version(libpath::AbstractString)
 end
 
 function read_githash()
-    githash_path = joinpath(@__DIR__, "../", "../", ".githash")
-    return isfile(githash_path) ? readchomp(githash_path) : "unknown"
+    try
+        pkg_root = joinpath(@__DIR__, "..", "..")
+        hash = readchomp(`git -C $pkg_root rev-parse HEAD`)
+        isempty(hash) || return hash
+    catch
+    end
+    return "unknown"
 end
 
 @doc"""

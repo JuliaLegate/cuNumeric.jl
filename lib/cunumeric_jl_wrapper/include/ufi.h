@@ -23,7 +23,7 @@
 #include "jlcxx/jlcxx.hpp"
 #include "legate.h"
 
-#ifdef HAVE_CUDA
+#if LEGATE_DEFINED(LEGATE_USE_CUDA)
 namespace ufi {
 enum TaskIDs {
   LOAD_PTX_TASK = 143432,

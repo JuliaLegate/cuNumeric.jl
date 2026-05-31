@@ -21,8 +21,24 @@ on:
     - 'docs/Project.toml'
     - 'README.md'
 jobs:
+  check_changes:
+    name: Check for wrapper changes
+    runs-on: ubuntu-latest
+    outputs:
+      wrapper_changed: ${{ steps.filter.outputs.wrapper }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            wrapper:
+              - 'lib/cunumeric_jl_wrapper/**'
+
   docs:
     name : Documentation
+    needs: check_changes
+    if: ${{ github.base_ref == 'main' || needs.check_changes.outputs.wrapper_changed != 'true' }}
     permissions:
       actions: write
       contents: write

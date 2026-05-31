@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -164,6 +164,32 @@ end
         cunumeric_bools = NDArray(julia_bools)
         @test any(julia_bools) == any(cunumeric_bools)[]
         @test all(julia_bools) == all(cunumeric_bools)[]
+    end
+end
+
+@testset verbose=true "Unary Reductions with Dims" begin
+    N = 100
+
+    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
+        julia_arr_1D = my_rand(T, N)
+        julia_arr_2D = my_rand(T, isqrt(N), isqrt(N))
+
+        cunumeric_arr_1D = @allowscalar NDArray(julia_arr_1D)
+        cunumeric_arr_2D = @allowscalar NDArray(julia_arr_2D)
+
+        @testset "$(func)" for (func, _) in cuNumeric.unary_reduction_map
+            # Skip reductions not supported by the cuNumeric backend for complex types
+            if T <: Complex && (
+                func == Base.maximum ||
+                func == Base.minimum ||
+                func == Base.prod
+            )
+                continue
+            end
+
+            test_unary_reduction_dims(func, julia_arr_1D, cunumeric_arr_1D)
+            test_unary_reduction_dims(func, julia_arr_2D, cunumeric_arr_2D)
+        end
     end
 end
 
