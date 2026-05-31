@@ -144,6 +144,7 @@ include("ndarray/broadcast.jl")
 include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
+include("ndarray/linalg.jl")
 
 # scoping macro
 include("scoping.jl")
@@ -230,7 +231,7 @@ function __init__()
     _is_precompiling() && return nothing
 
     # Cannot set LEGATE_CONFIG on CI machines used
-    # to register packages. So we will just skip starting 
+    # to register packages. So we will just skip starting
     # legate/cunumeric when using registry CI machines.
     get(ENV, "JULIA_REGISTRYCI_AUTOMERGE", false) == "true" && return nothing
 
