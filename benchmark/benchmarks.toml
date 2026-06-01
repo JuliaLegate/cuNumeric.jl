@@ -1,0 +1,22 @@
+[Global]
+N_WARMUP = 2
+N_ITER = 100
+N_GPU = 1
+
+[[GEMM]]
+T = "Float64"
+N = 100
+M = 100
+
+[[GEMM]]
+T = "Float32"
+N = 150
+M = 150
+
+[[MonteCarloIntegration]]
+T = "Float64"
+N_samples = 1_000_000
+
+[[MonteCarloIntegration]]
+T = "Float32"
+N_samples = 10_000_000
