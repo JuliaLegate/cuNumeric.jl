@@ -1,4 +1,122 @@
 
+struct RuntimeBroadcastArg{J} end
+struct StaticBroadcastArg{J} end
+
+Base.@propagate_inbounds @inline function _gpu_broadcast_getindex(x, I)
+    return @inbounds Base.Broadcast._broadcast_getindex(x, I)
+end
+
+Base.@propagate_inbounds @inline function _gpu_broadcast_getindex(x::Number, I)
+    return x
+end
+
+Base.@propagate_inbounds @inline function _materialize_broadcast_arg(
+    ::RuntimeBroadcastArg{J},
+    runtime_args,
+    static_args,
+    I,
+) where {J}
+    arg = getfield(runtime_args, J)
+    return @inbounds _gpu_broadcast_getindex(arg, I)
+end
+
+Base.@propagate_inbounds @inline function _materialize_broadcast_arg(
+    ::StaticBroadcastArg{J},
+    runtime_args,
+    static_args,
+    I,
+) where {J}
+    return getfield(static_args, J)
+end
+
+Base.@propagate_inbounds @inline function _materialize_broadcast_args(
+    ::Tuple{},
+    runtime_args,
+    static_args,
+    I,
+)
+    return ()
+end
+
+Base.@propagate_inbounds @inline function _materialize_broadcast_args(
+    plan::Tuple,
+    runtime_args,
+    static_args,
+    I,
+)
+    head = getfield(plan, 1)
+    tail = Base.tail(plan)
+
+    return (
+        @inbounds(_materialize_broadcast_arg(head, runtime_args, static_args, I)),
+        @inbounds(_materialize_broadcast_args(tail, runtime_args, static_args, I))...,
+    )
+end
+
+_is_runtime_broadcast_arg(x::NDArray) = true
+_is_runtime_broadcast_arg(x::Base.Broadcast.Extruded) = true
+_is_runtime_broadcast_arg(x::Number) = true
+_is_runtime_broadcast_arg(x) = false
+
+function _push_runtime_arg!(runtime_args, arg_plan, x)
+    push!(runtime_args, x)
+    push!(arg_plan, RuntimeBroadcastArg{length(runtime_args)}())
+    return nothing
+end
+
+function _push_static_arg!(static_args, arg_plan, x)
+    isbits(x) || throw(
+        ArgumentError(
+            "Broadcast fusion cannot statically capture non-isbits broadcast leaf " *
+            "$(repr(x)) of type $(typeof(x))",
+        ),
+    )
+
+    push!(static_args, x)
+    push!(arg_plan, StaticBroadcastArg{length(static_args)}())
+    return nothing
+end
+
+function split_broadcast_args_for_kernel(args::Tuple)
+    runtime_args = Any[]
+    static_args = Any[]
+    arg_plan = Any[]
+
+    for arg in args
+        if arg isa Base.RefValue
+            value = arg[]
+
+            # Keep ordinary numeric broadcast scalars dynamic so scalar values
+            # do not cause recompilation.
+            if value isa Number
+                _push_runtime_arg!(runtime_args, arg_plan, value)
+            else
+                # Function singletons, Val{N}(), etc.
+                _push_static_arg!(static_args, arg_plan, value)
+            end
+
+        elseif _is_runtime_broadcast_arg(arg)
+            _push_runtime_arg!(runtime_args, arg_plan, arg)
+
+        elseif isbits(arg)
+            # Conservative fallback for singleton/isbits scalar broadcast leaves.
+            _push_static_arg!(static_args, arg_plan, arg)
+
+        else
+            throw(
+                ArgumentError(
+                    "Broadcast fusion does not know how to lower argument " *
+                    "$(repr(arg)) of type $(typeof(arg))",
+                ),
+            )
+        end
+    end
+
+    return tuple(runtime_args...), tuple(static_args...), tuple(arg_plan...)
+end
+
+##############
+
 # The indexing in these kernels is based off this internal function from julia/broadcast.jl
 
 # Base.@propagate_inbounds function _broadcast_getindex(bc::Broadcasted{<:Any,<:Any,<:Any,<:Any}, I)
@@ -6,24 +124,28 @@
 #     return _broadcast_getindex_evalf(bc.f, args...)
 # end
 
-function make_linear_kernel(dest, bc::Base.Broadcast.Broadcasted)
+function make_linear_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args)
     f = bc.f
 
-    @kernel function broadcast_kernel_linear_splat(dest, args...)
+    @kernel function broadcast_kernel_linear_splat(dest, runtime_args...)
         I = @index(Global, Linear)
-        @inbounds args_modified = Base.Broadcast._getindex(args, I)
+        @inbounds args_modified = _materialize_broadcast_args(
+            arg_plan, runtime_args, static_args, I
+        )
         @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
     end
 
     return broadcast_kernel_linear_splat
 end
 
-function make_cartesian_kernel(dest, bc::Base.Broadcast.Broadcasted)
+function make_cartesian_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args)
     f = bc.f
 
-    @kernel function broadcast_kernel_cartesian_splat(dest, args...)
+    @kernel function broadcast_kernel_cartesian_splat(dest, runtime_args...)
         I = @index(Global, Cartesian)
-        @inbounds args_modified = Base.Broadcast._getindex(args, I)
+        @inbounds args_modified = _materialize_broadcast_args(
+            arg_plan, runtime_args, static_args, I
+        )
         @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
     end
 
@@ -46,6 +168,8 @@ cudevice_array_offset(::Type{T}) where {T<:Base.Broadcast.Extruded} = Int(fieldo
 stores_cudevicearray(::Type{T}) where {T<:CUDACore.CuDeviceArray} = true
 stores_cudevicearray(::Type{T}) where {T<:Base.Broadcast.Extruded} = true
 stores_cudevicearray(::Type{T}) where {T<:Number} = false
+stores_cudevicearray(::Type{T}) where {T<:Bool} = false
+
 function stores_cudevicearray(::Type{T}) where {T}
     throw(error("Broadcast fusion. Don't know what to do with type: $T"))
 end
@@ -78,7 +202,7 @@ end
 
 get_ndarray(x::T) where {T<:NDArray} = x
 get_ndarray(x::T) where {T<:Base.Broadcast.Extruded} = x.x
-get_ndarray(x) = throw(error("Broadcast fusion. Don't know what to do with type: $T"))
+get_ndarray(x::T) where {T} = throw(error("Broadcast fusion. Don't know what to do with type: $T"))
 
 function _threads_from_occupancy(
     obj::KA.Kernel{CUDACore.CUDAKernels.CUDABackend},
@@ -150,115 +274,87 @@ end
 function get_cuda_task(
     obj::KA.Kernel{CUDACore.CUDAKernels.CUDABackend},
     dest::D,
-    bc::B,
+    runtime_args::RT,
     ndrange,
-) where {D<:NDArray,B<:Base.Broadcast.Broadcasted}
+) where {D<:NDArray,RT<:Tuple}
     DEST_T = map_cuda_type(D)
-    ARG_TYPES = map_cuda_type.(typeof.(bc.args))
+    ARG_TYPES = map_cuda_type.(typeof.(runtime_args))
 
-    key = (obj, D, B, ndrange)
+    key = (obj, D, RT, ndrange)
+
     lock(_BCAST_PTX_CACHE_LOCK) do
-        # Also stores in cache if not found in Dict
         return get!(_BCAST_PTX_CACHE, key) do
             ptx, threads, blocks, ctx = get_ptx(obj, DEST_T, ARG_TYPES...; ndrange=ndrange)
+
             orig_name = extract_kernel_name(ptx)
-            # Append a PTX content hash to make each name unique.
             unique_name = orig_name * "_" * string(hash(ptx); base=16)
             ptx = replace(ptx, orig_name => unique_name)
-            # println(ptx)
+
             ptx_task(ptx, unique_name)
             cuda_task = CUDATask(unique_name, (DEST_T, ARG_TYPES...))
+
             FusedBroadcastMetadata(ctx, threads, blocks, cuda_task)
         end
     end
 end
 
 function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcast.Broadcasted}
-
-    #! HOW DOES THIS BEHAVE WHEN BC HAS 2 RESULT ARRAYS?
-
-    # Normalize the Braodcasted type
     bc = Base.Broadcast.preprocess(dest, bc)
     bc = Base.Broadcast.instantiate(bc)
     bc = Base.Broadcast.flatten(bc)
 
-    # Get proper kernel
+    # Things like exponentiation generate arguments like Base.RefValue
+    # which do not work with our pattern for making CUDA kernels as they are
+    # not is-bits types. We split these out manually into static args and handle
+    # them separately from runtime args (i.e., arrays, scalars)
+    runtime_args, static_args, arg_plan = split_broadcast_args_for_kernel(bc.args)
+
     broadcast_kernel =
         if ndims(dest) == 1 ||
             (isa(IndexStyle(dest), IndexLinear) &&
             isa(IndexStyle(bc), IndexLinear))
-            make_linear_kernel(dest, bc)
+            make_linear_kernel(dest, bc, arg_plan, static_args)
         else
-            make_cartesian_kernel(dest, bc)
+            make_cartesian_kernel(dest, bc, arg_plan, static_args)
         end
 
     ndrange = ndims(dest) > 0 ? size(dest) : (1,)
 
-    # Tell KernelAsbtractions.jl we are using CUDA.jl
     bck_cuda = broadcast_kernel(CUDACore.CUDAKernels.CUDABackend())
 
-    # Lookup in cache, if not found, compile and cache
-    fkm = get_cuda_task(bck_cuda, dest, bc, ndrange)
+    fkm = get_cuda_task(bck_cuda, dest, runtime_args, ndrange)
 
-    # Replace NDArrays with CuDeviceArrays in the Broadcasted type so we can figure out bit-offsets
-    spoofed_bc_type = map_cuda_type(typeof(bc))
-    fieldname(spoofed_bc_type, 3) == :args ||
-        throw(ArgumentError("Broadcasted field 3 is not args. Failed to fuse broadcast."))
+    num_outputs = 1
 
-    args_offset = Int(fieldoffset(spoofed_bc_type, 3))
-    args_offset == 0 ||
-        throw(
-            ArgumentError(
-                "Broadcast fusion only supports Broadcasted layouts where args starts at offset 0; got offset $args_offset. This is likely a bug in the compiler."
-            ),
-        )
-
-    # Spoof NDArrays with CuDeviceArrays in the Broadcasted type
-    spoofed_bc_args_type = map_cuda_type(typeof(bc.args))
-
-    # Build the arg_map: for each kernel arg (after ctx), record its source.
-    # Convention: index into combined [outputs..., inputs...] for NDArrays.
-    #   idx < num_outputs → output[idx]
-    #   idx >= num_outputs → input[idx - num_outputs]
-    # Scalar values are passed separately after the mapping.
-    #
-    # PTX kernel signature: f(kernel_state, ctx, dest, bc.args...)
-    # So the arg_map covers: [dest, bc.args...] in order.
-
-    num_outputs = 1  # dest is always the single output
-
-    # Deduplicate NDArray inputs: map each unique NDArray to a unique input index.
-    # The arg_map can reference the same input index multiple times (e.g. a .+ a).
     unique_ndarrays = NDArray[]
-    ndarray_to_input_idx = Dict{UInt,Int}()  # objectid → input index
+    ndarray_to_input_idx = Dict{UInt,Int}()
 
     arg_map = Int32[]
     actual_scalars = Any[]
 
-    # First arg in PTX (after ctx) is always dest = output[0]
-    push!(arg_map, Int32(0))  # output[0]
+    # First PTX argument after ctx is dest.
+    push!(arg_map, Int32(0))
 
-    # Then bc.args... in order
-    for (i, arg) in enumerate(bc.args)
+    # Now map only runtime args, not original bc.args.
+    for arg in runtime_args
         if stores_cudevicearray(map_cuda_type(typeof(arg)))
             nda = get_ndarray(arg)
             oid = objectid(nda)
+
             if !haskey(ndarray_to_input_idx, oid)
                 push!(unique_ndarrays, nda)
-                ndarray_to_input_idx[oid] = length(unique_ndarrays) - 1  # 0-based
+                ndarray_to_input_idx[oid] = length(unique_ndarrays) - 1
             end
+
             input_idx = ndarray_to_input_idx[oid]
-            push!(arg_map, Int32(num_outputs + input_idx))  # offset by num_outputs
+            push!(arg_map, Int32(num_outputs + input_idx))
         else
-            # Scalar — record its position and save the value
-            push!(arg_map, Int32(-1 - length(actual_scalars)))  # negative = scalar
+            push!(arg_map, Int32(-1 - length(actual_scalars)))
             push!(actual_scalars, arg)
         end
     end
 
     input_ndarrays = tuple(unique_ndarrays...)
-
-    # @show arg_map actual_scalars length(unique_ndarrays)
 
     launch(
         fkm.cuda_task,
@@ -271,27 +367,6 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
         ctx=fkm.ctx,
     )
 
-    #! DO I NEED TO DO TYPE PROMOTION CHECKS??
+    #! PROMOTION CHECKS?
     return dest
 end
-
-# STEP 1: Figure out bit-offsets for CuDeviceArrays and scalars in args of spoofed type.
-# The spoofed type has the same fields and alignment that the PTX kernel expects.
-# cudevicearray_offsets, cudevicearray_indices =
-#     find_cudevicearray_offsets_and_indices(spoofed_bc_args_type)
-
-# scalar_offsets, scalar_indices = find_scalar_offsets_and_indices(spoofed_bc_args_type)
-
-# # STEP 2: Get NDarrays corresponding to the offsets in the spoofed type.
-# input_ndarrays = ntuple(
-#     i -> get_ndarray(bc.args[cudevicearray_indices[i]]), length(cudevicearray_indices)
-# )
-# input_scalars = ntuple(i -> bc.args[scalar_indices[i]], length(scalar_indices))
-# patch_info = BroadcastPatchInfo(
-#     sizeof(spoofed_bc_type),
-#     input_ndarrays,
-#     cudevicearray_offsets,
-#     ntuple(i -> i - 1, length(input_ndarrays)),
-#     scalar_offsets,
-#     input_scalars,
-# )
