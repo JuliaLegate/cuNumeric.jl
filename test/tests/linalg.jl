@@ -104,38 +104,47 @@ end
 end
 
 @testset "solve diagonal" begin
-    n = 4
-    A = cuNumeric.zeros(Float64, n, n)
-    b = cuNumeric.zeros(Float64, n, 1)
-    cuNumeric.@allowscalar for i in 1:n
-        A[i, i] = 4.0
-        b[i, 1] = 1.0
-    end
-    x = cuNumeric.solve(A, b)
-    allowscalar() do
-        @test cuNumeric.compare(fill(0.25, n, 1), x, atol(Float64), rtol(Float64))
+    @testset for T in (Float32, Float64, ComplexF32, ComplexF64, Int8, Int16, Int32, Int64)
+        n = 4
+        T_comp = T <: Integer ? Float64 : T
+        A = cuNumeric.zeros(T, n, n)
+        b = cuNumeric.zeros(T, n, 1)
+        cuNumeric.@allowscalar for i in 1:n
+            A[i, i] = T(4)
+            b[i, 1] = T(1)
+        end
+        x = cuNumeric.solve(cuNumeric.as_type(A, T_comp), cuNumeric.as_type(b, T_comp))
+        allowscalar() do
+            @test cuNumeric.compare(fill(T_comp(0.25), n, 1), x, atol(T_comp), rtol(T_comp))
+        end
     end
 end
 
 @testset "solve identity" begin
-    n = 4
-    A = cuNumeric.NDArray(Matrix{Float64}(I, n, n))
-    b = cuNumeric.NDArray(reshape(collect(1.0:n), n, 1))
-    x = cuNumeric.solve(A, b)
-    ref = reshape(collect(1.0:n), n, 1)
-    allowscalar() do
-        @test cuNumeric.compare(ref, x, atol(Float64), rtol(Float64))
+    @testset for T in (Float32, Float64, ComplexF32, ComplexF64, Int8, Int16, Int32, Int64)
+        n = 4
+        T_comp = T <: Integer ? Float64 : T
+        A = cuNumeric.NDArray(Matrix{T}(I, n, n))
+        b = cuNumeric.NDArray(reshape(T.(collect(1:n)), n, 1))
+        x = cuNumeric.solve(cuNumeric.as_type(A, T_comp), cuNumeric.as_type(b, T_comp))
+        ref = reshape(Float64.(collect(1:n)), n, 1)
+        allowscalar() do
+            @test cuNumeric.compare(ref, x, atol(T_comp), rtol(T_comp))
+        end
     end
 end
 
 @testset "solve general" begin
-    A_ref = [2.0 1.0; 5.0 7.0]
-    b_ref = [11.0; 13.0;;]
-    A = cuNumeric.NDArray(A_ref)
-    b = cuNumeric.NDArray(b_ref)
-    x = cuNumeric.solve(A, b)
-    ref = A_ref \ b_ref
-    allowscalar() do
-        @test cuNumeric.compare(ref, x, atol(Float64), rtol(Float64))
+    @testset for T in (Float32, Float64, ComplexF32, ComplexF64, Int8, Int16, Int32, Int64)
+        T_comp = T <: Integer ? Float64 : T
+        A_ref = T[2 1; 5 7]
+        b_ref = T[11; 13;;]
+        A = cuNumeric.NDArray(A_ref)
+        b = cuNumeric.NDArray(b_ref)
+        x = cuNumeric.solve(cuNumeric.as_type(A, T_comp), cuNumeric.as_type(b, T_comp))
+        ref = Float64.(A_ref) \ Float64.(b_ref)
+        allowscalar() do
+            @test cuNumeric.compare(ref, x, atol(T_comp), rtol(T_comp))
+        end
     end
 end
