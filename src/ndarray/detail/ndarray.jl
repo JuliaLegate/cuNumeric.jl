@@ -503,7 +503,7 @@ function compare(arr::NDArray{T,N}, arr2::NDArray{T,N}, atol::Real, rtol::Real) 
 end
 
 function nda_to_logical_store(arr::NDArray{T,N}) where {T,N}
-    la_handle = cuNumeric.get_store(arr)
-    st_handle = Legate.data(Legate.LogicalArray{T,N}(la_handle[], size(arr)))
+    la_handle = cuNumeric.get_store(arr) # LogicalArrayImplAllocated (returned by value)
+    st_handle = Legate.data(Legate.LogicalArray{T,N}(la_handle, size(arr)))
     return Legate.LogicalStore{T,N}(st_handle, size(arr))
 end
