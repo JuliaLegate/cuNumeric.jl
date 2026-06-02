@@ -55,12 +55,26 @@ const DEFAULT_FLOAT = Float32
 const DEFAULT_INT = Int32
 
 const SUPPORTED_INT_TYPES = Union{Int8,Int16,Int32,Int64,UInt8,UInt16,UInt32,UInt64}
-const SUPPORTED_FLOAT_TYPES = Union{Float32,Float64} # Float16 not supported yet
+# Float16 is only supported by the backend when built with CUDA
+@static if HAS_CUDA
+    const SUPPORTED_FLOAT_TYPES = Union{Float16,Float32,Float64}
+else
+    const SUPPORTED_FLOAT_TYPES = Union{Float32,Float64}
+end
+
 const SUPPORTED_COMPLEX_TYPES = Union{ComplexF32,ComplexF64}
 
 const SUPPORTED_NUMERIC_TYPES = Union{
     SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES
 }
+
+const SUPPORTED_LINALG_TYPES = Union{
+    SUPPORTED_INT_TYPES,Float32,Float64,SUPPORTED_COMPLEX_TYPES
+}
+
+# solve has no integer/Float16 backend kernel — float/complex only.
+const SUPPORTED_SOLVE_TYPES = Union{Float32,Float64,SUPPORTED_COMPLEX_TYPES}
+
 const SUPPORTED_ARRAY_TYPES = Union{Bool,SUPPORTED_NUMERIC_TYPES}
 const SUPPORTED_TYPES = Union{SUPPORTED_ARRAY_TYPES,String}
 
@@ -144,6 +158,7 @@ include("ndarray/broadcast.jl")
 include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
+include("ndarray/linalg.jl")
 
 # scoping macro
 include("scoping.jl")
@@ -230,7 +245,7 @@ function __init__()
     _is_precompiling() && return nothing
 
     # Cannot set LEGATE_CONFIG on CI machines used
-    # to register packages. So we will just skip starting 
+    # to register packages. So we will just skip starting
     # legate/cunumeric when using registry CI machines.
     get(ENV, "JULIA_REGISTRYCI_AUTOMERGE", false) == "true" && return nothing
 

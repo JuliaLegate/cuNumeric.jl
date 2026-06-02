@@ -236,18 +236,21 @@ function nda_array_equal(rhs1::NDArray{T,N}, rhs2::NDArray{T,N}) where {T,N}
     return NDArray(ptr, Bool, Val(1))
 end
 
-function nda_diag(arr::NDArray, k::Int32)
+# 2D -> 1D: extract the k-th diagonal. Backend only supports the 2D case
+# (1D-construct and >2D both abort), so non-2D input is a MethodError.
+function nda_diag(arr::NDArray{T,2}, k::Int32) where {T}
     ptr = ccall((:nda_diag, libnda),
         NDArray_t, (NDArray_t, Int32),
         arr.ptr, k)
-    return NDArray(ptr)
+    return NDArray(ptr, T, Val(1))
 end
 
-function nda_unique(arr::NDArray)
+# unique always returns a flat 1D array of the input's element type
+function nda_unique(arr::NDArray{T}) where {T}
     ptr = ccall((:nda_unique, libnda),
         NDArray_t, (NDArray_t,),
         arr.ptr)
-    return NDArray(ptr)
+    return NDArray(ptr, T, Val(1))
 end
 
 function nda_ravel(arr::NDArray)
@@ -315,11 +318,12 @@ function nda_trace(
     return NDArray(ptr, T, Val(1))
 end
 
-function nda_transpose(arr::NDArray)
+# transpose reverses the axes: element type and rank are preserved
+function nda_transpose(arr::NDArray{T,N}) where {T,N}
     ptr = ccall((:nda_transpose, libnda),
         NDArray_t, (NDArray_t,),
         arr.ptr)
-    return NDArray(ptr)
+    return NDArray(ptr, T, Val(N))
 end
 
 function nda_attach_external(arr::AbstractArray{T,N}) where {T,N}
@@ -500,4 +504,10 @@ function compare(arr::NDArray{T,N}, arr2::NDArray{T,N}, atol::Real, rtol::Real) 
 
     # successful completion
     return true
+end
+
+function nda_to_logical_store(arr::NDArray{T,N}) where {T,N}
+    la_handle = cuNumeric.get_store(arr) # LogicalArrayImplAllocated (returned by value)
+    st_handle = Legate.data(Legate.LogicalArray{T,N}(la_handle, size(arr)))
+    return Legate.LogicalStore{T,N}(st_handle, size(arr))
 end
