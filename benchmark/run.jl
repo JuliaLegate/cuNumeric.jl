@@ -2,6 +2,7 @@ using Random: Random
 using cuNumeric: cuNumeric
 
 include("benchmarks.jl")
+include("parse_benchmarks.jl")
 
 function benchmark(b::AbstractBenchmark, gs::GlobalSettings, arrs)
     GC.gc(; full=true)
