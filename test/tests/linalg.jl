@@ -19,7 +19,7 @@
 =#
 
 @testset "transpose" begin
-    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
         A = my_rand(T, 4, 3)
         nda = cuNumeric.NDArray(A)
 
@@ -33,7 +33,7 @@
 end
 
 @testset "eye" begin
-    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
         n = 5
         ref = Matrix{T}(I, n, n)
         out = cuNumeric.eye(T, n)
@@ -44,7 +44,7 @@ end
 end
 
 @testset "trace" begin
-    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
         A = my_rand(T, 6, 6)
         nda = cuNumeric.NDArray(A)
 
@@ -57,7 +57,7 @@ end
 end
 
 @testset "trace with offset" begin
-    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
         A = my_rand(T, 5, 5)
         nda = cuNumeric.NDArray(A)
 
@@ -72,7 +72,7 @@ end
 end
 
 @testset "diag" begin
-    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
         A = my_rand(T, 6, 6)
         nda = cuNumeric.NDArray(A)
 
@@ -100,7 +100,7 @@ end
 # end
 
 @testset "unique" begin
-    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
         A = T[1, 2, 2, 3, 4, 4, 4, 5]
         nda = cuNumeric.NDArray(A)
 

@@ -120,7 +120,7 @@ end
 end
 
 @testset verbose = true "linalg ops" begin
-    @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
+    @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
         M = cuNumeric.zeros(T, 4, 3)
         sq = cuNumeric.zeros(T, 5, 5)
         v = cuNumeric.zeros(T, 8)
