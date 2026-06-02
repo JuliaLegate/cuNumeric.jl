@@ -62,7 +62,7 @@ mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
         return handle
     end
 end
-# this here is to avoid if else patterns 
+# this here is to avoid if else patterns
 @inline _NDArray(ptr, T, v, ::Nothing) = NDArray(ptr, T, v)
 @inline _NDArray(ptr, T, v, parent) = NDArray(ptr, T, v, parent)
 
@@ -219,6 +219,16 @@ function nda_unary_reduction(out::NDArray, op_code::UnaryRedCode, input::NDArray
     return out
 end
 
+function nda_unary_reduction_axes(
+    op_code::UnaryRedCode, input::NDArray{T,N}, axes::Vector{Int32}, keepdims::Bool
+) where {T,N}
+    axes_c = collect(Int32, axes)
+    ptr = ccall((:nda_unary_reduction_axes, libnda),
+        NDArray_t, (UnaryRedCode, NDArray_t, Ptr{Int32}, Int32, Cint),
+        op_code, input.ptr, axes_c, Int32(length(axes_c)), keepdims)
+    return NDArray(ptr)
+end
+
 function nda_array_equal(rhs1::NDArray{T,N}, rhs2::NDArray{T,N}) where {T,N}
     ptr = ccall((:nda_array_equal, libnda),
         NDArray_t, (NDArray_t, NDArray_t),
@@ -226,18 +236,21 @@ function nda_array_equal(rhs1::NDArray{T,N}, rhs2::NDArray{T,N}) where {T,N}
     return NDArray(ptr, Bool, Val(1))
 end
 
-function nda_diag(arr::NDArray, k::Int32)
+# 2D -> 1D: extract the k-th diagonal. Backend only supports the 2D case
+# (1D-construct and >2D both abort), so non-2D input is a MethodError.
+function nda_diag(arr::NDArray{T,2}, k::Int32) where {T}
     ptr = ccall((:nda_diag, libnda),
         NDArray_t, (NDArray_t, Int32),
         arr.ptr, k)
-    return NDArray(ptr)
+    return NDArray(ptr, T, Val(1))
 end
 
-function nda_unique(arr::NDArray)
+# unique always returns a flat 1D array of the input's element type
+function nda_unique(arr::NDArray{T}) where {T}
     ptr = ccall((:nda_unique, libnda),
         NDArray_t, (NDArray_t,),
         arr.ptr)
-    return NDArray(ptr)
+    return NDArray(ptr, T, Val(1))
 end
 
 function nda_ravel(arr::NDArray)
@@ -305,11 +318,12 @@ function nda_trace(
     return NDArray(ptr, T, Val(1))
 end
 
-function nda_transpose(arr::NDArray)
+# transpose reverses the axes: element type and rank are preserved
+function nda_transpose(arr::NDArray{T,N}) where {T,N}
     ptr = ccall((:nda_transpose, libnda),
         NDArray_t, (NDArray_t,),
         arr.ptr)
-    return NDArray(ptr)
+    return NDArray(ptr, T, Val(N))
 end
 
 function nda_attach_external(arr::AbstractArray{T,N}) where {T,N}
@@ -328,11 +342,8 @@ function get_store(arr::NDArray)
 end
 
 function get_ptr(arr::NDArray{T,N}) where {T,N}
-    # Get the raw Legate array impl
-    st_handle = get_store(arr) # CxxPtr{LogicalArrayImpl}
-    # Wrap it in the high-level LogicalArray struct expected by Legate.get_ptr
-    # st_handle[] dereferences the CxxPtr to get the LogicalArrayImpl object
-    la = Legate.LogicalArray{T,N}(st_handle[], size(arr))
+    st_handle = get_store(arr) # LogicalArrayImplAllocated (returned by value)
+    la = Legate.LogicalArray{T,N}(st_handle, size(arr))
     return Legate.get_ptr(la)
 end
 
@@ -493,4 +504,10 @@ function compare(arr::NDArray{T,N}, arr2::NDArray{T,N}, atol::Real, rtol::Real) 
 
     # successful completion
     return true
+end
+
+function nda_to_logical_store(arr::NDArray{T,N}) where {T,N}
+    la_handle = cuNumeric.get_store(arr) # LogicalArrayImplAllocated (returned by value)
+    st_handle = Legate.data(Legate.LogicalArray{T,N}(la_handle, size(arr)))
+    return Legate.LogicalStore{T,N}(st_handle, size(arr))
 end

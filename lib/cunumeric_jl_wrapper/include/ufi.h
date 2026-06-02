@@ -1,6 +1,6 @@
 /* Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
- *
+ * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -23,7 +23,7 @@
 #include "jlcxx/jlcxx.hpp"
 #include "legate.h"
 
-#ifdef HAVE_CUDA
+#if LEGATE_DEFINED(LEGATE_USE_CUDA)
 namespace ufi {
 enum TaskIDs {
   LOAD_PTX_TASK = 143432,

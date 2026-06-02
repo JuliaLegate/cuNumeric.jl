@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -86,5 +86,25 @@ function test_unary_function_set(func_dict, T, N)
 
         test_unary_operation(func, julia_arr_1D, cunumeric_arr_1D, T)
         test_unary_operation(func, julia_arr_2D, cunumeric_arr_2D, T)
+    end
+end
+
+function test_unary_reduction_dims(
+    func, julia_arr::AbstractArray{T,N}, cunumeric_arr::NDArray{T,N}
+) where {T,N}
+    allowpromotion(true) do
+        for d in 1:N
+            julia_res = func(julia_arr; dims=d)
+            cunumeric_res = func(cunumeric_arr; dims=d)
+            allowscalar() do
+                @test cuNumeric.compare(julia_res, cunumeric_res, atol(T), rtol(T))
+            end
+        end
+
+        # we are testing a multi axis reduction. This will throw a runtime error.
+        # https://github.com/nv-legate/cupynumeric/blob/main/src/cupynumeric/ndarray.cc#L1132
+        if N >= 2
+            @test_throws Exception func(cunumeric_arr, dims=(1, 2))
+        end
     end
 end
