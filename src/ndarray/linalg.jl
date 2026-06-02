@@ -52,11 +52,6 @@ function solve_batched(a::NDArray{T,N}, b::NDArray, x::NDArray) where {T,N}
     Legate.submit_manual_task(rt, task)
 end
 
-function nda_to_logical_array(arr::NDArray{T,N}) where {T,N}
-    st_handle = cuNumeric.get_store(arr)
-    return Legate.LogicalArray{T,N}(st_handle, size(arr))
-end
-
 function svd_single(a::NDArray{T,N}, u::NDArray, s::NDArray, vh::NDArray) where {T,N}
     rt = Legate.get_runtime();
     lib = cuNumeric.get_lib();

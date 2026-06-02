@@ -74,11 +74,6 @@ function check_sz(arr, maxshape)
     end
 end
 
-function nda_to_logical_array(arr::NDArray{T,N}) where {T,N}
-    st_handle = cuNumeric.get_store(arr)
-    return Legate.LogicalArray{T,N}(st_handle, size(arr))
-end
-
 function Launch(kernel::cuNumeric.CUDATask, inputs::Tuple{Vararg{NDArray}},
     outputs::Tuple{Vararg{NDArray}}, scalars::Tuple{Vararg{Any}}; blocks, threads)
 
