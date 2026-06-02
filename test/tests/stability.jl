@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -97,4 +97,24 @@ end
     @test @inferred(a .+ b) !== nothing
     @test @inferred(a ./ b) !== nothing
     @test @inferred(((a .* b) .+ a) .* 2.0f0) !== nothing
+end
+
+@testset verbose = true "solve" begin
+    # native float/complex, 2D and 1D rhs
+    @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_SOLVE_TYPES)
+        A = cuNumeric.NDArray(T[2 1; 5 7])
+        b2 = cuNumeric.NDArray(T[11; 13;;]) # creates a 2d matrix instead of vector
+        b1 = cuNumeric.NDArray(T[11, 13])
+        @test @inferred(cuNumeric.solve(A, b2)) !== nothing
+        @test @inferred(cuNumeric.solve(A, b1)) !== nothing
+    end
+
+    # int/bool promote to Float64 (under allowpromotion) and stay inferrable
+    @testset "promote $(T)" for T in (Int32, Int64, Bool)
+        A = cuNumeric.NDArray(T[1 0; 0 1])
+        b = cuNumeric.NDArray(reshape(T[1, 1], 2, 1))
+        allowpromotion() do
+            @test @inferred(cuNumeric.solve(A, b)) !== nothing
+        end
+    end
 end

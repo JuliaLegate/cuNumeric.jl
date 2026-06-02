@@ -52,15 +52,25 @@ function solve_batched(a::NDArray{T,N}, b::NDArray, x::NDArray) where {T,N}
     Legate.submit_manual_task(rt, task)
 end
 
+# solve runs in floating point:
+# int/bool inputs promote to Float64 (matching cupynumeric)
+const _SOLVE_PROMOTABLE = Union{SUPPORTED_INT_TYPES,Bool}
+const _SOLVE_ACCEPTED = Union{SUPPORTED_SOLVE_TYPES,_SOLVE_PROMOTABLE}
+_solve_eltype(::Type{T}) where {T<:_SOLVE_PROMOTABLE} = Float64
+_solve_eltype(::Type{T}) where {T<:SUPPORTED_SOLVE_TYPES} = T
+
 # Type/dim guards dispatch on one argument at a time, then forward to `_solve`.
-function solve(
-    a::NDArray{<:SUPPORTED_SOLVE_TYPES}, b::NDArray{<:SUPPORTED_SOLVE_TYPES}
-)
-    return _solve_check_a_dims(a, b)
+function solve(a::NDArray{<:_SOLVE_ACCEPTED}, b::NDArray{<:_SOLVE_ACCEPTED})
+    A, B = eltype(a), eltype(b)
+    O = promote_type(_solve_eltype(A), _solve_eltype(B))
+    # int/bool -> float is an implicit promotion, disallowed unless `allowpromotion`
+    A <: _SOLVE_PROMOTABLE && assertpromotion(solve, A, O)
+    B <: _SOLVE_PROMOTABLE && assertpromotion(solve, B, O)
+    return _solve_check_a_dims(unchecked_promote_arr(a, O), unchecked_promote_arr(b, O))
 end
 
 function solve(a::NDArray, b::NDArray)
-    bad = eltype(a) <: SUPPORTED_SOLVE_TYPES ? eltype(b) : eltype(a)
+    bad = eltype(a) <: _SOLVE_ACCEPTED ? eltype(b) : eltype(a)
     throw(ArgumentError("array type $bad is unsupported in solve"))
 end
 
@@ -78,43 +88,14 @@ function _solve_check_b_dims(a::NDArray, b::NDArray{<:Any,0})
 end
 _solve_check_b_dims(a::NDArray, b::NDArray) = _solve(a, b)
 
-# 2D case: (m,m),(m)->( m)
+# 2D case: (m,m),(m)->(m).
+# Backend needs rhs "b" to be 2D. We reshape b from (n,) to (n,1)
 function _solve(a::NDArray{T,2}, b::NDArray{S,1}) where {T,S}
-    size(a)[end - 1] != size(a)[end] &&
-        throw(ArgumentError("Last 2 dimensions of the array must be square"))
-    size(a)[2] != size(b)[1] &&
-        throw(
-            ArgumentError(
-                "Input operand 1 has a mismatch in its dimension 0, " *
-                "with signature (m,m),(m)->(m) (size $(size(b)[1]) " *
-                "is different from $(size(a)[2]))",
-            ),
-        )
-    prod(size(a)) == 0 || prod(size(b)) == 0 && return zeros(T, size(b)...)
-    x = zeros(T, size(b)...)
-    solve_batched(a, b, x)
-    return x
+    m = size(b)[1]
+    return reshape(_solve(a, reshape(b, (m, 1))), (m,))
 end
 
-# 2D case: (m,m),(m,n)->(m,n)
-function _solve(a::NDArray{T,2}, b::NDArray{S,2}) where {T,S}
-    size(a)[end - 1] != size(a)[end] &&
-        throw(ArgumentError("Last 2 dimensions of the array must be square"))
-    size(a)[2] != size(b)[1] &&
-        throw(
-            ArgumentError(
-                "Input operand 1 has a mismatch in its dimension 0, " *
-                "with signature (m,m),(m,n)->(m,n) (size $(size(b)[1]) " *
-                "is different from $(size(a)[2]))",
-            ),
-        )
-    prod(size(a)) == 0 || prod(size(b)) == 0 && return zeros(T, size(b)...)
-    x = zeros(T, size(b)...)
-    solve_batched(a, b, x)
-    return x
-end
-
-# Batched case: (...,m,m),(...,m,n)->(...,m,n)
+# 2D (m,m),(m,n)->(m,n) and batched (...,m,m),(...,m,n)->(...,m,n)
 function _solve(a::NDArray{T,N}, b::NDArray{S,N}) where {T,S,N}
     size(a)[end - 1] != size(a)[end] &&
         throw(ArgumentError("Last 2 dimensions of the array must be square"))

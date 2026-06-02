@@ -151,13 +151,45 @@ end
 @testset "solve general" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SOLVE_TYPES)
         A_ref = T[2 1; 5 7]
-        b_ref = T[11; 13;;]
+        b_ref = T[11; 13;;] # creates a 2d matrix instead of vector
         A = cuNumeric.NDArray(A_ref)
         b = cuNumeric.NDArray(b_ref)
         x = cuNumeric.solve(A, b)
         ref = A_ref \ b_ref
         allowscalar() do
             @test cuNumeric.compare(ref, x, atol(T), rtol(T))
+        end
+    end
+end
+
+@testset "solve vector rhs" begin
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SOLVE_TYPES)
+        A_ref = T[2 1; 5 7]
+        b_ref = T[11, 13]
+        x = cuNumeric.solve(cuNumeric.NDArray(A_ref), cuNumeric.NDArray(b_ref))
+        @test ndims(x) == 1
+        ref = A_ref \ b_ref
+        allowscalar() do
+            @test cuNumeric.compare(ref, x, atol(T), rtol(T))
+        end
+    end
+end
+
+@testset "solve promotion" begin
+    @testset verbose=true for T in (Int32, Int64, Bool)
+        A = cuNumeric.NDArray(T[1 0; 0 1])
+        b = cuNumeric.NDArray(reshape(T[1, 1], 2, 1))
+
+        # int/bool requires promotion to float. Will throw without allowpromtion()
+        @test_throws "Implicit promotion" cuNumeric.solve(A, b)
+
+        # ...allowed under @allowpromotion, result is Float64
+        allowpromotion() do
+            x = cuNumeric.solve(A, b)
+            ref = Float64[1 0; 0 1] \ Float64[1; 1;;]
+            allowscalar() do
+                @test cuNumeric.compare(ref, x, atol(Float64), rtol(Float64))
+            end
         end
     end
 end
