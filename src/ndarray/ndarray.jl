@@ -30,21 +30,27 @@ function transpose(arr::NDArray)
 end
 
 @doc"""
-    cuNumeric.eye(rows::Int; T=Float32)
+    cuNumeric.eye([T,] rows::Int)
 
-Create a 2D identity `NDArray` of size `rows x rows` with element type `T`.
+Create a 2D identity `NDArray` of size `rows x rows` with element type `T`
+(defaults to `DEFAULT_FLOAT`).
 """
-function eye(rows::Int; T::Type{S}=Float64) where {S}
-    return nda_eye(Int32(rows), S)
+function eye(::Type{T}, rows::Int) where {T}
+    return nda_eye(Int32(rows), T)
+end
+function eye(rows::Int)
+    return eye(DEFAULT_FLOAT, rows)
 end
 
 @doc"""
-    cuNumeric.trace(arr::NDArray; offset=0, a1=0, a2=1, T=Float32)
+    cuNumeric.trace(arr::NDArray; offset=0, a1=0, a2=1)
 
-Compute the trace of the `NDArray` along the specified axes.
+Compute the trace (sum of a diagonal) of the `NDArray`.
+The accumulator type follows promotions of other reductions like 'sum'.
 """
-function trace(arr::NDArray; offset::Int=0, a1::Int=0, a2::Int=1, T::Type{S}=Float32) where {S}
-    return nda_trace(arr, Int32(offset), Int32(a1), Int32(a2), S)
+function trace(arr::NDArray{T}; offset::Int=0, a1::Int=0, a2::Int=1) where {T}
+    T_OUT = Base.promote_op(Base.sum, Vector{T})
+    return nda_trace(arr, Int32(offset), Int32(a1), Int32(a2), T_OUT)
 end
 
 @doc"""

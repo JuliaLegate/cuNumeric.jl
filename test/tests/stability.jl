@@ -118,3 +118,16 @@ end
         end
     end
 end
+
+@testset verbose = true "linalg ops" begin
+    @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
+        M = cuNumeric.zeros(T, 4, 3)
+        sq = cuNumeric.zeros(T, 5, 5)
+        v = cuNumeric.zeros(T, 8)
+        @test @inferred(cuNumeric.eye(T, 5)) !== nothing
+        @test @inferred(cuNumeric.transpose(M)) !== nothing
+        @test @inferred(cuNumeric.trace(sq)) !== nothing
+        @test @inferred(cuNumeric.diag(sq)) !== nothing
+        @test @inferred(cuNumeric.unique(v)) !== nothing
+    end
+end

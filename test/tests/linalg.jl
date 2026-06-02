@@ -36,7 +36,7 @@ end
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
         n = 5
         ref = Matrix{T}(I, n, n)
-        out = cuNumeric.eye(n; T=T)
+        out = cuNumeric.eye(T, n)
         allowscalar() do
             @test cuNumeric.compare(ref, out, atol(T), rtol(T))
         end
@@ -45,35 +45,27 @@ end
 
 @testset "trace" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
-        # float accumulation for ints for overflow prevention
-        T_acc = T <: Integer ? Float64 : T
-
         A = my_rand(T, 6, 6)
         nda = cuNumeric.NDArray(A)
 
-        ref = sum(T_acc.(diag(A)))
-        out = cuNumeric.trace(nda; T=T_acc)
-
+        ref = sum(diag(A))  # widens ints like trace's accumulator
+        out = cuNumeric.trace(nda)
         allowscalar() do
-            @test ref ≈ out[1] atol=atol(T_acc) rtol=rtol(T_acc)
+            @test ref ≈ out[1] atol=atol(eltype(ref)) rtol=rtol(eltype(ref))
         end
     end
 end
 
 @testset "trace with offset" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
-        # float accumulation for ints for overflow prevention
-        T_acc = T <: Integer ? Float64 : T
-
         A = my_rand(T, 5, 5)
         nda = cuNumeric.NDArray(A)
 
         @testset "offset=$(k)" for k in (-2, -1, 0, 1, 2)
-            ref = sum(T_acc.(diag(A, k)))
-            out = cuNumeric.trace(nda; offset=k, T=T_acc)
-
+            ref = sum(diag(A, k))
+            out = cuNumeric.trace(nda; offset=k)
             allowscalar() do
-                @test ref ≈ out[1] atol=atol(T_acc) rtol=rtol(T_acc)
+                @test ref ≈ out[1] atol=atol(eltype(ref)) rtol=rtol(eltype(ref))
             end
         end
     end
