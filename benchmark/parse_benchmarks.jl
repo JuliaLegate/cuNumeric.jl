@@ -1,11 +1,5 @@
 using TOML
 
-Base.@kwdef struct GlobalSettings
-    N_warmup::Int
-    N_iter::Int
-    N_GPU::Int
-end
-
 function to_symbol_dict(d)
     return Dict(Symbol(k) => v for (k, v) in d)
 end
@@ -20,9 +14,11 @@ function parse_config(path)
     for (name, entries) in raw
         name == "Global" && continue
 
+        # Convert name parsed as String, to actual type
         BenchmarkType = getproperty(Main, Symbol(name))
 
         for entry in entries
+            # Convert type parsed as String, to actual type
             T = getproperty(Main, Symbol(entry["T"]))
 
             params = Dict{Symbol,Any}()
@@ -31,7 +27,11 @@ function parse_config(path)
                 params[Symbol(k)] = v
             end
 
-            push!(benchmarks, BenchmarkType{T}(; params...))
+            if T <: allowed_types(BenchmarkType)
+                push!(benchmarks, BenchmarkType{T}(; params...))
+            else
+                @warn "$(BenchmarkType) does not support benchmarking with type $(T). Skipping."
+            end
         end
     end
 

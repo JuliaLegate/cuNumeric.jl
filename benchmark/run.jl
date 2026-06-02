@@ -1,63 +1,69 @@
-import Random
-import cuNumeric
+using Random: Random
+using cuNumeric: cuNumeric
 
 include("benchmarks.jl")
 
-function work(b::AbstractBenchmark, N_GPU, arrs_cpu...)
+function benchmark(b::AbstractBenchmark, gs::GlobalSettings, arrs)
+    GC.gc(; full=true)
 
-    run!(b, arrs_cunumeric...)
+    for idx in range(1, gs.n_iter + gs.n_warmup)
+        if idx == gs.n_warmup + 1
+            start_time = get_time_microseconds()
+        end
 
-    GC.gc(full = true)
-
-    if N_GPU == 1
-        arrs_cuda = ...
-        run!(b, arrs_cunumeric...)
+        run!(b, arrays...)
     end
+    total_time_μs = get_time_microseconds() - start_time
+    mean_time_ms = total_time_μs / (gs.n_iter * 1e3)
+    gflops = total_flops(N, M) / (mean_time_ms * 1e6)
 
-    # Reset state in between
-    GC.gc(full = true)
+    GC.gc(; full=true)
+
+    return mean_time_ms, gflops
 end
 
 function run_all_benchmarks()
-
     global_settings, benchmarks = parse_config("benchmarks.toml")
 
     @show global_settings
     @show benchmarks
+
+    cunumeric_results = BenchmarkResult[]
+    cuda_results = BenchmarkResult[]
 
     for b in benchmarks
         println("================================")
         println(data(b))
         println("================================")
 
-        arrs = init(benchmark)
+        cn_times_ms = Vector{Float64}(undef, global_settings.n_trial)
+        cn_gflops = Vector{Union{Missing,Float64}}(undef, global_settings.n_trial)
 
-        #TODO FIX
+        cuda_times_ms = Vector{Float64}(undef, global_settings.n_trial)
+        cuda_gflops = Vector{Union{Missing,Float64}}(undef, global_settings.n_trial)
 
-        arrs_cunumeric =
-        run!(b, arrs_cunumeric...)
+        for i in 1:global_settings.n_trial
+            arrs_julia = initialize_cpu(b)
 
-        # Reset state in between
-        GC.gc(full = true)
+            arrs_cunumeric = # TODO
+                cn_times_ms[i], cn_gflops[i] = benchmark(b, arrs_cunumeric...)
+            push
 
-        if N_GPU == 1
-            arrs_cuda = ...
-            run!(b, arrs_cunumeric...)
+            if gs.n_gpu == 1
+                arrs_cuda = # TODO
+                    cuda_times_ms[i], cuda_gflops[i] = benchmark(b, arrs_cuda...)
+                push!(cuda_results, res_cuda)
+            end
         end
 
-        # Reset state in between
-        GC.gc(full = true)
+        cn_result = BenchmarkResult(cn_times_ms, cn_gflops, b)
+        cuda_result = BenchmarkResult(cuda_times_ms, cuda_gflops, b)
+
+        push!(cunumeric_results, cn_result)
+        push!(cuda_results, cuda_result)
     end
 
-end
+    # Call the `save` function for the cuda_results
+    # This function is not implemeneted as I was not sure how to do it
 
-
-function run_sgemm_benchmark(N)
-    include("sgemm.jl")
-    name = "SGEMM"
-end
-
-function run_monte_carlo_benchmark(N)
-    include("monte_carlo.jl")
-    name = "Monte_Carlo_Integration"
 end

@@ -1,3 +1,25 @@
+using CSV
+
+"""
+- `n_warmup::Int` : Number of warmup steps. These are not timed. Intended
+    to avoid pre-compilation cost being timed.
+- `n_iter::Int` : Number of iterations to run per trial. Should be large enough
+    to build up queue depth of tasks such that latency is hidden.
+- `n_trial::Int` : Number of independent trials to run. Timing is restarted and
+    legate in between each trial. Sets number of datapoints used to estimated
+    standard deviations/errors.
+- `n_gpu::Int` : The number of GPUs used by legate. Set through the LEGATE_CONFIG,
+    this value is just bookkeeping.
+"""
+Base.@kwdef struct GlobalSettings
+    n_warmup::Int # Number of warmup steps, where timing is not done.
+    n_iter::Int # Number of iterations to run per trial
+    n_trial::Int # Number of independent trials to run. Benchmark
+    n_gpu::Int
+end
+
+#########################################
+
 abstract type AbstractBenchmark{T} end
 
 #########################################
@@ -9,7 +31,7 @@ end
 
 data(g::GEMM{T}) where {T} = "GEMM with T=$(T), N=$(g.N), M=$(g.M)"
 
-function allowed_types(::MonteCarloIntegration)
+function allowed_types(::Type{GEMM})
     Union{cuNumeric.SUPPORTED_FLOAT_TYPES,cuNumeric.SUPPORTED_INT_TYPES}
 end
 
@@ -35,7 +57,7 @@ function data(mci::MonteCarloIntegration{T}) where {T}
     "Monte Carlo Integration with T=$(T), n_samples=$(mci.n_samples)"
 end
 
-allowed_types(::MonteCarloIntegration) = cuNumeric.SUPPORTED_FLOAT_TYPES
+allowed_types(::Type{MonteCarloIntegration}) = cuNumeric.SUPPORTED_FLOAT_TYPES
 
 total_space(s::MonteCarloIntegration{T}) where {T} = s.n_samples * sizeof(T)
 total_flops(s::MonteCarloIntegration) = missing # cannot estimate FLOPS for squaring or exp easily
@@ -47,4 +69,15 @@ end
 _domain_volume(mci::MonteCarloIntegration{T}) where {T} = T(10) / mci.n_samples
 run!(mci::MonteCarloIntegration, x) = _domain_volume(mci) * sum(exp.(-x .^ 2))
 
-#################
+#########################################
+
+struct BenchmarkResult{T,B<:AbstractBenchmark}
+    times_ms::T
+    gflops::T
+    benchmark::B
+end
+
+function save(br::BenchmarkResult)
+    # Compute standard error and mean time and save to
+    # some kind of file.
+end
