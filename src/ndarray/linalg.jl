@@ -52,32 +52,34 @@ function solve_batched(a::NDArray{T,N}, b::NDArray, x::NDArray) where {T,N}
     Legate.submit_manual_task(rt, task)
 end
 
-# Dimension guards
-function solve(a::NDArray{T,1}, b::NDArray{S,M}) where {T,S,M}
-    throw(ArgumentError("1-dimensional array given. Array must be at least two-dimensional"))
+# Type/dim guards dispatch on one argument at a time, then forward to `_solve`.
+function solve(
+    a::NDArray{<:SUPPORTED_SOLVE_TYPES}, b::NDArray{<:SUPPORTED_SOLVE_TYPES}
+)
+    return _solve_check_a_dims(a, b)
 end
 
-function solve(a::NDArray{T,0}, b::NDArray{S,M}) where {T,S,M}
+function solve(a::NDArray, b::NDArray)
+    bad = eltype(a) <: SUPPORTED_SOLVE_TYPES ? eltype(b) : eltype(a)
+    throw(ArgumentError("array type $bad is unsupported in solve"))
+end
+
+# `a` must be at least 2D, `b` at least 1D.
+function _solve_check_a_dims(a::NDArray{<:Any,0}, b::NDArray)
     throw(ArgumentError("0-dimensional array given. Array must be at least two-dimensional"))
 end
+function _solve_check_a_dims(a::NDArray{<:Any,1}, b::NDArray)
+    throw(ArgumentError("1-dimensional array given. Array must be at least two-dimensional"))
+end
+_solve_check_a_dims(a::NDArray, b::NDArray) = _solve_check_b_dims(a, b)
 
-function solve(a::NDArray{T,N}, b::NDArray{S,0}) where {T,N,S}
+function _solve_check_b_dims(a::NDArray, b::NDArray{<:Any,0})
     throw(ArgumentError("0-dimensional array given. Array must be at least one-dimensional"))
 end
-
-# Float16 guards
-@static if HAS_CUDA
-    function solve(a::NDArray{Float16,N}, b::NDArray{S,M}) where {N,S,M}
-        throw(ArgumentError("array type float16 is unsupported in linalg"))
-    end
-
-    function solve(a::NDArray{T,N}, b::NDArray{Float16,M}) where {T,N,M}
-        throw(ArgumentError("array type float16 is unsupported in linalg"))
-    end
-end
+_solve_check_b_dims(a::NDArray, b::NDArray) = _solve(a, b)
 
 # 2D case: (m,m),(m)->( m)
-function solve(a::NDArray{T,2}, b::NDArray{S,1}) where {T,S}
+function _solve(a::NDArray{T,2}, b::NDArray{S,1}) where {T,S}
     size(a)[end - 1] != size(a)[end] &&
         throw(ArgumentError("Last 2 dimensions of the array must be square"))
     size(a)[2] != size(b)[1] &&
@@ -95,7 +97,7 @@ function solve(a::NDArray{T,2}, b::NDArray{S,1}) where {T,S}
 end
 
 # 2D case: (m,m),(m,n)->(m,n)
-function solve(a::NDArray{T,2}, b::NDArray{S,2}) where {T,S}
+function _solve(a::NDArray{T,2}, b::NDArray{S,2}) where {T,S}
     size(a)[end - 1] != size(a)[end] &&
         throw(ArgumentError("Last 2 dimensions of the array must be square"))
     size(a)[2] != size(b)[1] &&
@@ -113,7 +115,7 @@ function solve(a::NDArray{T,2}, b::NDArray{S,2}) where {T,S}
 end
 
 # Batched case: (...,m,m),(...,m,n)->(...,m,n)
-function solve(a::NDArray{T,N}, b::NDArray{S,N}) where {T,S,N}
+function _solve(a::NDArray{T,N}, b::NDArray{S,N}) where {T,S,N}
     size(a)[end - 1] != size(a)[end] &&
         throw(ArgumentError("Last 2 dimensions of the array must be square"))
     size(a)[end] != size(b)[end - 1] &&
@@ -131,6 +133,6 @@ function solve(a::NDArray{T,N}, b::NDArray{S,N}) where {T,S,N}
 end
 
 # Mismatched batch dimensions
-function solve(a::NDArray{T,N}, b::NDArray{S,M}) where {T,N,S,M}
+function _solve(a::NDArray{T,N}, b::NDArray{S,M}) where {T,N,S,M}
     throw(ArgumentError("Batched matrices require signature (...,m,m),(...,m,n)->(...,m,n)"))
 end

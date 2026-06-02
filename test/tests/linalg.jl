@@ -19,19 +19,21 @@
 =#
 
 @testset "transpose" begin
-    A = rand(Float64, 4, 3)
-    nda = cuNumeric.NDArray(A)
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
+        A = my_rand(T, 4, 3)
+        nda = cuNumeric.NDArray(A)
 
-    ref = transpose(A)
-    out = cuNumeric.transpose(nda)
+        ref = transpose(A)
+        out = cuNumeric.transpose(nda)
 
-    allowscalar() do
-        @test cuNumeric.compare(ref, out, atol(Float64), rtol(Float64))
+        allowscalar() do
+            @test cuNumeric.compare(ref, out, atol(T), rtol(T))
+        end
     end
 end
 
 @testset "eye" begin
-    for T in (Float32, Float64, Int32)
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
         n = 5
         ref = Matrix{T}(I, n, n)
         out = cuNumeric.eye(n; T=T)
@@ -42,41 +44,53 @@ end
 end
 
 @testset "trace" begin
-    A = rand(Float64, 6, 6)
-    nda = cuNumeric.NDArray(A)
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
+        # float accumulation for ints for overflow prevention
+        T_acc = T <: Integer ? Float64 : T
 
-    ref = tr(A)
-    out = cuNumeric.trace(nda)
+        A = my_rand(T, 6, 6)
+        nda = cuNumeric.NDArray(A)
 
-    allowscalar() do
-        @test ref ≈ out[1] atol=atol(Float32) rtol=rtol(Float32)
+        ref = sum(T_acc.(diag(A)))
+        out = cuNumeric.trace(nda; T=T_acc)
+
+        allowscalar() do
+            @test ref ≈ out[1] atol=atol(T_acc) rtol=rtol(T_acc)
+        end
     end
 end
 
 @testset "trace with offset" begin
-    A = rand(Float32, 5, 5)
-    nda = cuNumeric.NDArray(A)
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
+        # float accumulation for ints for overflow prevention
+        T_acc = T <: Integer ? Float64 : T
 
-    for k in (-2, -1, 0, 1, 2)
-        ref = sum(diag(A, k))
-        out = cuNumeric.trace(nda; offset=k)
+        A = my_rand(T, 5, 5)
+        nda = cuNumeric.NDArray(A)
 
-        allowscalar() do
-            @test ref ≈ out[1] atol=atol(Float32) rtol=rtol(Float32)
+        @testset "offset=$(k)" for k in (-2, -1, 0, 1, 2)
+            ref = sum(T_acc.(diag(A, k)))
+            out = cuNumeric.trace(nda; offset=k, T=T_acc)
+
+            allowscalar() do
+                @test ref ≈ out[1] atol=atol(T_acc) rtol=rtol(T_acc)
+            end
         end
     end
 end
 
 @testset "diag" begin
-    A = rand(Int, 6, 6)
-    nda = cuNumeric.NDArray(A)
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
+        A = my_rand(T, 6, 6)
+        nda = cuNumeric.NDArray(A)
 
-    for k in (-2, 0, 3)
-        ref = diag(A, k)
-        out = cuNumeric.diag(nda; k=k)
+        @testset "k=$(k)" for k in (-2, 0, 3)
+            ref = diag(A, k)
+            out = cuNumeric.diag(nda; k=k)
 
-        allowscalar() do
-            @test cuNumeric.compare(ref, out, atol(Int32), rtol(Int32))
+            allowscalar() do
+                @test cuNumeric.compare(ref, out, atol(T), rtol(T))
+            end
         end
     end
 end
@@ -94,57 +108,56 @@ end
 # end
 
 @testset "unique" begin
-    A = [1, 2, 2, 3, 4, 4, 4, 5]
-    nda = cuNumeric.NDArray(A)
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_LINALG_TYPES)
+        A = T[1, 2, 2, 3, 4, 4, 4, 5]
+        nda = cuNumeric.NDArray(A)
 
-    ref = unique(A)
-    out = cuNumeric.unique(nda)
+        ref = unique(A)
+        out = cuNumeric.unique(nda)
 
-    @test sort(Array(out)) == sort(ref)
+        @test Set(Array(out)) == Set(ref)
+    end
 end
 
 @testset "solve diagonal" begin
-    @testset for T in (Float32, Float64, ComplexF32, ComplexF64, Int8, Int16, Int32, Int64)
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SOLVE_TYPES)
         n = 4
-        T_comp = T <: Integer ? Float64 : T
         A = cuNumeric.zeros(T, n, n)
         b = cuNumeric.zeros(T, n, 1)
         cuNumeric.@allowscalar for i in 1:n
             A[i, i] = T(4)
             b[i, 1] = T(1)
         end
-        x = cuNumeric.solve(cuNumeric.as_type(A, T_comp), cuNumeric.as_type(b, T_comp))
+        x = cuNumeric.solve(A, b)
         allowscalar() do
-            @test cuNumeric.compare(fill(T_comp(0.25), n, 1), x, atol(T_comp), rtol(T_comp))
+            @test cuNumeric.compare(fill(T(0.25), n, 1), x, atol(T), rtol(T))
         end
     end
 end
 
 @testset "solve identity" begin
-    @testset for T in (Float32, Float64, ComplexF32, ComplexF64, Int8, Int16, Int32, Int64)
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SOLVE_TYPES)
         n = 4
-        T_comp = T <: Integer ? Float64 : T
         A = cuNumeric.NDArray(Matrix{T}(I, n, n))
         b = cuNumeric.NDArray(reshape(T.(collect(1:n)), n, 1))
-        x = cuNumeric.solve(cuNumeric.as_type(A, T_comp), cuNumeric.as_type(b, T_comp))
-        ref = reshape(Float64.(collect(1:n)), n, 1)
+        x = cuNumeric.solve(A, b)
+        ref = reshape(T.(collect(1:n)), n, 1)
         allowscalar() do
-            @test cuNumeric.compare(ref, x, atol(T_comp), rtol(T_comp))
+            @test cuNumeric.compare(ref, x, atol(T), rtol(T))
         end
     end
 end
 
 @testset "solve general" begin
-    @testset for T in (Float32, Float64, ComplexF32, ComplexF64, Int8, Int16, Int32, Int64)
-        T_comp = T <: Integer ? Float64 : T
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SOLVE_TYPES)
         A_ref = T[2 1; 5 7]
         b_ref = T[11; 13;;]
         A = cuNumeric.NDArray(A_ref)
         b = cuNumeric.NDArray(b_ref)
-        x = cuNumeric.solve(cuNumeric.as_type(A, T_comp), cuNumeric.as_type(b, T_comp))
-        ref = Float64.(A_ref) \ Float64.(b_ref)
+        x = cuNumeric.solve(A, b)
+        ref = A_ref \ b_ref
         allowscalar() do
-            @test cuNumeric.compare(ref, x, atol(T_comp), rtol(T_comp))
+            @test cuNumeric.compare(ref, x, atol(T), rtol(T))
         end
     end
 end
