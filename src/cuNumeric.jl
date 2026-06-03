@@ -74,7 +74,7 @@ const SUPPORTED_LINALG_TYPES = Union{
 
 # solve has no integer/Float16 backend kernel — float/complex only.
 const SUPPORTED_SOLVE_TYPES = Union{Float32,Float64,SUPPORTED_COMPLEX_TYPES}
-
+const SUPPORTED_SVD_TYPES = Union{Float32,Float64,SUPPORTED_COMPLEX_TYPES}
 const SUPPORTED_ARRAY_TYPES = Union{Bool,SUPPORTED_NUMERIC_TYPES}
 const SUPPORTED_TYPES = Union{SUPPORTED_ARRAY_TYPES,String}
 

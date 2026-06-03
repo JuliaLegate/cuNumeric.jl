@@ -172,41 +172,17 @@ function _svd(a::NDArray{T,2}, full_matrices::Bool) where {T}
     return u, s, vh
 end
 
-
-function svd(a::NDArray{T,N}, full_matrices::Bool=true) where {T,N}
-    if N < 2
-        throw(LinAlgError("$(N)-dimensional array given. Array must be at least two-dimensional"))
-    end
-    if N > 2
-        throw(ArgumentError("cuNumeric does not yet support stacked 2d arrays"))
-    end
+function svd(a::NDArray{T,2}, full_matrices::Bool=true) where {T}
     if size(a)[1] < size(a)[2]
         throw(ArgumentError("cuNumeric only supports M >= N"))
     end
-    if T == Float16
-        throw(ArgumentError("array type float16 is unsupported in linalg"))
-    end
     return _svd(a, full_matrices)
 end
 
-# Dimension guards
-function svd(a::NDArray{T,N}, full_matrices::Bool=true) where {T,N}
-    throw(ArgumentError("$(N)-dimensional array given. Array must be at least two-dimensional"))
+function svd(a::NDArray{T,1}, full_matrices::Bool=true) where {T}
+    throw(ArgumentError("1-dimensional array given. Array must be at least two-dimensional"))
 end
 
-# Stacked 2D guard
 function svd(a::NDArray{T,N}, full_matrices::Bool=true) where {T,N}
     throw(ArgumentError("cuNumeric does not yet support stacked 2d arrays"))
-end
-
-# Float16 guard
-# function svd(a::NDArray{Float16,2}, full_matrices::Bool=true)
-#    throw(ArgumentError("array type float16 is unsupported in linalg"))
-# end
-
-# M < N guard
-function svd(a::NDArray{T,2}, full_matrices::Bool=true) where {T}
-    size(a)[1] < size(a)[2] &&
-        throw(ArgumentError("cuNumeric only supports M >= N"))
-    return _svd(a, full_matrices)
 end
