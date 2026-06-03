@@ -1,3 +1,6 @@
+using Printf
+using Statistics
+
 """
 - `n_warmup::Int` : Number of warmup steps. These are not timed. Intended
     to avoid pre-compilation cost being timed.

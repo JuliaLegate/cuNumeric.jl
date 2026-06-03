@@ -4,8 +4,9 @@
 #   no args   -> one command per benchmarks.toml entry
 #   with args -> one command from <gpus> <cpus> <name> <T> <N> <M> <iter> <warmup> <trial> [variant]
 
-using cuNumeric
-include("src/benchmarks.jl")
+# Orchestrator stays off the GPU: it only needs GlobalSettings + parse_config,
+# both cuNumeric-free. The worker (single.jl) loads cuNumeric and the kernels.
+include("src/core.jl")
 include("src/parse_benchmarks.jl")
 
 const RUNNER = joinpath(@__DIR__, "run_benchmark.sh")
@@ -14,11 +15,7 @@ const WORKER = joinpath(@__DIR__, "src/single.jl")
 banner(msg) = println("\n", "="^128, "\n", msg, "\n", "="^128)
 
 function dispatch(; gpus, cpus, name, T, variant, N, M, n_iter, n_warmup, n_trial)
-    if !haskey(BENCHMARKS, name)
-        @warn "No benchmark registered for '$(name)'; skipping."
-        return nothing
-    end
-
+    # Name validity is checked in the worker (single.jl), which owns the registry.
     banner(
         "$(name) [$(variant)]: T=$(T) gpus=$(gpus) cpus=$(cpus) N=$(N) M=$(M) " *
         "n_iter=$(n_iter) n_warmup=$(n_warmup) n_trial=$(n_trial)",

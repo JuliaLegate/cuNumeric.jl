@@ -11,6 +11,9 @@ include("benchmarks.jl")
 parse_type(s) = getfield(Base, Symbol(s))::DataType
 
 function run_single(gpus, name, T_str, N, M, n_iter, n_warmup, n_trial, variant)
+    haskey(BENCHMARKS, name) || error(
+        "No benchmark registered for '$(name)'. Known: $(join(sort(collect(keys(BENCHMARKS))), ", "))"
+    )
     T = parse_type(T_str)
     variant_setup(variant)() # apply any pre-run setup (e.g. flip a runtime preference)
     b = build_benchmark(BENCHMARKS[name], T, N, M, variant)
