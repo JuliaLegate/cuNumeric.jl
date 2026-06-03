@@ -23,8 +23,8 @@ end
 _domain_volume(mci::MonteCarloIntegration{T}) where {T} = T(10) / mci.n_samples
 run!(mci::MonteCarloIntegration, x) = _domain_volume(mci) * sum(exp.(-x .^ 2))
 
-# n_samples comes in as N; M is unused.
-function build_benchmark(::Type{MonteCarloIntegration}, ::Type{T}, N, M) where {T}
+# n_samples comes in as N; M and variant are unused.
+function build_benchmark(::Type{MonteCarloIntegration}, ::Type{T}, N, M, variant) where {T}
     MonteCarloIntegration{T}(; n_samples=N)
 end
 

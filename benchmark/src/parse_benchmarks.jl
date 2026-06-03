@@ -3,11 +3,13 @@ using TOML
 """
 One benchmark invocation parsed from `benchmarks.toml`. `name` selects the
 benchmark type from `BENCHMARKS`; `T` is the element type (e.g. "Float32");
-`args` are the sizes (currently `N M`).
+`variant` names the run variant (e.g. "baseline", "lifetimes"); `args` are the
+sizes (currently `N M`).
 """
 struct BenchmarkSpec
     name::String
     T::String
+    variant::String
     gpus::Int
     cpus::Int
     args::Vector{Int}
@@ -44,6 +46,7 @@ function parse_config(path)
         name == "Global" && continue
         for e in entries
             types = aslist(get(e, "T", "Float32"))
+            variants = aslist(get(e, "variants", "baseline"))
             gpus = aslist(e["gpus"])
             cpus = aslist(e["cpus"])
             N = aslist(e["N"])
@@ -51,11 +54,12 @@ function parse_config(path)
 
             n = sweep_length(name, ["gpus" => gpus, "cpus" => cpus, "N" => N, "M" => M])
 
-            for T in types, i in 1:n
+            # `T` and `variants` multiply; gpus/cpus/N/M zip into the sweep.
+            for T in types, variant in variants, i in 1:n
                 push!(
                     specs,
                     BenchmarkSpec(
-                        name, T, sweep_value(gpus, i), sweep_value(cpus, i),
+                        name, T, variant, sweep_value(gpus, i), sweep_value(cpus, i),
                         [sweep_value(N, i), sweep_value(M, i)],
                     ),
                 )

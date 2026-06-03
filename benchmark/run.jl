@@ -2,8 +2,9 @@
 # dispatches it; the script sets LEGATE_CONFIG (from --gpus/--cpus) before
 # launching the worker (single.jl) that actually runs the benchmark.
 #   no args   -> one command per benchmarks.toml entry
-#   with args -> one command from <gpus> <cpus> <name> <T> <N> <M> <iter> <warmup> <trial>
+#   with args -> one command from <gpus> <cpus> <name> <T> <N> <M> <iter> <warmup> <trial> [variant]
 
+using cuNumeric
 include("src/benchmarks.jl")
 include("src/parse_benchmarks.jl")
 
@@ -12,18 +13,18 @@ const WORKER = joinpath(@__DIR__, "src/single.jl")
 
 banner(msg) = println("\n", "="^128, "\n", msg, "\n", "="^128)
 
-function dispatch(; gpus, cpus, name, T, N, M, n_iter, n_warmup, n_trial)
+function dispatch(; gpus, cpus, name, T, variant, N, M, n_iter, n_warmup, n_trial)
     if !haskey(BENCHMARKS, name)
         @warn "No benchmark registered for '$(name)'; skipping."
         return nothing
     end
 
     banner(
-        "$(name): T=$(T) gpus=$(gpus) cpus=$(cpus) N=$(N) M=$(M) " *
+        "$(name) [$(variant)]: T=$(T) gpus=$(gpus) cpus=$(cpus) N=$(N) M=$(M) " *
         "n_iter=$(n_iter) n_warmup=$(n_warmup) n_trial=$(n_trial)",
     )
 
-    cmd = `bash $RUNNER $WORKER --gpus $gpus --cpus $cpus $name $T $N $M $n_iter $n_warmup $n_trial`
+    cmd = `bash $RUNNER $WORKER --gpus $gpus --cpus $cpus $name $T $N $M $n_iter $n_warmup $n_trial $variant`
     try
         run(cmd)
     catch e
@@ -36,7 +37,8 @@ function run_all_benchmarks(config="benchmarks.toml")
     for spec in specs
         N, M = spec.args
         dispatch(;
-            gpus=spec.gpus, cpus=spec.cpus, name=spec.name, T=spec.T, N=N, M=M,
+            gpus=spec.gpus, cpus=spec.cpus, name=spec.name, T=spec.T,
+            variant=spec.variant, N=N, M=M,
             n_iter=gs.n_iter, n_warmup=gs.n_warmup, n_trial=gs.n_trial,
         )
     end
@@ -49,5 +51,6 @@ else # dispatch on args
         gpus=parse(Int, ARGS[1]), cpus=parse(Int, ARGS[2]), name=ARGS[3], T=ARGS[4],
         N=parse(Int, ARGS[5]), M=parse(Int, ARGS[6]),
         n_iter=parse(Int, ARGS[7]), n_warmup=parse(Int, ARGS[8]), n_trial=parse(Int, ARGS[9]),
+        variant=(length(ARGS) >= 10 ? ARGS[10] : "baseline"),
     )
 end

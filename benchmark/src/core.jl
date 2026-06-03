@@ -36,9 +36,37 @@ function register_benchmark(key::AbstractString, ::Type{B}) where {B<:AbstractBe
     BENCHMARKS[key] = B
 end
 
-# Construct a benchmark from the orchestrator's positional sizes. Most benchmarks
-# use (N, M); a benchmark with different arity overrides this (see montecarlo.jl).
-build_benchmark(::Type{B}, ::Type{T}, N, M) where {B<:AbstractBenchmark,T} = B{T}(; N=N, M=M)
+# Default uses (N, M); benchmarks with a code-path variant or different arity
+# override this (see grayscott.jl / montecarlo.jl).
+function build_benchmark(::Type{B}, ::Type{T}, N, M, variant) where {B<:AbstractBenchmark,T}
+    B{T}(; N=N, M=M)
+end
+
+#########################################
+
+# `setup` runs in the worker before the benchmark is built (e.g. flip a runtime
+# preference); code-path variants leave it a no-op.
+struct Variant
+    name::String
+    setup::Function
+end
+
+const VARIANTS = Dict{String,Variant}()
+
+function register_variant(name, setup=() -> nothing)
+    VARIANTS[name] = Variant(name, setup)
+end
+
+function variant_setup(name)
+    if haskey(VARIANTS, name)
+        return VARIANTS[name].setup
+    end
+    return () -> nothing
+end
+
+register_variant("baseline")
+# register_variant("fusion_off", cuNumeric.CNPreferences.disable_broadcast_fusion!)
+# register_variant("fusion_on",  cuNumeric.CNPreferences.enable_broadcast_fusion!)
 
 #########################################
 
@@ -83,15 +111,16 @@ end
 
 _std(x) = length(x) > 1 ? std(x) : 0.0
 
-function save_result(br::BenchmarkResult, gpus)
+function save_result(br::BenchmarkResult, gpus, variant)
     N, M = dims(br.benchmark)
     path = joinpath(@__DIR__, "..", "results", "$(name(br.benchmark)).csv")
     mkpath(dirname(path))
     open(path, "a") do io
         for trial in eachindex(br.times_ms)
             @printf(
-                io, "%s,%d,%d,%d,%d,%.6f,%.6f\n",
-                "cunumeric", gpus, N, M, trial, br.times_ms[trial], br.gflops[trial],
+                io, "%s,%s,%d,%d,%d,%d,%.6f,%.6f\n",
+                "cunumeric", variant, gpus, N, M, trial,
+                br.times_ms[trial], br.gflops[trial],
             )
         end
     end

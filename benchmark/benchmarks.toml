@@ -18,6 +18,7 @@ gpus = [1, 2, 4, 8]
 cpus = 2
 N = 1024
 M = [1024, 2048, 4096, 8192]
+variants = ["baseline", "lifetimes"]
 
 # Monte Carlo: work ~ N. Scale N linearly.
 [[montecarlo]]
