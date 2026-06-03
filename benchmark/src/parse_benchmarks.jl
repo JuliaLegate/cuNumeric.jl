@@ -27,7 +27,10 @@ function parse_config(path)
         for e in entries
             push!(
                 specs,
-                BenchmarkSpec(name, get(e, "T", "Float32"), e["gpus"], e["cpus"], [e["N"], e["M"]]),
+                BenchmarkSpec(
+                    name, get(e, "T", "Float32"), e["gpus"], e["cpus"],
+                    [e["N"], get(e, "M", 1)],
+                ),
             )
         end
     end

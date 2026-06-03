@@ -23,3 +23,15 @@ gpus = 1
 cpus = 2
 N = 150
 M = 150
+
+[[montecarlo]]
+T = "Float64"
+gpus = 1
+cpus = 2
+N = 1_000_000
+
+[[montecarlo]]
+T = "Float32"
+gpus = 1
+cpus = 2
+N = 1_000_000

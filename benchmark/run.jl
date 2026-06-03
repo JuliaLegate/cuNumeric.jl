@@ -1,71 +1,53 @@
-# run.jl: orchestrator, one child per benchmarks.toml entry. With args
-# (<gpus> <name> <T> <N> <M> <iter> <warmup> <trial>) it runs one benchmark, e.g.
-# `julia run.jl 1 grayscott Float32 1000 1000 100 5 5`
-# Separate child per benchmark since LEGATE_CONFIG must be set before julia starts.
+# run.jl: orchestrator. Builds one run_benchmark.sh command per benchmark and
+# dispatches it; the script sets LEGATE_CONFIG (from --gpus/--cpus) before
+# launching the worker (single.jl) that actually runs the benchmark.
+#   no args   -> one command per benchmarks.toml entry
+#   with args -> one command from <gpus> <cpus> <name> <T> <N> <M> <iter> <warmup> <trial>
 
-include("benchmarks.jl")
-include("parse_benchmarks.jl")
+include("src/benchmarks.jl")
+include("src/parse_benchmarks.jl")
 
-function run_all_benchmarks(config="benchmarks.toml")
-    gs, specs = parse_config(joinpath(@__DIR__, config))
+const RUNNER = joinpath(@__DIR__, "run_benchmark.sh")
+const WORKER = joinpath(@__DIR__, "src/single.jl")
 
-    runner = joinpath(@__DIR__, "run_benchmark.sh")
-    self = @__FILE__
+banner(msg) = println("\n", "="^128, "\n", msg, "\n", "="^128)
 
-    for spec in specs
-        if !haskey(BENCHMARKS, spec.name)
-            @warn "No benchmark registered for '$(spec.name)'; skipping."
-            continue
-        end
+function dispatch(; gpus, cpus, name, T, N, M, n_iter, n_warmup, n_trial)
+    if !haskey(BENCHMARKS, name)
+        @warn "No benchmark registered for '$(name)'; skipping."
+        return nothing
+    end
 
-        N, M = spec.args
-        println("\n================================")
-        println(
-            "$(spec.name): T=$(spec.T) gpus=$(spec.gpus) cpus=$(spec.cpus) N=$(N) M=$(M) " *
-            "n_iter=$(gs.n_iter) n_warmup=$(gs.n_warmup) n_trial=$(gs.n_trial)",
-        )
-        println("================================")
+    banner(
+        "$(name): T=$(T) gpus=$(gpus) cpus=$(cpus) N=$(N) M=$(M) " *
+        "n_iter=$(n_iter) n_warmup=$(n_warmup) n_trial=$(n_trial)",
+    )
 
-        cmd = `bash $runner $self --gpus $(spec.gpus) --cpus $(spec.cpus) $(spec.name) $(spec.T) $N $M $(gs.n_iter) $(gs.n_warmup) $(gs.n_trial)`
-        try
-            run(cmd)
-        catch e
-            @error "Benchmark '$(spec.name)' failed; continuing." exception = e
-        end
+    cmd = `bash $RUNNER $WORKER --gpus $gpus --cpus $cpus $name $T $N $M $n_iter $n_warmup $n_trial`
+    try
+        run(cmd)
+    catch e
+        @error "Benchmark '$(name)' failed; continuing." exception = e
     end
 end
 
-# Resolve a TOML type string like "Float32" to the actual Julia type.
-parse_type(s) = getfield(Base, Symbol(s))::DataType
-
-function run_single(gpus, name, T_str, N, M, n_iter, n_warmup, n_trial)
-    T = parse_type(T_str)
-    b = BENCHMARKS[name]{T}(; N=N, M=M)
-    gs = GlobalSettings(; n_warmup=n_warmup, n_iter=n_iter, n_trial=n_trial)
-
-    println(
-        "[cuNumeric] $(name) benchmark ($(T)) on $(N)x$(M) for $(n_iter) iterations " *
-        "($(n_warmup) warmup) x $(n_trial) trials",
-    )
-    br = run_benchmark(b, gs)
-    @printf("[cuNumeric] Mean Run Time: %.5f ± %.5f ms\n", mean(br.times_ms), _std(br.times_ms))
-    @printf("[cuNumeric] FLOPS: %.5f ± %.5f GFLOPS\n", mean(br.gflops), _std(br.gflops))
-
-    save_result(br, gpus)
+function run_all_benchmarks(config="benchmarks.toml")
+    gs, specs = parse_config(joinpath(@__DIR__, config))
+    for spec in specs
+        N, M = spec.args
+        dispatch(;
+            gpus=spec.gpus, cpus=spec.cpus, name=spec.name, T=spec.T, N=N, M=M,
+            n_iter=gs.n_iter, n_warmup=gs.n_warmup, n_trial=gs.n_trial,
+        )
+    end
 end
 
 if isempty(ARGS)
     run_all_benchmarks()
-else
-    using cuNumeric
-    using LinearAlgebra
-    gpus = parse(Int, ARGS[1])
-    bench_name = ARGS[2]
-    T_str = ARGS[3]
-    N = parse(Int, ARGS[4])
-    M = parse(Int, ARGS[5])
-    n_iter = parse(Int, ARGS[6])
-    n_warmup = parse(Int, ARGS[7])
-    n_trial = parse(Int, ARGS[8])
-    run_single(gpus, bench_name, T_str, N, M, n_iter, n_warmup, n_trial)
+else # dispatch on args
+    dispatch(;
+        gpus=parse(Int, ARGS[1]), cpus=parse(Int, ARGS[2]), name=ARGS[3], T=ARGS[4],
+        N=parse(Int, ARGS[5]), M=parse(Int, ARGS[6]),
+        n_iter=parse(Int, ARGS[7]), n_warmup=parse(Int, ARGS[8]), n_trial=parse(Int, ARGS[9]),
+    )
 end
