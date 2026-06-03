@@ -47,32 +47,6 @@ end
 
 #########################################
 
-# `setup` runs in the worker before the benchmark is built (e.g. flip a runtime
-# preference); code-path variants leave it a no-op.
-struct Variant
-    name::String
-    setup::Function
-end
-
-const VARIANTS = Dict{String,Variant}()
-
-function register_variant(name, setup=() -> nothing)
-    VARIANTS[name] = Variant(name, setup)
-end
-
-function variant_setup(name)
-    if haskey(VARIANTS, name)
-        return VARIANTS[name].setup
-    end
-    return () -> nothing
-end
-
-register_variant("baseline")
-# register_variant("fusion_off", cuNumeric.CNPreferences.disable_broadcast_fusion!)
-# register_variant("fusion_on",  cuNumeric.CNPreferences.enable_broadcast_fusion!)
-
-#########################################
-
 # Per-trial timings for one benchmark. `times_ms[i]`/`gflops[i]` are the mean
 # over `n_iter` iterations for trial `i`; the spread across trials gives stddev.
 struct BenchmarkResult{B<:AbstractBenchmark}
@@ -86,7 +60,6 @@ function _trial(b::AbstractBenchmark, gs::GlobalSettings)
     GC.gc(true)
     state = initialize(b)
 
-    start_time = zero(get_time_microseconds())
     for idx in 1:(gs.n_warmup + gs.n_iter)
         if idx == gs.n_warmup + 1
             start_time = get_time_microseconds()
@@ -114,7 +87,7 @@ end
 
 _std(x) = length(x) > 1 ? std(x) : 0.0
 
-function save_result(br::BenchmarkResult, gpus, variant)
+function save_result(br::BenchmarkResult, gpus)
     N, M = dims(br.benchmark)
     path = joinpath(@__DIR__, "..", "results", "$(name(br.benchmark)).csv")
     mkpath(dirname(path))
@@ -122,9 +95,35 @@ function save_result(br::BenchmarkResult, gpus, variant)
         for trial in eachindex(br.times_ms)
             @printf(
                 io, "%s,%s,%d,%d,%d,%d,%.6f,%.6f\n",
-                "cunumeric", variant, gpus, N, M, trial,
+                "cunumeric", gpus, N, M, trial,
                 br.times_ms[trial], br.gflops[trial],
             )
         end
     end
 end
+
+#########################################
+
+# `setup` runs in the worker before the benchmark is built (e.g. flip a runtime
+# preference); code-path variants leave it a no-op.
+# struct Variant
+#     name::String
+#     setup::Function
+# end
+
+# const VARIANTS = Dict{String,Variant}()
+
+# function register_variant(name, setup=() -> nothing)
+#     VARIANTS[name] = Variant(name, setup)
+# end
+
+# function variant_setup(name)
+#     if haskey(VARIANTS, name)
+#         return VARIANTS[name].setup
+#     end
+#     return () -> nothing
+# end
+
+# register_variant("baseline")
+# register_variant("fusion_off", cuNumeric.CNPreferences.disable_broadcast_fusion!)
+# register_variant("fusion_on",  cuNumeric.CNPreferences.enable_broadcast_fusion!)

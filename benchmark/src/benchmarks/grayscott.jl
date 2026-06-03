@@ -11,20 +11,26 @@ function GSParams{T}(; dx=1, c_u=1.0, c_v=0.3, f=0.03, k=0.06) where {T}
     GSParams{T}(T(dx), T(dx / 5), T(c_u), T(c_v), T(f), T(k))
 end
 
-Base.@kwdef struct GrayScott{T} <: AbstractBenchmark{T}
+abstract type AbstractGrayScott{T} <: AbstractBenchmark{T} end
+
+Base.@kwdef struct GrayScottBaseline{T} <: AbstractGrayScott{T}
     N::Int
     M::Int
-    variant::Symbol = :baseline
 end
 
-name(::GrayScott) = "grayscott"
-dims(b::GrayScott) = (b.N, b.M)
-data(b::GrayScott{T}) where {T} = "GrayScott with T=$(T), N=$(b.N), M=$(b.M)"
-allowed_types(::Type{GrayScott}) = cuNumeric.SUPPORTED_FLOAT_TYPES
-total_flops(b::GrayScott) = b.N * b.M # grid points updated per step
+Base.@kwdef struct GrayScottLifetimes{T} <: AbstractGrayScott{T}
+    N::Int
+    M::Int
+end
 
-function build_benchmark(::Type{GrayScott}, ::Type{T}, N, M, variant) where {T}
-    GrayScott{T}(; N=N, M=M, variant=Symbol(variant))
+name(::AbstractGrayScott) = "grayscott"
+dims(b::AbstractGrayScott) = (b.N, b.M)
+data(b::AbstractGrayScott{T}) where {T} = "GrayScott with T=$(T), N=$(b.N), M=$(b.M)"
+allowed_types(::Type{AbstractGrayScott}) = cuNumeric.SUPPORTED_FLOAT_TYPES
+total_flops(b::AbstractGrayScott) = b.N * b.M # grid points updated per step
+
+function build_benchmark(::Type{A}, ::Type{T}, N, M) where {A<:AbstractGrayScott,T}
+    A{T}(; N=N, M=M)
 end
 
 mutable struct GrayScottState{A,P}
@@ -35,7 +41,7 @@ mutable struct GrayScottState{A,P}
     params::P
 end
 
-function initialize(b::GrayScott{T}) where {T}
+function initialize(b::AbstractGrayScott{T}) where {T}
     d = (b.N, b.M)
     u = cuNumeric.ones(T, d)
     v = cuNumeric.zeros(T, d)
@@ -104,22 +110,17 @@ let body = quote
         v_new[1, :] = v[end - 1, :]
         v_new[end, :] = v[2, :]
     end
-    @eval _gs_step!(::Val{:baseline}, u, v, u_new, v_new, args::GSParams) = $body
-    @eval _gs_step!(::Val{:lifetimes}, u, v, u_new, v_new, args::GSParams) = @analyze_lifetimes $body
+    @eval _gs_step!(b::GrayScottBaseline, u, v, u_new, v_new, args::GSParams) = $body
+    @eval _gs_step!(b::GrayScottLifetimes, u, v, u_new, v_new, args::GSParams) = @analyze_lifetimes $body
 end
 
-# Variants not special-cased (e.g. testing fusion) run the baseline path.
-function _gs_step!(::Val, u, v, u_new, v_new, args::GSParams)
-    _gs_step!(Val(:baseline), u, v, u_new, v_new, args)
-end
-
-function run!(b::GrayScott, st::GrayScottState)
-    _gs_step!(Val(b.variant), st.u, st.v, st.u_new, st.v_new, st.params)
+function run!(b::AbstractGrayScott, st::GrayScottState)
+    _gs_step!(b, st.u, st.v, st.u_new, st.v_new, st.params)
     # swap references rather than copy
     st.u, st.u_new = st.u_new, st.u
     st.v, st.v_new = st.v_new, st.v
     return nothing
 end
 
-register_variant("lifetimes")
-register_benchmark("grayscott", GrayScott)
+register_benchmark("grayscott_baseline", GrayScottBaseline)
+register_benchmark("grayscott_lifetimes", GrayScottLifetimes)

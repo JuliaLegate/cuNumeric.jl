@@ -3,7 +3,7 @@ Base.@kwdef struct GEMM{T} <: AbstractBenchmark{T}
     M::Int
 end
 
-name(::GEMM) = "sgemm"
+name(::GEMM) = "gemm"
 dims(g::GEMM) = (g.N, g.M)
 data(g::GEMM{T}) where {T} = "GEMM with T=$(T), N=$(g.N), M=$(g.M)"
 
@@ -24,4 +24,4 @@ end
 
 run!(::GEMM, C, A, B) = mul!(C, A, B)
 
-register_benchmark("sgemm", GEMM)
+register_benchmark("gemm", GEMM)

@@ -10,7 +10,7 @@ n_warmup = 5
 n_iter   = 1000
 n_trial  = 5
 
-[[sgemm]]            # name registered in src/benchmarks.jl
+[[gemm]]            # name registered in src/benchmarks.jl
 T    = "Float32"     # element type
 gpus = 1
 cpus = 2
