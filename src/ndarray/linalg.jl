@@ -52,29 +52,8 @@ function solve_batched(a::NDArray{T,N}, b::NDArray, x::NDArray) where {T,N}
     Legate.submit_manual_task(rt, task)
 end
 
-function svd_single(a::NDArray{T,N}, u::NDArray, s::NDArray, vh::NDArray) where {T,N}
-    rt = Legate.get_runtime();
-    lib = cuNumeric.get_lib();
 
-    task = Legate.create_auto_task(rt, lib, cuNumeric.SVD);
 
-    l_a = nda_to_logical_array(a)
-    l_u = nda_to_logical_array(u)
-    l_s = nda_to_logical_array(s)
-    l_vh = nda_to_logical_array(vh)
-
-    Legate.add_input(task, l_a)
-    Legate.add_output(task, l_u)
-    Legate.add_output(task, l_s)
-    Legate.add_output(task, l_vh)
-
-    Legate.add_broadcast(task, l_a)
-    Legate.add_broadcast(task, l_u)
-    Legate.add_broadcast(task, l_s)
-    Legate.add_broadcast(task, l_vh)
-
-    Legate.submit_auto_task(rt, task)
-end
 
 # Dimension guards
 function solve(a::NDArray{T,1}, b::NDArray{S,M}) where {T,S,M}
@@ -157,4 +136,77 @@ end
 # Mismatched batch dimensions
 function solve(a::NDArray{T,N}, b::NDArray{S,M}) where {T,N,S,M}
     throw(ArgumentError("Batched matrices require signature (...,m,m),(...,m,n)->(...,m,n)"))
+end
+
+function svd_single(a::NDArray{T,N}, u::NDArray, s::NDArray, vh::NDArray) where {T,N}
+    rt = Legate.get_runtime();
+    lib = cuNumeric.get_lib();
+
+    task = Legate.create_auto_task(rt, lib, cuNumeric.SVD);
+
+    l_a = nda_to_logical_array(a)
+    l_u = nda_to_logical_array(u)
+    l_s = nda_to_logical_array(s)
+    l_vh = nda_to_logical_array(vh)
+
+    Legate.add_input(task, l_a)
+    Legate.add_output(task, l_u)
+    Legate.add_output(task, l_s)
+    Legate.add_output(task, l_vh)
+
+    Legate.add_broadcast(task, l_a)
+    Legate.add_broadcast(task, l_u)
+    Legate.add_broadcast(task, l_s)
+    Legate.add_broadcast(task, l_vh)
+
+    Legate.submit_auto_task(rt, task)
+end
+
+function _svd(a::NDArray{T,2}, full_matrices::Bool) where {T}
+    m, n = size(a)
+    k = min(m, n)
+    u  = full_matrices ? zeros(T, m, m) : zeros(T, m, k)
+    s  = zeros(T, k)
+    vh = full_matrices ? zeros(T, n, n) : zeros(T, k, n)
+    svd_single(a, u, s, vh)
+    return u, s, vh
+end
+
+
+function svd(a::NDArray{T,N}, full_matrices::Bool=true) where {T,N}
+    if N < 2
+        throw(LinAlgError("$(N)-dimensional array given. Array must be at least two-dimensional"))
+    end
+    if N > 2
+        throw(ArgumentError("cuNumeric does not yet support stacked 2d arrays"))
+    end
+    if size(a)[1] < size(a)[2]
+        throw(ArgumentError("cuNumeric only supports M >= N"))
+    end
+    if T == Float16
+        throw(ArgumentError("array type float16 is unsupported in linalg"))
+    end
+    return _svd(a, full_matrices)
+end
+
+# Dimension guards
+function svd(a::NDArray{T,N}, full_matrices::Bool=true) where {T,N}
+    throw(ArgumentError("$(N)-dimensional array given. Array must be at least two-dimensional"))
+end
+
+# Stacked 2D guard
+function svd(a::NDArray{T,N}, full_matrices::Bool=true) where {T,N}
+    throw(ArgumentError("cuNumeric does not yet support stacked 2d arrays"))
+end
+
+# Float16 guard
+# function svd(a::NDArray{Float16,2}, full_matrices::Bool=true)
+#    throw(ArgumentError("array type float16 is unsupported in linalg"))
+# end
+
+# M < N guard
+function svd(a::NDArray{T,2}, full_matrices::Bool=true) where {T}
+    size(a)[1] < size(a)[2] &&
+        throw(ArgumentError("cuNumeric only supports M >= N"))
+    return _svd(a, full_matrices)
 end
