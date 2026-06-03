@@ -2,10 +2,12 @@ using TOML
 
 """
 One benchmark invocation parsed from `benchmarks.toml`. `name` selects the
-benchmark type from `BENCHMARKS`; `args` are the sizes (currently `N M`).
+benchmark type from `BENCHMARKS`; `T` is the element type (e.g. "Float32");
+`args` are the sizes (currently `N M`).
 """
 struct BenchmarkSpec
     name::String
+    T::String
     gpus::Int
     cpus::Int
     args::Vector{Int}
@@ -23,7 +25,10 @@ function parse_config(path)
     for (name, entries) in raw
         name == "Global" && continue
         for e in entries
-            push!(specs, BenchmarkSpec(name, e["gpus"], e["cpus"], [e["N"], e["M"]]))
+            push!(
+                specs,
+                BenchmarkSpec(name, get(e, "T", "Float32"), e["gpus"], e["cpus"], [e["N"], e["M"]]),
+            )
         end
     end
 

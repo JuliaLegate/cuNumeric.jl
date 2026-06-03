@@ -1,6 +1,6 @@
 # run.jl: orchestrator, one child per benchmarks.toml entry. With args
-# (<gpus> <name> <N> <M> <iter> <warmup> <trial>) it runs one benchmark, e.g.
-# `julia run.jl 1 grayscott 1000 1000 100 5 5`
+# (<gpus> <name> <T> <N> <M> <iter> <warmup> <trial>) it runs one benchmark, e.g.
+# `julia run.jl 1 grayscott Float32 1000 1000 100 5 5`
 # Separate child per benchmark since LEGATE_CONFIG must be set before julia starts.
 
 include("benchmarks.jl")
@@ -21,12 +21,12 @@ function run_all_benchmarks(config="benchmarks.toml")
         N, M = spec.args
         println("\n================================")
         println(
-            "$(spec.name): gpus=$(spec.gpus) cpus=$(spec.cpus) N=$(N) M=$(M) " *
+            "$(spec.name): T=$(spec.T) gpus=$(spec.gpus) cpus=$(spec.cpus) N=$(N) M=$(M) " *
             "n_iter=$(gs.n_iter) n_warmup=$(gs.n_warmup) n_trial=$(gs.n_trial)",
         )
         println("================================")
 
-        cmd = `bash $runner $self --gpus $(spec.gpus) --cpus $(spec.cpus) $(spec.name) $N $M $(gs.n_iter) $(gs.n_warmup) $(gs.n_trial)`
+        cmd = `bash $runner $self --gpus $(spec.gpus) --cpus $(spec.cpus) $(spec.name) $(spec.T) $N $M $(gs.n_iter) $(gs.n_warmup) $(gs.n_trial)`
         try
             run(cmd)
         catch e
@@ -35,12 +35,16 @@ function run_all_benchmarks(config="benchmarks.toml")
     end
 end
 
-function run_single(gpus, name, N, M, n_iter, n_warmup, n_trial)
-    b = BENCHMARKS[name]{Float32}(; N=N, M=M)
+# Resolve a TOML type string like "Float32" to the actual Julia type.
+parse_type(s) = getfield(Base, Symbol(s))::DataType
+
+function run_single(gpus, name, T_str, N, M, n_iter, n_warmup, n_trial)
+    T = parse_type(T_str)
+    b = BENCHMARKS[name]{T}(; N=N, M=M)
     gs = GlobalSettings(; n_warmup=n_warmup, n_iter=n_iter, n_trial=n_trial)
 
     println(
-        "[cuNumeric] $(name) benchmark on $(N)x$(M) for $(n_iter) iterations " *
+        "[cuNumeric] $(name) benchmark ($(T)) on $(N)x$(M) for $(n_iter) iterations " *
         "($(n_warmup) warmup) x $(n_trial) trials",
     )
     br = run_benchmark(b, gs)
@@ -57,10 +61,11 @@ else
     using LinearAlgebra
     gpus = parse(Int, ARGS[1])
     bench_name = ARGS[2]
-    N = parse(Int, ARGS[3])
-    M = parse(Int, ARGS[4])
-    n_iter = parse(Int, ARGS[5])
-    n_warmup = parse(Int, ARGS[6])
-    n_trial = parse(Int, ARGS[7])
-    run_single(gpus, bench_name, N, M, n_iter, n_warmup, n_trial)
+    T_str = ARGS[3]
+    N = parse(Int, ARGS[4])
+    M = parse(Int, ARGS[5])
+    n_iter = parse(Int, ARGS[6])
+    n_warmup = parse(Int, ARGS[7])
+    n_trial = parse(Int, ARGS[8])
+    run_single(gpus, bench_name, T_str, N, M, n_iter, n_warmup, n_trial)
 end
