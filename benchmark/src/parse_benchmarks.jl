@@ -13,6 +13,24 @@ struct BenchmarkSpec
     args::Vector{Int}
 end
 
+# A field may be a scalar or a list.
+aslist(x) = x isa AbstractVector ? collect(x) : [x]
+
+# Value of a zipped field for sweep position `i`. length==1 field broadcasts.
+sweep_value(field, i) = length(field) == 1 ? field[1] : field[i]
+
+# Number of positions in the sweep. Every multi-element field must agree on length;
+# length==1 fields broadcast and don't constrain it.
+function sweep_length(name, fields)
+    lengths = [length(field) for (_, field) in fields if length(field) > 1]
+    isempty(lengths) && return 1
+    allequal(lengths) || error(
+        "benchmark '$(name)': zipped fields gpus/cpus/N/M must share one length " *
+        "or be scalar; got " * join(("$k=$(length(v))" for (k, v) in fields), ", "),
+    )
+    return first(lengths)
+end
+
 function parse_config(path)
     raw = TOML.parsefile(path)
 
@@ -25,13 +43,23 @@ function parse_config(path)
     for (name, entries) in raw
         name == "Global" && continue
         for e in entries
-            push!(
-                specs,
-                BenchmarkSpec(
-                    name, get(e, "T", "Float32"), e["gpus"], e["cpus"],
-                    [e["N"], get(e, "M", 1)],
-                ),
-            )
+            types = aslist(get(e, "T", "Float32"))
+            gpus = aslist(e["gpus"])
+            cpus = aslist(e["cpus"])
+            N = aslist(e["N"])
+            M = aslist(get(e, "M", 1))
+
+            n = sweep_length(name, ["gpus" => gpus, "cpus" => cpus, "N" => N, "M" => M])
+
+            for T in types, i in 1:n
+                push!(
+                    specs,
+                    BenchmarkSpec(
+                        name, T, sweep_value(gpus, i), sweep_value(cpus, i),
+                        [sweep_value(N, i), sweep_value(M, i)],
+                    ),
+                )
+            end
         end
     end
 

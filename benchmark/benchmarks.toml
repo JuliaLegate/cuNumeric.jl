@@ -3,35 +3,25 @@ n_warmup = 5
 n_iter = 1000
 n_trial = 5
 
+# GEMM: work ~ 2*N^2*M. Hold N, scale M.
+[[sgemm]]
+T = ["Float32", "Float64"]
+gpus = [1, 2, 4, 8]
+cpus = 2
+N = 4096
+M = [4096, 8192, 16384, 32768]
+
+# Gray-Scott: work ~ N*M. Hold N, scale M.
 [[grayscott]]
-T = "Float64"
-gpus = 1
-cpus = 2
-N = 1000
-M = 1000
-
-[[sgemm]]
 T = "Float32"
-gpus = 1
+gpus = [1, 2, 4, 8]
 cpus = 2
-N = 150
-M = 150
+N = 1024
+M = [1024, 2048, 4096, 8192]
 
-[[sgemm]]
-T = "Float64"
-gpus = 1
-cpus = 2
-N = 150
-M = 150
-
-[[montecarlo]]
-T = "Float64"
-gpus = 1
-cpus = 2
-N = 1_000_000
-
+# Monte Carlo: work ~ N. Scale N linearly.
 [[montecarlo]]
 T = "Float32"
-gpus = 1
+gpus = [1, 2, 4, 8]
 cpus = 2
-N = 1_000_000
+N = [1_000_000, 2_000_000, 4_000_000, 8_000_000]
