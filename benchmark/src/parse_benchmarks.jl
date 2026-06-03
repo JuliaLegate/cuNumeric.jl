@@ -10,7 +10,6 @@ struct BenchmarkSpec
     T::String
     gpus::Int
     cpus::Int
-    fusion::Bool
     args::Vector{Int}
 end
 
@@ -53,11 +52,14 @@ function parse_config(path)
 
             n = sweep_length(name, ["gpus" => gpus, "cpus" => cpus, "N" => N, "M" => M])
 
-            for T in types for i in 1:n
+            for T in types, i in 1:n
                 push!(
                     specs,
                     BenchmarkSpec(
-                        name, T, sweep_value(gpus, i), sweep_value(cpus, i),
+                        name,
+                        T,
+                        sweep_value(gpus, i),
+                        sweep_value(cpus, i),
                         [sweep_value(N, i), sweep_value(M, i)],
                     ),
                 )

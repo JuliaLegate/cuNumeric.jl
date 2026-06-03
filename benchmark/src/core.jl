@@ -39,9 +39,7 @@ function register_benchmark(key::AbstractString, ::Type{B}) where {B<:AbstractBe
     BENCHMARKS[key] = B
 end
 
-# Default uses (N, M); benchmarks with a code-path variant or different arity
-# override this (see grayscott.jl / montecarlo.jl).
-function build_benchmark(::Type{B}, ::Type{T}, N, M, variant) where {B<:AbstractBenchmark,T}
+function build_benchmark(::Type{B}, ::Type{T}, N, M) where {B<:AbstractBenchmark,T}
     B{T}(; N=N, M=M)
 end
 
@@ -60,6 +58,7 @@ function _trial(b::AbstractBenchmark, gs::GlobalSettings; mod=cuNumeric)
     GC.gc(true)
     state = initialize(b; mod=mod)
 
+    start_time = nothing
     for idx in 1:(gs.n_warmup + gs.n_iter)
         if idx == gs.n_warmup + 1
             start_time = get_time_microseconds()
@@ -75,10 +74,6 @@ end
 
 # Run `n_trial` independent trials and collect their per-trial measurements.
 function run_benchmark(b::AbstractBenchmark, gs::GlobalSettings; mod=cuNumeric)
-
-    # Can only test CUDA.jl performance with 1 GPU
-    (mod == CUDACore && gs.n_gpu == 1) || continue
-
     times_ms = Float64[]
     gflops = Float64[]
     for _ in 1:gs.n_trial
@@ -98,7 +93,7 @@ function save_result(br::BenchmarkResult, gpus; mod::String="cunumeric")
     open(path, "a") do io
         for trial in eachindex(br.times_ms)
             @printf(
-                io, "%s,%s,%d,%d,%d,%d,%.6f,%.6f\n",
+                io, "%s,%d,%d,%d,%d,%.6f,%.6f\n",
                 mod, gpus, N, M, trial,
                 br.times_ms[trial], br.gflops[trial],
             )
