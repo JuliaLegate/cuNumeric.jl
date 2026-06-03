@@ -55,13 +55,7 @@ const DEFAULT_FLOAT = Float32
 const DEFAULT_INT = Int32
 
 const SUPPORTED_INT_TYPES = Union{Int8,Int16,Int32,Int64,UInt8,UInt16,UInt32,UInt64}
-# Float16 is only supported by the backend when built with CUDA
-@static if HAS_CUDA
-    const SUPPORTED_FLOAT_TYPES = Union{Float16,Float32,Float64}
-else
-    const SUPPORTED_FLOAT_TYPES = Union{Float32,Float64}
-end
-
+const SUPPORTED_FLOAT_TYPES = Union{Float32,Float64} # Float16 disabled for now. Issues need to be resolved.
 const SUPPORTED_COMPLEX_TYPES = Union{ComplexF32,ComplexF64}
 
 const SUPPORTED_NUMERIC_TYPES = Union{
