@@ -1,39 +1,31 @@
 using TOML
 
-function to_symbol_dict(d)
-    return Dict(Symbol(k) => v for (k, v) in d)
+"""
+One benchmark invocation parsed from `benchmarks.toml`. `name` selects the
+benchmark type from `BENCHMARKS`; `args` are the sizes (currently `N M`).
+"""
+struct BenchmarkSpec
+    name::String
+    gpus::Int
+    cpus::Int
+    args::Vector{Int}
 end
 
 function parse_config(path)
     raw = TOML.parsefile(path)
 
-    global_settings = GlobalSettings(; to_symbol_dict(raw["Global"])...)
+    g = raw["Global"]
+    global_settings = GlobalSettings(;
+        n_warmup=g["n_warmup"], n_iter=g["n_iter"], n_trial=get(g, "n_trial", 1)
+    )
 
-    benchmarks = AbstractBenchmark[]
-
+    specs = BenchmarkSpec[]
     for (name, entries) in raw
         name == "Global" && continue
-
-        # Convert name parsed as String, to actual type
-        BenchmarkType = getproperty(Main, Symbol(name))
-
-        for entry in entries
-            # Convert type parsed as String, to actual type
-            T = getproperty(Main, Symbol(entry["T"]))
-
-            params = Dict{Symbol,Any}()
-            for (k, v) in entry
-                k == "T" && continue
-                params[Symbol(k)] = v
-            end
-
-            if T <: allowed_types(BenchmarkType)
-                push!(benchmarks, BenchmarkType{T}(; params...))
-            else
-                @warn "$(BenchmarkType) does not support benchmarking with type $(T). Skipping."
-            end
+        for e in entries
+            push!(specs, BenchmarkSpec(name, e["gpus"], e["cpus"], [e["N"], e["M"]]))
         end
     end
 
-    return global_settings, benchmarks
+    return global_settings, specs
 end

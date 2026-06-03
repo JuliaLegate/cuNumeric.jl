@@ -43,13 +43,15 @@ if [[ $GPUS -lt 0 ]]; then
 fi
 
 if [[ $CPUS -lt 0 ]]; then
-    echo "CPUs ivnalid, using cpus = 1"
+    echo "CPUs invalid, using cpus = 1"
     exit
 fi
 
-export LEGATE_AUTO_CONFIG=0
-export LEGATE_CONFIG="--cpus=1 --gpus=$GPUS --omps=$CPUS --ompthreads=3 --utility=2 --sysmem=256 --numamem=19029 --fbmem=7569 --zcmem=128 --regmem=0"
+export LEGATE_AUTO_CONFIG=1
+export LEGATE_CONFIG="--cpus=$CPUS --gpus=$GPUS"
 export LEGATE_SHOW_CONFIG=1
+
+export LD_LIBRARY_PATH=""
 
 echo "Running $FILENAME with $CPUS CPUs and $GPUS GPUs"
 

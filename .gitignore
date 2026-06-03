@@ -14,6 +14,10 @@ logging/*
 debug
 debug/*
 
+# benchmark outputs
+benchmark/results
+benchmark/results/*
+
 compile_wrapper.sh
 
 *.tar.gz

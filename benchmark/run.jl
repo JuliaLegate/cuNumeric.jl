@@ -1,70 +1,66 @@
-using Random: Random
-using cuNumeric: cuNumeric
+# run.jl: orchestrator, one child per benchmarks.toml entry. With args
+# (<gpus> <name> <N> <M> <iter> <warmup> <trial>) it runs one benchmark, e.g.
+# `julia run.jl 1 grayscott 1000 1000 100 5 5`
+# Separate child per benchmark since LEGATE_CONFIG must be set before julia starts.
 
 include("benchmarks.jl")
 include("parse_benchmarks.jl")
 
-function benchmark(b::AbstractBenchmark, gs::GlobalSettings, arrs)
-    GC.gc(; full=true)
+function run_all_benchmarks(config="benchmarks.toml")
+    gs, specs = parse_config(joinpath(@__DIR__, config))
 
-    for idx in range(1, gs.n_iter + gs.n_warmup)
-        if idx == gs.n_warmup + 1
-            start_time = get_time_microseconds()
+    runner = joinpath(@__DIR__, "run_benchmark.sh")
+    self = @__FILE__
+
+    for spec in specs
+        if !haskey(BENCHMARKS, spec.name)
+            @warn "No benchmark registered for '$(spec.name)'; skipping."
+            continue
         end
 
-        run!(b, arrays...)
+        N, M = spec.args
+        println("\n================================")
+        println(
+            "$(spec.name): gpus=$(spec.gpus) cpus=$(spec.cpus) N=$(N) M=$(M) " *
+            "n_iter=$(gs.n_iter) n_warmup=$(gs.n_warmup) n_trial=$(gs.n_trial)",
+        )
+        println("================================")
+
+        cmd = `bash $runner $self --gpus $(spec.gpus) --cpus $(spec.cpus) $(spec.name) $N $M $(gs.n_iter) $(gs.n_warmup) $(gs.n_trial)`
+        try
+            run(cmd)
+        catch e
+            @error "Benchmark '$(spec.name)' failed; continuing." exception = e
+        end
     end
-    total_time_μs = get_time_microseconds() - start_time
-    mean_time_ms = total_time_μs / (gs.n_iter * 1e3)
-    gflops = total_flops(N, M) / (mean_time_ms * 1e6)
-
-    GC.gc(; full=true)
-
-    return mean_time_ms, gflops
 end
 
-function run_all_benchmarks()
-    global_settings, benchmarks = parse_config("benchmarks.toml")
+function run_single(gpus, name, N, M, n_iter, n_warmup, n_trial)
+    b = BENCHMARKS[name]{Float32}(; N=N, M=M)
+    gs = GlobalSettings(; n_warmup=n_warmup, n_iter=n_iter, n_trial=n_trial)
 
-    @show global_settings
-    @show benchmarks
+    println(
+        "[cuNumeric] $(name) benchmark on $(N)x$(M) for $(n_iter) iterations " *
+        "($(n_warmup) warmup) x $(n_trial) trials",
+    )
+    br = run_benchmark(b, gs)
+    @printf("[cuNumeric] Mean Run Time: %.5f ± %.5f ms\n", mean(br.times_ms), _std(br.times_ms))
+    @printf("[cuNumeric] FLOPS: %.5f ± %.5f GFLOPS\n", mean(br.gflops), _std(br.gflops))
 
-    cunumeric_results = BenchmarkResult[]
-    cuda_results = BenchmarkResult[]
+    save_result(br, gpus)
+end
 
-    for b in benchmarks
-        println("================================")
-        println(data(b))
-        println("================================")
-
-        cn_times_ms = Vector{Float64}(undef, global_settings.n_trial)
-        cn_gflops = Vector{Union{Missing,Float64}}(undef, global_settings.n_trial)
-
-        cuda_times_ms = Vector{Float64}(undef, global_settings.n_trial)
-        cuda_gflops = Vector{Union{Missing,Float64}}(undef, global_settings.n_trial)
-
-        for i in 1:global_settings.n_trial
-            arrs_julia = initialize_cpu(b)
-
-            arrs_cunumeric = # TODO
-                cn_times_ms[i], cn_gflops[i] = benchmark(b, arrs_cunumeric...)
-            push
-
-            if gs.n_gpu == 1
-                arrs_cuda = # TODO
-                    cuda_times_ms[i], cuda_gflops[i] = benchmark(b, arrs_cuda...)
-                push!(cuda_results, res_cuda)
-            end
-        end
-
-        cn_result = BenchmarkResult(cn_times_ms, cn_gflops, b)
-        cuda_result = BenchmarkResult(cuda_times_ms, cuda_gflops, b)
-
-        push!(cunumeric_results, cn_result)
-        push!(cuda_results, cuda_result)
-    end
-
-    # Call the `save` function for the cuda_results
-    # This function is not implemeneted as I was not sure how to do it
-
+if isempty(ARGS)
+    run_all_benchmarks()
+else
+    using cuNumeric
+    using LinearAlgebra
+    gpus = parse(Int, ARGS[1])
+    bench_name = ARGS[2]
+    N = parse(Int, ARGS[3])
+    M = parse(Int, ARGS[4])
+    n_iter = parse(Int, ARGS[5])
+    n_warmup = parse(Int, ARGS[6])
+    n_trial = parse(Int, ARGS[7])
+    run_single(gpus, bench_name, N, M, n_iter, n_warmup, n_trial)
 end
