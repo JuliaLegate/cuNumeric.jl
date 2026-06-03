@@ -3,6 +3,7 @@
 # Args: <gpus> <name> <T> <N> <M> <n_iter> <n_warmup> <n_trial> <variant>
 
 using cuNumeric
+using CUDACore
 using LinearAlgebra
 
 include("core.jl")
@@ -29,6 +30,21 @@ function run_single(gpus, name, T_str, N, M, n_iter, n_warmup, n_trial)
     @printf("[cuNumeric] FLOPS: %.5f ± %.5f GFLOPS\n", mean(br.gflops), _std(br.gflops))
 
     save_result(br, gpus)
+
+    # Run CUDA.jl benchmark
+    if gpus == 1
+        println(
+            "[CUDA.jl] $(name) benchmark ($(T)) on $(N)x$(M) for $(n_iter) " *
+            "iterations ($(n_warmup) warmup) x $(n_trial) trials",
+        )
+
+        br = run_benchmark(b, gs; mod=CUDACore)
+
+        @printf("[CUDA.jl] Mean Run Time: %.5f ± %.5f ms\n", mean(br.times_ms), _std(br.times_ms))
+        @printf("[CUDA.jl] FLOPS: %.5f ± %.5f GFLOPS\n", mean(br.gflops), _std(br.gflops))
+
+        save_result(br, gpus; mod="CUDA.jl")
+    end
 end
 
 gpus = parse(Int, ARGS[1])

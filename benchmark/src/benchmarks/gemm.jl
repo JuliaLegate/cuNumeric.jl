@@ -14,10 +14,10 @@ end
 total_flops(s::GEMM) = s.N * s.N * ((2*s.M) - 1)
 total_space(s::GEMM{T}) where {T} = 2 * ((s.N*s.M) * sizeof(T)) + ((s.N*s.N) * sizeof(T))
 
-function initialize(s::GEMM{T}) where {T}
-    A = cuNumeric.rand(T, s.N, s.M)
-    B = cuNumeric.rand(T, s.M, s.N)
-    C = cuNumeric.zeros(T, s.N, s.N)
+function initialize(s::GEMM{T}; mod=cuNumeric) where {T}
+    A = mod.rand(T, s.N, s.M)
+    B = mod.rand(T, s.M, s.N)
+    C = mod.zeros(T, s.N, s.N)
     GC.gc()
     return C, A, B
 end

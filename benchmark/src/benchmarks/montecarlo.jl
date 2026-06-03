@@ -13,9 +13,9 @@ allowed_types(::Type{MonteCarloIntegration}) = cuNumeric.SUPPORTED_FLOAT_TYPES
 total_space(s::MonteCarloIntegration{T}) where {T} = s.n_samples * sizeof(T)
 total_flops(s::MonteCarloIntegration) = s.n_samples
 
-function initialize(mci::MonteCarloIntegration{T}) where {T}
+function initialize(mci::MonteCarloIntegration{T}; mod=cuNumeric) where {T}
     # Uniform samples over the integration domain [0, 10].
-    x = T(10) .* cuNumeric.rand(T, mci.n_samples)
+    x = T(10) .* mod.rand(T, mci.n_samples)
     GC.gc()
     return (x,)
 end

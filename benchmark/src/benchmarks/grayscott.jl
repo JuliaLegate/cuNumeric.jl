@@ -41,16 +41,16 @@ mutable struct GrayScottState{A,P}
     params::P
 end
 
-function initialize(b::AbstractGrayScott{T}) where {T}
+function initialize(b::AbstractGrayScott{T}; mod=cuNumeric) where {T}
     d = (b.N, b.M)
-    u = cuNumeric.ones(T, d)
-    v = cuNumeric.zeros(T, d)
-    u_new = cuNumeric.zeros(T, d)
-    v_new = cuNumeric.zeros(T, d)
+    u = mod.ones(T, d)
+    v = mod.zeros(T, d)
+    u_new = mod.zeros(T, d)
+    v_new = mod.zeros(T, d)
 
     seed = min(150, b.N, b.M)
-    u[1:seed, 1:seed] = cuNumeric.rand(T, (seed, seed))
-    v[1:seed, 1:seed] = cuNumeric.rand(T, (seed, seed))
+    u[1:seed, 1:seed] = mod.rand(T, (seed, seed))
+    v[1:seed, 1:seed] = mod.rand(T, (seed, seed))
 
     return (GrayScottState(u, v, u_new, v_new, GSParams{T}()),)
 end

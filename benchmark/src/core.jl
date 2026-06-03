@@ -56,9 +56,9 @@ struct BenchmarkResult{B<:AbstractBenchmark}
 end
 
 # One timed trial: warmup, then time `n_iter` iterations of `run!`.
-function _trial(b::AbstractBenchmark, gs::GlobalSettings)
+function _trial(b::AbstractBenchmark, gs::GlobalSettings; mod=cuNumeric)
     GC.gc(true)
-    state = initialize(b)
+    state = initialize(b; mod=mod)
 
     for idx in 1:(gs.n_warmup + gs.n_iter)
         if idx == gs.n_warmup + 1
@@ -74,11 +74,15 @@ function _trial(b::AbstractBenchmark, gs::GlobalSettings)
 end
 
 # Run `n_trial` independent trials and collect their per-trial measurements.
-function run_benchmark(b::AbstractBenchmark, gs::GlobalSettings)
+function run_benchmark(b::AbstractBenchmark, gs::GlobalSettings; mod=cuNumeric)
+
+    # Can only test CUDA.jl performance with 1 GPU
+    (mod == CUDACore && gs.n_gpu == 1) || continue
+
     times_ms = Float64[]
     gflops = Float64[]
     for _ in 1:gs.n_trial
-        t, g = _trial(b, gs)
+        t, g = _trial(b, gs; mod=mod)
         push!(times_ms, t)
         push!(gflops, g)
     end
@@ -87,15 +91,15 @@ end
 
 _std(x) = length(x) > 1 ? std(x) : 0.0
 
-function save_result(br::BenchmarkResult, gpus)
+function save_result(br::BenchmarkResult, gpus; mod::String="cunumeric")
     N, M = dims(br.benchmark)
-    path = joinpath(@__DIR__, "..", "results", "$(name(br.benchmark)).csv")
+    path = joinpath(@__DIR__, "..", "results", "$(name(br.benchmark))_$(mod).csv")
     mkpath(dirname(path))
     open(path, "a") do io
         for trial in eachindex(br.times_ms)
             @printf(
                 io, "%s,%s,%d,%d,%d,%d,%.6f,%.6f\n",
-                "cunumeric", gpus, N, M, trial,
+                mod, gpus, N, M, trial,
                 br.times_ms[trial], br.gflops[trial],
             )
         end

@@ -55,6 +55,8 @@ export LD_LIBRARY_PATH=""
 
 echo "Running $FILENAME with $CPUS CPUs and $GPUS GPUs"
 
+eval "julia --project -e 'using Pkg; Pkg.dev(\"..\"); Pkg.instantiate()'"
+
 CMD="julia --project='..' $FILENAME $GPUS ${EXTRA_ARGS[@]}"
 
 printf "Running: %s\n" "$CMD"
