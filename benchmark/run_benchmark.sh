@@ -12,6 +12,7 @@ shift
 GPUS=0
 CPUS=1
 PYENV=""
+VERBOSE=0
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -26,6 +27,10 @@ while [[ $# -gt 0 ]]; do
         --pyenv)
             PYENV=$2
             shift 2
+            ;;
+        --verbose)
+            VERBOSE=1
+            shift
             ;;
         *)
             # Collect all other arguments as extra arguments
@@ -54,11 +59,11 @@ fi
 
 export LEGATE_AUTO_CONFIG=1
 export LEGATE_CONFIG="--cpus=$CPUS --gpus=$GPUS"
-export LEGATE_SHOW_CONFIG=1
+export LEGATE_SHOW_CONFIG=$VERBOSE
 
 export LD_LIBRARY_PATH=""
 
-echo "Running $FILENAME with $CPUS CPUs and $GPUS GPUs"
+[[ $VERBOSE == 1 ]] && echo "Running $FILENAME with $CPUS CPUs and $GPUS GPUs"
 
 # Python (cupynumeric) workers run in the conda env built by install_cupynumeric.sh;
 # Julia (cuNumeric) workers run against the local project.
@@ -72,5 +77,5 @@ else
     CMD="julia --project $FILENAME $GPUS ${EXTRA_ARGS[@]}"
 fi
 
-printf "Running: %s\n" "$CMD"
+[[ $VERBOSE == 1 ]] && printf "Running: %s\n" "$CMD"
 eval "$CMD"
