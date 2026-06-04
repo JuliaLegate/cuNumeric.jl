@@ -16,10 +16,17 @@ const RUNNER = joinpath(@__DIR__, "run_benchmark.sh")
 const WORKER = joinpath(@__DIR__, "src/single.jl")
 const PY_WORKER = joinpath(@__DIR__, "src_py/single.py")
 
+# quiet by default (banner + results only); -v/--verbose shows the plumbing
+const VERBOSE_FLAGS = ("-v", "--verbose")
+const VERBOSE = any(in(ARGS), VERBOSE_FLAGS)
+const POSARGS = filter(a -> a ∉ VERBOSE_FLAGS, ARGS)
+
 banner(msg) = println("\n", "="^128, "\n", msg, "\n", "="^128)
 
 # `_lifetimes` is a cuNumeric-only code-path variant (@analyze_lifetimes)
 cunumeric_only(name) = endswith(name, "_lifetimes")
+
+const LAST_FUSION_TOGGLE = Ref{Union{Nothing,Bool}}(nothing)
 
 # dev CNPreferences && cuNumeric
 function ensure_project_ready()
@@ -50,13 +57,18 @@ function dispatch(; gpus, cpus, name, T, N, M, n_iter, n_warmup, n_trial,
         "n_iter=$(n_iter) n_warmup=$(n_warmup) n_trial=$(n_trial)",
     )
 
-    # set the compile-time fusion pref before the worker loads cuNumeric
-    # cuNumeric-only, so comparison backends run once under the default (fused) config
+    # precompile in the orchestrator so the worker loads a warm cache quietly
     CNPreferences.set_broadcast_fusion!(fusion)
+    if LAST_FUSION_TOGGLE[] != fusion
+        VERBOSE && println("Precompiling cuNumeric (fusion=$(fstr))")
+        Pkg.precompile("cuNumeric"; io=devnull)
+        LAST_FUSION_TOGGLE[] = fusion
+    end
 
     # each backend runs in its own worker process
+    vflag = VERBOSE ? `--verbose` : ``
     args = `--gpus $gpus --cpus $cpus $name $T $N $M $n_iter $n_warmup $n_trial`
-    cmds = [`bash $RUNNER $WORKER $args cunumeric`]
+    cmds = [`bash $RUNNER $WORKER $vflag $args cunumeric`]
 
     # comparison backends have no fusion knob, so run them once instead of per
     # fusion variant; the fused pass (the default) is that single run
@@ -64,10 +76,10 @@ function dispatch(; gpus, cpus, name, T, N, M, n_iter, n_warmup, n_trial,
     if run_comparison_backends
         # CUDA.jl is single-GPU only
         if cudajl && gpus == 1 && !cunumeric_only(name)
-            push!(cmds, `bash $RUNNER $WORKER $args cudajl`)
+            push!(cmds, `bash $RUNNER $WORKER $vflag $args cudajl`)
         end
         if cupynumeric && !cunumeric_only(name)
-            push!(cmds, `bash $RUNNER $PY_WORKER --pyenv $(cupynumeric_env_name()) $args`)
+            push!(cmds, `bash $RUNNER $PY_WORKER $vflag --pyenv $(cupynumeric_env_name()) $args`)
         end
     end
 
@@ -102,19 +114,19 @@ end
 
 ensure_project_ready()
 using CNPreferences: CNPreferences
-if isempty(ARGS)
+if isempty(POSARGS)
     run_all_benchmarks()
 else # dispatch on args
     dispatch(;
-        gpus=parse(Int, ARGS[1]),
-        cpus=parse(Int, ARGS[2]),
-        name=ARGS[3],
-        T=ARGS[4],
-        N=parse(Int, ARGS[5]),
-        M=parse(Int, ARGS[6]),
-        n_iter=parse(Int, ARGS[7]),
-        n_warmup=parse(Int, ARGS[8]),
-        n_trial=parse(Int, ARGS[9]),
-        fusion=length(ARGS) >= 10 ? parse_fusion(ARGS[10]) : true,
+        gpus=parse(Int, POSARGS[1]),
+        cpus=parse(Int, POSARGS[2]),
+        name=POSARGS[3],
+        T=POSARGS[4],
+        N=parse(Int, POSARGS[5]),
+        M=parse(Int, POSARGS[6]),
+        n_iter=parse(Int, POSARGS[7]),
+        n_warmup=parse(Int, POSARGS[8]),
+        n_trial=parse(Int, POSARGS[9]),
+        fusion=length(POSARGS) >= 10 ? parse_fusion(POSARGS[10]) : true,
     )
 end
