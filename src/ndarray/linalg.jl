@@ -117,3 +117,78 @@ end
 function _solve(a::NDArray{T,N}, b::NDArray{S,M}) where {T,N,S,M}
     throw(ArgumentError("Batched matrices require signature (...,m,m),(...,m,n)->(...,m,n)"))
 end
+
+# ── svd ───────────────────────────────────────────────────────────────────────
+
+function svd_single(a::NDArray{T,N}, u::NDArray, s::NDArray, vh::NDArray) where {T,N}
+    rt  = Legate.get_runtime()
+    lib = cuNumeric.get_lib()
+    task = Legate.create_auto_task(rt, lib, cuNumeric.SVD)
+
+    l_a  = nda_to_logical_array(a)
+    l_u  = nda_to_logical_array(u)
+    l_s  = nda_to_logical_array(s)
+    l_vh = nda_to_logical_array(vh)
+
+    Legate.add_input(task, l_a)
+    Legate.add_output(task, l_u)
+    Legate.add_output(task, l_s)
+    Legate.add_output(task, l_vh)
+
+    Legate.add_broadcast(task, l_a)
+    Legate.add_broadcast(task, l_u)
+    Legate.add_broadcast(task, l_s)
+    Legate.add_broadcast(task, l_vh)
+
+    Legate.submit_auto_task(rt, task)
+end
+
+function _svd(a::NDArray{T,2}, full_matrices::Bool) where {T}
+    m, n = size(a)
+    k = min(m, n)
+    S = real(T)
+    # cuSolver requires full square buffers regardless of full_matrices
+    u_buf  = zeros(T, m, m)
+    s      = zeros(S, k)
+    vh_buf = zeros(T, n, n)
+    svd_single(a, u_buf, s, vh_buf)
+    # materialize transposed copies to fix cuSolver column-major layout
+    u_full  = copy(cuNumeric.transpose(u_buf))
+    vh_full = copy(cuNumeric.transpose(vh_buf))
+    u  = full_matrices ? u_full  : u_full[:,  1:k]
+    vh = full_matrices ? vh_full : vh_full[1:k, :]
+    return u, s, vh
+end
+
+# svd runs on float/complex only — no integer backend
+const _SVD_PROMOTABLE = Union{SUPPORTED_INT_TYPES,Bool}
+const _SVD_ACCEPTED = Union{SUPPORTED_SVD_TYPES,_SVD_PROMOTABLE}
+_svd_eltype(::Type{T}) where {T<:_SVD_PROMOTABLE} = Float64
+_svd_eltype(::Type{T}) where {T<:SUPPORTED_SVD_TYPES} = T
+
+function svd(a::NDArray{<:_SVD_ACCEPTED}, full_matrices::Bool=true)
+    A = eltype(a)
+    O = _svd_eltype(A)
+    A <: _SVD_PROMOTABLE && assertpromotion(svd, A, O)
+    return _svd_check_dims(unchecked_promote_arr(a, O), full_matrices)
+end
+
+function svd(a::NDArray, full_matrices::Bool=true)
+    throw(ArgumentError("array type $(eltype(a)) is unsupported in svd"))
+end
+
+function _svd_check_dims(a::NDArray{<:Any,0}, full_matrices::Bool)
+    throw(ArgumentError("0-dimensional array given. Array must be at least two-dimensional"))
+end
+
+function _svd_check_dims(a::NDArray{<:Any,1}, full_matrices::Bool)
+    throw(ArgumentError("1-dimensional array given. Array must be at least two-dimensional"))
+end
+
+function _svd_check_dims(a::NDArray{<:Any,2}, full_matrices::Bool)
+    return _svd(a, full_matrices)
+end
+
+function _svd_check_dims(a::NDArray, full_matrices::Bool)
+    throw(ArgumentError("cuNumeric does not yet support stacked 2d arrays"))
+end
