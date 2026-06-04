@@ -166,4 +166,5 @@ void wrap_binary_ops(jlcxx::Module& mod) {
 void wrap_linalg_ops(jlcxx::Module& mod) {
   mod.set_const("SOLVE", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_SOLVE});
   mod.set_const("MP_SOLVE", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_MP_SOLVE});
+  mod.set_const("SVD", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_SVD});
 }
