@@ -153,7 +153,8 @@ include("cuda/cuda_util.jl")
 include("utilities/version.jl")
 include("util.jl")
 
-const FUSE_BROADCAST_EXPRS = load_preference(CNPreferences, "FUSE_BROADCAST_EXPRS", true)
+# Compile-time so the fusion branch is elided; flip via CNPreferences before loading.
+const FUSE_BROADCAST_EXPRS = CNPreferences.FUSE_BROADCAST
 
 # Functionality
 include("ndarray/promotion.jl")

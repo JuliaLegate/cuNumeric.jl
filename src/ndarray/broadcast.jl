@@ -136,8 +136,7 @@ end
         )
     end
 
-    #! IF THIS IS KNOWN AT COMPILE TIME WE CAN GENERATE
-    #! THIS CODE WITHOUT THE IF STATEMENT
+    # const, so this branch is elided at compile time
     if FUSE_BROADCAST_EXPRS
         #! DO I NEED TO DO TYPE PROMOTION CHECKS BEFORE RETURNING?
         #! WE MIGHT NEED TO CHECK IF ON GPU OR CPU AND FALLBACK

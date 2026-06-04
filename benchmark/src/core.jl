@@ -126,5 +126,5 @@ end
 # end
 
 # register_variant("baseline")
-# register_variant("fusion_off", cuNumeric.CNPreferences.disable_broadcast_fusion!)
-# register_variant("fusion_on",  cuNumeric.CNPreferences.enable_broadcast_fusion!)
+# register_variant("fusion_off", cuNumeric.disable_broadcast_fusion!)
+# register_variant("fusion_on",  cuNumeric.enable_broadcast_fusion!)

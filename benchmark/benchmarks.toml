@@ -10,12 +10,7 @@ cuda = false # compare against CUDA.jl (single-GPU configs only)
 # Work ~ 2*N^2*M. Hold N, scale M. #
 ####################################
 
-[[gemm]]
-T = ["Float32", "Float64"]
-gpus = [1, 2, 4, 8]
-cpus = 2
-N = 4096
-M = [4096, 8192, 16384, 32768]
+
 
 #################################
 #         Gray-Scott            #
@@ -24,15 +19,17 @@ M = [4096, 8192, 16384, 32768]
 
 [[grayscott_baseline]]
 T = "Float32"
-gpus = [1, 2, 4, 8]
+gpus = [1]
 cpus = 2
+fusion = [true, false]
 N = 1024
-M = [1024, 2048, 4096, 8192]
+M = [1024]
 
 [[grayscott_lifetimes]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 2
+fusion = false
 N = 1024
 M = [1024, 2048, 4096, 8192]
 

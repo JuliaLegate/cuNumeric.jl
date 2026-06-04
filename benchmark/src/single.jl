@@ -2,6 +2,7 @@
 # run_benchmark.sh (dispatched from run.jl), which sets LEGATE_CONFIG before julia starts.
 # Args: <gpus> <name> <T> <N> <M> <n_iter> <n_warmup> <n_trial> <backend>
 # backend is "cunumeric" or "cudajl"; run.jl launches one worker per backend.
+# run.jl sets the compile-time fusion pref before launch; we read it back to label results.
 
 using cuNumeric
 using CUDACore
@@ -28,18 +29,24 @@ function run_single(gpus, name, T_str, N, M, n_iter, n_warmup, n_trial, backend)
         "Unknown backend '$(backend)'. Known: $(join(sort(collect(keys(BACKENDS))), ", "))"
     )
     bk = BACKENDS[backend]
+
+    # unfused cuNumeric runs land in their own CSV so they stay a distinct series
+    fused = cuNumeric.FUSE_BROADCAST_EXPRS
+    save_as = fused ? bk.save_as : "$(bk.save_as)_nofusion"
+    label = fused ? bk.label : "$(bk.label) (no fusion)"
+
     T = parse_type(T_str)
     b = build_benchmark(BENCHMARKS[name], T, N, M)
     gs = GlobalSettings(; n_warmup=n_warmup, n_iter=n_iter, n_trial=n_trial)
 
     println(
-        "[$(bk.label)] $(name) benchmark ($(T)) on $(N)x$(M) for $(n_iter) " *
+        "[$(label)] $(name) benchmark ($(T)) on $(N)x$(M) for $(n_iter) " *
         "iterations ($(n_warmup) warmup) x $(n_trial) trials",
     )
     br = run_benchmark(b, gs; mod=bk.mod)
-    @printf("[%s] Mean Run Time: %.5f ± %.5f ms\n", bk.label, mean(br.times_ms), _std(br.times_ms))
-    @printf("[%s] FLOPS: %.5f ± %.5f GFLOPS\n", bk.label, mean(br.gflops), _std(br.gflops))
-    save_result(br, gpus; mod=bk.save_as)
+    @printf("[%s] Mean Run Time: %.5f ± %.5f ms\n", label, mean(br.times_ms), _std(br.times_ms))
+    @printf("[%s] FLOPS: %.5f ± %.5f GFLOPS\n", label, mean(br.gflops), _std(br.gflops))
+    save_result(br, gpus; mod=save_as)
 end
 
 gpus = parse(Int, ARGS[1])
