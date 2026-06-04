@@ -2,7 +2,7 @@
 # dispatches it; the script sets LEGATE_CONFIG (from --gpus/--cpus) before
 # launching the worker (single.jl) that actually runs the benchmark.
 #   no args   -> one command per benchmarks.toml entry
-#   with args -> one command from <gpus> <cpus> <name> <T> <N> <M> <iter> <warmup> <trial>
+#   with args -> one command from <gpus> <cpus> <name> <T> <N> <M> <iter> <warmup> <trial> [fusion]
 
 # Orchestrator stays off the GPU: it only needs GlobalSettings + parse_config,
 # both cuNumeric-free. The worker (single.jl) loads cuNumeric and the kernels.
@@ -21,9 +21,12 @@ banner(msg) = println("\n", "="^128, "\n", msg, "\n", "="^128)
 # `_lifetimes` is a cuNumeric-only code-path variant (@analyze_lifetimes)
 cunumeric_only(name) = endswith(name, "_lifetimes")
 
-# ensure things are resolved and devlop'd properly
+# dev CNPreferences && cuNumeric
 function ensure_project_ready()
-    Pkg.develop(; path=joinpath(@__DIR__, ".."))
+    Pkg.develop([
+        Pkg.PackageSpec(; path=joinpath(@__DIR__, "..", "lib", "CNPreferences")),
+        Pkg.PackageSpec(; path=joinpath(@__DIR__, "..")),
+    ])
     Pkg.instantiate()
 end
 
@@ -40,21 +43,32 @@ function cupynumeric_env_name()
 end
 
 function dispatch(; gpus, cpus, name, T, N, M, n_iter, n_warmup, n_trial,
-    cupynumeric=false, cudajl=false)
+    fusion=true, cupynumeric=false, cudajl=false)
+    fstr = fusion ? "enabled" : "disabled"
     banner(
-        "$(name): T=$(T) gpus=$(gpus) cpus=$(cpus) N=$(N) M=$(M) " *
+        "$(name): T=$(T) gpus=$(gpus) cpus=$(cpus) N=$(N) M=$(M) fusion=$(fstr) " *
         "n_iter=$(n_iter) n_warmup=$(n_warmup) n_trial=$(n_trial)",
     )
+
+    # set the compile-time fusion pref before the worker loads cuNumeric
+    # cuNumeric-only, so comparison backends run once under the default (fused) config
+    CNPreferences.set_broadcast_fusion!(fusion)
 
     # each backend runs in its own worker process
     args = `--gpus $gpus --cpus $cpus $name $T $N $M $n_iter $n_warmup $n_trial`
     cmds = [`bash $RUNNER $WORKER $args cunumeric`]
-    # CUDA.jl is single-GPU only
-    if cudajl && gpus == 1 && !cunumeric_only(name)
-        push!(cmds, `bash $RUNNER $WORKER $args cudajl`)
-    end
-    if cupynumeric && !cunumeric_only(name)
-        push!(cmds, `bash $RUNNER $PY_WORKER --pyenv $(cupynumeric_env_name()) $args`)
+
+    # comparison backends have no fusion knob, so run them once instead of per
+    # fusion variant; the fused pass (the default) is that single run
+    run_comparison_backends = fusion
+    if run_comparison_backends
+        # CUDA.jl is single-GPU only
+        if cudajl && gpus == 1 && !cunumeric_only(name)
+            push!(cmds, `bash $RUNNER $WORKER $args cudajl`)
+        end
+        if cupynumeric && !cunumeric_only(name)
+            push!(cmds, `bash $RUNNER $PY_WORKER --pyenv $(cupynumeric_env_name()) $args`)
+        end
     end
 
     for cmd in cmds
@@ -76,6 +90,7 @@ function run_all_benchmarks(config="benchmarks.toml")
             name=spec.name,
             T=spec.T,
             N=N, M=M,
+            fusion=spec.fusion,
             n_iter=gs.n_iter,
             n_warmup=gs.n_warmup,
             n_trial=gs.n_trial,
@@ -86,6 +101,7 @@ function run_all_benchmarks(config="benchmarks.toml")
 end
 
 ensure_project_ready()
+using CNPreferences: CNPreferences
 if isempty(ARGS)
     run_all_benchmarks()
 else # dispatch on args
@@ -99,5 +115,6 @@ else # dispatch on args
         n_iter=parse(Int, ARGS[7]),
         n_warmup=parse(Int, ARGS[8]),
         n_trial=parse(Int, ARGS[9]),
+        fusion=length(ARGS) >= 10 ? parse_fusion(ARGS[10]) : true,
     )
 end

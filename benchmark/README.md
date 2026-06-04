@@ -41,17 +41,23 @@ gpus = 1
 cpus = 2
 N    = 150
 M    = 150           # optional, defaults to 1
+fusion = true        # optional, defaults to true; toggles cuNumeric broadcast fusion
 ```
 
 Repeat a `[[name]]` block to add independent configs.
 
 ## Lists
 
-Any of `T`, `gpus`, `cpus`, `N`, `M` may be a list. They expand along
+Any of `T`, `fusion`, `gpus`, `cpus`, `N`, `M` may be a list. They expand along
 two axes:
-- **`T` multiply.** The whole sweep runs once per type.
+- **`T` and `fusion` multiply.** The whole sweep runs once per type and once per
+  fusion setting (`fusion = [true, false]` sweeps both).
 - **`gpus`, `cpus`, `N`, `M` zip** into a single lockstep sweep — element `i`
   of each is paired together.
+
+`fusion` toggles cuNumeric broadcast fusion (`true`/`false` or `"on"`/`"off"`,
+default `true`); it only affects cuNumeric, so comparison backends run once, not
+per variant.
 
 Each zipped field must be one of:
 
