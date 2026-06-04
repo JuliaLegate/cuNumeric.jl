@@ -257,7 +257,7 @@ function get_ptx(
     ::Type{DEST_T},
     arg_types...;
     ndrange,
-) where {DEST_T,BC_T}
+) where {DEST_T}
     # println(Base.isbitstype.(arg_types))
     threads, blocks, ctx = _threads_from_occupancy(obj, DEST_T, arg_types...; ndrange=ndrange)
     blocks == 0 && return "", 0, 0, ctx #! MAYBE ERROR HERE?
