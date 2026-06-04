@@ -142,6 +142,7 @@ include("warnings.jl")
 
 # NDArray internal
 include("ndarray/detail/ndarray.jl")
+include("ndarray/detail/linalg.jl")
 
 # NDArray interface
 include("ndarray/promotion.jl")
