@@ -37,7 +37,7 @@ function cupynumeric_env_name()
 end
 
 function dispatch(; gpus, cpus, name, T, N, M, n_iter, n_warmup, n_trial,
-    cupynumeric=false, cuda=false)
+    cupynumeric=false, cudajl=false)
     banner(
         "$(name): T=$(T) gpus=$(gpus) cpus=$(cpus) N=$(N) M=$(M) " *
         "n_iter=$(n_iter) n_warmup=$(n_warmup) n_trial=$(n_trial)",
@@ -47,7 +47,7 @@ function dispatch(; gpus, cpus, name, T, N, M, n_iter, n_warmup, n_trial,
     args = `--gpus $gpus --cpus $cpus $name $T $N $M $n_iter $n_warmup $n_trial`
     cmds = [`bash $RUNNER $WORKER $args cunumeric`]
     # CUDA.jl is single-GPU only
-    if cuda && gpus == 1
+    if cudajl && gpus == 1
         push!(cmds, `bash $RUNNER $WORKER $args cudajl`)
     end
     # cupynumeric has no code-path variants; only baseline benchmarks compare against it
@@ -78,7 +78,7 @@ function run_all_benchmarks(config="benchmarks.toml")
             n_warmup=gs.n_warmup,
             n_trial=gs.n_trial,
             cupynumeric=gs.cupynumeric,
-            cuda=gs.cuda,
+            cudajl=gs.cuda,
         )
     end
 end
