@@ -49,7 +49,7 @@ Repeat a `[[name]]` block to add independent configs.
 
 Any of `T`, `gpus`, `cpus`, `N`, `M` may be a list. They expand along
 two axes:
-
+- **`T` multiply.** The whole sweep runs once per type.
 - **`gpus`, `cpus`, `N`, `M` zip** into a single lockstep sweep — element `i`
   of each is paired together.
 
