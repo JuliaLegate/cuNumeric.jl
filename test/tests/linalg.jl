@@ -312,3 +312,49 @@ end
         end
     end
 end
+
+@testset "qr reconstruction" begin
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_QR_TYPES)
+        A_ref = my_rand(T, 6, 4)
+        nda   = cuNumeric.NDArray(A_ref)
+        q, r  = cuNumeric.qr(nda)
+        allowscalar() do
+            Q = Array(q)
+            R = Array(r)
+            @test size(Q) == (6, 4)
+            @test size(R) == (4, 4)
+            @test isapprox(A_ref, Q * R; atol=atol(T), rtol=rtol(T))
+            @test isapprox(Q' * Q, Matrix{eltype(Q)}(I, 4, 4); atol=atol(T), rtol=rtol(T))
+        end
+    end
+end
+
+@testset "qr square matrix" begin
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_QR_TYPES)
+        A_ref = my_rand(T, 5, 5)
+        nda   = cuNumeric.NDArray(A_ref)
+        q, r  = cuNumeric.qr(nda)
+        allowscalar() do
+            Q = Array(q)
+            R = Array(r)
+            @test size(Q) == (5, 5)
+            @test size(R) == (5, 5)
+            @test isapprox(A_ref, Q * R; atol=atol(T), rtol=rtol(T))
+        end
+    end
+end
+
+@testset "qr promotion" begin
+    @testset verbose=true for T in (Int32, Int64, Bool)
+        vals = T == Bool ? T[1 0; 0 1] : reshape(T.(collect(1:4)), 2, 2)
+        A = cuNumeric.NDArray(vals)
+        @test_throws "Implicit promotion" cuNumeric.qr(A)
+        allowpromotion() do
+            q, r = cuNumeric.qr(A)
+            allowscalar() do
+                @test eltype(Array(q)) == Float64
+                @test isapprox(Float64.(vals), Array(q) * Array(r); atol=atol(Float64), rtol=rtol(Float64))
+            end
+        end
+    end
+end

@@ -118,8 +118,6 @@ function _solve(a::NDArray{T,N}, b::NDArray{S,M}) where {T,N,S,M}
     throw(ArgumentError("Batched matrices require signature (...,m,m),(...,m,n)->(...,m,n)"))
 end
 
-# ── svd ───────────────────────────────────────────────────────────────────────
-
 function svd_single(a::NDArray{T,N}, u::NDArray, s::NDArray, vh::NDArray) where {T,N}
     rt  = Legate.get_runtime()
     lib = cuNumeric.get_lib()
@@ -190,5 +188,72 @@ function _svd_check_dims(a::NDArray{<:Any,2}, full_matrices::Bool)
 end
 
 function _svd_check_dims(a::NDArray, full_matrices::Bool)
+    throw(ArgumentError("cuNumeric does not yet support stacked 2d arrays"))
+end
+
+# qr
+
+function qr_single(a::NDArray{T,N}, q::NDArray, r::NDArray) where {T,N}
+    rt  = Legate.get_runtime()
+    lib = cuNumeric.get_lib()
+    task = Legate.create_auto_task(rt, lib, cuNumeric.CQR)
+
+    l_a = nda_to_logical_array(a)
+    l_q = nda_to_logical_array(q)
+    l_r = nda_to_logical_array(r)
+
+    Legate.add_input(task, l_a)
+    Legate.add_output(task, l_q)
+    Legate.add_output(task, l_r)
+
+    Legate.add_broadcast(task, l_a)
+    Legate.add_broadcast(task, l_q)
+    Legate.add_broadcast(task, l_r)
+
+    Legate.submit_auto_task(rt, task)
+end
+
+function _qr(a::NDArray{T,2}) where {T}
+    m, n = size(a)
+    k = min(m, n)
+    # cuSolver requires full square buffers regardless of output shape
+    q_buf = zeros(T, m, m)
+    r_buf = zeros(T, n, n)
+    qr_single(a, q_buf, r_buf)
+    # materialize transposed copies to fix cuSolver column-major layout
+    q = copy(cuNumeric.transpose(q_buf))[:, 1:k]
+    r = copy(cuNumeric.transpose(r_buf))[1:k, :]
+    return q, r
+end
+
+const _QR_PROMOTABLE = Union{SUPPORTED_INT_TYPES,Bool}
+const _QR_ACCEPTED = Union{SUPPORTED_QR_TYPES,_QR_PROMOTABLE}
+_qr_eltype(::Type{T}) where {T<:_QR_PROMOTABLE} = Float64
+_qr_eltype(::Type{T}) where {T<:SUPPORTED_QR_TYPES} = T
+
+function qr(a::NDArray{<:_QR_ACCEPTED})
+    A = eltype(a)
+    O = _qr_eltype(A)
+    A <: _QR_PROMOTABLE && assertpromotion(qr, A, O)
+    return _qr_check_dims(unchecked_promote_arr(a, O))
+end
+
+function qr(a::NDArray)
+    throw(ArgumentError("array type $(eltype(a)) is unsupported in qr"))
+end
+
+function _qr_check_dims(a::NDArray{<:Any,0})
+    throw(ArgumentError("0-dimensional array given. Array must be at least two-dimensional"))
+end
+
+function _qr_check_dims(a::NDArray{<:Any,1})
+    throw(ArgumentError("1-dimensional array given. Array must be at least two-dimensional"))
+end
+
+function _qr_check_dims(a::NDArray{<:Any,2})
+    return _qr(a)
+end
+
+function _qr_check_dims(a::NDArray)
     throw(ArgumentError("cuNumeric does not yet support stacked 2d arrays"))
 end
