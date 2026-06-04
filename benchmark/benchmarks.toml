@@ -13,7 +13,7 @@ cuda = false # compare against CUDA.jl (single-GPU configs only)
 # N = baseline * P^(1/3).          #
 ####################################
 
-[[gemm]] # small: baseline N = 20000
+[[gemm]]
 T = ["Float32"]
 gpus = [1, 2, 4, 8]
 cpus = 16
@@ -28,7 +28,7 @@ M = [20000, 25200, 31752, 40000]
 # N = baseline * P^(1/2).       #
 #################################
 
-[[grayscott_baseline]] # small: baseline N = 2000
+[[grayscott_baseline]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 16
@@ -36,7 +36,7 @@ fusion = [true, false]
 N = [2000, 2832, 4000, 5656]
 M = [2000, 2832, 4000, 5656]
 
-[[grayscott_lifetimes]] # small: baseline N = 2000
+[[grayscott_lifetimes]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 16
