@@ -61,12 +61,16 @@ const DEFAULT_FLOAT = Float32
 const DEFAULT_INT = Int32
 
 const SUPPORTED_INT_TYPES = Union{Int8,Int16,Int32,Int64,UInt8,UInt16,UInt32,UInt64}
-const SUPPORTED_FLOAT_TYPES = Union{Float32,Float64} # Float16 not supported yet
+const SUPPORTED_FLOAT_TYPES = Union{Float32,Float64} # Float16 disabled for now. Issues need to be resolved.
 const SUPPORTED_COMPLEX_TYPES = Union{ComplexF32,ComplexF64}
 
 const SUPPORTED_NUMERIC_TYPES = Union{
     SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES
 }
+
+# solve has no integer backend kernel
+const SUPPORTED_SOLVE_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
+
 const SUPPORTED_ARRAY_TYPES = Union{Bool,SUPPORTED_NUMERIC_TYPES}
 const SUPPORTED_TYPES = Union{SUPPORTED_ARRAY_TYPES,String}
 
@@ -159,6 +163,9 @@ include("ndarray/broadcast.jl")
 include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
+include("ndarray/linalg.jl")
+
+# scoping macro
 include("scoping.jl")
 
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147

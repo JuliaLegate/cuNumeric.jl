@@ -209,8 +209,10 @@ The following unary reduction operations are supported and can be applied direct
   • `prod`
   • `sum`
 
-
 These operations follow standard Julia semantics.
+
+Reduction over specific dimensions is supported via the `dims` keyword argument,
+following the same semantics as Julia's base reduction functions.
 
 Examples
 --------
@@ -220,6 +222,14 @@ A = cuNumeric.ones(5)
 
 maximum(A)
 sum(A)
+
+# Reduce over a specific dimension
+B = cuNumeric.ones(3, 4)
+sum(B, dims=1)    # 1×4 result
+sum(B, dims=2)    # 3×1 result
+
+# Reduce over multiple dimensions
+sum(B, dims=(1,2))  # 1×1 result
 ```
 """
 global const unary_reduction_map = Dict{Function,UnaryRedCode}(
@@ -242,26 +252,59 @@ global const unary_reduction_map = Dict{Function,UnaryRedCode}(
 
 #! IT WOULD BE NICE IF THESE JUST RETURNED SCALARS WHEN APPROPRIATE
 # #*TODO HOW TO GET THESE ACTING ON CERTAIN DIMS
+
+function _unary_reduction_impl(base_func, op_code, input::NDArray{T}, ::Colon) where {T}
+    T_OUT = Base.promote_op(base_func, Vector{T})
+    is_wider_type(T_OUT, T) && assertpromotion(base_func, T, T_OUT)
+    out = cuNumeric.zeros(T_OUT)
+    return nda_unary_reduction(out, op_code, unchecked_promote_arr(input, T_OUT))
+end
+
+function _unary_reduction_impl(base_func, op_code, input::NDArray{T,N}, dims::Integer) where {T,N}
+    T_OUT = Base.promote_op(base_func, Vector{T})
+    is_wider_type(T_OUT, T) && assertpromotion(base_func, T, T_OUT)
+    axes = Int32[dims - 1]
+    return nda_unary_reduction_axes(op_code, unchecked_promote_arr(input, T_OUT), axes, true)
+end
+
+function _unary_reduction_impl(base_func, op_code, input::NDArray{T,N}, dims::Tuple) where {T,N}
+    if length(dims) > 1
+        error(
+            "$(base_func): reducing over multiple dimensions is not yet supported. Got dims=$dims"
+        )
+    end
+    # single element tuple
+    T_OUT = Base.promote_op(base_func, Vector{T})
+    is_wider_type(T_OUT, T) && assertpromotion(base_func, T, T_OUT)
+    axes = Int32[dims[1] - 1]
+    return nda_unary_reduction_axes(op_code, unchecked_promote_arr(input, T_OUT), axes, true)
+end
+
 # Generate code for all unary reductions.
 for (base_func, op_code) in unary_reduction_map
     @eval begin
-        function $(Symbol(base_func))(input::NDArray{T}) where {T}
-            T_OUT = Base.promote_op($base_func, Vector{T})
-            is_wider_type(T_OUT, T) && assertpromotion($base_func, T, T_OUT)
-            out = cuNumeric.zeros(T_OUT) #0D result (not right if reducing along dims)
-            return nda_unary_reduction(out, $(op_code), unchecked_promote_arr(input, T_OUT))
+        function $(Symbol(base_func))(input::NDArray{T,N}; dims=Colon()) where {T,N}
+            return _unary_reduction_impl($base_func, $(op_code), input, dims)
         end
     end
 end
 
-function Base.all(input::NDArray{Bool})
+function _bool_reduction_impl(op_code, input::NDArray{Bool}, ::Colon)
     out = cuNumeric.zeros(Bool)
-    return nda_unary_reduction(out, cuNumeric.ALL, input)
+    return nda_unary_reduction(out, op_code, input)
 end
 
-function Base.any(input::NDArray{Bool})
-    out = cuNumeric.zeros(Bool)
-    return nda_unary_reduction(out, cuNumeric.ANY, input)
+function _bool_reduction_impl(op_code, input::NDArray{Bool}, dims)
+    axes = collect(Int32, (d - 1 for d in (dims isa Integer ? (dims,) : dims)))
+    return nda_unary_reduction_axes(op_code, input, axes, true)
+end
+
+function Base.all(input::NDArray{Bool}; dims=Colon())
+    return _bool_reduction_impl(cuNumeric.ALL, input, dims)
+end
+
+function Base.any(input::NDArray{Bool}; dims=Colon())
+    return _bool_reduction_impl(cuNumeric.ANY, input, dims)
 end
 
 #! ONLY ADD ONCE REDUCTIONS RETURN A SCALAR

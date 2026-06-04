@@ -28,7 +28,7 @@ steps:
         agents:
           queue: "juliagpu"
           cuda: "*"
-        if: build.message !~ /\[skip tests\]/
+        if: build.message !~ /\[skip tests\]/ && (build.branch == "main" || build.pull_request.base_branch == "main" || build.message !~ /\[skip jll\]/)
         timeout_in_minutes: 44
         env:
           LD_LIBRARY_PATH: ""

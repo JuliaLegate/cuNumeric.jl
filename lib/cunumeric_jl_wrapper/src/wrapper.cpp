@@ -42,10 +42,7 @@ struct WrapCppOptional {
   }
 };
 
-legate::LogicalArray* get_store(CN_NDArray* arr) {
-  auto res = arr->obj.get_store();
-  return new legate::LogicalArray(std::move(res));
-}
+legate::LogicalArray get_store(CN_NDArray* arr) { return arr->obj.get_store(); }
 
 legate::Library get_lib() {
   auto runtime = cupynumeric::CuPyNumericRuntime::get_runtime();
@@ -69,6 +66,7 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   wrap_unary_ops(mod);
   wrap_binary_ops(mod);
   wrap_unary_reds(mod);
+  wrap_linalg_ops(mod);
 
   using jlcxx::ParameterList;
   using jlcxx::Parametric;

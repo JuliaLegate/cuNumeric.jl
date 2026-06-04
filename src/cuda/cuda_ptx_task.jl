@@ -69,7 +69,7 @@ end
 
 function nda_to_logical_array(arr::NDArray{T,N}) where {T,N}
     st_handle = cuNumeric.get_store(arr)
-    return Legate.LogicalArray{T,N}(st_handle[], size(arr))
+    return Legate.LogicalArray{T,N}(st_handle, size(arr))
 end
 
 function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},

@@ -168,6 +168,37 @@ end
     end
 end
 
+@testset verbose=true "Unary Reductions with Dims" begin
+    N = 100
+
+    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
+        julia_arr_1D = my_rand(T, N)
+        julia_arr_2D = my_rand(T, isqrt(N), isqrt(N))
+
+        cunumeric_arr_1D = @allowscalar NDArray(julia_arr_1D)
+        cunumeric_arr_2D = @allowscalar NDArray(julia_arr_2D)
+
+        @testset "$(func)" for (func, _) in cuNumeric.unary_reduction_map
+            # Skip reductions not supported by the cuNumeric backend for complex types
+            if T <: Complex && (
+                func == Base.maximum ||
+                func == Base.minimum ||
+                func == Base.prod
+            )
+                continue
+            end
+
+            ## TODO Int8 min/max along an axis is broken on GPU
+            if cuNumeric.HAS_CUDA && T == Int8 && (func == Base.minimum || func == Base.maximum)
+                continue
+            end
+
+            test_unary_reduction_dims(func, julia_arr_1D, cunumeric_arr_1D)
+            test_unary_reduction_dims(func, julia_arr_2D, cunumeric_arr_2D)
+        end
+    end
+end
+
 @testset verbose = true "Binary Ops" begin
     N = 100
 
