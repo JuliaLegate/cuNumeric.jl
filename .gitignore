@@ -6,6 +6,9 @@ help.sh
 docker.log
 docs/package-lock.json
 
+__pycache__
+*.pyc
+
 # auto-generated script
 build_wrapper.sh
 

@@ -2,6 +2,31 @@
 
 Benchmarks are declared in `benchmarks.toml`. `run.jl` parses it.
 
+## Running
+
+```bash
+julia --project run.jl     # runs whatever benchmarks.toml configures
+```
+
+`run.jl` runs each (benchmark, backend) pair in its own process via
+`run_benchmark.sh`, so backends never share a GPU/runtime within a measurement.
+cuNumeric always runs; extra comparison backends are toggled in `[Global]`:
+
+- `cuda = true` → also run under CUDA.jl (single-GPU configs only; CUDA.jl is
+  single-device).
+- `cupynumeric = true` → also run under cupynumeric (see below).
+
+### Comparing against cupynumeric
+
+cupynumeric runs in a conda env whose major.minor matches this project's
+resolved `cupynumeric_jll`. Build it once:
+
+```bash
+./install_cupynumeric.sh   # creates env cupynumeric-bench-<major.minor>
+```
+
+`run.jl` derives the env name automatically; override it with `CUPYNUMERIC_ENV`.
+
 ## Layout
 
 ```toml

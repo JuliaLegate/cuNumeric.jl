@@ -31,17 +31,32 @@ function sweep_length(name, fields)
     return first(lengths)
 end
 
+# Names of the `[[name]]` blocks in the order they appear in the file. TOML.jl
+# parses into an unordered Dict, so we scan the source to preserve run order.
+function declared_order(path)
+    order = String[]
+    for line in eachline(path)
+        header = strip(line)
+        startswith(header, "[[") && endswith(header, "]]") || continue
+        name = strip(header[3:(end - 2)])
+        name in order || push!(order, name) # if not in list, push to ordered list
+    end
+    return order
+end
+
 function parse_config(path)
     raw = TOML.parsefile(path)
 
     g = raw["Global"]
     global_settings = GlobalSettings(;
-        n_warmup=g["n_warmup"], n_iter=g["n_iter"], n_trial=get(g, "n_trial", 1)
+        n_warmup=g["n_warmup"], n_iter=g["n_iter"], n_trial=get(g, "n_trial", 1),
+        cupynumeric=get(g, "cupynumeric", false),
+        cuda=get(g, "cuda", false),
     )
 
     specs = BenchmarkSpec[]
-    for (name, entries) in raw
-        name == "Global" && continue
+    for name in declared_order(path)
+        entries = raw[name]
         for e in entries
             types = aslist(get(e, "T", "Float32"))
             gpus = aslist(e["gpus"])

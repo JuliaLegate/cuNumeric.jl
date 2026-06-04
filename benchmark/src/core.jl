@@ -17,6 +17,8 @@ Base.@kwdef struct GlobalSettings
     n_iter::Int # Number of iterations to run per trial
     n_trial::Int = 1 # Number of independent trials to run. Benchmark
     n_gpu::Int = 0
+    cupynumeric::Bool = false # also run baselines under cupynumeric for comparison
+    cuda::Bool = false # also run under CUDA.jl for comparison (single-GPU only)
 end
 
 #########################################

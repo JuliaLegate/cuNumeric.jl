@@ -11,6 +11,7 @@ shift
 
 GPUS=0
 CPUS=1
+PYENV=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -20,6 +21,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --cpus)
             CPUS=$2
+            shift 2
+            ;;
+        --pyenv)
+            PYENV=$2
             shift 2
             ;;
         *)
@@ -55,9 +60,17 @@ export LD_LIBRARY_PATH=""
 
 echo "Running $FILENAME with $CPUS CPUs and $GPUS GPUs"
 
-eval "julia --project -e 'using Pkg; Pkg.develop(path=\"..\"); Pkg.instantiate()'"
-
-CMD="julia --project $FILENAME $GPUS ${EXTRA_ARGS[@]}"
+# Python (cupynumeric) workers run in the conda env built by install_cupynumeric.sh;
+# Julia (cuNumeric) workers run against the local project.
+if [[ $FILENAME == *.py ]]; then
+    if [[ -z $PYENV ]]; then
+        echo "Error: running a .py worker requires --pyenv <conda-env> (run install_cupynumeric.sh first)."
+        exit 1
+    fi
+    CMD="conda run --no-capture-output -n $PYENV python $FILENAME $GPUS ${EXTRA_ARGS[@]}"
+else
+    CMD="julia --project $FILENAME $GPUS ${EXTRA_ARGS[@]}"
+fi
 
 printf "Running: %s\n" "$CMD"
 eval "$CMD"

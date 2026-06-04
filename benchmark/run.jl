@@ -6,26 +6,61 @@
 
 # Orchestrator stays off the GPU: it only needs GlobalSettings + parse_config,
 # both cuNumeric-free. The worker (single.jl) loads cuNumeric and the kernels.
+
+using Pkg
+
 include("src/core.jl")
 include("src/parse_benchmarks.jl")
 
 const RUNNER = joinpath(@__DIR__, "run_benchmark.sh")
 const WORKER = joinpath(@__DIR__, "src/single.jl")
+const PY_WORKER = joinpath(@__DIR__, "src_py/single.py")
 
 banner(msg) = println("\n", "="^128, "\n", msg, "\n", "="^128)
 
-function dispatch(; gpus, cpus, name, T, N, M, n_iter, n_warmup, n_trial)
-    # Name validity is checked in the worker (single.jl), which owns the registry.
+# ensure things are resolved and devlop'd properly
+function ensure_project_ready()
+    Pkg.develop(; path=joinpath(@__DIR__, ".."))
+    Pkg.instantiate()
+end
+
+# default env name mirrors install_cupynumeric.sh: cupynumeric-bench-<major>.<minor>
+# CUPYNUMERIC_ENV overrides it.
+function cupynumeric_env_name()
+    haskey(ENV, "CUPYNUMERIC_ENV") && return ENV["CUPYNUMERIC_ENV"]
+    for (_, info) in Pkg.dependencies()
+        info.name == "cupynumeric_jll" || continue
+        info.version === nothing && continue
+        return "cupynumeric-bench-$(info.version.major).$(info.version.minor)"
+    end
+    error("could not resolve cupynumeric_jll version; set CUPYNUMERIC_ENV explicitly")
+end
+
+function dispatch(; gpus, cpus, name, T, N, M, n_iter, n_warmup, n_trial,
+    cupynumeric=false, cuda=false)
     banner(
         "$(name): T=$(T) gpus=$(gpus) cpus=$(cpus) N=$(N) M=$(M) " *
         "n_iter=$(n_iter) n_warmup=$(n_warmup) n_trial=$(n_trial)",
     )
 
-    cmd = `bash $RUNNER $WORKER --gpus $gpus --cpus $cpus $name $T $N $M $n_iter $n_warmup $n_trial`
-    try
-        run(cmd)
-    catch e
-        @error "Benchmark '$(name)' failed; continuing." exception = e
+    # each backend runs in its own worker process
+    args = `--gpus $gpus --cpus $cpus $name $T $N $M $n_iter $n_warmup $n_trial`
+    cmds = [`bash $RUNNER $WORKER $args cunumeric`]
+    # CUDA.jl is single-GPU only
+    if cuda && gpus == 1
+        push!(cmds, `bash $RUNNER $WORKER $args cudajl`)
+    end
+    # cupynumeric has no code-path variants; only baseline benchmarks compare against it
+    if cupynumeric && !endswith(name, "_lifetimes")
+        push!(cmds, `bash $RUNNER $PY_WORKER --pyenv $(cupynumeric_env_name()) $args`)
+    end
+
+    for cmd in cmds
+        try
+            run(cmd)
+        catch e
+            @error "Benchmark '$(name)' failed; continuing." exception = e
+        end
     end
 end
 
@@ -42,10 +77,13 @@ function run_all_benchmarks(config="benchmarks.toml")
             n_iter=gs.n_iter,
             n_warmup=gs.n_warmup,
             n_trial=gs.n_trial,
+            cupynumeric=gs.cupynumeric,
+            cuda=gs.cuda,
         )
     end
 end
 
+ensure_project_ready()
 if isempty(ARGS)
     run_all_benchmarks()
 else # dispatch on args
