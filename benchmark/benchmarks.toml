@@ -7,36 +7,42 @@ cuda = false # compare against CUDA.jl (single-GPU configs only)
 
 ####################################
 #             GEMM                 #
-# Work ~ 2*N^2*M. Hold N, scale M. #
+# Weak scaling, restricted to NxN. #
+# Work ~ 2*N^2*M = 2*N^3.          #
+# N^3 / P --> constant.            #
+# N = baseline * P^(1/3).          #
 ####################################
 
-[[gemm]]
+[[gemm]] # small: baseline N = 20000
 T = ["Float32", "Float64"]
 gpus = [1, 2, 4, 8]
-cpus = 2
-N = 4096
-M = [4096, 8192, 16384, 32768]
+cpus = 16
+N = [20000, 25200, 31752, 40000]
+M = [20000, 25200, 31752, 40000]
 
 #################################
 #         Gray-Scott            #
-#  Work ~ N*M. Hold N, scale M. #
+# Weak scaling, square NxN grid.#
+# Work ~ N*M = N^2.             #
+# N^2 / P --> constant.         #
+# N = baseline * P^(1/2).       #
 #################################
 
-[[grayscott_baseline]]
+[[grayscott_baseline]] # small: baseline N = 2000
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 2
+cpus = 16
 fusion = [true, false]
-N = 1024
-M = [1024, 2048, 4096, 8192]
+N = [2000, 2832, 4000, 5656]
+M = [2000, 2832, 4000, 5656]
 
-[[grayscott_lifetimes]]
+[[grayscott_lifetimes]] # small: baseline N = 2000
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 2
+cpus = 16
 fusion = false
-N = 1024
-M = [1024, 2048, 4096, 8192]
+N = [2000, 2832, 4000, 5656]
+M = [2000, 2832, 4000, 5656]
 
 #################################
 #   Monte-Carlo Integration     #
@@ -46,5 +52,5 @@ M = [1024, 2048, 4096, 8192]
 [[montecarlo]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 2
+cpus = 16
 N = [1_000_000, 2_000_000, 4_000_000, 8_000_000]
