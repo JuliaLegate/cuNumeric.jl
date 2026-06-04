@@ -14,7 +14,7 @@ cuda = false # compare against CUDA.jl (single-GPU configs only)
 ####################################
 
 [[gemm]] # small: baseline N = 20000
-T = ["Float32", "Float64"]
+T = ["Float32"]
 gpus = [1, 2, 4, 8]
 cpus = 16
 N = [20000, 25200, 31752, 40000]
