@@ -18,6 +18,9 @@ const PY_WORKER = joinpath(@__DIR__, "src_py/single.py")
 
 banner(msg) = println("\n", "="^128, "\n", msg, "\n", "="^128)
 
+# `_lifetimes` is a cuNumeric-only code-path variant (@analyze_lifetimes)
+cunumeric_only(name) = endswith(name, "_lifetimes")
+
 # ensure things are resolved and devlop'd properly
 function ensure_project_ready()
     Pkg.develop(; path=joinpath(@__DIR__, ".."))
@@ -47,11 +50,10 @@ function dispatch(; gpus, cpus, name, T, N, M, n_iter, n_warmup, n_trial,
     args = `--gpus $gpus --cpus $cpus $name $T $N $M $n_iter $n_warmup $n_trial`
     cmds = [`bash $RUNNER $WORKER $args cunumeric`]
     # CUDA.jl is single-GPU only
-    if cudajl && gpus == 1
+    if cudajl && gpus == 1 && !cunumeric_only(name)
         push!(cmds, `bash $RUNNER $WORKER $args cudajl`)
     end
-    # cupynumeric has no code-path variants; only baseline benchmarks compare against it
-    if cupynumeric && !endswith(name, "_lifetimes")
+    if cupynumeric && !cunumeric_only(name)
         push!(cmds, `bash $RUNNER $PY_WORKER --pyenv $(cupynumeric_env_name()) $args`)
     end
 
