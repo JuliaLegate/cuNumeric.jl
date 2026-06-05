@@ -16,6 +16,7 @@ const current_host_bytes = Atomic{Int64}(0)   # predicted host allocations
 const soft_frac = Ref{Float64}(0.80)
 const hard_frac = Ref{Float64}(0.90)
 const AUTO_GC_ENABLE = Ref{Bool}(false)
+
 # memory measured right after the last GC
 const post_gc_device_bytes = Atomic{Int64}(0)
 const post_gc_host_bytes = Atomic{Int64}(0)
