@@ -141,14 +141,19 @@ end
 
 function ptx_task(ptx::String, kernel_name)
     rt = Legate.get_runtime()
-    lib = cuNumeric.get_lib() # grab lib of legate app
-    # this taskid is directly tied to cpp code in our setup
+    lib = cuNumeric.get_lib()
     taskid = cuNumeric.LOAD_PTX
-    task = Legate.create_auto_task(rt, lib, taskid)
-    # assign task arguments
+
+    # One point task per GPU so every GPU compiles the module.
+    ngpus = max(Int(Legate.num_gpus()), 1)
+    domain = Legate.domain_from_shape(Legate.Shape(Legate.to_cxx_vector((ngpus,))))
+    task = Legate.create_manual_task(rt, lib, taskid, domain)
     Legate.add_scalar(task, Legate.string_to_scalar(ptx))
     Legate.add_scalar(task, Legate.string_to_scalar(kernel_name))
-    Legate.submit_auto_task(rt, task)
+    Legate.submit_manual_task(rt, task)
+
+    # Fence so every load finishes before any launch reads the cache.
+    Legate.issue_execution_fence()
 end
 
 """
