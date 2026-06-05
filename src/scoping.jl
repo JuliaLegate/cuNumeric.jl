@@ -7,6 +7,12 @@ Wraps a block of code so that all temporary `NDArray` allocations
 (e.g. from slicing or function calls) are tracked and safely freed
 at the end of the block. Ensures proper cleanup of GPU memory by
 inserting `maybe_insert_delete` calls automatically.
+
+When broadcast fusion is enabled (`FUSE_BROADCAST_EXPRS`), dotted operators
+(`.+`, `.*`, etc.) form a lazy `Base.Broadcast.Broadcasted` tree compiled into
+a single PTX kernel; intermediate nodes are not real `NDArray` allocations and
+are not individually hoisted. The macro automatically selects the
+broadcast-aware analysis in that case and the plain analysis otherwise.
 """
 macro analyze_lifetimes(block)
     esc(process_ndarray_scope(block))
@@ -162,6 +168,11 @@ function insert_finalizers(block::Expr, assigned_vars::Set{Symbol})
 end
 
 function process_ndarray_scope(block)
+    # Broadcast trees need the fusion-aware hoisting; otherwise the
+    # plain analysis treats every call (dotted or not) as a real allocation.
+    @static if FUSE_BROADCAST_EXPRS
+        return process_broadcast_scope(block)
+    end
     assigned_vars = Set{Symbol}()
     # Process the entire block at once so lifetimes are tracked across statements
     rewritten = find_ndarray_assignments(block, assigned_vars)
@@ -269,4 +280,116 @@ function find_ndarray_assignments(ex, assigned_vars::Set{Symbol})
     else
         return Expr(:block, temps..., new_ex)
     end
+end
+
+# Broadcast-fusion-aware lifetime analysis. Under fusion, dotted operators
+# (.+, .*, …) form a lazy Broadcasted tree lowered to one PTX kernel, so their
+# intermediate nodes are not real NDArrays — only slices and the tree root are.
+# Non-broadcast sub-expressions break the tree and are hoisted like any call.
+
+is_broadcast_op(op) = op isa Symbol && startswith(string(op), ".")
+
+function find_broadcast_assignments(ex, assigned_vars::Set{Symbol})
+    local_assigned = Set{Symbol}()
+
+    function fresh_tmp(expr)
+        counter[] += 1
+        tmp = Symbol(:tmp, counter[])
+        push!(local_assigned, tmp)
+        tmp, [:($tmp = $expr)]
+    end
+
+    # Rewrite each arg with `f`, collecting the temps each one hoists.
+    function maphoist(f, args)
+        new_args, hoisted = Any[], Expr[]
+        for a in args
+            na, ts = f(a)
+            push!(new_args, na)
+            append!(hoisted, ts)
+        end
+        new_args, hoisted
+    end
+
+    # Inside a broadcast tree: hoist slices, keep dotted ops/f.(…) lazy, and
+    # delegate anything else to rewrite() (it breaks the tree → real NDArray).
+    function rewrite_bcast(e)::Tuple{Any,Vector{Expr}}
+        e isa Expr || return e, Expr[]
+        e.head == :ref && return fresh_tmp(e)
+        if e.head == :call && is_broadcast_op(e.args[1])
+            args, hoisted = maphoist(rewrite_bcast, e.args[2:end])
+            return Expr(:call, e.args[1], args...), hoisted
+        end
+        if e.head == :. && length(e.args) == 2 &&
+            e.args[2] isa Expr && e.args[2].head == :tuple
+            args, hoisted = maphoist(rewrite_bcast, e.args[2].args)
+            return Expr(:., e.args[1], Expr(:tuple, args...)), hoisted
+        end
+        return rewrite(e)
+    end
+
+    function rewrite(e)::Tuple{Any,Vector{Expr}}
+        e isa Expr || return e, Expr[]
+
+        if e.head == :(=)
+            lhs, rhs = e.args
+            lhs isa Symbol && push!(local_assigned, lhs)
+            new_rhs, temps = rewrite(rhs)
+            return :($lhs = $new_rhs), temps
+        end
+
+        # .= RHS is a broadcast tree: only the slices inside it are hoisted.
+        if e.head == :(.=)
+            lhs, rhs = e.args
+            new_lhs, lts = rewrite(lhs)
+            new_rhs, rts = rewrite_bcast(rhs)
+            return Expr(:(.=), new_lhs, new_rhs), vcat(lts, rts)
+        end
+
+        e.head == :ref && return fresh_tmp(e)
+
+        # Broadcast root: hoist the fused result as one temp.
+        if e.head == :call && is_broadcast_op(e.args[1])
+            inner, hoisted = rewrite_bcast(e)
+            tmp, bind = fresh_tmp(inner)
+            return tmp, vcat(hoisted, bind)
+        end
+
+        # Regular call: hoist it and its args.
+        if e.head == :call
+            args, hoisted = maphoist(rewrite, e.args[2:end])
+            tmp, bind = fresh_tmp(Expr(:call, e.args[1], args...))
+            return tmp, vcat(hoisted, bind)
+        end
+
+        # Other exprs: recurse, splicing hoisted temps inline within blocks.
+        new_args, hoisted = Any[], Expr[]
+        is_block = e.head == :block || e.head == :begin
+        for a in e.args
+            na, ts = rewrite(a)
+            if is_block && !(a isa LineNumberNode)
+                append!(new_args, ts)
+                push!(new_args, na)
+            else
+                push!(new_args, na)
+                append!(hoisted, ts)
+            end
+        end
+        return Expr(e.head, new_args...), hoisted
+    end
+
+    new_ex, temps = rewrite(ex)
+    union!(assigned_vars, local_assigned)
+    if new_ex isa Expr && new_ex.head == :block
+        return Expr(:block, temps..., new_ex.args...)
+    else
+        return Expr(:block, temps..., new_ex)
+    end
+end
+
+function process_broadcast_scope(block)
+    assigned_vars = Set{Symbol}()
+    rewritten = find_broadcast_assignments(block, assigned_vars)
+    result = insert_finalizers(rewritten, assigned_vars)
+    counter[] = 0
+    return result
 end
