@@ -17,8 +17,8 @@
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 
-const MIN_CUNUMERIC_VERSION = v"25.10.00"
-const MAX_CUNUMERIC_VERSION = v"25.12.00"
+const MIN_CUNUMERIC_VERSION = v"26.01.00"
+const MAX_CUNUMERIC_VERSION = v"26.11.999"
 
 up_dir(dir::String) = abspath(joinpath(dir, ".."))
 
