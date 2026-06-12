@@ -65,3 +65,6 @@ void wrap_unary_reds(jlcxx::Module&);
 
 // Binary op codes
 void wrap_binary_ops(jlcxx::Module&);
+
+// Linear algebra op codes
+void wrap_linalg_ops(jlcxx::Module& mod);
