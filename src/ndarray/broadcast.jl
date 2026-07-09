@@ -6,7 +6,7 @@ Base.BroadcastStyle(::NDArrayStyle{N}, ::NDArrayStyle{M}) where {N,M} = NDArrayS
 
 # Some other functions in cuda_util.jl
 function map_cuda_type(::Type{cuNumeric.NDArrayStyle{N}}) where {N}
-    CUDACore.CuArrayStyle{N,CUDACore.DeviceMemory}
+    return CUDACore.CuArrayStyle{N,CUDACore.DeviceMemory}
 end # Also can be HostMemory or UnifiedMemory
 
 function _nd_forbid_mix()
@@ -39,12 +39,12 @@ Base.similar(arr::NDArray, ::Type{T}) where {T} = similar(arr, T, size(arr))
 #* IS THERE A BETTER WAY TO ALLOCATE THE NEW ARRAY???
 Base.similar(::Type{NDArray{T}}, axes) where {T} = cuNumeric.zeros(T, Base.to_shape.(axes))
 function Base.similar(bc::Broadcasted{NDArrayStyle{N}}, ::Type{ElType}) where {N,ElType}
-    similar(NDArray{ElType}, axes(bc))
+    return similar(NDArray{ElType}, axes(bc))
 end
 
 function __broadcast(f::Function, _, args...)
     #! WITH FUSION I THINK WE CAN SUPPORT THIS BY JUST CALLING MAP or MAP!
-    error(
+    return error(
         """
         Tried to broadcast $(f). cuNumeric.jl does not support broadcasting user-defined functions yet. Please re-define \
         functions to match supported patterns. For example g(x) = x + 1 could be re-defined as \
@@ -78,7 +78,7 @@ end
     if ElType == Union{} || !Base.allocatedinline(ElType)
         ElType = BrokenBroadcast{ElType}
     end
-    copyto!(similar(bc, ElType), bc)
+    return copyto!(similar(bc, ElType), bc)
 end
 
 # Recursion base cases
@@ -96,7 +96,7 @@ __materialize(x) = error("Unrecognized leaf in broadcast expression: $(x)")
 
 function __materialize(bc::Broadcasted{<:NDArrayStyle})
     bc = Base.Broadcast.instantiate(bc)
-    unravel_broadcast_tree(bc)
+    return unravel_broadcast_tree(bc)
 end
 
 # Un-fused implementation of broadcast tree
@@ -137,7 +137,7 @@ end
     end
 
     # const, so this branch is elided at compile time
-    if FUSE_BROADCAST_EXPRS
+    @static if FUSE_BROADCAST_EXPRS && HAS_CUDA
         #! DO I NEED TO DO TYPE PROMOTION CHECKS BEFORE RETURNING?
         #! WE MIGHT NEED TO CHECK IF ON GPU OR CPU AND FALLBACK
         return fuse_broadcast_tree!(dest, bc)

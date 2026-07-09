@@ -1,4 +1,4 @@
-export @analyze_lifetimes
+export @analyze_lifetimes, @show_lifetimes
 
 @doc"""
     @analyze_lifetimes expr
@@ -15,14 +15,14 @@ are not individually hoisted. The macro automatically selects the
 broadcast-aware analysis in that case and the plain analysis otherwise.
 """
 macro analyze_lifetimes(block)
-    esc(process_ndarray_scope(block))
+    return esc(process_ndarray_scope(block))
 end
 
 const counter = Ref(0)
 
 function maybe_insert_delete(var::NDArray)
     cuNumeric.nda_destroy_array(var.ptr)
-    var.ptr = Ptr{Cvoid}(0)
+    return var.ptr = Ptr{Cvoid}(0)
 end
 
 maybe_insert_delete(x) = x
@@ -104,11 +104,50 @@ function insert_finalizers(exprs::Vector, assigned_vars::Set{Symbol})
         last_use[v] = maximum(idxs)
     end
 
+    # `F_u = tmp1` aliases one NDArray under two names; resolve to a canonical rep
+    # so it's freed once (double-free is masked only by the ptr=0 null-out).
+    function canon(v)
+        seen = Set{Symbol}()
+        while haskey(alias_map, v) && !(v in seen)
+            push!(seen, v)
+            v = alias_map[v]
+        end
+        return v
+    end
+
+    is_indexed_assign(s) = s isa Expr && s.head == :(=) && !(s.args[1] isa Symbol)
+    result_symbol(s) =
+        if s isa Symbol
+            s
+        else
+            (s isa Expr && s.head == :(=) && s.args[1] isa Symbol ? s.args[1] : nothing)
+        end
+
     # Pass 2: insert finalizers
     out = Any[]
     n = length(stmts)
+    freed = Set{Symbol}()
+
+    # The block's value escapes to the caller, except for `A[...] = rhs`: Julia
+    # returns `rhs` there, but that's a dead temp nobody consumes — free it and
+    # return `nothing` rather than leak it or hand back a dangling handle.
+    terminal_indexed = n > 0 && is_indexed_assign(stmts[n])
+
+    protected = Set{Symbol}()
+    if n > 0 && !terminal_indexed
+        rs = result_symbol(stmts[n])
+        rs isa Symbol && push!(protected, canon(rs))
+    end
+
+    function emit_delete!(v)
+        c = canon(v)
+        (c in freed || c in protected) && return nothing
+        push!(freed, c)
+        return push!(out, :(cuNumeric.maybe_insert_delete($v)))
+    end
+
     for (i, stmt) in enumerate(stmts)
-        # detect aliasing: v = w means don't finalize w
+        # `v = w` aliases w, so don't finalize w at this statement.
         skip_finalize = Set{Symbol}()
         if stmt isa Expr && stmt.head == :(=)
             lhs, rhs = stmt.args
@@ -117,36 +156,21 @@ function insert_finalizers(exprs::Vector, assigned_vars::Set{Symbol})
             end
         end
 
-        if i == n
-            # Capture result of the last statement
+        if i == n && !terminal_indexed
             res_var = Symbol(:res, counter[])
             counter[] += 1
             push!(out, :($res_var = $stmt))
-
-            # Insert finalizers for the last statement
-            for (v, lasti) in last_use
-                if lasti == i && v ∈ assigned_vars && !(v ∈ skip_finalize)
-                    # Do not delete if the result of the block is exactly this variable
-                    # or if it's an assignment to this variable.
-                    is_result = (stmt === v)
-                    if stmt isa Expr && stmt.head == :(=) && stmt.args[1] === v
-                        is_result = true
-                    end
-                    if !is_result
-                        push!(out, :(cuNumeric.maybe_insert_delete($v)))
-                    end
-                end
-            end
-            # Return the captured result
-            push!(out, res_var)
         else
             push!(out, stmt)
-            for (v, lasti) in last_use
-                if lasti == i && v ∈ assigned_vars && !(v ∈ skip_finalize)
-                    push!(out, :(cuNumeric.maybe_insert_delete($v)))
-                end
+        end
+
+        for (v, lasti) in last_use
+            if lasti == i && v ∈ assigned_vars && !(v ∈ skip_finalize)
+                emit_delete!(v)
             end
         end
+
+        i == n && push!(out, terminal_indexed ? :nothing : res_var)
     end
 
     return out
@@ -296,7 +320,7 @@ function find_broadcast_assignments(ex, assigned_vars::Set{Symbol})
         counter[] += 1
         tmp = Symbol(:tmp, counter[])
         push!(local_assigned, tmp)
-        tmp, [:($tmp = $expr)]
+        return tmp, [:($tmp = $expr)]
     end
 
     # Rewrite each arg with `f`, collecting the temps each one hoists.
@@ -307,7 +331,7 @@ function find_broadcast_assignments(ex, assigned_vars::Set{Symbol})
             push!(new_args, na)
             append!(hoisted, ts)
         end
-        new_args, hoisted
+        return new_args, hoisted
     end
 
     # Inside a broadcast tree: hoist slices, keep dotted ops/f.(…) lazy, and
@@ -392,4 +416,55 @@ function process_broadcast_scope(block)
     result = insert_finalizers(rewritten, assigned_vars)
     counter[] = 0
     return result
+end
+
+# Pretty-print the @analyze_lifetimes rewrite (see @show_lifetimes below).
+_is_delete_call(s) = Meta.isexpr(s, :call) && s.args[1] == :(cuNumeric.maybe_insert_delete)
+
+# Flatten nested begin/blocks into a linear statement list, dropping line nodes.
+function _flatten_stmts(x)
+    stmts = Any[]
+    function walk(e)
+        if Meta.isexpr(e, (:block, :begin))
+            foreach(walk, e.args)
+        elseif !(e isa LineNumberNode)
+            push!(stmts, e)
+        end
+    end
+    walk(x)
+    return stmts
+end
+
+function print_lifetime_analysis(block; io::IO=stdout)
+    rule = "-"^60
+    stmts = _flatten_stmts(process_ndarray_scope(block))
+    mode = FUSE_BROADCAST_EXPRS ? "fusion-aware" : "plain"
+
+    println(io, "@analyze_lifetimes expansion ($mode analysis)\n", rule)
+
+    n = 0
+    for s in stmts
+        if _is_delete_call(s)
+            printstyled(io, lpad("✗ free ", 11), s.args[2], "\n"; color=:red)
+        else
+            n += 1
+            println(io, lpad(n, 4), "  ", s)
+        end
+    end
+
+    println(io, rule)
+    return nothing
+end
+
+@doc"""
+    @show_lifetimes expr
+
+Print the lifetime-analysis rewrite of `expr` — the same transformation
+[`@analyze_lifetimes`](@ref) applies — without running it. Every statement is
+shown in source order and each inserted `maybe_insert_delete` is highlighted so
+you can see exactly where each temporary is freed. Pure AST work, so it runs on
+CPU-only checkouts.
+"""
+macro show_lifetimes(block)
+    return :(print_lifetime_analysis($(QuoteNode(block))))
 end
