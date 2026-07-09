@@ -66,7 +66,7 @@ let body = quote
             (
                 .-u[2:(end - 1), 2:(end - 1)] .*
                 (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
-            ) .+ args.f .* (1 .- u[2:(end - 1), 2:(end - 1)])
+            ) .+ args.f .* (1.0f0 .- u[2:(end - 1), 2:(end - 1)])
         )
         F_v = (
             (

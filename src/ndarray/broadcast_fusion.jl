@@ -293,12 +293,91 @@ function get_cuda_task(
             ptx_task(ptx, unique_name)
             cuda_task = CUDATask(unique_name, (DEST_T, ARG_TYPES...))
 
-            FusedBroadcastMetadata(ctx, threads, blocks, cuda_task)
+            return FusedBroadcastMetadata(ctx, threads, blocks, cuda_task)
         end
     end
 end
 
+# Fused-broadcast introspection. Set `cuNumeric.BCAST_FUSION_DEBUG[] = true` to
+# dump each kernel's expr/inputs/scalars/launch geometry before launch.
+const BCAST_FUSION_DEBUG = Ref(false)
+
+# Handle keyed on the same objectid the kernel uses to dedup inputs. Slice-assign
+# slices come from `nda_get_slice` with no `parent`, so object identity is the
+# only overlap the printer can see (the "aliases output" flag is same-object only).
+_nd_tag(arr::NDArray) = string("NDArray#", string(objectid(arr) % 0x1000000; base=16, pad=6))
+_nd_describe(arr::NDArray{T}) where {T} = string(_nd_tag(arr), " ", join(shape(arr), "x"), " ::", T)
+
+_fname(f::Function) = string(nameof(f))
+_fname(@nospecialize(f)) = string(f)
+
+# Reconstruct the op tree; call before `flatten`, while nesting mirrors the source.
+_bcast_tree_str(x::NDArray) = _nd_tag(x)
+_bcast_tree_str(x::Base.Broadcast.Extruded) = _nd_tag(x.x)
+_bcast_tree_str(x::Number) = repr(x)
+_bcast_tree_str(x::Base.RefValue) = string("^", repr(x[]))
+_bcast_tree_str(x) = string("<", typeof(x), ">")
+function _bcast_tree_str(bc::Base.Broadcast.Broadcasted)
+    return string(_fname(bc.f), ".(", join(_bcast_tree_str.(bc.args), ", "), ")")
+end
+
+# Recover the kernel's plain name
+function _demangle_head(s::AbstractString)
+    m = match(r"^_Z([0-9]+)(.*)$", s)
+    m === nothing && return s
+    return first(m.captures[2], parse(Int, m.captures[1]))
+end
+
+# `arg_map` records the kernel's argument order (0=output, ≥1=input idx+1,
+# <0=scalar idx); reconstruct it as a readable `output -> name(args...)` call.
+function _kernel_signature(
+    dest::NDArray,
+    unique_ndarrays::AbstractVector{<:NDArray},
+    actual_scalars::AbstractVector,
+    arg_map::AbstractVector{<:Integer},
+    func::AbstractString,
+)
+    token(a::Integer) =
+        if a == 0
+            "output"
+        elseif a > 0
+            _nd_tag(unique_ndarrays[a])
+        else
+            repr(actual_scalars[-a])
+        end
+    call_args = [token(a) for a in arg_map if a != 0]
+    return string(_nd_tag(dest), " -> ", _demangle_head(func), "(", join(call_args, ", "), ")")
+end
+
+function _describe_fused_broadcast(
+    dest, tree_str, unique_ndarrays, actual_scalars, static_args, arg_map, fkm, ndrange
+)
+    io = IOBuffer()
+    field(k, v) = println(io, "  ", rpad(k, 8), v)
+    println(io, "\n", "="^40, " fused broadcast kernel")
+    field("expr", tree_str)
+    field("output", _nd_describe(dest))
+    field("inputs", "$(length(unique_ndarrays)) unique NDArray(s)")
+    for (i, nd) in enumerate(unique_ndarrays)
+        alias = objectid(nd) == objectid(dest) ? "  (aliases output)" : ""
+        println(io, "    [", i - 1, "] ", _nd_describe(nd), alias)
+    end
+    isempty(actual_scalars) || field("scalars", join(repr.(actual_scalars), ", "))
+    isempty(static_args) || field("static", join(repr.(static_args), ", "))
+    field("arg_map", "$(Int.(arg_map))  (0=output, >=1=input idx+1, <0=scalar)")
+    field("launch", "$(fkm.blocks) blocks x $(fkm.threads) threads, ndrange=$ndrange")
+    field(
+        "call",
+        _kernel_signature(dest, unique_ndarrays, actual_scalars, arg_map, fkm.cuda_task.func),
+    )
+    print(String(take!(io)))
+    return nothing
+end
+
 function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcast.Broadcasted}
+    # Capture the readable tree before flatten collapses the nesting.
+    tree_str = BCAST_FUSION_DEBUG[] ? _bcast_tree_str(bc) : ""
+
     bc = Base.Broadcast.preprocess(dest, bc)
     bc = Base.Broadcast.instantiate(bc)
     bc = Base.Broadcast.flatten(bc)
@@ -355,6 +434,10 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
     end
 
     input_ndarrays = tuple(unique_ndarrays...)
+
+    BCAST_FUSION_DEBUG[] && _describe_fused_broadcast(
+        dest, tree_str, unique_ndarrays, actual_scalars, static_args, arg_map, fkm, ndrange
+    )
 
     launch(
         fkm.cuda_task,
