@@ -83,7 +83,8 @@ end
 
 # Recursion base cases
 __materialize(x::NDArray) = x
-__materialize(x::Number) = NDArray(x)
+# Keep Numbers as scalars; unchecked_promote_arr builds the 0-d NDArray once.
+__materialize(x::Number) = x
 
 # These are necessary to handle integer powers
 __materialize(x::Base.RefValue{typeof(^)}) = x
@@ -94,9 +95,27 @@ __materialize(x::Base.RefValue{Val{V}}) where {V} = NDArray(V) # Use binary_op P
 # Catch unknown things...
 __materialize(x) = error("Unrecognized leaf in broadcast expression: $(x)")
 
+# Scalar-only nested broadcasts (e.g. `s1 .* s2 .+ A`): the inner
+# `Broadcasted(*, (s1, s2))` keeps DefaultArrayStyle{0}, not NDArrayStyle.
+# Fold to a Number so the parent unravel sees a scalar leaf.
+@inline function __materialize(bc::Broadcasted{<:DefaultArrayStyle{0}})
+    return bc.f((__materialize.(bc.args))...)
+end
+
 function __materialize(bc::Broadcasted{<:NDArrayStyle})
     bc = Base.Broadcast.instantiate(bc)
     return unravel_broadcast_tree(bc)
+end
+
+# Destroy promote copies and non-leaf materialized NDArrays (nested results / Val{V}).
+@inline function _destroy_unfused_arg_temps!(orig, materialized, promoted)
+    if promoted isa NDArray && promoted !== materialized
+        destroy!(promoted)
+    end
+    if materialized isa NDArray && !(orig isa NDArray)
+        destroy!(materialized)
+    end
+    return nothing
 end
 
 # Un-fused implementation of broadcast tree
@@ -122,7 +141,23 @@ function unravel_broadcast_tree(bc::Broadcasted)
     # If not it falls back to a pass-through that just calls
     # the Julia function and assumes the user defined a function
     # composed of supported operations.
-    return __broadcast(bc.f, out, in_args...)
+    result = __broadcast(bc.f, out, in_args...)
+    for i in eachindex(materialized_args)
+        _destroy_unfused_arg_temps!(bc.args[i], materialized_args[i], in_args[i])
+    end
+    return result
+end
+
+@inline function _copyto_unfused!(dest::NDArray{T}, temp_result::NDArray{T}) where {T}
+    nda_move(dest, temp_result)
+    return dest
+end
+
+@inline function _copyto_unfused!(dest::NDArray{T}, temp_result::NDArray) where {T}
+    promoted = checked_promote_arr(temp_result, T)
+    nda_move(dest, promoted)
+    destroy!(temp_result)
+    return dest
 end
 
 @inline function _copyto!(dest::NDArray, bc::Broadcasted)
@@ -136,15 +171,13 @@ end
         )
     end
 
-    # const, so this branch is elided at compile time
+    # Fused writes `dest` in place (no post-fuse `nda_move`); promotion is
+    # checked pre-launch in `fuse_broadcast_tree!`. CPU vs GPU is compile-time
+    # via `@static if FUSE_BROADCAST_EXPRS && HAS_CUDA`.
     @static if FUSE_BROADCAST_EXPRS && HAS_CUDA
-        #! DO I NEED TO DO TYPE PROMOTION CHECKS BEFORE RETURNING?
-        #! WE MIGHT NEED TO CHECK IF ON GPU OR CPU AND FALLBACK
         return fuse_broadcast_tree!(dest, bc)
     else
-        temp_result = unravel_broadcast_tree(bc)
-        nda_move(dest, checked_promote_arr(temp_result, eltype(dest)))
-        return dest
+        return _copyto_unfused!(dest, unravel_broadcast_tree(bc))
     end
 end
 

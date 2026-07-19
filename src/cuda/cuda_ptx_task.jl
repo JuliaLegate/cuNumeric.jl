@@ -23,8 +23,10 @@ function add_padding(arr::NDArray, dims::Dims{N}; copy=false) where {N}
     new = zeros(eltype(arr), dims)
 
     if copy # due to being an input. we don't need to copy outputs
-        indices = ntuple(d -> 1:old_size[d], length(old_size))
-        assign(new[indices...], arr)
+        slices = ntuple(d -> (0, Int(old_size[d])), length(old_size))
+        s = nda_get_slice(new, slice_array(slices...))
+        copyto!(s, arr)
+        destroy!(s)
     end
 
     nda_destroy_array(arr.ptr)
@@ -67,6 +69,8 @@ function check_sz(arr, maxshape)
     end
 end
 
+# Unused by Launch (which uses `_add_task_array!` + eager finalize). If revived,
+# callers must finalize the returned LogicalArray's handle after add_input/output.
 function nda_to_logical_array(arr::NDArray{T,N}) where {T,N}
     st_handle = cuNumeric.get_store(arr)
     return Legate.LogicalArray{T,N}(st_handle, size(arr))

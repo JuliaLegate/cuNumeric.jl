@@ -192,11 +192,11 @@ function nda_assign(arr::NDArray{T}, other::NDArray{T}) where {T}
         arr.ptr, other.ptr)
 end
 
-function nda_copy(arr::NDArray)
+function nda_copy(arr::NDArray{T,N}) where {T,N}
     ptr = ccall((:nda_copy, libnda),
         NDArray_t, (NDArray_t,),
         arr.ptr)
-    return NDArray(ptr)
+    return NDArray(ptr, T, Val(N))
 end
 
 # src will be unused after this
@@ -343,7 +343,10 @@ function nda_attach_external(arr::AbstractArray{T,N}) where {T,N}
     st = Legate.attach_external(arr)
     # Use the CxxWrap method for type-safe interaction
     # This returns a raw pointer compatible with the NDArray constructor
+    # `nda_store_to_ndarray` takes the store by value; drop the Julia-owned
+    # LogicalStoreImpl so it does not pin alongside the NDArray until GC.
     nda_ptr = cuNumeric.nda_store_to_ndarray(st.handle)
+    finalize(st.handle)
     return NDArray(nda_ptr, T, Val(N), arr)
 end
 
@@ -355,9 +358,13 @@ function get_store(arr::NDArray)
 end
 
 function get_ptr(arr::NDArray{T,N}) where {T,N}
+    # `get_store` returns a Julia-owned LogicalArrayImplAllocated that shares the
+    # store with the NDArray; finalize after use (same pin class as `_add_task_array!`).
     st_handle = get_store(arr) # LogicalArrayImplAllocated (returned by value)
     la = Legate.LogicalArray{T,N}(st_handle, size(arr))
-    return Legate.get_ptr(la)
+    ptr = Legate.get_ptr(la)
+    finalize(st_handle)
+    return ptr
 end
 
 @doc"""
@@ -522,5 +529,7 @@ end
 function nda_to_logical_store(arr::NDArray{T,N}) where {T,N}
     la_handle = cuNumeric.get_store(arr) # LogicalArrayImplAllocated (returned by value)
     st_handle = Legate.data(Legate.LogicalArray{T,N}(la_handle, size(arr)))
+    # Drop temp LogicalArray owner after extracting the store.
+    finalize(la_handle)
     return Legate.LogicalStore{T,N}(st_handle, size(arr))
 end

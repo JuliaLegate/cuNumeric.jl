@@ -374,7 +374,70 @@ function _describe_fused_broadcast(
     return nothing
 end
 
+# Pre-launch promotion policy for fused broadcast. Mirrors unfused
+# `unravel_broadcast_tree` (`__checked_promote_op` / `__my_promote_type` per
+# tree node) and the dest-side widen check of `checked_promote_arr` in
+# `_copyto_unfused!`. Fused writes `dest` in place, so there is no post-fuse
+# promote / `nda_move` — this must run before kernel launch.
+#
+# The tree walk is typed on `Broadcasted{S,Ax,F,Args}` and the concrete
+# `Args` Tuple, so Julia specializes/inlines per broadcast shape. Same-eltype
+# trees (e.g. all Float32) constant-fold `is_wider_type` to false and DCE the
+# `assertpromotion` calls; residual cost is only the specialize/inline frame.
+@inline function _assert_fused_broadcast_promotion(
+    dest::NDArray{DT}, bc::B
+) where {DT,B<:Base.Broadcast.Broadcasted}
+    T_OUT = _assert_fused_broadcast_tree(bc)
+    is_wider_type(DT, T_OUT) && assertpromotion(promote_type, T_OUT, DT)
+    return nothing
+end
+
+# Leaf NDArray / Number / RefValue / etc.
+@inline _assert_fused_broadcast_tree(x) = eltype(x)
+
+# Nested node: recurse through typed Args, then op/input promote checks.
+@inline function _assert_fused_broadcast_tree(
+    bc::Base.Broadcast.Broadcasted{S,Ax,F,Args}
+) where {S,Ax,F,Args}
+    eltypes = _fused_checked_eltypes(bc.args)
+    T_OUT = __checked_promote_op(bc.f, eltypes)
+    __my_promote_type(eltypes.parameters...)
+    return T_OUT
+end
+
+# Typed Tuple walk — method selection replaces runtime `isa` / Any iteration.
+# Returns `Type{Tuple{...}}` for `__checked_promote_op(f, ::Type{Tuple{...}})`.
+@inline _fused_checked_eltypes(::Tuple{}) = Tuple{}
+
+@inline function _fused_checked_eltypes(args::Tuple{A}) where {A}
+    T1 = _assert_fused_broadcast_tree(getfield(args, 1))
+    return Tuple{T1}
+end
+
+@inline function _fused_checked_eltypes(args::Tuple{A,B}) where {A,B}
+    T1 = _assert_fused_broadcast_tree(getfield(args, 1))
+    T2 = _assert_fused_broadcast_tree(getfield(args, 2))
+    return Tuple{T1,T2}
+end
+
+# literal_pow and other ternary broadcast args
+@inline function _fused_checked_eltypes(args::Tuple{A,B,C}) where {A,B,C}
+    T1 = _assert_fused_broadcast_tree(getfield(args, 1))
+    T2 = _assert_fused_broadcast_tree(getfield(args, 2))
+    T3 = _assert_fused_broadcast_tree(getfield(args, 3))
+    return Tuple{T1,T2,T3}
+end
+
+@inline function _fused_checked_eltypes(args::Tuple)
+    T1 = _assert_fused_broadcast_tree(getfield(args, 1))
+    rest = _fused_checked_eltypes(Base.tail(args))
+    return Tuple{T1,rest.parameters...}
+end
+
 function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcast.Broadcasted}
+    # Promotion checks use the pre-flatten tree (same shape as unfused unravel).
+    _assert_fused_broadcast_promotion(dest, bc)
+
     # Capture the readable tree before flatten collapses the nesting.
     tree_str = BCAST_FUSION_DEBUG[] ? _bcast_tree_str(bc) : ""
 
@@ -450,6 +513,6 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
         ctx=fkm.ctx,
     )
 
-    #! PROMOTION CHECKS?
+    # Fused kernel already wrote `dest` in place; promotion was checked pre-launch.
     return dest
 end
