@@ -11,6 +11,8 @@ end
 
 unchecked_promote_arr(arr::NDArray{T}, ::Type{T}) where {T} = arr
 unchecked_promote_arr(arr::NDArray{T}, ::Type{S}) where {T,S} = as_type(arr, S)
+# Unfused broadcast leaves Numbers as scalars until promote; always a fresh 0-d array.
+unchecked_promote_arr(x::Number, ::Type{T}) where {T} = NDArray(T(x))
 
 # kinda hacky, but lets us support weird cases like broadcasting literal_pow
 unchecked_promote_arr(::Base.RefValue{typeof(^)}, ::Type{T}) where {T} = typeof(Base.:(^))

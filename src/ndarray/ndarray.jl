@@ -465,13 +465,15 @@ function Base.setindex!(arr::NDArray{T}, rhs::NDArray{T}, c::Vararg{Colon,N}) wh
 end
 
 function Base.setindex!(arr::NDArray{T,2}, val::T, i::Colon, j::Int64) where {T}
-    s = nda_get_slice(arr, to_cpp_init_slice(slice(0, Base.size(arr, 1)), slice(j-1, j)))
+    s = nda_get_slice(arr, slice_array((0, Base.size(arr, 1)), (j-1, j)))
     nda_fill_array(s, val)
+    destroy!(s)
 end
 
 function Base.setindex!(arr::NDArray{T,2}, val::T, i::Int64, j::Colon) where {T}
-    s = nda_get_slice(arr, to_cpp_init_slice(slice(i-1, i)))
+    s = nda_get_slice(arr, slice_array((i-1, i)))
     nda_fill_array(s, val)
+    destroy!(s)
 end
 
 Base.fill!(arr::NDArray{T}, val::T) where {T} = nda_fill_array(arr, val)
@@ -656,28 +658,39 @@ rand(dims::Int...) = cuNumeric.rand(DEFAULT_FLOAT, dims)
 
 #### OPERATIONS ####
 @doc"""
-    reshape(arr::NDArray, dims::Dims{N}; copy::Bool = false) where {N}
-    reshape(arr::NDArray, dim::Int64; copy::Bool = false)
+    reshape(arr::NDArray, dims::Dims{N}; copy::Val{C}=Val(false)) where {N,C}
+    reshape(arr::NDArray, dims::Int...; copy::Val{C}=Val(false)) where {C}
 
 Return a new `NDArray` reshaped to the specified dimensions.
+
+By default (`copy=Val(false)`) the result shares data with `arr`.
+Pass `copy=Val(true)` to allocate a deep copy; the intermediate reshape
+view is then destroyed eagerly. Use `Val` (not a runtime `Bool`) so the
+return type stays concrete — a `Bool` branch widens inference.
 
 # Examples
 ```@repl
 arr = cuNumeric.ones(4, 3)
 reshape(arr, (3, 4))
 reshape(arr, 12)
+reshape(arr, (3, 4); copy=Val(true))
 ```
 """
 
-#*USNTABLE USE Val{false} IF WE REALLY WANT THIS FLAG
-function reshape(arr::NDArray, i::Dims{N}; copy::Bool=false) where {N}
+# `copy` is a type parameter via Val{C}, so the default path constant-folds
+# and stays type-stable (needed by solve's 1D-rhs reshape).
+function reshape(arr::NDArray, i::Dims{N}; copy::Val{C}=Val(false)) where {N,C}
     reshaped = nda_reshape_array(arr, i)
-    return copy ? copy(reshaped) : reshaped
+    if C
+        copied = Base.copy(reshaped)
+        destroy!(reshaped)
+        return copied
+    end
+    return reshaped
 end
 
-#*USNTABLE USE Val{false} IF WE REALLY WANT THIS FLAG
-function reshape(arr::NDArray, i::Int...; copy::Bool=false)
-    return reshape(arr, i; copy=copy)
+function reshape(arr::NDArray, i::Int...; copy::Val{C}=Val(false)) where {C}
+    return reshape(arr, i; copy=Val{C}())
 end
 
 # Ignore the scalar indexing here...

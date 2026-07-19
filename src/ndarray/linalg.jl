@@ -39,6 +39,12 @@ function solve_batched(a::NDArray{T,N}, b::NDArray, x::NDArray) where {T,N}
     tiled_a = Legate.partition_by_tiling(store_a, collect(tilesize_a))
     tiled_b = Legate.partition_by_tiling(store_b, collect(tilesize_b))
     tiled_x = Legate.partition_by_tiling(store_x, collect(tilesize_b))
+    # Same Legate Julia-wrapper pin class as Launch `_add_task_array!` / get_store
+    # temps: one could finalize store_/tiled_ handles here after partition/add_*
+    # copies ownership into the task. Not enabled yet — weak linalg test coverage.
+    # finalize(store_a.handle)
+    # finalize(store_b.handle)
+    # finalize(store_x.handle)
 
     rt = Legate.get_runtime()
     domain = Legate.domain_from_shape(Legate.Shape(Legate.to_cxx_vector(color_shape)))
@@ -46,8 +52,11 @@ function solve_batched(a::NDArray{T,N}, b::NDArray, x::NDArray) where {T,N}
     task = Legate.create_manual_task(rt, lib, cuNumeric.SOLVE, domain)
 
     Legate.add_input(task, tiled_a)
+    # finalize(tiled_a.handle)
     Legate.add_input(task, tiled_b)
+    # finalize(tiled_b.handle)
     Legate.add_output(task, tiled_x)
+    # finalize(tiled_x.handle)
 
     Legate.submit_manual_task(rt, task)
 end
