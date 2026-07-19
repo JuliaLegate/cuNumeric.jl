@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -110,6 +110,9 @@ end
 function safe_compare(x::AbstractArray{T}, y::NDArray{T}, rtol, atol) where {T}
     for CI in CartesianIndices(x)
         if !safe_isapprox(x[CI], y[Tuple(CI)...], rtol, atol)
+            println("Failed at index $(Tuple(CI))")
+            println("x[$(Tuple(CI))] = $(x[CI])")
+            println("y[$(Tuple(CI))] = $(y[Tuple(CI)...])")
             return false
         end
     end
