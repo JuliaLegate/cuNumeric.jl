@@ -21,8 +21,7 @@ end
 const counter = Ref(0)
 
 function maybe_insert_delete(var::NDArray)
-    cuNumeric.nda_destroy_array(var.ptr)
-    return var.ptr = Ptr{Cvoid}(0)
+    return cuNumeric.destroy!(var)
 end
 
 maybe_insert_delete(x) = x

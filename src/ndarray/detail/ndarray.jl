@@ -43,10 +43,7 @@ mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
         handle = new{T,N,false,Nothing}(ptr, nbytes, nothing, nothing)
-        finalizer(handle) do h
-            cuNumeric.nda_destroy_array(h.ptr)
-            cuNumeric.register_free!(h.nbytes)
-        end
+        finalizer(destroy!, handle)
         return handle
     end
 
@@ -55,13 +52,29 @@ mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
         handle = new{T,N,false,P}(ptr, nbytes, nothing, parent)
-        finalizer(handle) do h
-            cuNumeric.nda_destroy_array(h.ptr)
-            cuNumeric.register_free!(h.nbytes)
-        end
+        finalizer(destroy!, handle)
         return handle
     end
 end
+
+"""
+    destroy!(arr::NDArray)
+
+Eagerly drop the underlying cuPyNumeric/Legate handle and update allocation
+counters. Safe to call more than once.
+"""
+function destroy!(arr::NDArray)
+    ptr = arr.ptr
+    if ptr != C_NULL
+        nbytes = arr.nbytes
+        nda_destroy_array(ptr)
+        arr.ptr = Ptr{Cvoid}(0)
+        arr.nbytes = 0
+        nbytes > 0 && register_free!(nbytes)
+    end
+    return arr
+end
+
 # this here is to avoid if else patterns
 @inline _NDArray(ptr, T, v, ::Nothing) = NDArray(ptr, T, v)
 @inline _NDArray(ptr, T, v, parent) = NDArray(ptr, T, v, parent)

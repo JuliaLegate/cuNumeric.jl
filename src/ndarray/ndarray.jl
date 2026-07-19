@@ -375,39 +375,48 @@ function _setindex!(::Val{N}, arr::NDArray{Bool,N}, value::Bool, idxs::Vararg{In
 end
 
 #### START OF SLICING ####
+# LHS slices from `nda_get_slice` are invisible to `@analyze_lifetimes`; destroy
+# the view handle after submitting the assign so they cannot pile up under Julia
+# GC (which sees each NDArray as ~pointer-sized).
+function _setindex_slice!(lhs::NDArray, rhs::NDArray, slices)
+    s = nda_get_slice(lhs, slices)
+    copyto!(s, rhs)
+    destroy!(s)
+    return nothing
+end
+
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::Int64)
-    s = nda_get_slice(lhs, slice_array((0, Base.size(lhs, 1)), (j-1, j)))
-    copyto!(s, rhs);
+    _setindex_slice!(lhs, rhs, slice_array((0, Base.size(lhs, 1)), (j-1, j)))
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Int64, j::Colon)
-    s = nda_get_slice(lhs, slice_array((i-1, i)))
-    copyto!(s, rhs);
+    _setindex_slice!(lhs, rhs, slice_array((i-1, i)))
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::Colon)
-    s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (0, Base.size(lhs, 2))))
-    copyto!(s, rhs)
+    _setindex_slice!(
+        lhs, rhs, slice_array((first(i) - 1, last(i)), (0, Base.size(lhs, 2)))
+    )
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::UnitRange)
-    s = nda_get_slice(lhs, slice_array((0, Base.size(lhs, 1)), (first(j) - 1, last(j))))
-    copyto!(s, rhs)
+    _setindex_slice!(
+        lhs, rhs, slice_array((0, Base.size(lhs, 1)), (first(j) - 1, last(j)))
+    )
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::Int64)
-    s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (j-1, j)))
-    copyto!(s, rhs)
+    _setindex_slice!(lhs, rhs, slice_array((first(i) - 1, last(i)), (j-1, j)))
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Int64, j::UnitRange)
-    s = nda_get_slice(lhs, slice_array((i-1, i), (first(j) - 1, last(j))))
-    copyto!(s, rhs)
+    _setindex_slice!(lhs, rhs, slice_array((i-1, i), (first(j) - 1, last(j))))
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::UnitRange)
-    s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (first(j) - 1, last(j))))
-    copyto!(s, rhs)
+    _setindex_slice!(
+        lhs, rhs, slice_array((first(i) - 1, last(i)), (first(j) - 1, last(j)))
+    )
 end
 
 function Base.getindex(arr::NDArray, i::Colon, j::Int64)
@@ -630,9 +639,15 @@ function Random.rand!(arr::NDArray{T}) where {T}
     error("rand! only supports NDArray{Float64} for now. Cast with cuNumeric.as_type.")
 end
 
+# Backend only generates Float64. Same-type path needs no cast; other floats
+# convert then eagerly drop the Float64 source so it cannot leak until GC.
+rand(::Type{Float64}, dims::Dims) = cuNumeric.nda_random_array(dims)
+
 function rand(::Type{T}, dims::Dims) where {T<:AbstractFloat}
     arrfp64 = cuNumeric.nda_random_array(dims)
-    return cuNumeric.as_type(arrfp64, T)
+    arr = cuNumeric.as_type(arrfp64, T)
+    destroy!(arrfp64)
+    return arr
 end
 
 rand(::Type{T}, dims::Int...) where {T<:AbstractFloat} = cuNumeric.rand(T, dims)
