@@ -72,6 +72,18 @@ function nda_to_logical_array(arr::NDArray{T,N}) where {T,N}
     return Legate.LogicalArray{T,N}(st_handle, size(arr))
 end
 
+# `get_store` returns a Julia-owned `LogicalArrayImplAllocated` that shares the
+# underlying Legate store with the NDArray. `add_input`/`add_output` copy that
+# array into the task; if we leave the temporary alive until GC, store refcounts
+# stay elevated and framebuffer reclaim stalls (fusion 1-GPU OOM under load).
+# Finalize the temporary immediately after the copy into the task.
+function _add_task_array!(add_to, task, arr::NDArray)
+    st = cuNumeric.get_store(arr)
+    var = add_to(task, st)
+    finalize(st)
+    return var
+end
+
 function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
     outputs::Tuple{Vararg{NDArray}}, scalars::Tuple{Vararg{Any}};
     blocks, threads, taskid=cuNumeric.RUN_PTX, ctx=nothing)
@@ -90,17 +102,13 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
     input_vars = Vector{Legate.Variable}()
     for arr in inputs
         check_sz!(arr, max_shape; copy=true)
-        la = nda_to_logical_array(arr)
-        p = Legate.add_input(task, la)
-        push!(input_vars, p)
+        push!(input_vars, _add_task_array!(Legate.add_input, task, arr))
     end
 
     output_vars = Vector{Legate.Variable}()
     for arr in outputs
         check_sz!(arr, max_shape; copy=false)
-        la = nda_to_logical_array(arr)
-        p = Legate.add_output(task, la)
-        push!(output_vars, p)
+        push!(output_vars, _add_task_array!(Legate.add_output, task, arr))
     end
 
     # Reserved scalars: kernel_name (0), blocks (1,2,3), threads (4,5,6)
@@ -153,7 +161,7 @@ function ptx_task(ptx::String, kernel_name)
     Legate.submit_manual_task(rt, task)
 
     # Fence so every load finishes before any launch reads the cache.
-    Legate.issue_execution_fence()
+    issue_execution_fence(; block=false)
 end
 
 """
