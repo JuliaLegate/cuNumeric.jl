@@ -145,6 +145,9 @@ include("memory.jl")
 # allowscalar and allowpromotion
 include("warnings.jl")
 
+# Compile-time so task scope instrumentation is fully elided when disabled.
+const TASK_SCOPE_NAMES = CNPreferences.TASK_SCOPE_NAMES
+
 # NDArray internal
 include("ndarray/detail/ndarray.jl")
 
@@ -253,7 +256,7 @@ function __init__()
     ensure_runtime!()
 
     # Requries runtime to be started
-    _setup_cuda_tasking()
+    return _setup_cuda_tasking()
 end
 
 end #module cuNumeric

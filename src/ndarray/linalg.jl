@@ -46,19 +46,21 @@ function solve_batched(a::NDArray{T,N}, b::NDArray, x::NDArray) where {T,N}
     # finalize(store_b.handle)
     # finalize(store_x.handle)
 
-    rt = Legate.get_runtime()
-    domain = Legate.domain_from_shape(Legate.Shape(Legate.to_cxx_vector(color_shape)))
-    lib = cuNumeric.get_lib()
-    task = Legate.create_manual_task(rt, lib, cuNumeric.SOLVE, domain)
+    @task_scope "solve" begin
+        rt = Legate.get_runtime()
+        domain = Legate.domain_from_shape(Legate.Shape(Legate.to_cxx_vector(color_shape)))
+        lib = cuNumeric.get_lib()
+        task = Legate.create_manual_task(rt, lib, cuNumeric.SOLVE, domain)
 
-    Legate.add_input(task, tiled_a)
-    # finalize(tiled_a.handle)
-    Legate.add_input(task, tiled_b)
-    # finalize(tiled_b.handle)
-    Legate.add_output(task, tiled_x)
-    # finalize(tiled_x.handle)
+        Legate.add_input(task, tiled_a)
+        # finalize(tiled_a.handle)
+        Legate.add_input(task, tiled_b)
+        # finalize(tiled_b.handle)
+        Legate.add_output(task, tiled_x)
+        # finalize(tiled_x.handle)
 
-    Legate.submit_manual_task(rt, task)
+        Legate.submit_manual_task(rt, task)
+    end
 end
 
 # solve runs in floating point:

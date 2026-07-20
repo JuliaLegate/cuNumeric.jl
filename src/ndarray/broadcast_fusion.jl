@@ -302,23 +302,53 @@ end
 # dump each kernel's expr/inputs/scalars/launch geometry before launch.
 const BCAST_FUSION_DEBUG = Ref(false)
 
-# Handle keyed on the same objectid the kernel uses to dedup inputs. Slice-assign
-# slices come from `nda_get_slice` with no `parent`, so object identity is the
-# only overlap the printer can see (the "aliases output" flag is same-object only).
-_nd_tag(arr::NDArray) = string("NDArray#", string(objectid(arr) % 0x1000000; base=16, pad=6))
-_nd_describe(arr::NDArray{T}) where {T} = string(_nd_tag(arr), " ", join(shape(arr), "x"), " ::", T)
-
 _fname(f::Function) = string(nameof(f))
 _fname(@nospecialize(f)) = string(f)
 
 # Reconstruct the op tree; call before `flatten`, while nesting mirrors the source.
-_bcast_tree_str(x::NDArray) = _nd_tag(x)
-_bcast_tree_str(x::Base.Broadcast.Extruded) = _nd_tag(x.x)
-_bcast_tree_str(x::Number) = repr(x)
-_bcast_tree_str(x::Base.RefValue) = string("^", repr(x[]))
-_bcast_tree_str(x) = string("<", typeof(x), ">")
+function _bcast_tree_str(leaf_name, bc::Base.Broadcast.Broadcasted)
+    args = (_bcast_tree_str(leaf_name, arg) for arg in bc.args)
+    return string(_fname(bc.f), "(", join(args, ", "), ")")
+end
+_bcast_tree_str(leaf_name, x::Base.Broadcast.Extruded) = _bcast_tree_str(leaf_name, x.x)
+_bcast_tree_str(leaf_name, x) = leaf_name(x)
+
 function _bcast_tree_str(bc::Base.Broadcast.Broadcasted)
-    return string(_fname(bc.f), ".(", join(_bcast_tree_str.(bc.args), ", "), ")")
+    return _bcast_tree_str(bc) do x
+        x isa NDArray && return "NDArray"
+        x isa Number && return repr(x)
+        x isa Base.RefValue && return string("^", repr(x[]))
+        return string("<", typeof(x), ">")
+    end
+end
+
+function _bcast_scope_name(bc::Base.Broadcast.Broadcasted, ndarray_to_input_idx)
+    scalar_idx = 0
+    tree = _bcast_tree_str(bc) do x
+        if x isa NDArray
+            input_idx = get(ndarray_to_input_idx, objectid(x), nothing)
+            return input_idx === nothing ? "NDArray" : string("input", input_idx)
+        end
+
+        if x isa Number
+            idx = scalar_idx
+            scalar_idx += 1
+            return string("scalar", idx)
+        end
+
+        if x isa Base.RefValue
+            value = x[]
+            if value isa Number
+                idx = scalar_idx
+                scalar_idx += 1
+                return string("scalar", idx)
+            end
+            return repr(value)
+        end
+
+        return string("<", typeof(x), ">")
+    end
+    return string("broadcast.", tree)
 end
 
 # Recover the kernel's plain name
@@ -341,12 +371,12 @@ function _kernel_signature(
         if a == 0
             "output"
         elseif a > 0
-            _nd_tag(unique_ndarrays[a])
+            string("input", a - 1)
         else
-            repr(actual_scalars[-a])
+            string("scalar", -a - 1)
         end
     call_args = [token(a) for a in arg_map if a != 0]
-    return string(_nd_tag(dest), " -> ", _demangle_head(func), "(", join(call_args, ", "), ")")
+    return string("broadcast.", _demangle_head(func), "(", join(call_args, ", "), ")")
 end
 
 function _describe_fused_broadcast(
@@ -356,11 +386,11 @@ function _describe_fused_broadcast(
     field(k, v) = println(io, "  ", rpad(k, 8), v)
     println(io, "\n", "="^40, " fused broadcast kernel")
     field("expr", tree_str)
-    field("output", _nd_describe(dest))
+    field("output", "$(typeof(dest)) $(size(dest))")
     field("inputs", "$(length(unique_ndarrays)) unique NDArray(s)")
     for (i, nd) in enumerate(unique_ndarrays)
         alias = objectid(nd) == objectid(dest) ? "  (aliases output)" : ""
-        println(io, "    [", i - 1, "] ", _nd_describe(nd), alias)
+        println(io, "    [", i - 1, "] ", typeof(nd), " ", size(nd), alias)
     end
     isempty(actual_scalars) || field("scalars", join(repr.(actual_scalars), ", "))
     isempty(static_args) || field("static", join(repr.(static_args), ", "))
@@ -439,6 +469,7 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
     _assert_fused_broadcast_promotion(dest, bc)
 
     # Capture the readable tree before flatten collapses the nesting.
+    bc_scope = bc
     tree_str = BCAST_FUSION_DEBUG[] ? _bcast_tree_str(bc) : ""
 
     bc = Base.Broadcast.preprocess(dest, bc)
@@ -502,16 +533,18 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
         dest, tree_str, unique_ndarrays, actual_scalars, static_args, arg_map, fkm, ndrange
     )
 
-    launch(
-        fkm.cuda_task,
-        input_ndarrays,
-        (dest,),
-        (Int32(length(arg_map)), arg_map..., actual_scalars...);
-        blocks=fkm.blocks,
-        threads=fkm.threads,
-        taskid=cuNumeric.RUN_PTX_BROADCAST,
-        ctx=fkm.ctx,
-    )
+    @task_scope _bcast_scope_name(bc_scope, ndarray_to_input_idx) begin
+        launch(
+            fkm.cuda_task,
+            input_ndarrays,
+            (dest,),
+            (Int32(length(arg_map)), arg_map..., actual_scalars...);
+            blocks=fkm.blocks,
+            threads=fkm.threads,
+            taskid=cuNumeric.RUN_PTX_BROADCAST,
+            ctx=fkm.ctx,
+        )
+    end
 
     # Fused kernel already wrote `dest` in place; promotion was checked pre-launch.
     return dest
