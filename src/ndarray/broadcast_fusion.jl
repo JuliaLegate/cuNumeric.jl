@@ -138,20 +138,6 @@ function make_linear_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, stat
     return broadcast_kernel_linear_splat
 end
 
-function make_cartesian_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args)
-    f = bc.f
-
-    @kernel function broadcast_kernel_cartesian_splat(dest, runtime_args...)
-        I = @index(Global, Cartesian)
-        @inbounds args_modified = _materialize_broadcast_args(
-            arg_plan, runtime_args, static_args, I
-        )
-        @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
-    end
-
-    return broadcast_kernel_cartesian_splat
-end
-
 struct FusedBroadcastMetadata
     ctx::Any # KA.CompilerMetadata
     threads::Int
@@ -203,6 +189,33 @@ end
 get_ndarray(x::T) where {T<:NDArray} = x
 get_ndarray(x::T) where {T<:Base.Broadcast.Extruded} = x.x
 get_ndarray(x::T) where {T} = throw(error("Broadcast fusion. Don't know what to do with type: $T"))
+
+# HACK: Guess the local tile on the Julia side from Legate.num_procs(). This may
+# diverge from the mapper; the real fix belongs in RunPTXBroadcastTask with
+# TaskContext/PhysicalArray shapes.
+function _local_linear_broadcast_ndrange_hack(ndrange, nprocs::Integer)
+    nprocs = max(Int(nprocs), 1)
+    color_shape = Base.ones(Int, length(ndrange))
+
+    if length(ndrange) == 1
+        color_shape[1] = nprocs
+    elseif length(ndrange) >= 2
+        rows = floor(Int, sqrt(nprocs))
+        while nprocs % rows != 0
+            rows -= 1
+        end
+        cols = nprocs ÷ rows
+        color_shape[1] = rows
+        color_shape[2] = cols
+    end
+
+    tile_shape = ntuple(i -> cld(Int(ndrange[i]), color_shape[i]), length(ndrange))
+    return tile_shape, nprocs, Tuple(color_shape)
+end
+
+function _local_linear_broadcast_ndrange_hack(ndrange)
+    return _local_linear_broadcast_ndrange_hack(ndrange, Legate.num_procs())
+end
 
 function _threads_from_occupancy(
     obj::KA.Kernel{CUDACore.CUDAKernels.CUDABackend},
@@ -380,7 +393,17 @@ function _kernel_signature(
 end
 
 function _describe_fused_broadcast(
-    dest, tree_str, unique_ndarrays, actual_scalars, static_args, arg_map, fkm, ndrange
+    dest,
+    tree_str,
+    unique_ndarrays,
+    actual_scalars,
+    static_args,
+    arg_map,
+    fkm,
+    ndrange,
+    global_ndrange,
+    partition_procs,
+    color_shape,
 )
     io = IOBuffer()
     field(k, v) = println(io, "  ", rpad(k, 8), v)
@@ -396,6 +419,10 @@ function _describe_fused_broadcast(
     isempty(static_args) || field("static", join(repr.(static_args), ", "))
     field("arg_map", "$(Int.(arg_map))  (0=output, >=1=input idx+1, <0=scalar)")
     field("launch", "$(fkm.blocks) blocks x $(fkm.threads) threads, ndrange=$ndrange")
+    field(
+        "global",
+        "ndrange=$global_ndrange, partition_procs=$partition_procs, color_shape=$color_shape",
+    )
     field(
         "call",
         _kernel_signature(dest, unique_ndarrays, actual_scalars, arg_map, fkm.cuda_task.func),
@@ -482,16 +509,9 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
     # them separately from runtime args (i.e., arrays, scalars)
     runtime_args, static_args, arg_plan = split_broadcast_args_for_kernel(bc.args)
 
-    broadcast_kernel =
-        if ndims(dest) == 1 ||
-            (isa(IndexStyle(dest), IndexLinear) &&
-            isa(IndexStyle(bc), IndexLinear))
-            make_linear_kernel(dest, bc, arg_plan, static_args)
-        else
-            make_cartesian_kernel(dest, bc, arg_plan, static_args)
-        end
-
-    ndrange = ndims(dest) > 0 ? size(dest) : (1,)
+    global_ndrange = ndims(dest) > 0 ? size(dest) : (1,)
+    ndrange, partition_procs, color_shape = _local_linear_broadcast_ndrange_hack(global_ndrange)
+    broadcast_kernel = make_linear_kernel(dest, bc, arg_plan, static_args)
 
     bck_cuda = broadcast_kernel(CUDACore.CUDAKernels.CUDABackend())
 
@@ -530,7 +550,17 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
     input_ndarrays = tuple(unique_ndarrays...)
 
     BCAST_FUSION_DEBUG[] && _describe_fused_broadcast(
-        dest, tree_str, unique_ndarrays, actual_scalars, static_args, arg_map, fkm, ndrange
+        dest,
+        tree_str,
+        unique_ndarrays,
+        actual_scalars,
+        static_args,
+        arg_map,
+        fkm,
+        ndrange,
+        global_ndrange,
+        partition_procs,
+        color_shape,
     )
 
     @task_scope _bcast_scope_name(bc_scope, ndarray_to_input_idx) begin
