@@ -183,3 +183,149 @@ function test_broadcast_fusion(; T=Float32, N=100, atol=1e-5, rtol=1e-5)
         @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
     end
 end
+
+#= Edge cases for linear-only broadcast fusion.
+ * Complements `test_broadcast_fusion` with size extremes, 2D same-shape,
+ * fusion gating for shape mismatch, 0-d fallback, and dest/input aliasing.
+=#
+function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
+    s1 = T(2.5)
+    s2 = T(1.0)
+
+    @testset "very small 1D (N=1)" begin
+        ja = T[1.5]
+        jb = T[2.25]
+        a = @allowscalar NDArray(ja)
+        b = @allowscalar NDArray(jb)
+        result = a .+ b .* s1 .- s2
+        @allowscalar @test cuNumeric.compare(ja .+ jb .* s1 .- s2, result, atol, rtol)
+    end
+
+    @testset "very small 1D (N=2)" begin
+        ja = T[1.5, 3.0]
+        jb = T[2.5, 4.0]
+        a = @allowscalar NDArray(ja)
+        b = @allowscalar NDArray(jb)
+        result = a .+ b
+        @allowscalar @test cuNumeric.compare(ja .+ jb, result, atol, rtol)
+        result = s1 .* a .- b
+        @allowscalar @test cuNumeric.compare(s1 .* ja .- jb, result, atol, rtol)
+    end
+
+    @testset "empty / zero-size 1D" begin
+        # NDArray supports size (0,). `_copyto!` short-circuits on isempty
+        # before fusion, so this only checks the empty path does not crash.
+        e = cuNumeric.zeros(T, 0)
+        result = e .+ e
+        @test isempty(result)
+        @test size(result) == (0,)
+        result = e .+ s1
+        @test isempty(result)
+        @test size(result) == (0,)
+    end
+
+    @testset "empty / zero-size 2D" begin
+        e = cuNumeric.zeros(T, (0, 3))
+        result = e .+ e
+        @test isempty(result)
+        @test size(result) == (0, 3)
+    end
+
+    @testset "large-ish 1D same-shape fused" begin
+        N = 10_000
+        ja = rand(T, N)
+        jb = rand(T, N)
+        a = @allowscalar NDArray(ja)
+        b = @allowscalar NDArray(jb)
+        result = a .+ b .* s1 .- s2
+        @allowscalar @test cuNumeric.compare(ja .+ jb .* s1 .- s2, result, atol, rtol)
+        # Gate: same-shape leaves should be fusible.
+        dest = cuNumeric.zeros(T, N)
+        bc = Base.Broadcast.instantiate(Base.broadcasted(+, a, b))
+        @test cuNumeric.can_fuse_linear_broadcast(dest, bc)
+    end
+
+    @testset "large-ish 2D same-shape fused" begin
+        M, N = 128, 256
+        ja = rand(T, M, N)
+        jb = rand(T, M, N)
+        a = @allowscalar NDArray(ja)
+        b = @allowscalar NDArray(jb)
+        result = a .+ b .* s1
+        @allowscalar @test cuNumeric.compare(ja .+ jb .* s1, result, atol, rtol)
+        result = a .+ a .* b .- s2
+        @allowscalar @test cuNumeric.compare(ja .+ ja .* jb .- s2, result, atol, rtol)
+        dest = cuNumeric.zeros(T, M, N)
+        bc = Base.Broadcast.instantiate(Base.broadcasted(+, a, b))
+        @test cuNumeric.can_fuse_linear_broadcast(dest, bc)
+    end
+
+    @testset "scalar gaps: A .^ 2 and scalar*A*scalar" begin
+        N = 64
+        ja = rand(T, N)
+        a = @allowscalar NDArray(ja)
+        # Literal power uses RefValue{Val} / static-arg lowering.
+        result = a .^ 2
+        @allowscalar @test cuNumeric.compare(ja .^ 2, result, atol, rtol)
+        result = s1 .* a .* s2
+        @allowscalar @test cuNumeric.compare(s1 .* ja .* s2, result, atol, rtol)
+    end
+
+    @testset "shape-mismatched broadcast refuses fusion" begin
+        # Linear fusion requires every NDArray leaf to match dest shape.
+        # Matrix .+ vector must fall back to the unfused path.
+        #
+        # NOTE: the unfused matrix.+vector path currently disagrees with Julia
+        # broadcasting semantics; do not assert equality with `ja .+ jv` here.
+        M, N = 64, 32
+        ja = rand(T, M, N)
+        jv = rand(T, M)
+        a = @allowscalar NDArray(ja)
+        v = @allowscalar NDArray(jv)
+        dest = cuNumeric.zeros(T, M, N)
+        bc = Base.Broadcast.instantiate(Base.broadcasted(+, a, v))
+        @test !cuNumeric.can_fuse_linear_broadcast(dest, bc)
+
+        # Unfused fallback should not crash (correctness vs Julia is known-wrong).
+        result = a .+ v
+        @test size(result) == (M, N)
+    end
+
+    @testset "0-d scalar NDArray (fusion refused, unfused ok)" begin
+        # RunPTXBroadcastTask only supports dims in [1, 6]; can_fuse refuses
+        # 0-d so `_copyto!` falls back to unfused.
+        #
+        # NOTE: `z1 .+ z2` still errors after a successful `copyto!` because
+        # `Broadcast.copy` for NDArrayStyle{0} unwraps with
+        # `dest[CartesianIndex()]`, which is not implemented. Test via
+        # `copyto!` into an explicit 0-d dest instead.
+        z1 = @allowscalar NDArray(T(2))
+        z2 = @allowscalar NDArray(T(3))
+        @test ndims(z1) == 0
+        dest = cuNumeric.zeros(T)
+        bc = Base.Broadcast.instantiate(Base.broadcasted(+, z1, z2))
+        @test !cuNumeric.can_fuse_linear_broadcast(dest, bc)
+        copyto!(dest, bc)
+        @allowscalar @test dest[] == T(5)
+
+        dest2 = cuNumeric.zeros(T)
+        bc2 = Base.Broadcast.instantiate(Base.broadcasted(+, Base.broadcasted(*, z1, s1), z2))
+        @test !cuNumeric.can_fuse_linear_broadcast(dest2, bc2)
+        copyto!(dest2, bc2)
+        @allowscalar @test dest2[] ≈ T(2) * s1 + T(3) atol = atol rtol = rtol
+    end
+
+    @testset "dest aliases an input" begin
+        N = 128
+        ja = rand(T, N)
+        jb = rand(T, N)
+        a = @allowscalar NDArray(copy(ja))
+        b = @allowscalar NDArray(jb)
+        a .+= b
+        @allowscalar @test cuNumeric.compare(ja .+ jb, a, atol, rtol)
+
+        a2 = @allowscalar NDArray(copy(ja))
+        a2 .= a2 .* s1 .+ b
+        @allowscalar @test cuNumeric.compare(ja .* s1 .+ jb, a2, atol, rtol)
+    end
+end
