@@ -50,7 +50,8 @@ function cupynumeric_env_name()
 end
 
 function dispatch(; gpus, cpus, name, T, N, M, n_iter, n_warmup, n_trial,
-    fusion=true, cupynumeric=false, cudajl=false)
+    fusion=true, cupynumeric=false, cudajl=false,
+    check_correctness=false, n_correctness_iter=5)
     fstr = fusion ? "enabled" : "disabled"
     banner(
         "$(name): T=$(T) gpus=$(gpus) cpus=$(cpus) N=$(N) M=$(M) fusion=$(fstr) " *
@@ -68,7 +69,9 @@ function dispatch(; gpus, cpus, name, T, N, M, n_iter, n_warmup, n_trial,
     # each backend runs in its own worker process
     vflag = VERBOSE ? `--verbose` : ``
     args = `--gpus $gpus --cpus $cpus $name $T $N $M $n_iter $n_warmup $n_trial`
-    cmds = [`bash $RUNNER $WORKER $vflag $args cunumeric`]
+    # trailing: backend check_correctness n_correctness_iter
+    corr_args = `$check_correctness $n_correctness_iter`
+    cmds = [`bash $RUNNER $WORKER $vflag $args cunumeric $corr_args`]
 
     # comparison backends have no fusion knob, so run them once instead of per
     # fusion variant; the fused pass (the default) is that single run
@@ -76,7 +79,7 @@ function dispatch(; gpus, cpus, name, T, N, M, n_iter, n_warmup, n_trial,
     if run_comparison_backends
         # CUDA.jl is single-GPU only
         if cudajl && gpus == 1 && !cunumeric_only(name)
-            push!(cmds, `bash $RUNNER $WORKER $vflag $args cudajl`)
+            push!(cmds, `bash $RUNNER $WORKER $vflag $args cudajl $corr_args`)
         end
         if cupynumeric && !cunumeric_only(name)
             push!(cmds, `bash $RUNNER $PY_WORKER $vflag --pyenv $(cupynumeric_env_name()) $args`)
@@ -108,6 +111,8 @@ function run_all_benchmarks(config="benchmarks.toml")
             n_trial=gs.n_trial,
             cupynumeric=gs.cupynumeric,
             cudajl=gs.cuda,
+            check_correctness=gs.check_correctness,
+            n_correctness_iter=gs.n_correctness_iter,
         )
     end
 end
@@ -128,5 +133,7 @@ else # dispatch on args
         n_warmup=parse(Int, POSARGS[8]),
         n_trial=parse(Int, POSARGS[9]),
         fusion=length(POSARGS) >= 10 ? parse_fusion(POSARGS[10]) : true,
+        check_correctness=length(POSARGS) >= 11 ? parse(Bool, POSARGS[11]) : false,
+        n_correctness_iter=length(POSARGS) >= 12 ? parse(Int, POSARGS[12]) : 5,
     )
 end

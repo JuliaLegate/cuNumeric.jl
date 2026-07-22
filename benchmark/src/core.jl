@@ -11,6 +11,9 @@ using Statistics
     standard deviations/errors.
 - `n_gpu::Int` : The number of GPUs used by legate. Set through the LEGATE_CONFIG,
     this value is just bookkeeping.
+- `check_correctness::Bool` : If true, run one CPU-reference check per config
+    (not per timed iteration) before timing; result is recorded in the CSV.
+- `n_correctness_iter::Int` : Steps to run for that single correctness check.
 """
 Base.@kwdef struct GlobalSettings
     n_warmup::Int # Number of warmup steps, where timing is not done.
@@ -19,6 +22,8 @@ Base.@kwdef struct GlobalSettings
     n_gpu::Int = 0
     cupynumeric::Bool = false # also run baselines under cupynumeric for comparison
     cuda::Bool = false # also run under CUDA.jl for comparison (single-GPU only)
+    check_correctness::Bool = false
+    n_correctness_iter::Int = 5
 end
 
 #########################################
@@ -49,10 +54,19 @@ end
 
 # Per-trial timings for one benchmark. `times_ms[i]`/`gflops[i]` are the mean
 # over `n_iter` iterations for trial `i`; the spread across trials gives stddev.
+# `correctness` is one of "pass", "fail", "skipped" — checked once per config.
 struct BenchmarkResult{B<:AbstractBenchmark}
     times_ms::Vector{Float64}
     gflops::Vector{Float64}
     benchmark::B
+    correctness::String
+end
+
+# Optional per-benchmark correctness vs a CPU/`Array` reference.
+# Return "pass", "fail", or "skipped". Default: no check implemented.
+correctness_supported(::AbstractBenchmark) = false
+function check_benchmark_correctness(b::AbstractBenchmark, gs::GlobalSettings; mod=cuNumeric)
+    return "skipped"
 end
 
 # One timed trial: warmup, then time `n_iter` iterations of `run!`.
@@ -75,7 +89,17 @@ function _trial(b::AbstractBenchmark, gs::GlobalSettings; mod=cuNumeric)
 end
 
 # Run `n_trial` independent trials and collect their per-trial measurements.
+# Correctness (if enabled) runs once before timing, not per trial/iteration.
 function run_benchmark(b::AbstractBenchmark, gs::GlobalSettings; mod=cuNumeric)
+    correctness = "skipped"
+    if gs.check_correctness
+        if correctness_supported(b)
+            correctness = check_benchmark_correctness(b, gs; mod=mod)
+        else
+            correctness = "skipped"
+        end
+    end
+
     times_ms = Float64[]
     gflops = Float64[]
     for _ in 1:gs.n_trial
@@ -83,7 +107,7 @@ function run_benchmark(b::AbstractBenchmark, gs::GlobalSettings; mod=cuNumeric)
         push!(times_ms, t)
         push!(gflops, g)
     end
-    return BenchmarkResult(times_ms, gflops, b)
+    return BenchmarkResult(times_ms, gflops, b, correctness)
 end
 
 _std(x) = length(x) > 1 ? std(x) : 0.0
@@ -94,10 +118,11 @@ function save_result(br::BenchmarkResult, gpus; mod::String="cunumeric")
     mkpath(dirname(path))
     open(path, "a") do io
         for trial in eachindex(br.times_ms)
+            # correctness is per-config; repeated on each trial row for CSV joins
             @printf(
-                io, "%s,%d,%d,%d,%d,%.6f,%.6f\n",
+                io, "%s,%d,%d,%d,%d,%.6f,%.6f,%s\n",
                 mod, gpus, N, M, trial,
-                br.times_ms[trial], br.gflops[trial],
+                br.times_ms[trial], br.gflops[trial], br.correctness,
             )
         end
     end

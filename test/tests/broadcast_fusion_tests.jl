@@ -271,6 +271,75 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         @allowscalar @test cuNumeric.compare(s1 .* ja .* s2, result, atol, rtol)
     end
 
+    # Gray-Scott-style slice stencil; bare Int64 `2` must match unfused (host
+    # converts via `__my_promote_type` after flatten). Slices refuse fusion and
+    # fall back to the unfused path (dense CuDeviceArray packing is view-unsafe).
+    @testset "fused slice stencil with bare Int64 scalar" begin
+        N = 32
+        ja = rand(T, N, N)
+        u = @allowscalar NDArray(ja)
+        result =
+            u[3:end, 2:(end - 1)] .- 2 .* u[2:(end - 1), 2:(end - 1)] .+
+            u[1:(end - 2), 2:(end - 1)]
+        expected =
+            ja[3:end, 2:(end - 1)] .- T(2) .* ja[2:(end - 1), 2:(end - 1)] .+
+            ja[1:(end - 2), 2:(end - 1)]
+        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+
+        dest = similar(result)
+        bc = Base.Broadcast.instantiate(
+            Base.broadcasted(
+                +,
+                Base.broadcasted(
+                    -, u[3:end, 2:(end - 1)], Base.broadcasted(*, 2, u[2:(end - 1), 2:(end - 1)])
+                ),
+                u[1:(end - 2), 2:(end - 1)],
+            ),
+        )
+        @test !cuNumeric.can_fuse_linear_broadcast(dest, bc)
+    end
+
+    @testset "fused/unfused scalar promotion parity" begin
+        N = 32
+        ja = rand(T, N)
+        a = @allowscalar NDArray(ja)
+        dest = cuNumeric.zeros(T, N)
+
+        # Bare Int64: fusible, host-promoted to T, same result as unfused.
+        bc_i64 = Base.Broadcast.instantiate(Base.broadcasted(*, 2, a))
+        @test cuNumeric.can_fuse_linear_broadcast(dest, bc_i64)
+        result = 2 .* a
+        @allowscalar @test cuNumeric.compare(T(2) .* ja, result, atol, rtol)
+        @allowscalar @test cuNumeric.compare(
+            result,
+            cuNumeric.unravel_broadcast_tree(bc_i64),
+            atol,
+            rtol,
+        )
+
+        # Wider Float64 literal: fused and unfused throw the same promotion error.
+        if T === Float32
+            bc_f64 = Base.Broadcast.instantiate(Base.broadcasted(+, a, 1.0))
+            err_fused = try
+                a .+ 1.0
+                nothing
+            catch e
+                sprint(showerror, e)
+            end
+            err_unfused = try
+                cuNumeric.unravel_broadcast_tree(bc_f64)
+                nothing
+            catch e
+                sprint(showerror, e)
+            end
+            @test err_fused !== nothing
+            @test err_unfused !== nothing
+            @test err_fused == err_unfused
+            @test occursin("Implicit promotion", err_fused)
+            @test_throws "Implicit promotion" a .+ 1.0
+        end
+    end
+
     @testset "shape-mismatched broadcast refuses fusion" begin
         # Linear fusion requires every NDArray leaf to match dest shape.
         # Matrix .+ vector must fall back to the unfused path.

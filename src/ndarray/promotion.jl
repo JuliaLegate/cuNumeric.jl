@@ -14,6 +14,10 @@ unchecked_promote_arr(arr::NDArray{T}, ::Type{S}) where {T,S} = as_type(arr, S)
 # Unfused broadcast leaves Numbers as scalars until promote; always a fresh 0-d array.
 unchecked_promote_arr(x::Number, ::Type{T}) where {T} = NDArray(T(x))
 
+# Fusion keeps Numbers as scalars in the PTX arg buffer (no 0-d NDArray).
+unchecked_promote_scalar(x::Number, ::Type{T}) where {T} = T(x)
+unchecked_promote_scalar(x, ::Type) = x
+
 # kinda hacky, but lets us support weird cases like broadcasting literal_pow
 unchecked_promote_arr(::Base.RefValue{typeof(^)}, ::Type{T}) where {T} = typeof(Base.:(^))
 unchecked_promote_arr(::Base.RefValue{Val{V}}, ::Type{T}) where {T,V} = Val{V}
@@ -91,4 +95,9 @@ __my_promote_type(::Type{A}, ::Type{A}) where {A} = A
     S = smaller_type(A, B)
     is_wider_type(T, S) && assertpromotion(promote_type, S, T)
     return T
+end
+
+# Flattened fusion (and any n-ary leaf list) folds pairwise.
+@inline function __my_promote_type(::Type{A}, ::Type{B}, ::Type{C}, rest::Type...) where {A,B,C}
+    return __my_promote_type(__my_promote_type(A, B), C, rest...)
 end
