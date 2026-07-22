@@ -41,7 +41,7 @@ mutable struct GrayScottState{A,P}
     params::P
 end
 
-function initialize(b::AbstractGrayScott{T}; mod=cuNumeric) where {T}
+function initialize(b::AbstractGrayScott{T}; mod=cuNumeric, deterministic::Bool=false) where {T}
     d = (b.N, b.M)
     u = mod.ones(T, d)
     v = mod.zeros(T, d)
@@ -49,10 +49,47 @@ function initialize(b::AbstractGrayScott{T}; mod=cuNumeric) where {T}
     v_new = mod.zeros(T, d)
 
     seed = min(150, b.N, b.M)
-    u[1:seed, 1:seed] = mod.rand(T, (seed, seed))
-    v[1:seed, 1:seed] = mod.rand(T, (seed, seed))
+    if deterministic
+        # Fixed host pattern so CPU and GPU (any GPU count) share the same IC.
+        # Avoids Random streams differing across array backends.
+        host_u = T[
+            T(0.5) + T(0.5) * sin(T(i)) * cos(T(j)) for i in 1:seed, j in 1:seed
+        ]
+        host_v = T[
+            T(0.25) + T(0.25) * cos(T(i)) * sin(T(j)) for i in 1:seed, j in 1:seed
+        ]
+        u[1:seed, 1:seed] = mod === cuNumeric ? NDArray(host_u) : host_u
+        v[1:seed, 1:seed] = mod === cuNumeric ? NDArray(host_v) : host_v
+    else
+        u[1:seed, 1:seed] = mod.rand(T, (seed, seed))
+        v[1:seed, 1:seed] = mod.rand(T, (seed, seed))
+    end
 
     return (GrayScottState(u, v, u_new, v_new, GSParams{T}()),)
+end
+
+correctness_supported(::AbstractGrayScott) = true
+
+function check_benchmark_correctness(
+    b::AbstractGrayScott{T}, gs::GlobalSettings; mod=cuNumeric, atol=1e-4, rtol=1e-4
+) where {T}
+    # CPU reference compares via cuNumeric.compare (scalar gather). Other backends skip.
+    mod === cuNumeric || return "skipped"
+
+    n = gs.n_correctness_iter
+    st_gpu = only(initialize(b; mod=mod, deterministic=true))
+    st_cpu = only(initialize(b; mod=Base, deterministic=true))
+
+    for _ in 1:n
+        run!(b, st_gpu)
+        run!(b, st_cpu)
+    end
+
+    # Element-wise NDArray indexing gathers across tiles — do not use Array(NDArray)
+    # for multi-GPU (get_ptr is local-tile only).
+    u_ok = @allowscalar cuNumeric.compare(st_cpu.u, st_gpu.u, atol, rtol)
+    v_ok = @allowscalar cuNumeric.compare(st_cpu.v, st_gpu.v, atol, rtol)
+    return (u_ok && v_ok) ? "pass" : "fail"
 end
 
 # VARIANT DESCRIPTION
@@ -113,8 +150,7 @@ let body = quote
         v_new[end, :] = v[2, :]
     end
     @eval _gs_step!(b::GrayScottBaseline, u, v, u_new, v_new, args::GSParams) = $body
-    @eval _gs_step!(b::GrayScottLifetimes, u, v, u_new, v_new, args::GSParams) =
-        @analyze_lifetimes $body
+    @eval _gs_step!(b::GrayScottLifetimes, u, v, u_new, v_new, args::GSParams) = @analyze_lifetimes $body
 end
 
 function run!(b::AbstractGrayScott, st::GrayScottState)

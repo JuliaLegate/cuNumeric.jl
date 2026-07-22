@@ -62,6 +62,8 @@ function parse_config(path)
         n_warmup=g["n_warmup"], n_iter=g["n_iter"], n_trial=get(g, "n_trial", 1),
         cupynumeric=get(g, "cupynumeric", false),
         cuda=get(g, "cuda", false),
+        check_correctness=get(g, "check_correctness", false),
+        n_correctness_iter=get(g, "n_correctness_iter", 5),
     )
 
     specs = BenchmarkSpec[]

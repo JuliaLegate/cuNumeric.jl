@@ -6,9 +6,7 @@ Base.@propagate_inbounds @inline function _gpu_broadcast_getindex(x, I)
     return @inbounds Base.Broadcast._broadcast_getindex(x, I)
 end
 
-Base.@propagate_inbounds @inline function _gpu_broadcast_getindex(x::Number, I)
-    return x
-end
+Base.@propagate_inbounds _gpu_broadcast_getindex(x::Number, I) = x
 
 Base.@propagate_inbounds @inline function _materialize_broadcast_arg(
     ::RuntimeBroadcastArg{J},
@@ -117,16 +115,6 @@ end
 
 ##############
 
-# The indexing in these kernels is based off this internal function from julia/broadcast.jl
-
-# Base.@propagate_inbounds function _broadcast_getindex(bc::Broadcasted{<:Any,<:Any,<:Any,<:Any}, I)
-#     args = _getindex(bc.args, I)
-#     return _broadcast_getindex_evalf(bc.f, args...)
-# end
-
-# Linear work id from the launched 1D CUDA grid. Prefer this over
-# `@index(Global, ...)` so coverage matches each GPU's local tile (device sets
-# blocks/threads from PhysicalArray shape) rather than a host-baked global ndrange.
 @inline function _broadcast_linear_work_id()
     return (Int(CUDACore.blockIdx().x) - 1) * Int(CUDACore.blockDim().x) +
            Int(CUDACore.threadIdx().x)
@@ -162,10 +150,14 @@ const _BCAST_PTX_CACHE_LOCK = ReentrantLock()
 # Linear-only fusion: every NDArray leaf must match `dest` shape. Shape-mismatched
 # broadcasts (e.g. matrix .+ vector) need cartesian / Extruded indexing and are
 # handled by the unfused path instead.
+#
+# Slices/views (`parent !== nothing`) are refused: `RunPTXBroadcastTask` packs
+# dense CuDeviceArrays without strides, so fused linear indexing is wrong for
+# strided Legate transforms (Gray-Scott Y-stencil, etc.).
 @inline _can_fuse_linear_broadcast_leaf(dest, ::Number) = true
 @inline _can_fuse_linear_broadcast_leaf(dest, ::Base.RefValue) = true
 @inline function _can_fuse_linear_broadcast_leaf(dest, x::NDArray)
-    return size(x) == size(dest)
+    return size(x) == size(dest) && x.parent === nothing
 end
 @inline function _can_fuse_linear_broadcast_leaf(dest, x::Base.Broadcast.Extruded)
     return _can_fuse_linear_broadcast_leaf(dest, x.x)
@@ -184,15 +176,17 @@ end
 """
 Return true when fused linear broadcast is safe for `bc` into `dest`.
 
-Requires every NDArray leaf to have the same size as `dest`. Scalars / RefValues
-are allowed. Unknown leaf types refuse fusion (fall back to unfused).
+Requires every NDArray leaf to have the same size as `dest` and not be a slice
+view (`parent === nothing`). Scalars / RefValues are allowed. Unknown leaf
+types refuse fusion (fall back to unfused).
 
-Also refuses 0-d destinations: `RunPTXBroadcastTask` only supports dims in
-`[1, 6]`; 0-d falls back to the unfused path.
+Also refuses 0-d or sliced destinations: `RunPTXBroadcastTask` only supports
+dims in `[1, 6]` with dense CuDeviceArray packing.
 """
 @inline function can_fuse_linear_broadcast(dest::NDArray, bc::Base.Broadcast.Broadcasted)
     # Device-side launch dims require at least one dimension.
     ndims(dest) >= 1 || return false
+    dest.parent === nothing || return false
     return _can_fuse_linear_broadcast_leaf(dest, bc)
 end
 
@@ -211,9 +205,19 @@ end
     )
 end
 @inline _unwrap_linear_fusion_arg(x) = x
+@inline _unwrap_linear_fusion_args(args::Tuple) = _unwrap_linear_fusion_arg.(args)
 
-@inline function _unwrap_linear_fusion_args(args::Tuple)
-    return map(_unwrap_linear_fusion_arg, args)
+# Host-side scalar alignment for fusion — same as unfused
+# `T_IN = __my_promote_type(...); unchecked_promote_arr.(args, T_IN)`, but
+# `unchecked_promote_scalar` keeps Numbers as scalars for the PTX arg buffer.
+#
+# Must run on the host *before* `get_cuda_task` so the PTX cache key sees the
+# promoted scalar types. `a .^ 2` is unaffected: `Val{N}` is static; op-aware
+# checks stay in pre-flatten `_assert_fused_broadcast_promotion`.
+function _align_fused_runtime_args(runtime_args::Tuple)
+    isempty(runtime_args) && return runtime_args
+    T_IN = __my_promote_type(map(eltype, runtime_args)...)
+    return map(a -> unchecked_promote_scalar(a, T_IN), runtime_args)
 end
 
 cudevice_array_offset(::Type{T}) where {T<:CUDACore.CuDeviceArray} = 0
@@ -539,6 +543,9 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
     runtime_args, static_args, arg_plan = split_broadcast_args_for_kernel(
         _unwrap_linear_fusion_args(bc.args)
     )
+    # Host-only, before PTX cache: same `__my_promote_type` + Number convert as
+    # unfused `T_IN` / `unchecked_promote_arr`. Kernel sees already-aligned types.
+    runtime_args = _align_fused_runtime_args(runtime_args)
 
     broadcast_kernel = make_linear_kernel(dest, bc, arg_plan, static_args)
 
