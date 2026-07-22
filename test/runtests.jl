@@ -465,6 +465,7 @@ if run_gpu_tests
     @testset verbose = true "Broadcast Fusion" begin
         test_broadcast_fusion()
         test_broadcast_fusion_edge_cases()
+        test_broadcast_fusion_ptx_cache()
     end
 
     # @testset verbose = true "CUDA Tests" begin

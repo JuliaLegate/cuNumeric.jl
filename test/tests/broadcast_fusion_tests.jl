@@ -329,3 +329,71 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         @allowscalar @test cuNumeric.compare(ja .* s1 .+ jb, a2, atol, rtol)
     end
 end
+
+#= Broadcast fusion PTX compilation cache.
+ * Verifies `_BCAST_PTX_CACHE` grows on first fused launch of a signature and
+ * is reused (no new entry) on a second launch of the same signature.
+ * Gated on `FUSE_BROADCAST_EXPRS` + `HAS_CUDA`; skips otherwise.
+=#
+function test_broadcast_fusion_ptx_cache(; T=Float32, N=64)
+    if !(cuNumeric.FUSE_BROADCAST_EXPRS && cuNumeric.HAS_CUDA)
+        @info "Skipping PTX cache tests (need FUSE_BROADCAST_EXPRS && HAS_CUDA)"
+        return nothing
+    end
+
+    cache = cuNumeric._BCAST_PTX_CACHE
+    cache_lock = cuNumeric._BCAST_PTX_CACHE_LOCK
+    cache_len() =
+        lock(cache_lock) do
+            return length(cache)
+        end
+    clear_cache!() =
+        lock(cache_lock) do
+            empty!(cache)
+            return nothing
+        end
+
+    @testset "PTX cache hit / miss" begin
+        clear_cache!()
+        @test cache_len() == 0
+
+        a = @allowscalar NDArray(rand(T, N))
+        b = @allowscalar NDArray(rand(T, N))
+
+        # First fused launch of a signature should compile and cache.
+        _ = a .+ b
+        n1 = cache_len()
+        @test n1 >= 1
+
+        # Same signature again should hit the cache (no new entry).
+        _ = a .+ b
+        @test cache_len() == n1
+
+        # Different op should miss and add a new entry.
+        _ = a .* b
+        n2 = cache_len()
+        @test n2 > n1
+
+        # Same multiply signature again should hit.
+        _ = a .* b
+        @test cache_len() == n2
+
+        # Different element type should miss and add another entry.
+        a64 = @allowscalar NDArray(rand(Float64, N))
+        b64 = @allowscalar NDArray(rand(Float64, N))
+        _ = a64 .+ b64
+        n3 = cache_len()
+        @test n3 > n2
+
+        _ = a64 .+ b64
+        @test cache_len() == n3
+
+        # Nested fused expression should miss, then hit on re-run.
+        _ = a .+ b .* a
+        n4 = cache_len()
+        @test n4 > n3
+
+        _ = a .+ b .* a
+        @test cache_len() == n4
+    end
+end
