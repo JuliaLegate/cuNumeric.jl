@@ -124,43 +124,97 @@ end
 #     return _broadcast_getindex_evalf(bc.f, args...)
 # end
 
+# Linear work id from the launched 1D CUDA grid. Prefer this over
+# `@index(Global, ...)` so coverage matches each GPU's local tile (device sets
+# blocks/threads from PhysicalArray shape) rather than a host-baked global ndrange.
+@inline function _broadcast_linear_work_id()
+    return (Int(CUDACore.blockIdx().x) - 1) * Int(CUDACore.blockDim().x) +
+           Int(CUDACore.threadIdx().x)
+end
+
 function make_linear_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args)
     f = bc.f
 
-    @kernel function broadcast_kernel_linear_splat(dest, runtime_args...)
-        I = @index(Global, Linear)
-        @inbounds args_modified = _materialize_broadcast_args(
-            arg_plan, runtime_args, static_args, I
-        )
-        @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+    @kernel unsafe_indices = true function broadcast_kernel_linear_splat(dest, runtime_args...)
+        I = _broadcast_linear_work_id()
+        if I <= length(dest)
+            @inbounds args_modified = _materialize_broadcast_args(
+                arg_plan, runtime_args, static_args, I
+            )
+            @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+        end
     end
 
     return broadcast_kernel_linear_splat
 end
 
-function make_cartesian_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args)
-    f = bc.f
-
-    @kernel function broadcast_kernel_cartesian_splat(dest, runtime_args...)
-        I = @index(Global, Cartesian)
-        @inbounds args_modified = _materialize_broadcast_args(
-            arg_plan, runtime_args, static_args, I
-        )
-        @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
-    end
-
-    return broadcast_kernel_cartesian_splat
-end
-
 struct FusedBroadcastMetadata
-    ctx::Any # KA.CompilerMetadata
-    threads::Int
-    blocks::Int
+    ctx::Any # KA.CompilerMetadata (compilation / arg layout; not global ndrange)
+    threads::Int # occupancy thread budget; device chooses final launch dims
     cuda_task::CUDATask
 end
 
-const _BCAST_PTX_CACHE = Dict{Tuple{Any,DataType,DataType,Any},FusedBroadcastMetadata}()
+# Cache by kernel identity + arg types. Launch geometry is derived per-GPU from
+# the local PhysicalArray, so global ndrange is not a key.
+const _BCAST_PTX_CACHE = Dict{Tuple{Any,DataType,DataType},FusedBroadcastMetadata}()
 const _BCAST_PTX_CACHE_LOCK = ReentrantLock()
+
+# Linear-only fusion: every NDArray leaf must match `dest` shape. Shape-mismatched
+# broadcasts (e.g. matrix .+ vector) need cartesian / Extruded indexing and are
+# handled by the unfused path instead.
+@inline _can_fuse_linear_broadcast_leaf(dest, ::Number) = true
+@inline _can_fuse_linear_broadcast_leaf(dest, ::Base.RefValue) = true
+@inline function _can_fuse_linear_broadcast_leaf(dest, x::NDArray)
+    return size(x) == size(dest)
+end
+@inline function _can_fuse_linear_broadcast_leaf(dest, x::Base.Broadcast.Extruded)
+    return _can_fuse_linear_broadcast_leaf(dest, x.x)
+end
+@inline function _can_fuse_linear_broadcast_leaf(dest, bc::Base.Broadcast.Broadcasted)
+    return _can_fuse_linear_broadcast_args(dest, bc.args)
+end
+@inline _can_fuse_linear_broadcast_leaf(dest, @nospecialize(x)) = false
+
+@inline _can_fuse_linear_broadcast_args(dest, ::Tuple{}) = true
+@inline function _can_fuse_linear_broadcast_args(dest, args::Tuple)
+    return _can_fuse_linear_broadcast_leaf(dest, getfield(args, 1)) &&
+           _can_fuse_linear_broadcast_args(dest, Base.tail(args))
+end
+
+"""
+Return true when fused linear broadcast is safe for `bc` into `dest`.
+
+Requires every NDArray leaf to have the same size as `dest`. Scalars / RefValues
+are allowed. Unknown leaf types refuse fusion (fall back to unfused).
+
+Also refuses 0-d destinations: `RunPTXBroadcastTask` only supports dims in
+`[1, 6]`; 0-d falls back to the unfused path.
+"""
+@inline function can_fuse_linear_broadcast(dest::NDArray, bc::Base.Broadcast.Broadcasted)
+    # Device-side launch dims require at least one dimension.
+    ndims(dest) >= 1 || return false
+    return _can_fuse_linear_broadcast_leaf(dest, bc)
+end
+
+# After Broadcast.preprocess, same-shape arrays are wrapped in Extruded with all
+# keeps=true. Unwrap those so the kernel indexes CuDeviceArray with linear `I`
+# (avoids Extruded/CartesianIndices paths that emit gpu_report_exception in PTX).
+@inline function _unwrap_linear_fusion_arg(x::Base.Broadcast.Extruded)
+    if all(x.keeps)
+        return x.x
+    end
+    throw(
+        ArgumentError(
+            "Broadcast fusion (linear-only) does not support shape-mismatched " *
+            "Extruded arguments; use the unfused broadcast path",
+        ),
+    )
+end
+@inline _unwrap_linear_fusion_arg(x) = x
+
+@inline function _unwrap_linear_fusion_args(args::Tuple)
+    return map(_unwrap_linear_fusion_arg, args)
+end
 
 cudevice_array_offset(::Type{T}) where {T<:CUDACore.CuDeviceArray} = 0
 cudevice_array_offset(::Type{T}) where {T<:Base.Broadcast.Extruded} = Int(fieldoffset(T, 1))
@@ -204,18 +258,23 @@ get_ndarray(x::T) where {T<:NDArray} = x
 get_ndarray(x::T) where {T<:Base.Broadcast.Extruded} = x.x
 get_ndarray(x::T) where {T} = throw(error("Broadcast fusion. Don't know what to do with type: $T"))
 
+"""
+Host-side occupancy probe: return a thread *budget* and a minimal KA `ctx` for
+PTX compilation. Final blocks/threads are chosen in `RunPTXBroadcastTask` from
+each GPU's local `PhysicalArray` shape.
+"""
 function _threads_from_occupancy(
     obj::KA.Kernel{CUDACore.CUDAKernels.CUDABackend},
     ::Type{DEST_T},
     ARG_TYPES...;
-    ndrange,
+    ndrange=(1024,),
 ) where {DEST_T}
     backend = KA.backend(obj)
 
+    # Compile-time iterspace only — not used for multi-GPU launch coverage.
     ndrange, workgroupsize, iterspace, dynamic = KA.launch_config(obj, ndrange, nothing)
     ctx = KA.mkcontext(obj, ndrange, iterspace)
 
-    # If the kernel is statically sized we can tell the compiler about that
     maxthreads =
         if KA.workgroupsize(obj) <: KA.StaticSize
             prod(KA.get(KA.workgroupsize(obj)))
@@ -223,7 +282,6 @@ function _threads_from_occupancy(
             nothing
         end
 
-    # Determine threads via occupancy
     tt = Base.to_tuple_type((typeof(ctx), DEST_T, ARG_TYPES...))
     host_kernel = CUDACore.cufunction(
         obj.f,
@@ -233,58 +291,52 @@ function _threads_from_occupancy(
         always_inline=backend.always_inline,
     )
     config = CUDACore.launch_configuration(host_kernel.fun; max_threads=prod(ndrange))
-    threads = config.threads
+    threads = Int(config.threads)
 
+    # Bake ctx workitems to the occupancy budget so KA metadata stays consistent
+    # with the thread count we pass to the device as a budget.
     workgroupsize = CUDACore.CUDAKernels.threads_to_workgroupsize(threads, ndrange)
     iterspace, dynamic = KA.partition(obj, ndrange, workgroupsize)
     ctx = KA.mkcontext(obj, ndrange, iterspace)
-
-    blocks = length(KA.blocks(iterspace))
     threads = length(KA.workitems(iterspace))
 
-    return threads, blocks, ctx
+    return threads, ctx
 end
 
 """
-    get_ptx(obj::KA.Kernel{CUDABackend}, ::Type{DEST_T}, ::Type{BC_T};
-                         ndrange) -> (ptx::String, threads::Int, blocks::Int)
+    get_ptx(obj, DEST_T, arg_types...) -> (ptx, threads, ctx)
 
-Compile a KA CUDA kernel (kernel-body `obj.f(ctx, ...)`) using *types only* for `DEST_T` and `BC_T`,
-choose a workgroup size (threads) using CUDA occupancy when possible, and return the generated PTX.
+Compile a KA CUDA kernel using types only and choose an occupancy thread budget.
 """
 function get_ptx(
     obj::KA.Kernel{CUDACore.CUDAKernels.CUDABackend},
     ::Type{DEST_T},
     arg_types...;
-    ndrange,
 ) where {DEST_T}
-    # println(Base.isbitstype.(arg_types))
-    threads, blocks, ctx = _threads_from_occupancy(obj, DEST_T, arg_types...; ndrange=ndrange)
-    blocks == 0 && return "", 0, 0, ctx #! MAYBE ERROR HERE?
+    threads, ctx = _threads_from_occupancy(obj, DEST_T, arg_types...)
+    threads == 0 && return "", 0, ctx
 
-    # Generate PTX
     buf = IOBuffer()
     #!TODO REMOVE THE MANUAL PTX VERSION HERE!
     CUDATools.code_ptx(buf, obj.f, (typeof(ctx), DEST_T, arg_types...);
         raw=false, kernel=true, ptx=v"7.8")
 
-    return String(take!(buf)), threads, blocks, ctx
+    return String(take!(buf)), threads, ctx
 end
 
 function get_cuda_task(
     obj::KA.Kernel{CUDACore.CUDAKernels.CUDABackend},
     dest::D,
     runtime_args::RT,
-    ndrange,
 ) where {D<:NDArray,RT<:Tuple}
     DEST_T = map_cuda_type(D)
     ARG_TYPES = map_cuda_type.(typeof.(runtime_args))
 
-    key = (obj, D, RT, ndrange)
+    key = (obj, D, RT)
 
     lock(_BCAST_PTX_CACHE_LOCK) do
         return get!(_BCAST_PTX_CACHE, key) do
-            ptx, threads, blocks, ctx = get_ptx(obj, DEST_T, ARG_TYPES...; ndrange=ndrange)
+            ptx, threads, ctx = get_ptx(obj, DEST_T, ARG_TYPES...)
 
             orig_name = extract_kernel_name(ptx)
             unique_name = orig_name * "_" * string(hash(ptx); base=16)
@@ -293,7 +345,7 @@ function get_cuda_task(
             ptx_task(ptx, unique_name)
             cuda_task = CUDATask(unique_name, (DEST_T, ARG_TYPES...))
 
-            return FusedBroadcastMetadata(ctx, threads, blocks, cuda_task)
+            return FusedBroadcastMetadata(ctx, threads, cuda_task)
         end
     end
 end
@@ -395,7 +447,11 @@ function _describe_fused_broadcast(
     isempty(actual_scalars) || field("scalars", join(repr.(actual_scalars), ", "))
     isempty(static_args) || field("static", join(repr.(static_args), ", "))
     field("arg_map", "$(Int.(arg_map))  (0=output, >=1=input idx+1, <0=scalar)")
-    field("launch", "$(fkm.blocks) blocks x $(fkm.threads) threads, ndrange=$ndrange")
+    field(
+        "launch",
+        "host thread budget=$(fkm.threads), indexing=linear, " *
+        "blocks=device(local tile), global_ndrange=$ndrange",
+    )
     field(
         "call",
         _kernel_signature(dest, unique_ndarrays, actual_scalars, arg_map, fkm.cuda_task.func),
@@ -480,22 +536,17 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
     # which do not work with our pattern for making CUDA kernels as they are
     # not is-bits types. We split these out manually into static args and handle
     # them separately from runtime args (i.e., arrays, scalars)
-    runtime_args, static_args, arg_plan = split_broadcast_args_for_kernel(bc.args)
+    runtime_args, static_args, arg_plan = split_broadcast_args_for_kernel(
+        _unwrap_linear_fusion_args(bc.args)
+    )
 
-    broadcast_kernel =
-        if ndims(dest) == 1 ||
-            (isa(IndexStyle(dest), IndexLinear) &&
-            isa(IndexStyle(bc), IndexLinear))
-            make_linear_kernel(dest, bc, arg_plan, static_args)
-        else
-            make_cartesian_kernel(dest, bc, arg_plan, static_args)
-        end
+    broadcast_kernel = make_linear_kernel(dest, bc, arg_plan, static_args)
 
     ndrange = ndims(dest) > 0 ? size(dest) : (1,)
 
     bck_cuda = broadcast_kernel(CUDACore.CUDAKernels.CUDABackend())
 
-    fkm = get_cuda_task(bck_cuda, dest, runtime_args, ndrange)
+    fkm = get_cuda_task(bck_cuda, dest, runtime_args)
 
     num_outputs = 1
 
@@ -534,12 +585,15 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
     )
 
     @task_scope _bcast_scope_name(bc_scope, ndarray_to_input_idx) begin
+        # `blocks=1` is a placeholder; RunPTXBroadcastTask overwrites grid dims
+        # from the local PhysicalArray. `threads` is only the occupancy budget (tx).
+        # Scalars after ctx: num_kernel_args, arg_map...
         launch(
             fkm.cuda_task,
             input_ndarrays,
             (dest,),
             (Int32(length(arg_map)), arg_map..., actual_scalars...);
-            blocks=fkm.blocks,
+            blocks=1,
             threads=fkm.threads,
             taskid=cuNumeric.RUN_PTX_BROADCAST,
             ctx=fkm.ctx,

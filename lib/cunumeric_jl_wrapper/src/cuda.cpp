@@ -20,6 +20,7 @@
 
 #include "cuda.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <regex>
 
@@ -301,17 +302,102 @@ static inline void align8(char *&ptr) {
 //   [9..8+N] = arg_map entries (Int32 each)
 //   [9+N..]  = actual scalar values
 //
+// Host passes an occupancy thread *budget* in tx (ty/tz unused) and a
+// placeholder bx. This task overwrites bx/tx from the local output tile
+// (linear: threads=min(budget,volume), blocks=cld(volume,threads)).
+//
 // arg_map encoding:
 //   val >= 0, val < num_outputs  → output[val] (write CuDeviceArray)
 //   val >= num_outputs           → input[val - num_outputs] (read
 //   CuDeviceArray) val < 0                      → scalar at index -(val + 1) in
 //   trailing scalars
+
+static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
+                                            const legate::PhysicalArray &out) {
+  const std::uint32_t budget = std::max(lp.tx, 1u);
+  const int dim = out.dim();
+
+  if (dim <= 0) {
+    lp.bx = 1;
+    lp.by = 1;
+    lp.bz = 1;
+    lp.tx = 1;
+    lp.ty = 1;
+    lp.tz = 1;
+    return;
+  }
+
+  std::uint64_t volume = 0;
+
+#define CU_BCAST_FILL_VOLUME(D)       \
+  do {                                \
+    volume = out.shape<D>().volume(); \
+  } while (0)
+
+  switch (dim) {
+    case 1:
+      CU_BCAST_FILL_VOLUME(1);
+      break;
+    case 2:
+      CU_BCAST_FILL_VOLUME(2);
+      break;
+    case 3:
+      CU_BCAST_FILL_VOLUME(3);
+      break;
+    case 4:
+      CU_BCAST_FILL_VOLUME(4);
+      break;
+    case 5:
+      CU_BCAST_FILL_VOLUME(5);
+      break;
+    case 6:
+      CU_BCAST_FILL_VOLUME(6);
+      break;
+    default:
+      assert(0 && "broadcast launch: unsupported array dim");
+      return;
+  }
+#undef CU_BCAST_FILL_VOLUME
+
+  if (volume == 0) {
+    lp.bx = 1;
+    lp.by = 1;
+    lp.bz = 1;
+    lp.tx = 1;
+    lp.ty = 1;
+    lp.tz = 1;
+    return;
+  }
+
+  const std::uint32_t threads =
+      static_cast<std::uint32_t>(std::min<std::uint64_t>(budget, volume));
+  const std::uint32_t blocks =
+      static_cast<std::uint32_t>((volume + threads - 1) / threads);
+
+  lp.bx = blocks;
+  lp.by = 1;
+  lp.bz = 1;
+  lp.tx = threads;
+  lp.ty = 1;
+  lp.tz = 1;
+
+#ifdef CUDA_DEBUG
+  std::cerr << "[RunPTXBroadcastTask] local volume=" << volume << " dim=" << dim
+            << " -> blocks=" << lp.bx << " threads=" << lp.tx
+            << " (budget=" << budget << ")" << std::endl;
+#endif
+}
+
 /*static*/ void RunPTXBroadcastTask::gpu_variant(legate::TaskContext context) {
   auto lp = read_launch_params(context);
 
   const std::size_t num_inputs = context.num_inputs();
   const std::size_t num_outputs = context.num_outputs();
   const std::size_t num_scalars = context.num_scalars();
+
+  assert(num_outputs >= 1);
+  broadcast_launch_dims_from_tile(lp, context.output(0));
+
   // Read num_kernel_args first so we can size the buffer precisely
   std::int32_t num_kernel_args =
       context.scalar(ARG_OFFSET + 1).value<std::int32_t>();
