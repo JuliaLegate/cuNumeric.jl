@@ -159,6 +159,9 @@ include("util.jl")
 
 # Compile-time so the fusion branch is elided; flip via CNPreferences before loading.
 const FUSE_BROADCAST_EXPRS = CNPreferences.FUSE_BROADCAST
+# Fuse when broadcast tree length is at least this (see `_broadcast_tree_length`).
+# Default 2 skips single-op exprs like `y .= cos.(x)`. Use 1 to fuse everything.
+const FUSE_BROADCAST_MIN_OPS = CNPreferences.FUSE_BROADCAST_MIN_OPS
 
 # Functionality
 include("ndarray/promotion.jl")

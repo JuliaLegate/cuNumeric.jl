@@ -160,6 +160,28 @@ end
     return dest
 end
 
+# Number of nested `Broadcasted` nodes (ops) in the pre-flatten tree.
+@inline _broadcast_tree_length(@nospecialize(_)) = 0
+@inline _broadcast_tree_length(bc::Broadcasted) =
+    1 + _broadcast_tree_length_args(bc.args)
+@inline _broadcast_tree_length_args(::Tuple{}) = 0
+@inline function _broadcast_tree_length_args(args::Tuple)
+    return _broadcast_tree_length(getfield(args, 1)) +
+           _broadcast_tree_length_args(Base.tail(args))
+end
+
+# Prefer fusion only when the tree has at least `FUSE_BROADCAST_MIN_OPS` ops.
+# When that const is <= 1, every Broadcasted qualifies and the length check
+# compiles out (`@static`).
+@inline function _should_attempt_broadcast_fusion(dest::NDArray, bc::Broadcasted)
+    @static if FUSE_BROADCAST_MIN_OPS <= 1
+        return can_fuse_linear_broadcast(dest, bc)
+    else
+        return _broadcast_tree_length(bc) >= FUSE_BROADCAST_MIN_OPS &&
+               can_fuse_linear_broadcast(dest, bc)
+    end
+end
+
 @inline function _copyto!(dest::NDArray, bc::Broadcasted)
     axes(dest) == axes(bc) || Broadcast.throwdm(axes(dest), axes(bc))
     isempty(dest) && return dest
@@ -175,8 +197,9 @@ end
     # checked pre-launch in `fuse_broadcast_tree!`. CPU vs GPU is compile-time
     # via `@static if FUSE_BROADCAST_EXPRS && HAS_CUDA`.
     # Linear-only fusion requires same-shaped NDArray leaves; otherwise fall back.
+    # Single-op exprs (length < `FUSE_BROADCAST_MIN_OPS`) stay unfused by default.
     @static if FUSE_BROADCAST_EXPRS && HAS_CUDA
-        if can_fuse_linear_broadcast(dest, bc)
+        if _should_attempt_broadcast_fusion(dest, bc)
             return fuse_broadcast_tree!(dest, bc)
         else
             return _copyto_unfused!(dest, unravel_broadcast_tree(bc))

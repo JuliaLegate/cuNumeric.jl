@@ -423,10 +423,16 @@ end
  * Verifies `_BCAST_PTX_CACHE` grows on first fused launch of a signature and
  * is reused (no new entry) on a second launch of the same signature.
  * Gated on `FUSE_BROADCAST_EXPRS` + `HAS_CUDA`; skips otherwise.
+ * With `FUSE_BROADCAST_MIN_OPS > 1`, single-op exprs are unfused — tests
+ * should set min ops to 1 (LocalPreferences / ENV) to exercise the cache.
 =#
 function test_broadcast_fusion_ptx_cache(; T=Float32, N=64)
     if !(cuNumeric.FUSE_BROADCAST_EXPRS && cuNumeric.HAS_CUDA)
         @info "Skipping PTX cache tests (need FUSE_BROADCAST_EXPRS && HAS_CUDA)"
+        return nothing
+    end
+    if cuNumeric.FUSE_BROADCAST_MIN_OPS > 1
+        @info "Skipping PTX cache tests (need FUSE_BROADCAST_MIN_OPS <= 1 to fuse single-op exprs)"
         return nothing
     end
 

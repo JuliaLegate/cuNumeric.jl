@@ -327,9 +327,10 @@ function get_ptx(
     threads == 0 && return "", 0, ctx
 
     buf = IOBuffer()
-    #!TODO REMOVE THE MANUAL PTX VERSION HERE!
+    # dump_module=true keeps only_entry=false so linked libdevice helpers (e.g. cos
+    # slowpaths) are not emptied into unresolved .externs before cuModuleLoad.
     CUDATools.code_ptx(buf, obj.f, (typeof(ctx), DEST_T, arg_types...);
-        raw=false, kernel=true, ptx=v"7.8")
+        raw=false, dump_module=true, kernel=true)
 
     return String(take!(buf)), threads, ctx
 end
