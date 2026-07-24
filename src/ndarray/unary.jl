@@ -106,7 +106,7 @@ function Base.:(-)(input::NDArray{Bool})
 end
 
 function Base.sqrt(input::NDArray{T,2}) where {T}
-    error("cuNumeric.jl does not support matrix square root.")
+    return error("cuNumeric.jl does not support matrix square root.")
 end
 
 @inline function __broadcast(
@@ -274,7 +274,7 @@ global const unary_reduction_map = Dict{Function,UnaryRedCode}(
 # #*TODO HOW TO GET THESE ACTING ON CERTAIN DIMS
 
 function _unary_reduction_apply(out, op_code, input::NDArray{T}, ::Type{T}) where {T}
-    nda_unary_reduction(out, op_code, input)
+    return nda_unary_reduction(out, op_code, input)
 end
 
 function _unary_reduction_apply(out, op_code, input::NDArray, ::Type{U}) where {U}
@@ -285,7 +285,7 @@ function _unary_reduction_apply(out, op_code, input::NDArray, ::Type{U}) where {
 end
 
 function _unary_reduction_axes_apply(op_code, input::NDArray{T}, ::Type{T}, axes) where {T}
-    nda_unary_reduction_axes(op_code, input, axes, true)
+    return nda_unary_reduction_axes(op_code, input, axes, true)
 end
 
 function _unary_reduction_axes_apply(op_code, input::NDArray, ::Type{U}, axes) where {U}
@@ -311,7 +311,9 @@ end
 
 function _unary_reduction_impl(base_func, op_code, input::NDArray{T,N}, dims::Tuple) where {T,N}
     if length(dims) > 1
-        error("$(base_func): reducing over multiple dimensions is not yet supported. Got dims=$dims")
+        error(
+            "$(base_func): reducing over multiple dimensions is not yet supported. Got dims=$dims"
+        )
     end
     # single element tuple
     T_OUT = Base.promote_op(base_func, Vector{T})

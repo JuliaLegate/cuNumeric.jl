@@ -8,6 +8,17 @@ LegatePreferences.@make_preferences("cunumeric_")
 
 # Compile-time: flipping it recompiles cuNumeric, so set it then load in a fresh process.
 const FUSE_BROADCAST = @load_preference("FUSE_BROADCAST_EXPRS", true)
+# Fuse when the broadcast tree has at least this many `Broadcasted` nodes (ops).
+# Default 2 → single ops like `y .= cos.(x)` stay on the unfused path (no PTX compile).
+# Set to 1 (preference or ENV) to fuse every eligible expression (e.g. in tests).
+const FUSE_BROADCAST_MIN_OPS = let
+    env = get(ENV, "CUNUMERIC_FUSE_BROADCAST_MIN_OPS", "")
+    if !isempty(env)
+        parse(Int, env)
+    else
+        @load_preference("FUSE_BROADCAST_MIN_OPS", 2)
+    end
+end
 const TASK_SCOPE_NAMES = @load_preference("TASK_SCOPE_NAMES", false)
 
 function set_broadcast_fusion!(enabled::Bool; export_prefs=false, force=true)
@@ -15,6 +26,13 @@ function set_broadcast_fusion!(enabled::Bool; export_prefs=false, force=true)
 end
 enable_broadcast_fusion!(; kwargs...) = set_broadcast_fusion!(true; kwargs...)
 disable_broadcast_fusion!(; kwargs...) = set_broadcast_fusion!(false; kwargs...)
+
+function set_broadcast_fusion_min_ops!(n::Integer; export_prefs=false, force=true)
+    n >= 1 || throw(ArgumentError("FUSE_BROADCAST_MIN_OPS must be >= 1, got $n"))
+    return set_preferences!(
+        @__MODULE__, "FUSE_BROADCAST_MIN_OPS" => Int(n); export_prefs, force
+    )
+end
 
 function set_task_scope_names!(enabled::Bool; export_prefs=false, force=true)
     return set_preferences!(@__MODULE__, "TASK_SCOPE_NAMES" => enabled; export_prefs, force)

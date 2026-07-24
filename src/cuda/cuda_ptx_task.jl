@@ -40,20 +40,20 @@ function add_padding(arr::NDArray, dims::Dims{N}; copy=false) where {N}
     # julia GC will call finalizer, but we manually cleaned it
     new.ptr = Ptr{Cvoid}(0)
     new.nbytes = 0
-    new.padding = nothing
+    return new.padding = nothing
 end
 
 function add_padding(arr::NDArray, i::Int64; copy=false)
-    add_padding(arr, (i,); copy=copy)
+    return add_padding(arr, (i,); copy=copy)
 end
 
 function check_sz!(arr, maxshape; copy=false)
-    sz = size(arr)
+    sz = cuNumeric.size(arr)
     if maxshape != nothing
         # currently require all ndarray inputs to be equal
         alligned_equal_size = sz == maxshape
         if !alligned_equal_size
-            add_padding(arr, maxshape; copy=copy)
+            cuNumeric.add_padding(arr, maxshape; copy=copy)
             new_size = padded_shape(arr)
             @warn "[Padding Added] $sz output is now $new_size"
         end
@@ -135,12 +135,12 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
 
     # all inputs are aligned with all outputs
     Legate.default_alignment(task, input_vars, output_vars)
-    Legate.submit_auto_task(rt, task)
+    return Legate.submit_auto_task(rt, task)
 end
 
 function launch(kernel::CUDATask, inputs, outputs, scalars;
     blocks, threads, taskid=cuNumeric.RUN_PTX, ctx=nothing)
-    Launch(kernel,
+    return Launch(kernel,
         isa(inputs, Tuple) ? inputs : (inputs,),
         isa(outputs, Tuple) ? outputs : (outputs,),
         isa(scalars, Tuple) ? scalars : (scalars,);
@@ -165,7 +165,7 @@ function ptx_task(ptx::String, kernel_name)
     Legate.submit_manual_task(rt, task)
 
     # Fence so every load finishes before any launch reads the cache.
-    issue_execution_fence(; block=false)
+    return issue_execution_fence(; block=false)
 end
 
 """
@@ -210,21 +210,23 @@ macro cuda_task(call_expr)
     fname = call_expr.args[1]
     fargs = call_expr.args[2:end]
 
-    esc(quote
-        local _buf = IOBuffer()
-        local _types = map_ndarray_cuda_types($(fargs...))
-        # generate ptx using CUDA.jl
-        CUDATools.code_ptx(_buf, $fname, _types; raw=false, kernel=true)
+    return esc(
+        quote
+            local _buf = IOBuffer()
+            local _types = map_ndarray_cuda_types($(fargs...))
+            # generate ptx using CUDA.jl
+            CUDATools.code_ptx(_buf, $fname, _types; raw=false, dump_module=true, kernel=true)
 
-        local _ptx = String(take!(_buf))
-        local _func_name = extract_kernel_name(_ptx)
+            local _ptx = String(take!(_buf))
+            local _func_name = extract_kernel_name(_ptx)
 
-        # issue ptx_task within legate runtime to register cufunction ptr with cucontext
-        ptx_task(_ptx, _func_name)
+            # issue ptx_task within legate runtime to register cufunction ptr with cucontext
+            ptx_task(_ptx, _func_name)
 
-        # create a cuNumeric.CUDAtask that stores some info for a launch config
-        CUDATask(_func_name, _types)
-    end)
+            # create a cuNumeric.CUDAtask that stores some info for a launch config
+            CUDATask(_func_name, _types)
+        end,
+    )
 end
 
 """
@@ -294,7 +296,7 @@ macro launch(args...)
     outputs = get(kwargs, :outputs, :(()))
     scalars = get(kwargs, :scalars, :(()))
 
-    esc(
+    return esc(
         quote
             cuNumeric.launch(
                 $task, $inputs, $outputs, $scalars;
