@@ -65,6 +65,38 @@ steps:
           #       julia: "1.12"
           #     soft_fail : true
 
+  - group: ":hammer: Developer"
+    key: "developer"
+    steps:
+      - label: "GPU - Julia 1.11 (source wrapper, fusion {{matrix.fusion}})"
+        plugins:
+          - JuliaCI/julia#v1:
+              version: "1.11"
+        command: ".buildkite/run_developer_ci.sh"
+        artifact_paths:
+          - "deps/build.log"
+          - "deps/*.log"
+          - "deps/*.err"
+          - "*.log"
+        agents:
+          queue: "cuda"
+        if: build.message !~ /\[skip tests\]/
+        timeout_in_minutes: 60
+        env:
+          LD_LIBRARY_PATH: ""
+          LEGATE_AUTO_CONFIG: "0"
+          LEGATE_SHOW_CONFIG: "1"
+          GPUTESTS: "1"
+          LEGATE_TEST: "1"
+          LEGATE_CONFIG: "--cpus 1 --gpus 1 --utility 1 --fbmem 500 --logging legate=info,level=2 --log-to-file 1"
+          CUNUMERIC_FUSION: "{{matrix.fusion}}"
+          CUNUMERIC_FUSE_BROADCAST_MIN_OPS: "1"
+        matrix:
+          setup:
+            fusion:
+              - "on"
+              - "off"
+
   # - group: ":computer: CUDA Versions (Julia 1.11)"
   #   key: "cuda"
   #   depends_on: "julia"
