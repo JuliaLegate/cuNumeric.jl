@@ -12,9 +12,21 @@ case "${CUNUMERIC_FUSION:-}" in
         ;;
 esac
 
+LEGATE_BRANCH_INPUT="${BUILDKITE_MESSAGE:-}"
+if [[ "${BUILDKITE_PULL_REQUEST:-false}" =~ ^[0-9]+$ ]]; then
+    echo "Reading Legate branch override from pull request #$BUILDKITE_PULL_REQUEST"
+    PR_BODY="$(
+        curl --fail --silent --show-error --location \
+            --header "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/JuliaLegate/cuNumeric.jl/pulls/$BUILDKITE_PULL_REQUEST" |
+            python3 -c 'import json, sys; print(json.load(sys.stdin).get("body") or "")'
+    )"
+    LEGATE_BRANCH_INPUT+=$'\n'"$PR_BODY"
+fi
+
 shopt -s nocasematch
 LEGATE_BRANCH=""
-if [[ "${BUILDKITE_MESSAGE:-}" =~ legate[-_]branch:[[:space:]]*([A-Za-z0-9._/-]+) ]]; then
+if [[ "$LEGATE_BRANCH_INPUT" =~ legate[-_]branch:[[:space:]]*([A-Za-z0-9._/-]+) ]]; then
     LEGATE_BRANCH="${BASH_REMATCH[1]}"
 fi
 shopt -u nocasematch
@@ -24,6 +36,7 @@ if [[ -n "$LEGATE_BRANCH" ]]; then
     echo "Using Legate.jl branch override: $LEGATE_BRANCH"
     git clone --depth 1 --branch "$LEGATE_BRANCH" \
         https://github.com/JuliaLegate/Legate.jl.git "$LEGATE_CHECKOUT"
+    git -C "$LEGATE_CHECKOUT" log -1 --format="Legate checkout: %D (%H)"
     (
         cd "$LEGATE_CHECKOUT"
         julia --color=yes --project="$CI_PROJECT" -e '
