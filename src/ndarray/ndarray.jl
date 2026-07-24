@@ -170,17 +170,33 @@ function (::Type{<:Array})(arr::NDArray{B}) where {B}
 end
 
 # conversion from Base Julia array to NDArray
-function (::Type{<:NDArray{T}})(arr::Array{T,N}) where {T,N}
+# Julia Arrays are column-major; Legate stores are row-major. For N>=2 we
+# materialize a C-ordered buffer via permutedims, attach it with the original
+# shape, and keep that buffer as `parent` for lifetime.
+function _nda_from_julia_array(arr::Array{T,0}) where {T}
     return cuNumeric.nda_attach_external(arr)
+end
+
+function _nda_from_julia_array(arr::Array{T,1}) where {T}
+    return cuNumeric.nda_attach_external(arr)
+end
+
+function _nda_from_julia_array(arr::Array{T,N}) where {T,N}
+    tmp = collect(permutedims(arr, reverse(ntuple(identity, Val(N)))))
+    return cuNumeric.nda_attach_external(tmp; shape=size(arr))
+end
+
+function (::Type{<:NDArray{T}})(arr::Array{T,N}) where {T,N}
+    return _nda_from_julia_array(arr)
 end
 
 function (::Type{<:NDArray{A}})(arr::Array{B,N}) where {A,B,N}
-    # If types differ, we cast in Julia first (creating a temp) then attach
-    return cuNumeric.nda_attach_external(A.(arr))
+    # If types differ, cast in Julia first (creating a temp) then attach
+    return _nda_from_julia_array(convert(Array{A}, arr))
 end
 
 function (::Type{<:NDArray})(arr::Array{T,N}) where {T,N}
-    return cuNumeric.nda_attach_external(arr)
+    return _nda_from_julia_array(arr)
 end
 
 # Base.convert(::Type{<:NDArray{T}}, a::A) where {T, A} = NDArray(T(a))::NDArray{T}

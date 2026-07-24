@@ -405,8 +405,8 @@ function nda_transpose(arr::NDArray{T,N}) where {T,N}
     return NDArray(ptr, T, Val(N))
 end
 
-function nda_attach_external(arr::AbstractArray{T,N}) where {T,N}
-    st = Legate.attach_external(arr)
+function nda_attach_external(arr::Array{T,N}; shape::Dims{N}=size(arr)) where {T,N}
+    st = Legate.attach_external_row_major(arr; shape)
     # Use the CxxWrap method for type-safe interaction
     # This returns a raw pointer compatible with the NDArray constructor
     # `nda_store_to_ndarray` takes the store by value; drop the Julia-owned

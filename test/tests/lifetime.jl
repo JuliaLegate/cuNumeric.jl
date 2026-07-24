@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,8 +17,21 @@
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 
-@testset "Zero-Copy Verification" begin
+@testset "Array ↔ NDArray value roundtrip (row-major attach)" begin
     A = rand(Float64, 4, 4)
+    NA = NDArray(A)
+
+    @allowscalar begin
+        @test all(A .== Array(NA))
+        for i in 1:4, j in 1:4
+            @test NA[i, j] == A[i, j]
+        end
+    end
+end
+
+@testset "Zero-Copy Verification (1D)" begin
+    # 1D attach remains zero-copy; N>=2 copies into a C-ordered buffer.
+    A = rand(Float64, 16)
     NA = NDArray(A)
 
     @allowscalar begin
@@ -28,16 +41,16 @@
     @test pointer(A) == cuNumeric.get_ptr(NA)
 
     # modify julia array, verify ndarray sees it
-    A[1, 1] = 99.0
+    A[1] = 99.0
     @allowscalar begin
-        @test NA[1, 1] == 99.0
+        @test NA[1] == 99.0
     end
 
     # modify ndarray, verify julia array sees it
     @allowscalar begin
-        NA[2, 2] = 88.0
+        NA[2] = 88.0
     end
-    @test A[2, 2] == 88.0
+    @test A[2] == 88.0
 end
 
 @testset "Lifetime Protection" begin
@@ -76,8 +89,8 @@ end
 
     # the temporary Float64 array should be kept alive by NA.parent
     GC.gc(true)
-    GC.gc(true) 
-    GC.gc(true) 
+    GC.gc(true)
+    GC.gc(true)
 
     @allowscalar begin
         @test NA[1] == 1.0
@@ -88,5 +101,23 @@ end
     @allowscalar begin
         NA[1] = 42.0
         @test NA[1] == 42.0
+    end
+end
+
+@testset "2D attach parent lifetime" begin
+    function create_2d()
+        local_A = rand(Float32, 8, 8)
+        local_A[1, 1] = 3.14f0
+        return NDArray(local_A), local_A[1, 1]
+    end
+
+    NA, expected_val = create_2d()
+    GC.gc(true)
+    GC.gc(true)
+    GC.gc(true)
+
+    @allowscalar begin
+        @test NA[1, 1] == expected_val
+        @test Array(NA)[1, 1] == expected_val
     end
 end
