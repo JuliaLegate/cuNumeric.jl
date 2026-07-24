@@ -126,12 +126,26 @@ enum class AccessMode {
   WRITE,
 };
 
+// Dense — MUST match CUDA.jl CuDeviceArray bit layout (RunPTXTask /
+// @cuda_task).
 template <size_t D>
 struct CuDeviceArray {
   void *ptr;                     // Pointer to device memory
   uint64_t maxsize;              // Total allocated size in bytes
   std::array<uint64_t, D> dims;  // Fixed-size array of dimension sizes
   uint64_t length;               // Number of elements (at the end)
+};
+
+// Strided — matches Julia cuNumeric.CuStridedDeviceArray (RunPTXBroadcastTask
+// only).
+template <size_t D>
+struct CuStridedDeviceArray {
+  void *ptr;
+  uint64_t maxsize;
+  std::array<uint64_t, D> dims;
+  std::array<uint64_t, D>
+      strides;  // element strides (byte strides / sizeof(T))
+  uint64_t length;
 };
 
 #define CUDA_DEVICE_ARRAY_ARG(MODE, ACCESSOR_CALL)                             \
@@ -162,8 +176,48 @@ struct CuDeviceArray {
     p += sizeof(CuDeviceArray<D>);                                             \
   }
 
+#define CUDA_STRIDED_DEVICE_ARRAY_ARG(MODE, ACCESSOR_CALL)                     \
+  template <                                                                   \
+      typename T, int D,                                                       \
+      typename std::enable_if<(D >= 1 && D <= REALM_MAX_DIM), int>::type = 0>  \
+  void cuda_strided_device_array_arg_##MODE(char *&p,                          \
+                                            const legate::PhysicalArray &rf) { \
+    auto shp = rf.shape<D>();                                                  \
+    auto acc = rf.data().ACCESSOR_CALL<T, D>();                                \
+    CUDA_DEBUG_PRINT(                                                          \
+        std::cerr << "[RunPTXBroadcastTask] " #MODE " accessor shape: "        \
+                  << shp.lo << " - " << shp.hi << ", dim: " << D << std::endl; \
+        std::cerr << "[RunPTXBroadcastTask] " #MODE                            \
+                  << " accessor byte strides: " << acc.accessor.strides        \
+                  << std::endl;);                                              \
+    void *dev_ptr = const_cast<void *>(                                        \
+        static_cast<const void *>(acc.ptr(Realm::Point<D>(shp.lo))));          \
+    auto extents = shp.hi - shp.lo + legate::Point<D>::ONES();                 \
+    CuStridedDeviceArray<D> desc;                                              \
+    desc.ptr = dev_ptr;                                                        \
+    desc.maxsize = shp.volume() * sizeof(T);                                   \
+    for (size_t i = 0; i < D; ++i) {                                           \
+      desc.dims[i] = extents[i];                                               \
+      /* Legion AffineAccessor::strides are in bytes */                        \
+      desc.strides[i] = acc.accessor.strides[i] / sizeof(T);                   \
+    }                                                                          \
+    desc.length = shp.volume();                                                \
+    CUDA_DEBUG_PRINT(std::cerr << "[RunPTXBroadcastTask] " #MODE               \
+                               << " packed dims=";                             \
+                     for (size_t i = 0; i < D; ++i) std::cerr                  \
+                     << desc.dims[i] << (i + 1 < D ? "," : "");                \
+                     std::cerr << " elem_strides=";                            \
+                     for (size_t i = 0; i < D; ++i) std::cerr                  \
+                     << desc.strides[i] << (i + 1 < D ? "," : "");             \
+                     std::cerr << " length=" << desc.length << std::endl;);    \
+    memcpy(p, &desc, sizeof(CuStridedDeviceArray<D>));                         \
+    p += sizeof(CuStridedDeviceArray<D>);                                      \
+  }
+
 CUDA_DEVICE_ARRAY_ARG(read, read_accessor);    // cuda_device_array_arg_read
 CUDA_DEVICE_ARRAY_ARG(write, write_accessor);  // cuda_device_array_arg_write
+CUDA_STRIDED_DEVICE_ARRAY_ARG(read, read_accessor);
+CUDA_STRIDED_DEVICE_ARRAY_ARG(write, write_accessor);
 
 struct ufiFunctor {
   template <legate::Type::Code CODE, int DIM>
@@ -173,6 +227,17 @@ struct ufiFunctor {
       cuda_device_array_arg_read<CppT, DIM>(p, arr);
     else
       cuda_device_array_arg_write<CppT, DIM>(p, arr);
+  }
+};
+
+struct ufiStridedFunctor {
+  template <legate::Type::Code CODE, int DIM>
+  void operator()(AccessMode mode, char *&p, const legate::PhysicalArray &arr) {
+    using CppT = typename legate_util::code_to_cxx<CODE>::type;
+    if (mode == AccessMode::READ)
+      cuda_strided_device_array_arg_read<CppT, DIM>(p, arr);
+    else
+      cuda_strided_device_array_arg_write<CppT, DIM>(p, arr);
   }
 };
 
@@ -307,9 +372,9 @@ static inline void align8(char *&ptr) {
 // (linear: threads=min(budget,volume), blocks=cld(volume,threads)).
 //
 // arg_map encoding:
-//   val >= 0, val < num_outputs  → output[val] (write CuDeviceArray)
+//   val >= 0, val < num_outputs  → output[val] (write CuStridedDeviceArray)
 //   val >= num_outputs           → input[val - num_outputs] (read
-//   CuDeviceArray) val < 0                      → scalar at index -(val + 1) in
+//   CuStridedDeviceArray) val < 0 → scalar at index -(val + 1) in
 //   trailing scalars
 
 static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
@@ -408,8 +473,8 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
       padded_bytes_kernel_state +
       context.scalar(ARG_OFFSET).size() +  // ctx (CompilerMetadata)
       num_kernel_args *
-          (sizeof(CuDeviceArray<REALM_MAX_DIM>) +
-           8);  // worst case: all args are CuDeviceArrays + alignment
+          (sizeof(CuStridedDeviceArray<REALM_MAX_DIM>) +
+           8);  // worst case: all args are CuStridedDeviceArrays + alignment
   for (std::size_t i = scalar_values_start; i < num_scalars; ++i) {
     max_buffer_size += context.scalar(i).size();
   }
@@ -424,19 +489,19 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
     p += ctx_scalar.size();
   }
 
-  // 2. Read arg_map and reconstruct arg buffer
+  // 2. Read arg_map and reconstruct arg buffer (strided descriptors)
   for (std::int32_t i = 0; i < num_kernel_args; ++i) {
     std::int32_t val = context.scalar(map_start + i).value<std::int32_t>();
 
     if (val >= 0 && val < static_cast<std::int32_t>(num_outputs)) {
       align8(p);
       auto ps = context.output(val);
-      legate::double_dispatch(ps.dim(), ps.type().code(), ufiFunctor{},
+      legate::double_dispatch(ps.dim(), ps.type().code(), ufiStridedFunctor{},
                               ufi::AccessMode::WRITE, p, ps);
     } else if (val >= static_cast<std::int32_t>(num_outputs)) {
       align8(p);
       auto ps = context.input(val - num_outputs);
-      legate::double_dispatch(ps.dim(), ps.type().code(), ufiFunctor{},
+      legate::double_dispatch(ps.dim(), ps.type().code(), ufiStridedFunctor{},
                               ufi::AccessMode::READ, p, ps);
     } else {
       std::size_t scalar_idx = static_cast<std::size_t>(-(val + 1));

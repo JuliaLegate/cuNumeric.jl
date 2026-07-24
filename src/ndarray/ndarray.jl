@@ -142,16 +142,31 @@ end
 # conversion from NDArray to Base Julia array
 # get_ptr is a blocking call that grabs the physical store
 # we have not tested across multiple processes or devices yet
+
+function (::Type{<:Array{A}})(arr::NDArray{B,0}) where {A,B}
+    out = Array{A}(undef)
+    allowscalar() do
+        out[] = convert(A, arr[])
+    end
+    return out
+end
+
+function (::Type{<:Array{A}})(arr::NDArray{B,1}) where {A,B}
+    return make_array(A, Ptr{A}(get_ptr(arr)), size(arr))
+end
+
+# TODO: query the store's DimOrdering instead of assuming row-major (C-order).
+# Julia Arrays are column-major, so for C-ordered buffers we transpose, wrap,
+# then transpose back so `Array(nda)` matches `nda[i,j]`.
 function (::Type{<:Array{A}})(arr::NDArray{B}) where {A,B}
-    dims = Base.size(arr)
-    ptr = Ptr{A}(get_ptr(arr))
-    return make_array(A, ptr, dims)
+    t = transpose(arr)
+    w = make_array(B, Ptr{B}(get_ptr(t)), size(t))
+    out = collect(permutedims(w, reverse(1:ndims(w))))
+    return A === B ? out : copyto!(Array{A}(undef, size(arr)), out)
 end
 
 function (::Type{<:Array})(arr::NDArray{B}) where {B}
-    dims = Base.size(arr)
-    ptr = Ptr{B}(get_ptr(arr))
-    return make_array(B, ptr, dims)
+    return Array{B}(arr)
 end
 
 # conversion from Base Julia array to NDArray

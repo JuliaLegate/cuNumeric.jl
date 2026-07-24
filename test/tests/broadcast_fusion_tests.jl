@@ -271,32 +271,52 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         @allowscalar @test cuNumeric.compare(s1 .* ja .* s2, result, atol, rtol)
     end
 
-    # Gray-Scott-style slice stencil; bare Int64 `2` must match unfused (host
-    # converts via `__my_promote_type` after flatten). Slices refuse fusion and
-    # fall back to the unfused path (dense CuDeviceArray packing is view-unsafe).
-    @testset "fused slice stencil with bare Int64 scalar" begin
+    # Gray-Scott-style slice stencils: strided views must fuse correctly via
+    # CuStridedDeviceArray (packed Legate element strides).
+    @testset "fused slice stencils (X/Y and slice dest)" begin
         N = 32
         ja = rand(T, N, N)
         u = @allowscalar NDArray(ja)
-        result =
+        two = T(2)
+
+        # X-shifted (vary first index)
+        result_x =
             u[3:end, 2:(end - 1)] .- 2 .* u[2:(end - 1), 2:(end - 1)] .+
             u[1:(end - 2), 2:(end - 1)]
-        expected =
-            ja[3:end, 2:(end - 1)] .- T(2) .* ja[2:(end - 1), 2:(end - 1)] .+
+        expected_x =
+            ja[3:end, 2:(end - 1)] .- two .* ja[2:(end - 1), 2:(end - 1)] .+
             ja[1:(end - 2), 2:(end - 1)]
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test cuNumeric.compare(expected_x, result_x, atol, rtol)
 
-        dest = similar(result)
-        bc = Base.Broadcast.instantiate(
+        dest_x = similar(result_x)
+        bc_x = Base.Broadcast.instantiate(
             Base.broadcasted(
                 +,
                 Base.broadcasted(
-                    -, u[3:end, 2:(end - 1)], Base.broadcasted(*, 2, u[2:(end - 1), 2:(end - 1)])
+                    -,
+                    u[3:end, 2:(end - 1)],
+                    Base.broadcasted(*, 2, u[2:(end - 1), 2:(end - 1)]),
                 ),
                 u[1:(end - 2), 2:(end - 1)],
             ),
         )
-        @test !cuNumeric.can_fuse_linear_broadcast(dest, bc)
+        @test cuNumeric.can_fuse_linear_broadcast(dest_x, bc_x)
+
+        # Y-shifted (vary second index) — previously failed under dense packing
+        result_y =
+            u[2:(end - 1), 3:end] .- 2 .* u[2:(end - 1), 2:(end - 1)] .+
+            u[2:(end - 1), 1:(end - 2)]
+        expected_y =
+            ja[2:(end - 1), 3:end] .- two .* ja[2:(end - 1), 2:(end - 1)] .+
+            ja[2:(end - 1), 1:(end - 2)]
+        @allowscalar @test cuNumeric.compare(expected_y, result_y, atol, rtol)
+
+        # Assign into a slice destination
+        out = @allowscalar NDArray(zeros(T, N, N))
+        out[2:(end - 1), 2:(end - 1)] = result_x .+ result_y
+        expected_out = zeros(T, N, N)
+        expected_out[2:(end - 1), 2:(end - 1)] = expected_x .+ expected_y
+        @allowscalar @test cuNumeric.compare(expected_out, out, atol, rtol)
     end
 
     @testset "fused/unfused scalar promotion parity" begin

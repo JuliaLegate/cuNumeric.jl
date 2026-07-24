@@ -11,7 +11,8 @@ function _setup_cuda_tasking()
     end
 end
 
-# Other memeory types here: https://github.com/JuliaGPU/CUDA.jl/blob/345c1600ebd561135148bb04ee2657f521a40e25/CUDACore/src/device/pointer.jl#L7
+# Dense @cuda_task / RunPTXTask — MUST match CUDA.jl CuDeviceArray layout.
+# Other memory types: https://github.com/JuliaGPU/CUDA.jl/blob/345c1600ebd561135148bb04ee2657f521a40e25/CUDACore/src/device/pointer.jl#L7
 function ndarray_cuda_type(::Type{<:NDArray{T,N}}) where {T,N}
     CUDACore.CuDeviceArray{T,N,CUDACore.AS.Global}
 end
@@ -24,13 +25,13 @@ end
 """
     map_cuda_type(::Type{T})::Type
 
-Recursively rewrite cuNumeric broadcast-related types so they can be treated as CUDA-friendly
-types for code generation (e.g. mapping `NDArray{...}` to `CuDeviceArray{...}` inside
-`Base.Broadcast.Broadcasted{...}` type parameters).
+Recursively rewrite cuNumeric broadcast-related types for fused-broadcast PTX
+(e.g. mapping `NDArray{...}` to `CuStridedDeviceArray{...}`). Dense `@cuda_task`
+uses `ndarray_cuda_type` → CUDA.jl `CuDeviceArray` instead.
 """
 map_cuda_type(::Type{T}) where {T} = T
 
-map_cuda_type(::Type{<:NDArray{T,N}}) where {T,N} = CUDACore.CuDeviceArray{T,N,CUDACore.AS.Global}
+map_cuda_type(::Type{<:NDArray{T,N}}) where {T,N} = CuStridedDeviceArray{T,N,CUDACore.AS.Global}
 
 function map_cuda_type(::Type{T}) where {T<:Tuple}
     return Tuple{map_cuda_type.(T.parameters)...}
