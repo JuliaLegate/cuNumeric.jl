@@ -8,6 +8,15 @@ end
 
 Base.@propagate_inbounds _gpu_broadcast_getindex(x::Number, I) = x
 
+# Bypass Broadcast.newindex: for N-D arrays, `_broadcast_getindex(A, I::Int)` becomes
+# `A[CartesianIndex(I, 1, 1, ...)]`, which is wrong for our linear work ids.
+# Dest already uses linear `dest[I]`; reads must use the same strided linear path.
+Base.@propagate_inbounds @inline function _gpu_broadcast_getindex(
+    x::CuStridedDeviceArray, I::Integer
+)
+    return @inbounds x[I]
+end
+
 Base.@propagate_inbounds @inline function _materialize_broadcast_arg(
     ::RuntimeBroadcastArg{J},
     runtime_args,
@@ -151,13 +160,12 @@ const _BCAST_PTX_CACHE_LOCK = ReentrantLock()
 # broadcasts (e.g. matrix .+ vector) need cartesian / Extruded indexing and are
 # handled by the unfused path instead.
 #
-# Slices/views (`parent !== nothing`) are refused: `RunPTXBroadcastTask` packs
-# dense CuDeviceArrays without strides, so fused linear indexing is wrong for
-# strided Legate transforms (Gray-Scott Y-stencil, etc.).
+# Slice views are allowed: RunPTXBroadcastTask packs element strides so linear
+# `I` indexes through CuStridedDeviceArray correctly.
 @inline _can_fuse_linear_broadcast_leaf(dest, ::Number) = true
 @inline _can_fuse_linear_broadcast_leaf(dest, ::Base.RefValue) = true
 @inline function _can_fuse_linear_broadcast_leaf(dest, x::NDArray)
-    return size(x) == size(dest) && x.parent === nothing
+    return size(x) == size(dest)
 end
 @inline function _can_fuse_linear_broadcast_leaf(dest, x::Base.Broadcast.Extruded)
     return _can_fuse_linear_broadcast_leaf(dest, x.x)
@@ -176,22 +184,20 @@ end
 """
 Return true when fused linear broadcast is safe for `bc` into `dest`.
 
-Requires every NDArray leaf to have the same size as `dest` and not be a slice
-view (`parent === nothing`). Scalars / RefValues are allowed. Unknown leaf
-types refuse fusion (fall back to unfused).
+Requires every NDArray leaf to have the same size as `dest`. Scalars / RefValues
+are allowed. Unknown leaf types refuse fusion (fall back to unfused).
 
-Also refuses 0-d or sliced destinations: `RunPTXBroadcastTask` only supports
-dims in `[1, 6]` with dense CuDeviceArray packing.
+Also refuses 0-d destinations: `RunPTXBroadcastTask` only supports dims in
+`[1, 6]`; 0-d falls back to the unfused path.
 """
 @inline function can_fuse_linear_broadcast(dest::NDArray, bc::Base.Broadcast.Broadcasted)
     # Device-side launch dims require at least one dimension.
     ndims(dest) >= 1 || return false
-    dest.parent === nothing || return false
     return _can_fuse_linear_broadcast_leaf(dest, bc)
 end
 
 # After Broadcast.preprocess, same-shape arrays are wrapped in Extruded with all
-# keeps=true. Unwrap those so the kernel indexes CuDeviceArray with linear `I`
+# keeps=true. Unwrap those so the kernel indexes CuStridedDeviceArray with linear `I`
 # (avoids Extruded/CartesianIndices paths that emit gpu_report_exception in PTX).
 @inline function _unwrap_linear_fusion_arg(x::Base.Broadcast.Extruded)
     if all(x.keeps)
@@ -220,10 +226,10 @@ function _align_fused_runtime_args(runtime_args::Tuple)
     return map(a -> unchecked_promote_scalar(a, T_IN), runtime_args)
 end
 
-cudevice_array_offset(::Type{T}) where {T<:CUDACore.CuDeviceArray} = 0
+cudevice_array_offset(::Type{T}) where {T<:CuStridedDeviceArray} = 0
 cudevice_array_offset(::Type{T}) where {T<:Base.Broadcast.Extruded} = Int(fieldoffset(T, 1))
 
-stores_cudevicearray(::Type{T}) where {T<:CUDACore.CuDeviceArray} = true
+stores_cudevicearray(::Type{T}) where {T<:CuStridedDeviceArray} = true
 stores_cudevicearray(::Type{T}) where {T<:Base.Broadcast.Extruded} = true
 stores_cudevicearray(::Type{T}) where {T<:Number} = false
 stores_cudevicearray(::Type{T}) where {T<:Bool} = false

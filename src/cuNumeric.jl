@@ -152,6 +152,7 @@ const TASK_SCOPE_NAMES = CNPreferences.TASK_SCOPE_NAMES
 include("ndarray/detail/ndarray.jl")
 
 # Utilities
+include("cuda/strided_device_array.jl")
 include("cuda/cuda_util.jl")
 include("utilities/version.jl")
 include("util.jl")
