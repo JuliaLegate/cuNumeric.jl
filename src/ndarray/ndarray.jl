@@ -766,12 +766,14 @@ end
 
 function h5write(path::String, dataset::String, arr::NDArray{T,N}) where {T,N}
     st_handle = get_store(arr)
-    la = Legate.LogicalArray{T,N}(st_handle[], size(arr))
-    Legate.write_hdf5(la, path, dataset)
+    # NDArrays are row-major, so this writes straight through (no dim flip, no warning).
+    la = Legate.LogicalArray{T,N}(st_handle, size(arr))
+    Legate.h5write(path, dataset, la)
 end
 
 function h5read(path::String, dataset::String)
-    la = Legate.read_hdf5(path, dataset)
+    # Read the raw row-major store; `layout` only affects la.dims, which we bypass below.
+    la = Legate.h5read(path, dataset)
     T = eltype(la)
     N = Int(Legate.dim(la))
     st = Legate.data(la.handle)  # call data on the raw impl

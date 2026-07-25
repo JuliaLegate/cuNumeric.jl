@@ -45,7 +45,7 @@ mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
         handle = new{T,N,false,Nothing}(ptr, nbytes, nothing, nothing)
         finalizer(handle) do h
             cuNumeric.nda_destroy_array(h.ptr)
-            cuNumeric.register_free!(h.nbytes)
+            return cuNumeric.register_free!(h.nbytes)
         end
         return handle
     end
@@ -57,12 +57,12 @@ mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
         handle = new{T,N,false,P}(ptr, nbytes, nothing, parent)
         finalizer(handle) do h
             cuNumeric.nda_destroy_array(h.ptr)
-            cuNumeric.register_free!(h.nbytes)
+            return cuNumeric.register_free!(h.nbytes)
         end
         return handle
     end
 end
-# this here is to avoid if else patterns 
+# this here is to avoid if else patterns
 @inline _NDArray(ptr, T, v, ::Nothing) = NDArray(ptr, T, v)
 @inline _NDArray(ptr, T, v, parent) = NDArray(ptr, T, v, parent)
 
@@ -107,7 +107,7 @@ function nda_full_array(dims::Dims{N}, value::T) where {T,N}
 end
 
 function nda_random(arr::NDArray, gen_code)
-    ccall((:nda_random, libnda),
+    return ccall((:nda_random, libnda),
         Cvoid, (NDArray_t, Int32),
         arr.ptr, Int32(gen_code))
 end
@@ -133,7 +133,7 @@ nda_array_dim(arr::NDArray) = ccall((:nda_array_dim, libnda),
 nda_array_size(arr::NDArray) = ccall((:nda_array_size, libnda),
     Int32, (NDArray_t,), arr.ptr)
 function nda_array_type_code(arr::NDArray)
-    ccall((:nda_array_type_code, libnda),
+    return ccall((:nda_array_type_code, libnda),
         Int32, (NDArray_t,), arr.ptr)
 end
 
@@ -174,7 +174,7 @@ function nda_fill_array(arr::NDArray{T}, value::T) where {T}
 end
 
 function nda_assign(arr::NDArray{T}, other::NDArray{T}) where {T}
-    ccall((:nda_assign, libnda),
+    return ccall((:nda_assign, libnda),
         Cvoid, (NDArray_t, NDArray_t),
         arr.ptr, other.ptr)
 end
@@ -194,7 +194,7 @@ function nda_move(dst::NDArray{T,N}, src::NDArray{T,N}) where {T,N}
 
     src.ptr = Ptr{Cvoid}(0)
     src.nbytes = 0
-    register_free!(dst.nbytes)
+    return register_free!(dst.nbytes)
 end
 
 # operations
@@ -219,7 +219,9 @@ function nda_unary_reduction(out::NDArray, op_code::UnaryRedCode, input::NDArray
     return out
 end
 
-function nda_unary_reduction_axes(op_code::UnaryRedCode, input::NDArray{T,N}, axes::Vector{Int32}, keepdims::Bool) where {T,N}
+function nda_unary_reduction_axes(
+    op_code::UnaryRedCode, input::NDArray{T,N}, axes::Vector{Int32}, keepdims::Bool
+) where {T,N}
     axes_c = collect(Int32, axes)
     ptr = ccall((:nda_unary_reduction_axes, libnda),
         NDArray_t, (UnaryRedCode, NDArray_t, Ptr{Int32}, Int32, Cint),
@@ -336,11 +338,10 @@ function get_store(arr::NDArray)
 end
 
 function get_ptr(arr::NDArray{T,N}) where {T,N}
-    # Get the raw Legate array impl
-    st_handle = get_store(arr) # CxxPtr{LogicalArrayImpl}
+    # Get the raw Legate array impl (a LogicalArrayImpl value)
+    st_handle = get_store(arr)
     # Wrap it in the high-level LogicalArray struct expected by Legate.get_ptr
-    # st_handle[] dereferences the CxxPtr to get the LogicalArrayImpl object
-    la = Legate.LogicalArray{T,N}(st_handle[], size(arr))
+    la = Legate.LogicalArray{T,N}(st_handle, size(arr))
     return Legate.get_ptr(la)
 end
 
@@ -354,7 +355,7 @@ Converts a Julia 1-based index tuple `idx` to a zero-based C++ style index wrapp
 Each element of `idx` is decremented by 1 to adjust from Julia’s 1-based indexing to C++ 0-based indexing.
 """
 function to_cpp_index(idx::Dims{N}, (::Type{T})=UInt64) where {N,T<:Integer}
-    StdVector(T.([e - 1 for e in idx]))
+    return StdVector(T.([e - 1 for e in idx]))
 end
 
 @doc"""
@@ -387,7 +388,7 @@ Constructs a `cuNumeric.Slice` object representing a slice with optional start a
 """
 
 function slice(start::Union{Nothing,Integer}, stop::Union{Nothing,Integer})
-    cuNumeric.Slice(
+    return cuNumeric.Slice(
         isnothing(start) ? 0 : 1,
         isnothing(start) ? 0 : Int64(start),
         isnothing(stop) ? 0 : 1,
