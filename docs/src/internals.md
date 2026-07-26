@@ -4,14 +4,14 @@ This page describes the implementation details of kernel fusion, manual memory m
 
 ## Broadcast fusion
 
-We compile nested Julia broadcast expressions on `NDArray` to single CUDA kernel instead of launching one kernel per operation.
+We compile nested Julia broadcast expressions on `NDArray` to a single CUDA kernel instead of launching one kernel per operation.
 
 ### Pipeline
 
-1. You write a dotted or `@.` expression such as `y .= @. a * b + c`.
-2. Julia builds the `Broadcasted` tree.
-3. **Fused path:** Flatten the tree, build kernel with CUDA.jl, launch kernel with Legate.
-4. **Unfused path:** `unravel_broadcast_tree` recursively unravel the tree and execute each operation one at a time.
+- **Expression:** You write a dotted or `@.` expression such as `y .= @. a * b + c`.
+- **Broadcast tree:** Julia builds the `Broadcasted` tree.
+- **Fused path:** Flatten the tree, build a kernel with CUDA.jl, and launch it with Legate.
+- **Unfused path:** `unravel_broadcast_tree` recursively unravels the tree and executes each operation one at a time.
 
 ## Lifetimes and GC
 
@@ -21,9 +21,9 @@ Julia's GC sees an `NDArray` as a small handle. The actual data is owned by the 
 
 `@analyze_lifetimes` rewrites a block at macro-expansion time:
 
-1. Hoist temporary allocations into named temps.
-2. Find each temp's static last use.
-3. Insert calls to free temporary `NDArrays` after last-use.
+- Hoist temporary allocations into named temps.
+- Find each temp's static last use.
+- Insert calls to free temporary `NDArrays` after last-use.
 
 Under broadcast fusion, intermediate dotted nodes are **not** real `NDArray` allocations. The macro switches to a fusion-aware hoist that keeps dotted trees lazy and only treats slices, broadcast roots, and non-broadcast calls as real allocations. When fusion is off, every call (including dotted ops) is treated as a real allocation.
 
