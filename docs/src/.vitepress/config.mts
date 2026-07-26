@@ -15,15 +15,31 @@ const baseTemp = {
 }
 
 const navTemp = {
+  // DocumenterVitepress still fills this token; we intentionally omit page links
+  // from the top bar (sidebar has the TOC). Keep only the version picker.
   nav: 'REPLACE_ME_DOCUMENTER_VITEPRESS',
 }
 
+const sidebarTemp = {
+  sidebar: 'REPLACE_ME_DOCUMENTER_VITEPRESS',
+}
+
 const nav = [
-  ...navTemp.nav,
   {
     component: 'VersionPicker'
   }
 ]
+
+// VitePress packs root-level leaves into anonymous groups (muted level-1 text).
+// Attach an empty `items` array so Home stays a bold, clickable level-0 title.
+function keepRootLeavesAsGroups<T extends { link?: string; items?: unknown[] }>(items: T[]): T[] {
+  return items.map((item) => {
+    if (item.link && !item.items) {
+      return { ...item, items: [] }
+    }
+    return item
+  })
+}
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
@@ -85,7 +101,7 @@ export default defineConfig({
       }
     },
     nav,
-    sidebar: 'REPLACE_ME_DOCUMENTER_VITEPRESS',
+    sidebar: keepRootLeavesAsGroups(sidebarTemp.sidebar),
     editLink: 'REPLACE_ME_DOCUMENTER_VITEPRESS',
     socialLinks: [
       { icon: 'github', link: 'REPLACE_ME_DOCUMENTER_VITEPRESS' }

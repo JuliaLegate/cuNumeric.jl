@@ -1,7 +1,8 @@
-# Build Options
+# Build Modes
 
-To make customization of the build options easier we have the `CNPreferences.jl` package to generate the `LocalPreferences.toml` which is read by the build script to determine which build option to use. CNPreferences.jl will also enforce that Julia is restarted for changes to take effect.
+This page covers installing Julia and choosing a binary provider for cuNumeric. For defaults and a short tour of `CNPreferences`, start with [Configuration](./configuration.md).
 
+`CNPreferences` writes `LocalPreferences.toml` and requires a Julia restart when the build mode changes.
 
 ## Julia Installation
 
@@ -42,6 +43,7 @@ pkg> add CNPreferences
 ## Developer mode
 > [!TIP]
 > This gives the most flexibility in installs. It is meant for developing on cuNumeric.jl.
+> For rebuilding `lib/cunumeric_jl_wrapper` after C++ changes, see [Developer Mode](./developer_mode.md).
 
 We support using a custom install version of cupynumeric. See https://docs.nvidia.com/cupynumeric/latest/installation.html for details about different install configurations, or building cupynumeric from source.
 
@@ -51,11 +53,13 @@ To use developer mode,
 ```julia
 using CNPreferences; CNPreferences.use_developer_mode(; use_jll=true, path=nothing)
 ```
-By default `use_cunumeric_jll` will be set to true. However, you can set a custom branch and/or use a custom path of cupynumeric. By setting `use_jll=false`, you can set `path` to your custom install.
+By default `use_jll` will be set to true. However, you can use a custom path of cupynumeric. By setting `use_jll=false`, you can set `path` to your custom install.
 ```julia
 using CNPreferences; CNPreferences.use_developer_mode(;use_jll=false, path="/path/to/cupynumeric/root")
 
 ```
+
+After enabling developer mode (and after any wrapper edits), rebuild with `Pkg.build("cuNumeric")` and restart Julia. Details are on [Developer Mode](./developer_mode.md).
 
 ## Link Against Existing Conda Environment
 
@@ -64,12 +68,21 @@ using CNPreferences; CNPreferences.use_developer_mode(;use_jll=false, path="/pat
 
 Note, you need conda >= 24.1 to install the conda package. More installation details are found [here](https://docs.nvidia.com/cupynumeric/latest/installation.html).
 
+````@eval
+using Markdown
+mm = Main.CUPYNUMERIC_MAJOR_MINOR
+compat = Main.CUPYNUMERIC_JLL_COMPAT
+Markdown.parse("""
+Supported cupynumeric versions match the `cupynumeric_jll` major.minor in this repo's `Project.toml`. Currently that pin is `cupynumeric_jll = "$(compat)"`, so use the **$(mm)** conda line:
+
 ```bash
 # with a new environment
-conda create -n myenv -c conda-forge -c cupynumeric
+conda create -n myenv -c conda-forge -c cupynumeric cupynumeric=$(mm)
 # into an existing environment
-conda install -c conda-forge -c cupynumerice
+conda install -c conda-forge -c cupynumeric cupynumeric=$(mm)
 ```
+""")
+````
 Once you have the conda package installed, you can activate here.
 ```bash
 conda activate [conda-env-with-cupynumeric]
@@ -77,6 +90,7 @@ conda activate [conda-env-with-cupynumeric]
 
 To update `LocalPreferences.toml` so that a local conda environment is used as the binary provider for cupynumeric run the following command. `conda_env` should be the absolute path to the conda environment (e.g., the value of CONDA_PREFIX when your environment is active). For example, this path is: `/home/JuliaLegate/.conda/envs/cupynumeric-gpu`.
 ```julia
-using CNPreferences; CNPreferences.use_conda("conda-env-with-legate");
+using CNPreferences
+CNPreferences.use_conda(ENV["CONDA_PREFIX"])  # absolute path, e.g. from CONDA_PREFIX
 Pkg.build()
 ```

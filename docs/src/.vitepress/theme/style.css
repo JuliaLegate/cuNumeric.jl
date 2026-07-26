@@ -173,3 +173,56 @@ mjx-container > svg {
   margin: auto;
   display: inline-block;
 }
+
+/* Top-level leaf sidebar titles (e.g. Home with empty items[]) match group weight.
+   VitePress otherwise packs lone root links into muted level-1 entries. */
+.VPSidebarItem.level-0.is-link > .item .text {
+  font-weight: 700;
+  color: var(--vp-c-text-1);
+}
+
+/* Home is level-0 but not `.collapsed`, so VitePress gives it 24px bottom padding
+   vs 10px for collapsed section headers. Match the collapsed spacing. */
+.VPSidebarItem.level-0.is-link {
+  padding-bottom: 10px;
+}
+
+/* VitePress defaults doc images to display:block, which stacks README badges. */
+.vp-doc p > a > img {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Pull search to the right, beside the version picker (menu), and give it a
+   real width. VitePress sets flex-grow:1 on search, which parks a tiny button
+   on the left of the content bar. */
+@media (min-width: 768px) {
+  .VPNavBarSearch {
+    flex-grow: 0 !important;
+    margin-left: auto;
+    padding-left: 0 !important;
+    min-width: 16rem;
+    max-width: 22rem;
+  }
+
+  .VPNavBarSearch .DocSearch-Button {
+    width: 100%;
+    min-width: 16rem;
+    justify-content: flex-start;
+  }
+}
+
+@media (min-width: 960px) {
+  .VPNavBarSearch {
+    min-width: 18rem;
+    max-width: 24rem;
+  }
+
+  .VPNavBarSearch .DocSearch-Button {
+    min-width: 18rem;
+  }
+}
+
+.VPNavBar .search + .menu {
+  margin-left: 0.5rem;
+}

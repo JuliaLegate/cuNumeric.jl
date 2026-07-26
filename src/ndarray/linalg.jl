@@ -71,6 +71,18 @@ _solve_eltype(::Type{T}) where {T<:_SOLVE_PROMOTABLE} = Float64
 _solve_eltype(::Type{T}) where {T<:SUPPORTED_SOLVE_TYPES} = T
 
 # Type/dim guards dispatch on one argument at a time, then forward to `_solve`.
+"""
+    cuNumeric.solve(A, b)
+
+Solve linear system(s) `A * x = b`.
+
+`A` must have shape `(..., m, m)`. `b` must have shape `(..., m)` or `(..., m, n)`.
+The result has the same shape as `b`. Batch dimensions are supported; the
+implementation always uses the batched Legate `SOLVE` path.
+
+Accepted element types are `Float32`, `Float64`, `ComplexF32`, and `ComplexF64`.
+Integer or `Bool` inputs promote to `Float64` only when promotion is allowed.
+"""
 function solve(a::NDArray{<:_SOLVE_ACCEPTED}, b::NDArray{<:_SOLVE_ACCEPTED})
     A, B = eltype(a), eltype(b)
     O = promote_type(_solve_eltype(A), _solve_eltype(B))

@@ -1,17 +1,13 @@
 name: Docs
 on:
   push:
-    paths:
-      - '.github/workflows/docs.yml'
-      - 'src/**'
-      - 'docs/src/**'
-      - 'docs/make.jl'
-      - 'docs/Project.toml'
-      - 'README.md'
-    tags:
-      - 'v*'
     branches:
       - main
+    # Tag pushes must not share a `paths:` filter with branch pushes: GitHub
+    # requires both filters to match, and tag events often have no path diff,
+    # so release docs would never deploy.
+    tags:
+      - 'v*'
   pull_request:
     paths:
     - '.github/workflows/docs.yml'
@@ -20,6 +16,7 @@ on:
     - 'docs/make.jl'
     - 'docs/Project.toml'
     - 'README.md'
+    - 'lib/CNPreferences/**'
 jobs:
   check_changes:
     name: Check for wrapper changes
@@ -38,7 +35,9 @@ jobs:
   docs:
     name : Documentation
     needs: check_changes
-    if: ${{ github.base_ref == 'main' || needs.check_changes.outputs.wrapper_changed != 'true' }}
+    # Always build on tags/releases. On PRs/pushes, skip only when the C++ wrapper
+    # changed (those PRs use a different docs path). `base_ref` is set for PRs.
+    if: ${{ github.ref_type == 'tag' || github.base_ref == 'main' || needs.check_changes.outputs.wrapper_changed != 'true' }}
     permissions:
       actions: write
       contents: write

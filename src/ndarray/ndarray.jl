@@ -30,10 +30,10 @@ function transpose(arr::NDArray)
 end
 
 @doc"""
-    cuNumeric.eye([T,] rows::Int)
+    cuNumeric.eye([T=Float32,] rows::Int)
 
-Create a 2D identity `NDArray` of size `rows x rows` with element type `T`
-(defaults to `DEFAULT_FLOAT`).
+Create a 2D identity `NDArray` of size `rows × rows` with element type `T`.
+The default type is Float32 if not specified.
 """
 function eye(::Type{T}, rows::Int) where {T}
     return nda_eye(Int32(rows), T)
@@ -647,25 +647,9 @@ function ones()
 end
 
 @doc"""
-    cuNumeric.rand!(arr::NDArray)
+    cuNumeric.rand!(arr::NDArray{Float64})
 
-Fills `arr` with AbstractFloats uniformly at random.
-
-    cuNumeric.rand(NDArray, dims::Int...)
-    cuNumeric.rand(NDArray, dims::Tuple)
-
-Create a new `NDArray` of element type Float64, filled with uniform random values.
-
-The backend currently supports only `Float64` with uniform distribution.
-In order to support other Floats, we type convert for the user automatically.
-This can create extra allocations.
-
-# Examples
-```@repl
-cuNumeric.rand(2, 2)
-cuNumeric.rand((4, 1))
-A = cuNumeric.zeros(2, 2); cuNumeric.rand!(A)
-```
+Fill `arr` in-place with uniform random `Float64` values.
 """
 Random.rand!(arr::NDArray{Float64}) = cuNumeric.nda_random(arr, 0)
 function Random.rand!(arr::NDArray{T}) where {T}
@@ -674,6 +658,22 @@ end
 
 # Backend only generates Float64. Same-type path needs no cast; other floats
 # convert then eagerly drop the Float64 source so it cannot leak until GC.
+@doc"""
+    cuNumeric.rand([T=Float32,] dims::Int...)
+    cuNumeric.rand([T=Float32,] dims::Tuple)
+
+Create a new `NDArray` filled with uniform random values.
+
+The backend currently supports only `Float64` draws. Other floating types are
+converted automatically.
+
+# Examples
+```@repl
+cuNumeric.rand(2, 2)
+cuNumeric.rand((4, 1))
+A = cuNumeric.zeros(Float64, 2, 2); cuNumeric.rand!(A)
+```
+"""
 rand(::Type{Float64}, dims::Dims) = cuNumeric.nda_random_array(dims)
 
 function rand(::Type{T}, dims::Dims) where {T<:AbstractFloat}
