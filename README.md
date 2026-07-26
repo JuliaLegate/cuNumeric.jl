@@ -1,6 +1,9 @@
-# cuNumeric.jl
+<h1>
+  <img src="docs/src/assets/logo.png" alt="cuNumeric.jl" width="50">
+  <a href="https://julialegate.github.io/cuNumeric.jl/dev/">cuNumeric.jl</a>
+</h1>
 
-[Documentation dev](https://julialegate.github.io/cuNumeric.jl/dev/) [codecov](https://app.codecov.io/github/JuliaLegate/cuNumeric.jl) [License: MIT](https://opensource.org/licenses/MIT)
+[![Documentation dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://julialegate.github.io/cuNumeric.jl/dev/) [![codecov](https://codecov.io/github/julialegate/cuNumeric.jl/branch/main/graph/badge.svg)](https://app.codecov.io/github/JuliaLegate/cuNumeric.jl) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
 cuNumeric.jl wraps and extends the [cuPyNumeric](https://github.com/nv-legate/cupynumeric) library from NVIDIA to bring distributed array computing on GPUs and CPUs to Julia. The central type is `NDArray`, which behaves like Julia's `Array` or the `CuArray` from [CUDA.jl](https://github.com/juliagpu/cuda.jl), but executes across multiple GPUs/CPUs. We implement array-level operations on `NDArray` which can be composed into larger programs without the need for explicit MPI calls or writing CUDA kernels.
 

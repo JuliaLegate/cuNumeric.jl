@@ -46,7 +46,6 @@ makedocs(;
             "Patterns to Avoid" => "perf/patterns_to_avoid.md",
         ],
         "Configuration" => [
-            "Overview" => "configuration.md",
             "Hardware" => "configuration/hardware.md",
             "Build Modes" => "install.md",
             "CNPreferences" => "api_preferences.md",

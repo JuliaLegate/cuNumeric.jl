@@ -68,6 +68,11 @@ end
     set_task_scope_names!(enabled::Bool; export_prefs=false, force=true)
 
 Enable or disable named Legate task scopes for debugging. Default is off.
+
+When enabled, cuNumeric wraps ops in `Legate.with_scope` so provenance labels
+appear in Legate logs/profiles. Pair with `LEGATE_CONFIG` flags such as
+`--logging legate=debug --log-to-file` (set before Julia starts). Requires a
+fresh Julia process after changing the preference.
 """
 function set_task_scope_names!(enabled::Bool; export_prefs=false, force=true)
     return set_preferences!(@__MODULE__, "TASK_SCOPE_NAMES" => enabled; export_prefs, force)
@@ -76,7 +81,7 @@ end
 """
     enable_task_scope_names!(; export_prefs=false, force=true)
 
-Enable named Legate task scopes for debugging.
+Enable named Legate task scopes for debugging. See [`set_task_scope_names!`](@ref).
 """
 enable_task_scope_names!(; kwargs...) = set_task_scope_names!(true; kwargs...)
 

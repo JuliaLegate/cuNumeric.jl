@@ -1,15 +1,20 @@
+[compat]
+CNPreferences = "0.1.2"
+Documenter = "1.5"
+cuNumeric = "0.1"
+
 [deps]
-cuNumeric = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
 CNPreferences = "3e078157-ea10-49d5-bf32-908f777cd46f"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 DocumenterVitepress = "4710194d-e776-4893-9690-8d956a29c365"
 LiveServer = "16fef848-5104-11e9-1b77-fb7a48bbb589"
+cuNumeric = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
 
-[compat]
-Documenter = "1.5"
-cuNumeric = "0.1"
-CNPreferences = "0.1.2"
+[extras]
+LegatePreferences = "8028f36a-2b64-49e9-aa04-2d0933fd2ed9"
 
-[sources]
-cuNumeric = {path = ".."}
-CNPreferences = {path = "../lib/CNPreferences"}
+[sources.CNPreferences]
+path = "../lib/CNPreferences"
+
+[sources.cuNumeric]
+path = ".."

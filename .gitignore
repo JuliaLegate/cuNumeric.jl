@@ -95,3 +95,8 @@ node_modules
 *.out
 *.app
 .githash
+
+# VitePress caches/output (keep docs/src/.vitepress/config.mts + theme/)
+docs/.vitepress/
+docs/src/.vitepress/cache/
+docs/src/.vitepress/dist/

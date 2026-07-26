@@ -1,23 +1,35 @@
 # Build Modes
 
+cuNumeric.jl gets its cupynumeric / Legate binaries from one of three providers, chosen through `CNPreferences` (writes `LocalPreferences.toml`; **restart Julia** after changing mode):
+
+| Mode | When to use |
+|---|---|
+| **JLL (default)** | Normal installs; prebuilt artifacts from the Julia package server |
+| **Developer** | Building or hacking the in-tree C++ wrapper, or a custom cupynumeric tree |
+| **Conda** | Linking against an existing conda env that already has cupynumeric |
+
+Install `CNPreferences` on its own if you want to set the mode before adding `cuNumeric`:
+
+```julia
+using Pkg
+Pkg.add("CNPreferences")
+```
+
 ## Default Build (jlls)
 
 ```julia
 using Pkg
 Pkg.add("cuNumeric")
 ```
-If you previously used a custom build or conda build and would like to revert back to using prebuilt JLLs, run the following command in the directory containing the Project.toml of your environment.
+
+If you previously used a custom build or conda build and would like to revert back to using prebuilt JLLs:
 
 ```julia
-using CNPreferences; CNPreferences.use_jll_binary()
+using CNPreferences
+CNPreferences.use_jll_binary()
 ```
 
-`CNPreferences` is a separate module so that it can be used to configure the build settings before `cuNumeric.jl` is added to your environment. To install it separately run
-
-```julia
-using Pkg
-Pkg.add("CNPreferences")
-```
+Then restart Julia. Run `Pkg.build("cuNumeric")` if you left a non-JLL mode.
 
 ## Developer mode
 > [!TIP]
@@ -70,6 +82,10 @@ conda activate [conda-env-with-cupynumeric]
 To update `LocalPreferences.toml` so that a local conda environment is used as the binary provider for cupynumeric run the following command. `conda_env` should be the absolute path to the conda environment (e.g., the value of CONDA_PREFIX when your environment is active). For example, this path is: `/home/JuliaLegate/.conda/envs/cupynumeric-gpu`.
 ```julia
 using CNPreferences
+using Pkg
+
 CNPreferences.use_conda(ENV["CONDA_PREFIX"])  # absolute path, e.g. from CONDA_PREFIX
-Pkg.build()
+Pkg.build("cuNumeric")
 ```
+
+Then **restart Julia** so the new mode loads.

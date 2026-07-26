@@ -84,3 +84,49 @@ How to read it:
 Turn the flag off when you are done. It prints on every fused launch and can be noisy in loops.
 
 See [Kernel Fusion](./perf/kernel_fusion.md) for `@.` / fusion usage, and [Internals](./internals.md) for how these features work.
+
+## Inspect Legate with logging and task-scope names
+
+Legate itself is configured through `LEGATE_CONFIG` (set **before** Julia starts). For runtime logs, add logging flags to that string:
+
+```bash
+export LEGATE_AUTO_CONFIG=0
+export LEGATE_CONFIG="--gpus 1 --cpus 4 --logging legate=debug --log-to-file"
+julia --project=. -e 'using cuNumeric; ...'
+```
+
+What the flags do:
+
+- `--logging legate=debug` raises the `legate` logger (levels include `info` / `debug` etc.).
+- `--log-to-file` writes `legate_*.log` per rank under the launch directory (override with `--logdir <path>`).
+
+For a timeline view instead of text logs, pass `--profile` (produces `legate_*.prof`; view with `legate_prof`). Prefer logging **or** profiling in a given run; mixing them can distort timings.
+
+### Named task scopes in those logs
+
+You can label regions of Julia code with `Legate.with_scope(name) do ... end`. The string becomes provenance on operations submitted inside the block, which shows up in `legate_*.log` (or a `--profile` trace) and makes it easier to map runtime work back to your program.
+
+Start Julia with logging (or `--profile`) already set in `LEGATE_CONFIG`, then wrap the phases you care about:
+
+```bash
+export LEGATE_CONFIG="--gpus 1 --cpus 4 --logging legate=debug --log-to-file"
+julia --project=.
+```
+
+```julia
+using cuNumeric
+import Legate
+
+A = Legate.with_scope("setup") do
+    cuNumeric.ones(Float32, 64, 64)
+end
+B = Legate.with_scope("setup") do
+    cuNumeric.ones(Float32, 64, 64)
+end
+
+D = Legate.with_scope("fused_broadcast") do
+    @. A * B + 2.0f0
+end
+```
+
+Separately, [task scope names](./api_preferences.md#task-scope-names) (`CNPreferences.enable_task_scope_names!`) is a **compile-time** preference that auto-wraps many cuNumeric entry points in `Legate.with_scope` with short op labels (for example `matmul`, `zeros`, or `broadcast.+(*(input0, input1), scalar0)`). That is optional and independent of manual `with_scope` blocks: flip it, restart Julia, and individual ops get named even without wrapping your own code. Call `CNPreferences.disable_task_scope_names!()` and restart when you are done.

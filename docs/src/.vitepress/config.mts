@@ -93,7 +93,9 @@ export default defineConfig({
   },
   themeConfig: {
     outline: 'deep',
-    logo: 'REPLACE_ME_DOCUMENTER_VITEPRESS',
+    // Keep logo.png in assets/ for the README/home page, but do not show it
+    // in the VitePress navbar (DocumenterVitepress would inject /logo.png here).
+    logo: false,
     search: {
       provider: 'local',
       options: {

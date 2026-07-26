@@ -193,6 +193,14 @@ mjx-container > svg {
   vertical-align: middle;
 }
 
+/* Keep the home title logo inline with the heading text (width comes from the
+   HTML width="50" attribute). */
+.vp-doc h1 img {
+  display: inline-block;
+  vertical-align: middle;
+  margin: 0 0.25em 0 0;
+}
+
 /* Pull search to the right, beside the version picker (menu), and give it a
    real width. VitePress sets flex-grow:1 on search, which parks a tiny button
    on the left of the content bar. */
