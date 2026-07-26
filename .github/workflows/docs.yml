@@ -1,14 +1,23 @@
 name: Docs
 on:
   push:
-    # Always rebuild on main, regardless of which files changed.
-    branches:
-      - main
-  pull_request:
+    # All branches when docs-affecting paths change (including PR source branches).
     paths:
+      - '.github/workflows/docs.yml'
+      - '.github/workflows/docs-tags.yml'
+      - 'src/**'
       - 'docs/**'
       - 'README.md'
+      - 'lib/CNPreferences/**'
+  pull_request:
+    # Fires on open/sync/reopen — i.e. pushes to a PR branch.
+    paths:
       - '.github/workflows/docs.yml'
+      - '.github/workflows/docs-tags.yml'
+      - 'src/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'lib/CNPreferences/**'
   workflow_dispatch:
 jobs:
   check_changes:
@@ -28,9 +37,9 @@ jobs:
   docs:
     name : Documentation
     needs: check_changes
-    # Always build on main pushes and manual dispatch. On PRs targeting main,
-    # always build. Otherwise skip only when the C++ wrapper changed.
-    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.base_ref == 'main' || needs.check_changes.outputs.wrapper_changed != 'true' }}
+    # Always build on manual dispatch and on PRs to main. Otherwise skip only
+    # when the C++ wrapper changed.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || needs.check_changes.outputs.wrapper_changed != 'true' }}
     permissions:
       actions: write
       contents: write
