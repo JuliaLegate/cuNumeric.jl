@@ -1,16 +1,10 @@
 name: Docs
 on:
   push:
-    # Any branch, when docs-affecting paths change.
-    paths:
-      - '.github/workflows/docs.yml'
-      - '.github/workflows/docs-tags.yml'
-      - 'src/**'
-      - 'docs/**'
-      - 'README.md'
-      - 'lib/CNPreferences/**'
+    # After merge: deploy live docs. Feature branches only run via pull_request.
+    branches:
+      - main
   pull_request:
-    # open / synchronize / reopen (pushes to a PR branch).
     paths:
       - '.github/workflows/docs.yml'
       - '.github/workflows/docs-tags.yml'
