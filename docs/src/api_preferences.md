@@ -50,7 +50,7 @@ CNPreferences.set_broadcast_fusion_min_ops!
 
 ## Task scope names
 
-Default: **off**. Optional Legate task-scope naming for debugging. When on, cuNumeric wraps many ops in `Legate.with_scope` so provenance strings (for example `matmul`, `zeros`, or fused `broadcast.<expr>`) appear in Legate logs and profiles. Pair this with `--logging legate=debug --log-to-file` (or `--profile`) in `LEGATE_CONFIG`; see [Debugging](./debugging.md#inspect-legate-with-logging-and-task-scope-names).
+Default: **off**. Optional Legate task-scope naming for debugging. When on, cuNumeric wraps many ops in `Legate.with_scope` so provenance strings (for example `matmul`, `zeros`, or fused `broadcast.<expr>`) appear in Legate logs and profiles. Pair this with `--logging legate=debug --log-to-file` (or `--profile`) in `LEGATE_CONFIG`; see [Debugging](./debugging.md#trace-legate-runtime-work).
 
 ```julia
 using CNPreferences
