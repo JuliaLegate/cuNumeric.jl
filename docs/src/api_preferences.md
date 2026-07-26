@@ -10,7 +10,6 @@ All preference changes write `LocalPreferences.toml` and generally require a **f
 CNPreferences.use_jll_binary
 CNPreferences.use_conda
 CNPreferences.use_developer_mode
-CNPreferences.check_unchanged
 ```
 
 ## Broadcast fusion

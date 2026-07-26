@@ -23,12 +23,6 @@ Pages = ["ndarray/binary.jl"]
 Filter = t -> t isa Function && nameof(t) === :mul!
 ```
 
-Notes:
-
-- Supported element types are floating-point and complex (with usual promotion rules). Integer×integer and Bool×Bool matmul are not supported.
-- Scalar `*` scales an array. That is not matmul.
-- There is no matvec or batched GEMM through `*` today. Both arguments must be 2D.
-
 ## Solve (batched)
 
 `cuNumeric.solve(A, b)` solves linear systems. It is not Julia's `\`.

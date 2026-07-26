@@ -1,10 +1,10 @@
 # Debugging
 
-cuNumeric.jl has two printers that help you inspect what the compiler and runtime are doing without guessing from timings alone.
+cuNumeric.jl has two pretty printers that help you inspect what the compiler and runtime are doing.
 
 ## Inspect lifetime rewrites with `@show_lifetimes`
 
-`@analyze_lifetimes` rewrites a block so temps are freed after their last use. `@show_lifetimes` prints that rewrite without running the code. It is pure AST work, so it works even without a GPU.
+`@analyze_lifetimes` rewrites a block so temps are freed after their last use. `@show_lifetimes` prints the re-written code (without execution). It is pure AST work, so it works even without a GPU.
 
 ```julia
 using cuNumeric

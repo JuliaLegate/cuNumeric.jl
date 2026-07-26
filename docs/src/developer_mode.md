@@ -1,8 +1,6 @@
 # Developer Mode
 
-Developer mode builds the Julia↔C++ wrapper from the sources in this repo under `lib/cunumeric_jl_wrapper`, instead of downloading a prebuilt `cunumeric_jl_wrapper_jll`. Use it when you change the wrapper, debug the C-API boundary, or point at a custom cupynumeric install.
-
-For the short preference switch and how developer mode sits next to JLL / conda, see [Build Modes](./install.md). This page is the day-to-day workflow once that preference is set.
+Developer mode builds the Julia C++ wrapper from the sources in this repo under `lib/cunumeric_jl_wrapper`, instead of downloading a prebuilt `cunumeric_jl_wrapper_jll`. Use it when you change the wrapper, debug the C-API boundary, or point at a custom cupynumeric install.
 
 ## When to use it
 
@@ -52,10 +50,8 @@ If the build fails, check CMake / g++ (C++20) / CUDA toolkit availability as des
 1. Edit lib/cunumeric_jl_wrapper/...
 2. Pkg.build("cuNumeric")
 3. Restart Julia
-4. using cuNumeric   # exercise the new API / bugfix
+4. using cuNumeric
 ```
-
-Keep Legate.jl's own developer preferences consistent if you are also hacking `lib/legate_jl_wrapper` in a sibling Legate.jl checkout. Mismatched wrapper modes are a common source of confusing load errors.
 
 ## Switch back to JLLs
 

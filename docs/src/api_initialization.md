@@ -1,6 +1,6 @@
 # Initialization
 
-Constructors for new `NDArray`s. Prefer `cuNumeric.zeros`, `cuNumeric.ones`, and friends (they are not the Base methods). Default floating-point type is `Float32`.
+Constructors for new `NDArray`s. Default floating-point type is `Float32`.
 
 ## zeros
 

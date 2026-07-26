@@ -1,10 +1,8 @@
 # Unary Operations
 
-Prefer `@.` for multi-op elementwise expressions so every operator is dotted (especially unary negation). That keeps the meaning correct and stays friendly to broadcast fusion. See [Kernel Fusion](./perf/kernel_fusion.md).
+>[!NOTE]
+> Prefer `@.` for multi-op elementwise expressions so every operator is dotted (especially unary negation). This ensures broadcast operations are fused. See [Kernel Fusion](./perf/kernel_fusion.md).
 
-```julia
-y .= @. -a + sin(b)
-```
 
 The following unary operations are supported and can be broadcast over `NDArray`:
 

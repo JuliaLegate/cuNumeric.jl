@@ -1,11 +1,12 @@
 # Configuration
 
-cuNumeric is configured through the `CNPreferences` package. Preferences are written to `LocalPreferences.toml` and take effect after you **restart Julia** (many values are compile-time constants).
+cuNumeric.jl is configured through the `CNPreferences` package. Preferences are written to `LocalPreferences.toml` and take effect after you **restart Julia**.
 
 Install `CNPreferences` on its own if you want to configure builds before adding `cuNumeric`:
 
 ```julia
-pkg> add CNPreferences
+using Pkg
+Pkg.add("CNPreferences")
 ```
 
 ## Defaults
@@ -14,7 +15,7 @@ Out of the box, with no `LocalPreferences.toml` changes:
 
 | Setting | Default |
 |---|---|
-| Binary / build mode | **JLL** prebuilt binaries (`use_jll_binary`) |
+| Binary / build mode | **JLL** prebuilt binaries |
 | Broadcast fusion | **on** |
 | `FUSE_BROADCAST_MIN_OPS` | **2** (single-op broadcasts stay unfused) |
 | Task scope names | **off** |
@@ -22,7 +23,8 @@ Out of the box, with no `LocalPreferences.toml` changes:
 Typical first install:
 
 ```julia
-pkg> add cuNumeric
+using Pkg
+Pkg.add("cuNumeric")
 ```
 
 That uses JLLs. Broadcast fusion is already enabled. You do not need to call any `CNPreferences` setters unless you want a different build or you want to change fusion / debug prefs.

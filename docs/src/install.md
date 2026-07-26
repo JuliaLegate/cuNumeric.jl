@@ -1,32 +1,10 @@
 # Build Modes
 
-This page covers installing Julia and choosing a binary provider for cuNumeric. For defaults and a short tour of `CNPreferences`, start with [Configuration](./configuration.md).
-
-`CNPreferences` writes `LocalPreferences.toml` and requires a Julia restart when the build mode changes.
-
-## Julia Installation
-
-cuNumeric supports Julia 1.10 and 1.11. We recommend installing Julia with [juliaup](https://github.com/JuliaLang/juliaup):
-
-```
-curl -fsSL https://install.julialang.org | sh -s -- --default-channel 1.11
-```
-
-This will install version 1.11 by default since that is what we have tested against. To verify 1.11 is the default run either of the following (you may need to source bashrc):
-```bash
-juliaup status
-julia --version
-```
-
-If 1.11 is not your default, please set it to be the default. Other versions of Julia are untested.
-```bash
-juliaup default 1.11
-```
-
 ## Default Build (jlls)
 
 ```julia
-pkg> add cuNumeric
+using Pkg
+Pkg.add("cuNumeric")
 ```
 If you previously used a custom build or conda build and would like to revert back to using prebuilt JLLs, run the following command in the directory containing the Project.toml of your environment.
 
@@ -37,7 +15,8 @@ using CNPreferences; CNPreferences.use_jll_binary()
 `CNPreferences` is a separate module so that it can be used to configure the build settings before `cuNumeric.jl` is added to your environment. To install it separately run
 
 ```julia
-pkg> add CNPreferences
+using Pkg
+Pkg.add("CNPreferences")
 ```
 
 ## Developer mode
