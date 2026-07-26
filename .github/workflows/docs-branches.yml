@@ -1,15 +1,15 @@
-name: Docs
+# Docs builds for non-main branches when docs-related paths change.
+# Main always builds via docs.yml (no path filter). Tags via docs-tags.yml.
+name: Docs (branches)
 on:
   push:
-    # Always rebuild on main, regardless of which files changed.
-    branches:
+    branches-ignore:
       - main
-  pull_request:
     paths:
       - 'docs/**'
       - 'README.md'
       - '.github/workflows/docs.yml'
-  workflow_dispatch:
+      - '.github/workflows/docs-branches.yml'
 jobs:
   check_changes:
     name: Check for wrapper changes
@@ -26,11 +26,9 @@ jobs:
               - 'lib/cunumeric_jl_wrapper/**'
 
   docs:
-    name : Documentation
+    name: Documentation
     needs: check_changes
-    # Always build on main pushes and manual dispatch. On PRs targeting main,
-    # always build. Otherwise skip only when the C++ wrapper changed.
-    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.base_ref == 'main' || needs.check_changes.outputs.wrapper_changed != 'true' }}
+    if: ${{ needs.check_changes.outputs.wrapper_changed != 'true' }}
     permissions:
       actions: write
       contents: write

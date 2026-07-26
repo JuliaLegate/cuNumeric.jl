@@ -1,36 +1,14 @@
-name: Docs
+# Deploy docs for version tags. Kept separate from docs.yml so tag pushes are
+# not subject to the docs/README path filter (a tag tip often only bumps
+# Project.toml).
+name: Docs (tags)
 on:
   push:
-    # Always rebuild on main, regardless of which files changed.
-    branches:
-      - main
-  pull_request:
-    paths:
-      - 'docs/**'
-      - 'README.md'
-      - '.github/workflows/docs.yml'
-  workflow_dispatch:
+    tags:
+      - 'v*'
 jobs:
-  check_changes:
-    name: Check for wrapper changes
-    runs-on: ubuntu-latest
-    outputs:
-      wrapper_changed: ${{ steps.filter.outputs.wrapper }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            wrapper:
-              - 'lib/cunumeric_jl_wrapper/**'
-
   docs:
-    name : Documentation
-    needs: check_changes
-    # Always build on main pushes and manual dispatch. On PRs targeting main,
-    # always build. Otherwise skip only when the C++ wrapper changed.
-    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.base_ref == 'main' || needs.check_changes.outputs.wrapper_changed != 'true' }}
+    name: Documentation
     permissions:
       actions: write
       contents: write
