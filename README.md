@@ -92,9 +92,8 @@ estimate = (Ω / N) .* sum(integrand(samples))
 
 println("Monte-Carlo Estimate: $(estimate)")
 ```
+More worked examples (initialization, Gray-Scott, …) are in the documentation sidebar under **Examples**.
 
 ### Known Limitations
 
 - There is no support for `Float16` or `ComplexF16`
-
-More worked examples (initialization, Gray-Scott, …) are in the documentation sidebar under **Examples**.
