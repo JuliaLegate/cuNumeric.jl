@@ -146,7 +146,7 @@ end
 function (::Type{<:Array{A}})(arr::NDArray{B,0}) where {A,B}
     out = Array{A}(undef)
     allowscalar() do
-        out[] = convert(A, arr[])
+        return out[] = convert(A, arr[])
     end
     return out
 end
@@ -279,33 +279,33 @@ Base.IndexStyle(::NDArray) = IndexCartesian()
 
 function Base.show(io::IO, arr::NDArray{T,0}) where {T}
     allowscalar() do
-        print(io, "NDArray{$(T),0}(", repr(arr[]), ")")
+        return print(io, "NDArray{$(T),0}(", repr(arr[]), ")")
     end
 end
 
 function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T,0}) where {T}
     println(io, "0-dimensional NDArray{$(T),0}")
     allowscalar() do
-        print(io, arr[])
+        return print(io, arr[])
     end
 end
 
 function Base.show(io::IO, arr::NDArray{T,N}) where {T,N}
-    print(io, "NDArray{$(T),$(N)} with size ", size(arr))
+    return print(io, "NDArray{$(T),$(N)} with size ", size(arr))
 end
 
 function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T,N}) where {T,N}
     println(io, "NDArray{$(T),$(N)} with size ", size(arr))
-    Base.print_array(io, Array(arr))
+    return Base.print_array(io, Array(arr))
 end
 
 function Base.print(arr::NDArray{T}) where {T}
-    Base.show(stdout, arr)
+    return Base.show(stdout, arr)
 end
 
 function Base.println(arr::NDArray{T}) where {T}
     Base.show(stdout, arr)
-    print("\n")
+    return print("\n")
 end
 #### ARRAY INDEXING AND SLICES ####
 
@@ -370,39 +370,39 @@ end
 #! TODO SUPPORT CONVERSION OF VALUES
 function Base.setindex!(arr::NDArray{T,N}, value::T, idxs::Vararg{Int,N}) where {T,N}
     assertscalar("setindex!")
-    _setindex!(Val{N}(), arr, value, idxs...)
+    return _setindex!(Val{N}(), arr, value, idxs...)
 end
 
 function Base.setindex!(arr::NDArray{Complex{T},N}, value::T, idxs::Vararg{Int,N}) where {T,N}
     assertscalar("setindex!")
-    _setindex!(Val{N}(), arr, Complex{T}(value), idxs...)
+    return _setindex!(Val{N}(), arr, Complex{T}(value), idxs...)
 end
 
 function Base.setindex!(arr::NDArray{T,N}, value, idxs::Vararg{Int,N}) where {T,N}
     assertscalar("setindex!")
-    _setindex!(Val{N}(), arr, convert(T, value), idxs...)
+    return _setindex!(Val{N}(), arr, convert(T, value), idxs...)
 end
 
 function _setindex!(::Val{0}, arr::NDArray{T,0}, value::T) where {T<:SUPPORTED_NUMERIC_TYPES}
     acc = NDArrayAccessor{T,1}()
-    write(acc, arr.ptr, StdVector(UInt64[0]), value)
+    return write(acc, arr.ptr, StdVector(UInt64[0]), value)
 end
 
 function _setindex!(::Val{0}, arr::NDArray{Bool,0}, value::Bool)
     acc = NDArrayAccessor{CxxWrap.CxxBool,1}()
-    write(acc, arr.ptr, StdVector(UInt64[0]), value)
+    return write(acc, arr.ptr, StdVector(UInt64[0]), value)
 end
 
 function _setindex!(
     ::Val{N}, arr::NDArray{T,N}, value::T, idxs::Vararg{Int,N}
 ) where {T<:SUPPORTED_NUMERIC_TYPES,N}
     acc = NDArrayAccessor{T,N}()
-    write(acc, arr.ptr, to_cpp_index(idxs), value)
+    return write(acc, arr.ptr, to_cpp_index(idxs), value)
 end
 
 function _setindex!(::Val{N}, arr::NDArray{Bool,N}, value::Bool, idxs::Vararg{Int,N}) where {N}
     acc = NDArrayAccessor{CxxWrap.CxxBool,N}()
-    write(acc, arr.ptr, to_cpp_index(idxs), value)
+    return write(acc, arr.ptr, to_cpp_index(idxs), value)
 end
 
 #### START OF SLICING ####
@@ -417,35 +417,35 @@ function _setindex_slice!(lhs::NDArray, rhs::NDArray, slices)
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::Int64)
-    _setindex_slice!(lhs, rhs, slice_array((0, Base.size(lhs, 1)), (j-1, j)))
+    return _setindex_slice!(lhs, rhs, slice_array((0, Base.size(lhs, 1)), (j-1, j)))
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Int64, j::Colon)
-    _setindex_slice!(lhs, rhs, slice_array((i-1, i)))
+    return _setindex_slice!(lhs, rhs, slice_array((i-1, i)))
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::Colon)
-    _setindex_slice!(
+    return _setindex_slice!(
         lhs, rhs, slice_array((first(i) - 1, last(i)), (0, Base.size(lhs, 2)))
     )
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::UnitRange)
-    _setindex_slice!(
+    return _setindex_slice!(
         lhs, rhs, slice_array((0, Base.size(lhs, 1)), (first(j) - 1, last(j)))
     )
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::Int64)
-    _setindex_slice!(lhs, rhs, slice_array((first(i) - 1, last(i)), (j-1, j)))
+    return _setindex_slice!(lhs, rhs, slice_array((first(i) - 1, last(i)), (j-1, j)))
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Int64, j::UnitRange)
-    _setindex_slice!(lhs, rhs, slice_array((i-1, i), (first(j) - 1, last(j))))
+    return _setindex_slice!(lhs, rhs, slice_array((i-1, i), (first(j) - 1, last(j))))
 end
 
 function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::UnitRange)
-    _setindex_slice!(
+    return _setindex_slice!(
         lhs, rhs, slice_array((first(i) - 1, last(i)), (first(j) - 1, last(j)))
     )
 end
@@ -492,19 +492,19 @@ end
 
 Base.getindex(arr::NDArray{T}, c::Vararg{Colon,N}) where {T,N} = Base.copy(arr)
 function Base.setindex!(arr::NDArray{T}, rhs::NDArray{T}, c::Vararg{Colon,N}) where {T,N}
-    Base.copyto!(arr, rhs)
+    return Base.copyto!(arr, rhs)
 end
 
 function Base.setindex!(arr::NDArray{T,2}, val::T, i::Colon, j::Int64) where {T}
     s = nda_get_slice(arr, slice_array((0, Base.size(arr, 1)), (j-1, j)))
     nda_fill_array(s, val)
-    destroy!(s)
+    return destroy!(s)
 end
 
 function Base.setindex!(arr::NDArray{T,2}, val::T, i::Int64, j::Colon) where {T}
     s = nda_get_slice(arr, slice_array((i-1, i)))
     nda_fill_array(s, val)
-    destroy!(s)
+    return destroy!(s)
 end
 
 Base.fill!(arr::NDArray{T}, val::T) where {T} = nda_fill_array(arr, val)
@@ -653,7 +653,7 @@ Fill `arr` in-place with uniform random `Float64` values.
 """
 Random.rand!(arr::NDArray{Float64}) = cuNumeric.nda_random(arr, 0)
 function Random.rand!(arr::NDArray{T}) where {T}
-    error("rand! only supports NDArray{Float64} for now. Cast with cuNumeric.as_type.")
+    return error("rand! only supports NDArray{Float64} for now. Cast with cuNumeric.as_type.")
 end
 
 # Backend only generates Float64. Same-type path needs no cast; other floats
@@ -827,4 +827,43 @@ end
 
 function Base.isapprox(arr::NDArray{T}, arr2::NDArray{T}; atol=0, rtol=0) where {T}
     return compare(arr, arr2, atol, rtol)
+end
+
+"""
+    h5write(path::String, dataset::String, arr::NDArray)
+
+Write an `NDArray` directly to an HDF5 dataset without a host copy or dimension flip.
+
+# Arguments
+- `path`: Path to the HDF5 file.
+- `dataset`: Name of the dataset to write.
+- `arr`: The array to write.
+"""
+function h5write(path::String, dataset::String, arr::NDArray{T,N}) where {T,N}
+    st_handle = get_store(arr)
+    # NDArrays are row-major, so this writes straight through (no dim flip, no warning).
+    la = Legate.LogicalArray{T,N}(st_handle, size(arr))
+    return Legate.h5write(path, dataset, la)
+end
+
+"""
+    h5read(path::String, dataset::String; layout::Symbol=:row) -> NDArray
+
+Read a dataset from an HDF5 file into an `NDArray`.
+
+# Arguments
+- `path`: Path to the HDF5 file.
+- `dataset`: Name of the dataset to read.
+
+# Keywords
+- `layout`: On-disk memory order, either `:row` (default) or `:col`.
+"""
+function h5read(path::String, dataset::String; kwargs...)
+    la = Legate.h5read(path, dataset; kwargs...)
+    T = eltype(la)
+    N = Int(Legate.dim(la))
+    st = Legate.data(la.handle)  # call data on the raw impl
+    ptr = nda_store_to_ndarray(st)  # pass directly
+    arr = NDArray(ptr, T, Val(N), nothing)
+    return la.order === :col && N > 1 ? transpose(arr) : arr
 end

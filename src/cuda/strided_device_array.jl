@@ -36,12 +36,12 @@ Base.length(a::CuStridedDeviceArray) = a.len
 Base.IndexStyle(::Type{<:CuStridedDeviceArray}) = IndexLinear()
 
 function Base.pointer(a::CuStridedDeviceArray{T,<:Any,A}) where {T,A}
-    Base.unsafe_convert(CUDACore.LLVMPtr{T,A}, a)
+    return Base.unsafe_convert(CUDACore.LLVMPtr{T,A}, a)
 end
 function Base.unsafe_convert(
     ::Type{CUDACore.LLVMPtr{T,A}}, a::CuStridedDeviceArray{T,<:Any,A}
 ) where {T,A}
-    a.ptr
+    return a.ptr
 end
 
 # 0-based element offset from a 1-based linear index in Julia column-major order
@@ -90,9 +90,10 @@ CUDACore.@device_function @inline function _strided_arrayset(
     return A
 end
 
-Base.@propagate_inbounds Base.getindex(A::CuStridedDeviceArray{T}, i::Integer) where {T} = _strided_arrayref(
-    A, i
-)
+Base.@propagate_inbounds Base.getindex(A::CuStridedDeviceArray{T}, i::Integer) where {T} =
+    _strided_arrayref(
+        A, i
+    )
 Base.@propagate_inbounds function Base.setindex!(
     A::CuStridedDeviceArray{T}, x, i::Integer
 ) where {T}

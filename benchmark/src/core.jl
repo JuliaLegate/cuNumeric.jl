@@ -43,11 +43,11 @@ function run! end
 # registers itself via `register_benchmark`.
 const BENCHMARKS = Dict{String,Type}()
 function register_benchmark(key::AbstractString, ::Type{B}) where {B<:AbstractBenchmark}
-    BENCHMARKS[key] = B
+    return BENCHMARKS[key] = B
 end
 
 function build_benchmark(::Type{B}, ::Type{T}, N, M) where {B<:AbstractBenchmark,T}
-    B{T}(; N=N, M=M)
+    return B{T}(; N=N, M=M)
 end
 
 #########################################

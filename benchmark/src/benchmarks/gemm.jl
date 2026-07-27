@@ -8,7 +8,7 @@ dims(g::GEMM) = (g.N, g.M)
 data(g::GEMM{T}) where {T} = "GEMM with T=$(T), N=$(g.N), M=$(g.M)"
 
 function allowed_types(::Type{GEMM})
-    Union{cuNumeric.SUPPORTED_FLOAT_TYPES,cuNumeric.SUPPORTED_INT_TYPES}
+    return Union{cuNumeric.SUPPORTED_FLOAT_TYPES,cuNumeric.SUPPORTED_INT_TYPES}
 end
 
 total_flops(s::GEMM) = s.N * s.N * ((2*s.M) - 1)

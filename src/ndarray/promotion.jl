@@ -34,12 +34,12 @@ end
 function __checked_promote_op(
     f::typeof(Base.literal_pow), a::Type{Tuple{_,ARR_TYPE,Val{-1}}}
 ) where {_,ARR_TYPE}
-    __recip_type(ARR_TYPE)
+    return __recip_type(ARR_TYPE)
 end
 function __checked_promote_op(
     f::typeof(Base.literal_pow), a::Type{Tuple{_,ARR_TYPE,Val{2}}}
 ) where {_,ARR_TYPE}
-    ARR_TYPE
+    return ARR_TYPE
 end
 
 __checked_promote_op(::typeof(Base.inv), ::Type{Tuple{A}}) where {A} = __recip_type(A)
@@ -74,7 +74,7 @@ end
 # Base.promote_op(^, Float32, Int64) == Float32
 # Base.promote_op(^, Int32, Int64) == Int32
 function __my_promote_type(::Type{typeof(^)}, ::Type{A}, ::Type{Val{V}}) where {A,V}
-    __checked_promote_op(Base.:(^), A, typeof(V))
+    return __checked_promote_op(Base.:(^), A, typeof(V))
 end
 
 #! Not exaclty Julia behavior, but it it makes life easier...

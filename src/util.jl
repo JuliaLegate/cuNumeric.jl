@@ -33,7 +33,7 @@ Insert a Legate execution fence. `block=true` waits until prior ops finish;
 issue_execution_fence(; block::Bool=false) = Legate.issue_execution_fence(block)
 
 function Experimental(setting::Bool)
-    task_local_storage(:Experimental, setting)
+    return task_local_storage(:Experimental, setting)
 end
 
 function assert_experimental()

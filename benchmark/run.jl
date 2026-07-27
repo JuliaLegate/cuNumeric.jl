@@ -34,7 +34,7 @@ function ensure_project_ready()
         Pkg.PackageSpec(; path=joinpath(@__DIR__, "..", "lib", "CNPreferences")),
         Pkg.PackageSpec(; path=joinpath(@__DIR__, "..")),
     ])
-    Pkg.instantiate()
+    return Pkg.instantiate()
 end
 
 # default env name mirrors install_cupynumeric.sh: cupynumeric-bench-<major>.<minor>
@@ -46,7 +46,7 @@ function cupynumeric_env_name()
         info.version === nothing && continue
         return "cupynumeric-bench-$(info.version.major).$(info.version.minor)"
     end
-    error("could not resolve cupynumeric_jll version; set CUPYNUMERIC_ENV explicitly")
+    return error("could not resolve cupynumeric_jll version; set CUPYNUMERIC_ENV explicitly")
 end
 
 function dispatch(; gpus, cpus, name, T, N, M, n_iter, n_warmup, n_trial,

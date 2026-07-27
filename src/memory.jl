@@ -38,7 +38,7 @@ function init_gc!()
     total_device_bytes[] = query_total_device_memory()
     total_host_bytes[] = query_total_host_memory()
     # @info "[cuNumeric GC] $(total_device_bytes[]) framebuffer available"
-    AUTO_GC_ENABLE[] = true
+    return AUTO_GC_ENABLE[] = true
 end
 
 @doc"""

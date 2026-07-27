@@ -150,7 +150,8 @@ let body = quote
         v_new[end, :] = v[2, :]
     end
     @eval _gs_step!(b::GrayScottBaseline, u, v, u_new, v_new, args::GSParams) = $body
-    @eval _gs_step!(b::GrayScottLifetimes, u, v, u_new, v_new, args::GSParams) = @analyze_lifetimes $body
+    @eval _gs_step!(b::GrayScottLifetimes, u, v, u_new, v_new, args::GSParams) =
+        @analyze_lifetimes $body
 end
 
 function run!(b::AbstractGrayScott, st::GrayScottState)

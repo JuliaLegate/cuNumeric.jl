@@ -14,7 +14,7 @@ end
 # Dense @cuda_task / RunPTXTask — MUST match CUDA.jl CuDeviceArray layout.
 # Other memory types: https://github.com/JuliaGPU/CUDA.jl/blob/345c1600ebd561135148bb04ee2657f521a40e25/CUDACore/src/device/pointer.jl#L7
 function ndarray_cuda_type(::Type{<:NDArray{T,N}}) where {T,N}
-    CUDACore.CuDeviceArray{T,N,CUDACore.AS.Global}
+    return CUDACore.CuDeviceArray{T,N,CUDACore.AS.Global}
 end
 
 function ndarray_cuda_type(::Type{T}) where {T}

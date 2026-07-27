@@ -90,5 +90,5 @@ function versioninfo(io::IO=stdout)
       Legate:         $(LegatePreferences.MODE)
     ───────────────────────────────────────────────
     """
-    println(io, str)
+    return println(io, str)
 end

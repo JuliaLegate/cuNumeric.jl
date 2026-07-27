@@ -38,7 +38,6 @@ makedocs(;
             "Initialization" => "examples/initialization.md",
             "Monte-Carlo" => "examples/montecarlo.md",
             "Gray-Scott" => "examples/grayscott.md",
-            "HDF5 I/O" => "examples/hdf5.md",
         ],
         "Performance Tips" => [
             "Kernel Fusion" => "perf/kernel_fusion.md",

@@ -38,7 +38,7 @@ function build_cpp_wrapper(
     @info "libcunumeric_jl_wrapper: Building C++ Wrapper Library"
     isdir(install_root) && (rm(install_root; recursive=true); mkdir(install_root))
     bld_command = `$(joinpath(repo_root, "scripts/build_cpp_wrapper.sh")) $repo_root $cupynumeric_loc $legate_loc $blas_loc $install_root $(Threads.nthreads())`
-    BuildTools.run_build_wrapper_script(
+    return BuildTools.run_build_wrapper_script(
         repo_root, bld_command; cuda_root, cuda_enabled, log_dir=@__DIR__
     )
 end
@@ -64,7 +64,7 @@ function build_deps(pkg_root, cupynumeric_root, blas_root; cuda_root=nothing, cu
         install_lib;
         cuda_root, cuda_enabled,
     )
-    BuildTools.set_jll_artifact_override(:cunumeric_jl_wrapper_jll, install_lib)
+    return BuildTools.set_jll_artifact_override(:cunumeric_jl_wrapper_jll, install_lib)
 end
 
 function build(::CNPreferences.JLL)
@@ -90,7 +90,7 @@ function build(::CNPreferences.Conda)
     #!TODO SET LocalPreferences.toml to use local CUDA libraries
 
     is_cupynumeric_installed(cupynumeric_root; throw_errors=true)
-    build_deps(pkg_root, cupynumeric_root, cupynumeric_root)
+    return build_deps(pkg_root, cupynumeric_root, cupynumeric_root)
 end
 
 function build(::CNPreferences.Developer)
@@ -110,7 +110,7 @@ function build(::CNPreferences.Developer)
     end
 
     blas_lib = something(blas_lib, BuildTools.find_jll_artifact_dir(:OpenBLAS32_jll))
-    build_deps(pkg_root, cupynumeric_root, up_dir(blas_lib); cuda_root, cuda_enabled)
+    return build_deps(pkg_root, cupynumeric_root, up_dir(blas_lib); cuda_root, cuda_enabled)
 end
 
 const mode_str = load_preference(CNPreferences, "cunumeric_mode", CNPreferences.MODE_JLL)

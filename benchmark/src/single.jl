@@ -57,7 +57,7 @@ function run_single(
     @printf("[%s] Mean Run Time: %.5f ± %.5f ms\n", label, mean(br.times_ms), _std(br.times_ms))
     @printf("[%s] FLOPS: %.5f ± %.5f GFLOPS\n", label, mean(br.gflops), _std(br.gflops))
     println("[$(label)] Correctness: $(br.correctness)")
-    save_result(br, gpus; mod=save_as)
+    return save_result(br, gpus; mod=save_as)
 end
 
 gpus = parse(Int, ARGS[1])

@@ -23,7 +23,7 @@ function parse_fusion(x)
     s = lowercase(string(x))
     s in ("on", "true") && return true
     s in ("off", "false") && return false
-    error("fusion must be on/off (or true/false); got $(repr(x))")
+    return error("fusion must be on/off (or true/false); got $(repr(x))")
 end
 
 # Value of a zipped field for sweep position `i`. length==1 field broadcasts.

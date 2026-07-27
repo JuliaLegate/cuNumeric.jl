@@ -5,7 +5,7 @@ end
 name(::MonteCarloIntegration) = "montecarlo"
 dims(mci::MonteCarloIntegration) = (mci.n_samples, 1)
 function data(mci::MonteCarloIntegration{T}) where {T}
-    "Monte Carlo Integration with T=$(T), n_samples=$(mci.n_samples)"
+    return "Monte Carlo Integration with T=$(T), n_samples=$(mci.n_samples)"
 end
 
 allowed_types(::Type{MonteCarloIntegration}) = cuNumeric.SUPPORTED_FLOAT_TYPES
@@ -25,7 +25,7 @@ run!(mci::MonteCarloIntegration, x) = _domain_volume(mci) * sum(exp.(-x .^ 2))
 
 # n_samples comes in as N; M is unused.
 function build_benchmark(::Type{MonteCarloIntegration}, ::Type{T}, N, M) where {T}
-    MonteCarloIntegration{T}(; n_samples=N)
+    return MonteCarloIntegration{T}(; n_samples=N)
 end
 
 register_benchmark("montecarlo", MonteCarloIntegration)

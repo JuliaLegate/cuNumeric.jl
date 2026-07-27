@@ -59,6 +59,7 @@ include("tests/unary_tests.jl")
 include("tests/binary_tests.jl")
 include("tests/scoping.jl")
 include("tests/scoping-advanced.jl")
+include("tests/hdf5.jl")
 include("tests/broadcast_fusion_tests.jl")
 
 @testset verbose = true "AXPY" begin
@@ -459,6 +460,14 @@ end
             u_scoped, v_scoped = gray_scott(T, N, u_rand, v_rand)
 
             @test cuNumeric.compare(u, u_scoped, atol(T) * N, rtol(T) * 10)
+        end
+    end
+end
+
+@testset verbose = true "HDF5" begin
+    for T in (Float32, Float64, Int32, Int64)
+        @testset "$T $shape" for shape in ((7,), (3, 4), (2, 3, 4))
+            test_hdf5_roundtrip(T, shape)
         end
     end
 end

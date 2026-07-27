@@ -1,29 +1,51 @@
 # HDF5
 
-> [!NOTE]
-> HDF5 support is planned. Signatures below are placeholders and will be replaced with `@docs` blocks when the API is implemented.
+`h5read` and `h5write` transfer datasets between HDF5 files and runtime-managed
+`NDArray`s without gathering them into Julia `Array`s.
 
-I/O helpers for reading and writing `NDArray`s via HDF5. Prefer these over host-side gather + HDF5.jl when arrays are large or distributed.
-
-## h5read
+## Example
 
 ```julia
-# Planned:
-# cuNumeric.h5read(path, dataset) -> NDArray
+using cuNumeric
+
+field = cuNumeric.fill(3.5f0, 128, 64)
+cuNumeric.h5write("checkpoint.h5", "field", field)
+cuNumeric.Legate.runtime_sync()
+
+restored = cuNumeric.h5read("checkpoint.h5", "field"; layout=:row)
+@assert size(restored) == (128, 64)
+@assert eltype(restored) == Float32
+@assert cuNumeric.compare(fill(3.5f0, 128, 64), restored, 0, 0)
 ```
 
-Load a dataset from an HDF5 file into an `NDArray`.
+`h5write` submits work to Legate and can return before the file write has completed.
+Synchronize before accessing the file outside the runtime, moving or deleting it, or
+exiting immediately after the write.
 
-## h5write
+## Dataset layout
 
 ```julia
-# Planned:
-# cuNumeric.h5write(path, dataset, arr::NDArray)
+row_major = cuNumeric.h5read("python.h5", "field")
+column_major = cuNumeric.h5read("julia.h5", "field"; layout=:col)
 ```
 
-Write an `NDArray` to an HDF5 dataset.
+`layout=:row` is the default for NumPy/h5py, cuPyNumeric, and `cuNumeric.h5write`.
+Use `layout=:col` for multidimensional datasets written by HDF5.jl. One-dimensional
+datasets are unaffected. Other keywords are forwarded to `Legate.h5read`.
 
-## Related
+Tests cover `Float32`, `Float64`, `Int32`, and `Int64` arrays with one to three
+dimensions. Other types depend on the Legate HDF5 backend.
 
-- Example sketch: [HDF5 I/O](./examples/hdf5.md)
-- Host conversion when you must leave the runtime: `Array(arr)` (see [NDArray Reference](./api.md))
+## API reference
+
+### h5read
+
+```@docs
+cuNumeric.h5read
+```
+
+### h5write
+
+```@docs
+cuNumeric.h5write
+```
