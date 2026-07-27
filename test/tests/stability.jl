@@ -119,6 +119,35 @@ end
     end
 end
 
+@testset verbose = true "svd" begin
+    @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
+        A = cuNumeric.NDArray(T[1 0; 0 1])
+        @test @inferred(cuNumeric.svd(A)) !== nothing
+        @test @inferred(cuNumeric.svd(A, false)) !== nothing
+    end
+
+    @testset "promote $(T)" for T in (Int32, Int64, Bool)
+        A = cuNumeric.NDArray(T[1 0; 0 1])
+        allowpromotion() do
+            @test @inferred(cuNumeric.svd(A)) !== nothing
+        end
+    end
+end
+
+@testset verbose = true "qr" begin
+    @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_QR_TYPES)
+        A = cuNumeric.NDArray(T[1 0; 0 1])
+        @test @inferred(cuNumeric.qr(A)) !== nothing
+    end
+
+    @testset "promote $(T)" for T in (Int32, Int64, Bool)
+        A = cuNumeric.NDArray(T[1 0; 0 1])
+        allowpromotion() do
+            @test @inferred(cuNumeric.qr(A)) !== nothing
+        end
+    end
+end
+
 @testset verbose = true "linalg ops" begin
     @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
         M = cuNumeric.zeros(T, 4, 3)
