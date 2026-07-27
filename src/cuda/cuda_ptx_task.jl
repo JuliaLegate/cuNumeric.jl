@@ -69,13 +69,6 @@ function check_sz(arr, maxshape)
     end
 end
 
-# Unused by Launch (which uses `_add_task_array!` + eager finalize). If revived,
-# callers must finalize the returned LogicalArray's handle after add_input/output.
-function nda_to_logical_array(arr::NDArray{T,N}) where {T,N}
-    st_handle = cuNumeric.get_store(arr)
-    return Legate.LogicalArray{T,N}(st_handle, size(arr))
-end
-
 # `get_store` returns a Julia-owned `LogicalArrayImplAllocated` that shares the
 # underlying Legate store with the NDArray. `add_input`/`add_output` copy that
 # array into the task; if we leave the temporary alive until GC, store refcounts

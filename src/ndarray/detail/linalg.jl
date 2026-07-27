@@ -40,16 +40,18 @@ function solve_batched(a::NDArray{T,N}, b::NDArray, x::NDArray) where {T,N}
     tiled_b = Legate.partition_by_tiling(store_b, collect(tilesize_b))
     tiled_x = Legate.partition_by_tiling(store_x, collect(tilesize_b))
 
-    rt = Legate.get_runtime()
-    domain = Legate.domain_from_shape(Legate.Shape(Legate.to_cxx_vector(color_shape)))
-    lib = cuNumeric.get_lib()
-    task = Legate.create_manual_task(rt, lib, cuNumeric.SOLVE, domain)
+    @task_scope "solve" begin
+        rt = Legate.get_runtime()
+        domain = Legate.domain_from_shape(Legate.Shape(Legate.to_cxx_vector(color_shape)))
+        lib = cuNumeric.get_lib()
+        task = Legate.create_manual_task(rt, lib, cuNumeric.SOLVE, domain)
 
-    Legate.add_input(task, tiled_a)
-    Legate.add_input(task, tiled_b)
-    Legate.add_output(task, tiled_x)
+        Legate.add_input(task, tiled_a)
+        Legate.add_input(task, tiled_b)
+        Legate.add_output(task, tiled_x)
 
-    Legate.submit_manual_task(rt, task)
+        Legate.submit_manual_task(rt, task)
+    end
 end
 
 # solve runs in floating point:
@@ -104,13 +106,13 @@ function _solve(a::NDArray{T,N}, b::NDArray{S,M}) where {T,N,S,M}
 end
 
 function svd_single(a::NDArray{T,N}, u::NDArray, s::NDArray, vh::NDArray) where {T,N}
-    rt  = Legate.get_runtime()
+    rt = Legate.get_runtime()
     lib = cuNumeric.get_lib()
     task = Legate.create_auto_task(rt, lib, cuNumeric.SVD)
 
-    l_a  = nda_to_logical_array(a)
-    l_u  = nda_to_logical_array(u)
-    l_s  = nda_to_logical_array(s)
+    l_a = nda_to_logical_array(a)
+    l_u = nda_to_logical_array(u)
+    l_s = nda_to_logical_array(s)
     l_vh = nda_to_logical_array(vh)
 
     Legate.add_input(task, l_a)
@@ -123,7 +125,7 @@ function svd_single(a::NDArray{T,N}, u::NDArray, s::NDArray, vh::NDArray) where 
     Legate.add_broadcast(task, l_s)
     Legate.add_broadcast(task, l_vh)
 
-    Legate.submit_auto_task(rt, task)
+    return Legate.submit_auto_task(rt, task)
 end
 
 function _svd(a::NDArray{T,2}, full_matrices::Bool) where {T}
@@ -131,15 +133,13 @@ function _svd(a::NDArray{T,2}, full_matrices::Bool) where {T}
     k = min(m, n)
     S = real(T)
     # cuSolver requires full square buffers regardless of full_matrices
-    u_buf  = zeros(T, m, m)
-    s      = zeros(S, k)
+    u_buf = zeros(T, m, m)
+    s = zeros(S, k)
     vh_buf = zeros(T, n, n)
     svd_single(a, u_buf, s, vh_buf)
-    # materialize transposed copies to fix cuSolver column-major layout
-    u_full  = copy(cuNumeric.transpose(u_buf))
-    vh_full = copy(cuNumeric.transpose(vh_buf))
-    u  = full_matrices ? u_full  : u_full[:,  1:k]
-    vh = full_matrices ? vh_full : vh_full[1:k, :]
+    # Backend factors are logically ordered; only thin strided views need materialization.
+    u = full_matrices ? u_buf : copy(u_buf[:, 1:k])
+    vh = full_matrices ? vh_buf : copy(vh_buf[1:k, :])
     return u, s, vh
 end
 
@@ -168,7 +168,7 @@ end
 # qr
 
 function qr_single(a::NDArray{T,N}, q::NDArray, r::NDArray) where {T,N}
-    rt  = Legate.get_runtime()
+    rt = Legate.get_runtime()
     lib = cuNumeric.get_lib()
     task = Legate.create_auto_task(rt, lib, cuNumeric.CQR)
 
@@ -184,7 +184,7 @@ function qr_single(a::NDArray{T,N}, q::NDArray, r::NDArray) where {T,N}
     Legate.add_broadcast(task, l_q)
     Legate.add_broadcast(task, l_r)
 
-    Legate.submit_auto_task(rt, task)
+    return Legate.submit_auto_task(rt, task)
 end
 
 function _qr(a::NDArray{T,2}) where {T}
@@ -194,9 +194,9 @@ function _qr(a::NDArray{T,2}) where {T}
     q_buf = zeros(T, m, m)
     r_buf = zeros(T, n, n)
     qr_single(a, q_buf, r_buf)
-    # materialize transposed copies to fix cuSolver column-major layout
-    q = copy(cuNumeric.transpose(q_buf))[:, 1:k]
-    r = copy(cuNumeric.transpose(r_buf))[1:k, :]
+    # Host conversion assumes contiguous storage, so materialize the economy slices.
+    q = copy(q_buf[:, 1:k])
+    r = copy(r_buf[1:k, :])
     return q, r
 end
 
