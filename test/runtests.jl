@@ -57,6 +57,7 @@ include("tests/unary_tests.jl")
 include("tests/binary_tests.jl")
 include("tests/scoping.jl")
 include("tests/scoping-advanced.jl")
+include("tests/hdf5.jl")
 
 @testset verbose = true "AXPY" begin
     N = 100
@@ -88,11 +89,11 @@ end
 
     @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
         allowpromotion(true) do
-            test_unary_function_set(cuNumeric.floaty_unary_ops_no_args, T, N)
+            return test_unary_function_set(cuNumeric.floaty_unary_ops_no_args, T, N)
         end
 
         allowpromotion(T == Bool) do
-            test_unary_function_set(cuNumeric.unary_op_map_no_args, T, N)
+            return test_unary_function_set(cuNumeric.unary_op_map_no_args, T, N)
         end
         # Special cases for unary ops that dont use . syntax
         @testset "- (Negation)" begin
@@ -199,7 +200,7 @@ end
     @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
         allowpromotion(true) do
             test_binary_function_set(cuNumeric.floaty_binary_op_map, T, N)
-            test_binary_function_set(cuNumeric.binary_op_map, T, N)
+            return test_binary_function_set(cuNumeric.binary_op_map, T, N)
         end
 
         arr_jl = my_rand(T, N)
@@ -451,6 +452,14 @@ end
             u_scoped, v_scoped = gray_scott(T, N, u_rand, v_rand)
 
             @test cuNumeric.compare(u, u_scoped, atol(T) * N, rtol(T) * 10)
+        end
+    end
+end
+
+@testset verbose = true "HDF5" begin
+    for T in (Float32, Float64, Int32, Int64)
+        @testset "$T $shape" for shape in ((7,), (3, 4), (2, 3, 4))
+            test_hdf5_roundtrip(T, shape)
         end
     end
 end
