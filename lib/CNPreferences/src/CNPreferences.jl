@@ -10,15 +10,8 @@ LegatePreferences.@make_preferences("cunumeric_")
 const FUSE_BROADCAST = @load_preference("FUSE_BROADCAST_EXPRS", true)
 # Fuse when the broadcast tree has at least this many `Broadcasted` nodes (ops).
 # Default 2 → single ops like `y .= cos.(x)` stay on the unfused path (no PTX compile).
-# Set to 1 (preference or ENV) to fuse every eligible expression (e.g. in tests).
-const FUSE_BROADCAST_MIN_OPS = let
-    env = get(ENV, "CUNUMERIC_FUSE_BROADCAST_MIN_OPS", "")
-    if !isempty(env)
-        parse(Int, env)
-    else
-        @load_preference("FUSE_BROADCAST_MIN_OPS", 2)
-    end
-end
+# Set to 1 to fuse every eligible expression (e.g. in tests).
+const FUSE_BROADCAST_MIN_OPS = @load_preference("FUSE_BROADCAST_MIN_OPS", 2)
 const TASK_SCOPE_NAMES = @load_preference("TASK_SCOPE_NAMES", false)
 
 """
@@ -54,8 +47,7 @@ Fuse only when a broadcast tree has at least `n` ops. Default is `2`, so single
 ops such as `y .= cos.(x)` stay on the unfused path. Set `n = 1` to fuse those
 too. Values must be `>= 1`.
 
-Restart Julia after changing this preference. The environment variable
-`CUNUMERIC_FUSE_BROADCAST_MIN_OPS` overrides this preference when set.
+Restart Julia after changing this preference.
 """
 function set_broadcast_fusion_min_ops!(n::Integer; export_prefs=false, force=true)
     n >= 1 || throw(ArgumentError("FUSE_BROADCAST_MIN_OPS must be >= 1, got $n"))

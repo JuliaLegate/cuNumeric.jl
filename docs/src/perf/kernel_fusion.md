@@ -30,6 +30,6 @@ What `set_broadcast_fusion_min_ops!` controls:
 - **`2` (default):** only trees with two or more ops fuse. Example: `y .= @. a * b + c` can fuse; `y .= cos.(x)` does not. Keeping single-ops on the unfused C-API path avoids PTX compile overhead when there is little to gain.
 - **`1`:** every eligible broadcast can fuse, including unary / single-op forms. Prefer this when you want uniform fused behavior (for example in tests) rather than for typical apps.
 
-The threshold counts `Broadcasted` nodes in the expression tree. Changing it requires a Julia restart. `CUNUMERIC_FUSE_BROADCAST_MIN_OPS` can override the preference in CI; see [CNPreferences](../api_preferences.md).
+The threshold counts `Broadcasted` nodes in the expression tree. Set it through `CNPreferences`, then restart Julia. See [CNPreferences](../api_preferences.md).
 
 To inspect a fused launch or a lifetime rewrite, see [Debugging](../debugging.md). For the implementation pipeline, see [Internals](../internals.md).

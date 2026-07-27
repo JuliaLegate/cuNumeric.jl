@@ -39,7 +39,7 @@ CNPreferences.set_broadcast_fusion_min_ops!(1)     # also fuse single-ops
 - **`2` (default):** fuse multi-op trees such as `y .= @. a * b + c`. Single-ops like `y .= cos.(x)` stay on the unfused C-API path.
 - **`1`:** fuse every eligible expression, including single-ops.
 
-The env var `CUNUMERIC_FUSE_BROADCAST_MIN_OPS` overrides the preference when set (useful in CI). Restart Julia after changing these.
+Set the preference in one Julia process, then start a fresh process to use it.
 
 ```@docs
 CNPreferences.set_broadcast_fusion!

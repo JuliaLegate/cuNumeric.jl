@@ -9,8 +9,8 @@ steps:
     key: "julia"
     steps:
       # Fusion prefs are compile-time (CNPreferences). Write LocalPreferences.toml and
-      # set CUNUMERIC_FUSE_BROADCAST_MIN_OPS before instantiate/test so each job
-      # precompiles cuNumeric with the intended fusion configuration.
+      # set both values before instantiate/test so each job precompiles cuNumeric
+      # with the intended fusion configuration.
       # - fusion=on:  FUSE_BROADCAST_EXPRS=true, MIN_OPS=1 (fuse single-op exprs)
       # - fusion=off: FUSE_BROADCAST_EXPRS=false (MIN_OPS irrelevant)
       - label: "GPU - Julia {{matrix.julia}} (fusion {{matrix.fusion}})"
@@ -47,8 +47,6 @@ steps:
           GPUTESTS: "1"
           LEGATE_TEST: "1"
           LEGATE_CONFIG: "--cpus 1 --gpus 1 --utility 1 --fbmem 500 --logging legate=info,level=2 --log-to-file 1"
-          # ENV overrides LocalPreferences for MIN_OPS in CNPreferences.jl (harmless when fusion=off).
-          CUNUMERIC_FUSE_BROADCAST_MIN_OPS: "1"
         matrix:
           setup:
             julia:
@@ -90,7 +88,6 @@ steps:
           LEGATE_TEST: "1"
           LEGATE_CONFIG: "--cpus 1 --gpus 1 --utility 1 --fbmem 500 --logging legate=info,level=2 --log-to-file 1"
           CUNUMERIC_FUSION: "{{matrix.fusion}}"
-          CUNUMERIC_FUSE_BROADCAST_MIN_OPS: "1"
         matrix:
           setup:
             fusion:

@@ -42,8 +42,6 @@ using cuNumeric
 VERBOSE && cuNumeric.versioninfo()
 
 @info "Broadcast fusion: FUSE_BROADCAST_EXPRS=$(cuNumeric.FUSE_BROADCAST_EXPRS) FUSE_BROADCAST_MIN_OPS=$(cuNumeric.FUSE_BROADCAST_MIN_OPS)"
-haskey(ENV, "CUNUMERIC_FUSE_BROADCAST_MIN_OPS") &&
-    @info "CUNUMERIC_FUSE_BROADCAST_MIN_OPS=$(ENV["CUNUMERIC_FUSE_BROADCAST_MIN_OPS"])"
 
 # TODO
 # After loading cuNumeric, we should verify that the Legate config has set a GPU device

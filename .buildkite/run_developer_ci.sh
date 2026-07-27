@@ -68,6 +68,7 @@ julia --color=yes --project="$CI_PROJECT" -e '
     using CNPreferences
     CNPreferences.use_developer_mode()
     CNPreferences.set_broadcast_fusion!(ENV["CUNUMERIC_FUSION"] == "on")
+    CNPreferences.set_broadcast_fusion_min_ops!(1)
     Pkg.develop(PackageSpec(path = "."))
     Pkg.build("cuNumeric")
 '
@@ -78,6 +79,7 @@ julia --color=yes --project=test -e '
     using CNPreferences
     CNPreferences.use_developer_mode()
     CNPreferences.set_broadcast_fusion!(ENV["CUNUMERIC_FUSION"] == "on")
+    CNPreferences.set_broadcast_fusion_min_ops!(1)
 '
 
 julia --color=yes --project="$CI_PROJECT" -e '
