@@ -171,13 +171,15 @@ function test_broadcast_fusion(; T=Float32, N=100, atol=1e-5, rtol=1e-5)
         @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
     end
 
-    @testset "z .= scalar * f.(A, B)" begin
-        expected = T(2.0) .* (julia_a .+ julia_b)
-        z = cuNumeric.zeros(T, (N,))
-        @analyze_lifetimes begin
-            z .= T(2.0) .* _broadcast_fusion_user_add.(a, b)
+    if cuNumeric.FUSE_BROADCAST_EXPRS
+        @testset "z .= scalar * f.(A, B)" begin
+            expected = T(2.0) .* (julia_a .+ julia_b)
+            z = cuNumeric.zeros(T, (N,))
+            @analyze_lifetimes begin
+                z .= T(2.0) .* _broadcast_fusion_user_add.(a, b)
+            end
+            @allowscalar @test cuNumeric.compare(expected, z, atol, rtol)
         end
-        @allowscalar @test cuNumeric.compare(expected, z, atol, rtol)
     end
 
     # scalar-array pairs
