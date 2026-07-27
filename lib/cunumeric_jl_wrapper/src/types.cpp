@@ -164,10 +164,14 @@ void wrap_binary_ops(jlcxx::Module& mod) {
 }
 
 void wrap_linalg_ops(jlcxx::Module& mod) {
-  mod.set_const("SOLVE", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_SOLVE});
-  mod.set_const("MP_SOLVE", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_MP_SOLVE});
+  mod.set_const("SOLVE",
+                legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_SOLVE});
+  mod.set_const("MP_SOLVE",
+                legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_MP_SOLVE});
   mod.set_const("SVD", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_SVD});
   mod.set_const("CQR", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_QR});
-  mod.set_const("SYEV", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_SYEV});
-  mod.set_const("GEEV", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_GEEV});
+  mod.set_const("SYEV",
+                legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_SYEV});
+  mod.set_const("GEEV",
+                legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_GEEV});
 }

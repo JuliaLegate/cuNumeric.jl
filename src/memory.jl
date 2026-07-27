@@ -16,6 +16,17 @@ const current_host_bytes = Atomic{Int64}(0)   # predicted host allocations
 const soft_frac = Ref{Float64}(0.80)
 const hard_frac = Ref{Float64}(0.90)
 const AUTO_GC_ENABLE = Ref{Bool}(false)
+# memory measured right after the last GC
+const post_gc_device_bytes = Atomic{Int64}(0)
+const post_gc_host_bytes = Atomic{Int64}(0)
+# how much new memory must accumulate before GC fires again
+const gc_hysteresis_frac = Ref{Float64}(0.05)
+
+# memory measured right after the last GC
+const post_gc_device_bytes = Atomic{Int64}(0)
+const post_gc_host_bytes = Atomic{Int64}(0)
+# how much new memory must accumulate before GC fires again
+const gc_hysteresis_frac = Ref{Float64}(0.05)
 
 @doc"""
     init_gc!()
@@ -27,7 +38,7 @@ function init_gc!()
     total_device_bytes[] = query_total_device_memory()
     total_host_bytes[] = query_total_host_memory()
     # @info "[cuNumeric GC] $(total_device_bytes[]) framebuffer available"
-    AUTO_GC_ENABLE[] = true
+    return AUTO_GC_ENABLE[] = true
 end
 
 @doc"""
@@ -90,15 +101,31 @@ end
 function maybe_collect()
     host_bytes = current_host_bytes[]
     device_bytes = current_device_bytes[]
-    if host_bytes > hard_limit() || device_bytes > hard_limit(; host=false)
-        # Aggressive
-        GC.gc(true)
-        recalibrate_allocator!()
-    elseif host_bytes > soft_limit() || device_bytes > soft_limit(; host=false)
-        # Gentle
-        GC.gc(false)
-        recalibrate_allocator!()
+
+    # minimum growth above the post-GC floor needed to re-collect
+    dev_floor = post_gc_device_bytes[]
+    host_floor = post_gc_host_bytes[]
+    dev_delta = Int(round(gc_hysteresis_frac[] * total_device_bytes[]))
+    host_delta = Int(round(gc_hysteresis_frac[] * total_host_bytes[]))
+    grew = device_bytes > dev_floor + dev_delta || host_bytes > host_floor + host_delta
+
+    if device_bytes > hard_limit(; host=false) || host_bytes > hard_limit()
+        grew && _collect!(true)
+    elseif device_bytes > soft_limit(; host=false) || host_bytes > soft_limit()
+        grew && _collect!(false)
+    else
+        # reset floors so the next spike is caught immediately
+        atomic_xchg!(post_gc_device_bytes, 0)
+        atomic_xchg!(post_gc_host_bytes, 0)
     end
 
+    return nothing
+end
+
+function _collect!(full::Bool)
+    GC.gc(full)
+    recalibrate_allocator!()
+    atomic_xchg!(post_gc_device_bytes, current_device_bytes[])
+    atomic_xchg!(post_gc_host_bytes, current_host_bytes[])
     return nothing
 end

@@ -11,6 +11,8 @@ shift
 
 GPUS=0
 CPUS=1
+PYENV=""
+VERBOSE=0
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -21,6 +23,14 @@ while [[ $# -gt 0 ]]; do
         --cpus)
             CPUS=$2
             shift 2
+            ;;
+        --pyenv)
+            PYENV=$2
+            shift 2
+            ;;
+        --verbose)
+            VERBOSE=1
+            shift
             ;;
         *)
             # Collect all other arguments as extra arguments
@@ -43,17 +53,29 @@ if [[ $GPUS -lt 0 ]]; then
 fi
 
 if [[ $CPUS -lt 0 ]]; then
-    echo "CPUs ivnalid, using cpus = 1"
+    echo "CPUs invalid, using cpus = 1"
     exit
 fi
 
-export LEGATE_AUTO_CONFIG=0
-export LEGATE_CONFIG="--cpus=1 --gpus=$GPUS --omps=$CPUS --ompthreads=3 --utility=2 --sysmem=256 --numamem=19029 --fbmem=7569 --zcmem=128 --regmem=0"
-export LEGATE_SHOW_CONFIG=1
+export LEGATE_AUTO_CONFIG=1
+export LEGATE_CONFIG="--cpus=$CPUS --gpus=$GPUS"
+export LEGATE_SHOW_CONFIG=$VERBOSE
 
-echo "Running $FILENAME with $CPUS CPUs and $GPUS GPUs"
+export LD_LIBRARY_PATH=""
 
-CMD="julia --project='..' $FILENAME $GPUS ${EXTRA_ARGS[@]}"
+[[ $VERBOSE == 1 ]] && echo "Running $FILENAME with $CPUS CPUs and $GPUS GPUs"
 
-printf "Running: %s\n" "$CMD"
+# Python (cupynumeric) workers run in the conda env built by install_cupynumeric.sh;
+# Julia (cuNumeric) workers run against the local project.
+if [[ $FILENAME == *.py ]]; then
+    if [[ -z $PYENV ]]; then
+        echo "Error: running a .py worker requires --pyenv <conda-env> (run install_cupynumeric.sh first)."
+        exit 1
+    fi
+    CMD="conda run --no-capture-output -n $PYENV python $FILENAME $GPUS ${EXTRA_ARGS[@]}"
+else
+    CMD="julia --project $FILENAME $GPUS ${EXTRA_ARGS[@]}"
+fi
+
+[[ $VERBOSE == 1 ]] && printf "Running: %s\n" "$CMD"
 eval "$CMD"

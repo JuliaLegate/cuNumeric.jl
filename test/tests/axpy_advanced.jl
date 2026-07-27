@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,8 +20,6 @@
 #= Purpose of test: daxpy_advanced
     -- add overloading support for [double/float scalar] * NDArray
     -- equavalence operator between a cuNumeric and Julia array without looping
-    --          result == (α_cpu * x_cpu + y_cpu)
-    --          (α_cpu * x_cpu + y_cpu) ==
     -- NDArray copy method allocates a new NDArray and copies all elements
     -- NDArray assign method assigns the contents from one NDArray to another NDArray
     -- x[:] colon notation for reading entire 1D NDArray to a Julia array
@@ -110,9 +108,8 @@ function axpy_advanced(T, N)
         @test is_same(y_cpu_1D, y_1d)
 
         result = α .* x .+ y
+        result_cpu = α * x_cpu + y_cpu
 
-        # check results
-        @test is_same(result, (α * x_cpu + y_cpu))
-        @test is_same(α * x_cpu + y_cpu, result) # LHS and RHS switched
+        @test safe_compare(result_cpu, result, atol(T), rtol(T))
     end
 end

@@ -6,6 +6,9 @@ help.sh
 docker.log
 docs/package-lock.json
 
+__pycache__
+*.pyc
+
 # auto-generated script
 build_wrapper.sh
 
@@ -14,6 +17,11 @@ logging/*
 debug
 debug/*
 
+# benchmark outputs
+benchmark/results**
+benchmark/results/*
+benchmark/plots**
+
 compile_wrapper.sh
 
 *.tar.gz
@@ -21,8 +29,8 @@ compile_wrapper.sh
 build
 build/*
 build.log
-*.log
-*.err
+*.log**
+*.err**
 kernel.ptx
 *.perf
 *.folded
@@ -87,3 +95,8 @@ node_modules
 *.out
 *.app
 .githash
+
+# VitePress caches/output (keep docs/src/.vitepress/config.mts + theme/)
+docs/.vitepress/
+docs/src/.vitepress/cache/
+docs/src/.vitepress/dist/
