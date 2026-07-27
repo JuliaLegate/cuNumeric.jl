@@ -59,11 +59,8 @@ include("tests/unary_tests.jl")
 include("tests/binary_tests.jl")
 include("tests/scoping.jl")
 include("tests/scoping-advanced.jl")
-<<<<<<< HEAD
 include("tests/hdf5.jl")
-=======
 include("tests/broadcast_fusion_tests.jl")
->>>>>>> develop
 
 @testset verbose = true "AXPY" begin
     N = 100
