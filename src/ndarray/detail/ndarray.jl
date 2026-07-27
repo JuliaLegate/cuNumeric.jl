@@ -419,7 +419,7 @@ end
 # return underlying logical store to the NDArray obj
 function get_store(arr::NDArray)
     cxx_ptr = CxxWrap.CxxPtr{CN_NDArray}(arr.ptr)
-    return _get_store(cxx_ptr)[]
+    return _get_store(cxx_ptr)
 end
 
 function get_ptr(arr::NDArray{T,N}) where {T,N}
