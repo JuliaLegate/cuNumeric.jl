@@ -73,14 +73,7 @@ julia --color=yes --project="$CI_PROJECT" -e '
     Pkg.build("cuNumeric")
 '
 
-julia --color=yes --project=test -e '
-    using Pkg
-    Pkg.develop(PackageSpec(path = "lib/CNPreferences"))
-    using CNPreferences
-    CNPreferences.use_developer_mode()
-    CNPreferences.set_broadcast_fusion!(ENV["CUNUMERIC_FUSION"] == "on")
-    CNPreferences.set_broadcast_fusion_min_ops!(1)
-'
+cp "$CI_PROJECT/LocalPreferences.toml" test/LocalPreferences.toml
 
 julia --color=yes --project="$CI_PROJECT" -e '
     using Pkg
