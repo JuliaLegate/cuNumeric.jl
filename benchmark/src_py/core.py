@@ -54,4 +54,4 @@ def save_result(name, dims, gpus, times_ms, gflops):
     path = os.path.join(RESULTS_DIR, f"{name}_{MOD}.csv")
     with open(path, "a") as io:
         for i, (t, g) in enumerate(zip(times_ms, gflops), start=1):
-            io.write(f"{MOD},{gpus},{N},{M},{i},{t:.6f},{g:.6f}\n")
+            io.write(f"{MOD},{gpus},{N},{M},{i},{t:.6f},{g:.6f},skipped\n")

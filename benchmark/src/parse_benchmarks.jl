@@ -10,11 +10,21 @@ struct BenchmarkSpec
     T::String
     gpus::Int
     cpus::Int
+    fusion::Bool
     args::Vector{Int}
 end
 
 # A field may be a scalar or a list.
 aslist(x) = x isa AbstractVector ? collect(x) : [x]
+
+# `fusion` accepts a bool or "on"/"off" (or a list of these).
+function parse_fusion(x)
+    x isa Bool && return x
+    s = lowercase(string(x))
+    s in ("on", "true") && return true
+    s in ("off", "false") && return false
+    error("fusion must be on/off (or true/false); got $(repr(x))")
+end
 
 # Value of a zipped field for sweep position `i`. length==1 field broadcasts.
 sweep_value(field, i) = length(field) == 1 ? field[1] : field[i]
@@ -52,6 +62,8 @@ function parse_config(path)
         n_warmup=g["n_warmup"], n_iter=g["n_iter"], n_trial=get(g, "n_trial", 1),
         cupynumeric=get(g, "cupynumeric", false),
         cuda=get(g, "cuda", false),
+        check_correctness=get(g, "check_correctness", false),
+        n_correctness_iter=get(g, "n_correctness_iter", 5),
     )
 
     specs = BenchmarkSpec[]
@@ -61,13 +73,13 @@ function parse_config(path)
             types = aslist(get(e, "T", "Float32"))
             gpus = aslist(e["gpus"])
             cpus = aslist(e["cpus"])
-            # fusion = get(e, "fusion", true)
+            fusion = aslist(get(e, "fusion", true))
             N = aslist(e["N"])
             M = aslist(get(e, "M", 1))
 
             n = sweep_length(name, ["gpus" => gpus, "cpus" => cpus, "N" => N, "M" => M])
 
-            for T in types, i in 1:n
+            for T in types, fuse in fusion, i in 1:n
                 push!(
                     specs,
                     BenchmarkSpec(
@@ -75,6 +87,7 @@ function parse_config(path)
                         T,
                         sweep_value(gpus, i),
                         sweep_value(cpus, i),
+                        parse_fusion(fuse),
                         [sweep_value(N, i), sweep_value(M, i)],
                     ),
                 )

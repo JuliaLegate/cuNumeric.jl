@@ -41,17 +41,91 @@ global const floaty_binary_op_map = Dict{Function,BinaryOpCode}(
 )
 
 ## SPECIAL CASES ##
+# Promote into out's eltype, then destroy any new temps (dispatch; no runtime !==).
+@inline function _nda_binary_op_promoted!(
+    out::NDArray{T}, op, rhs1::NDArray{T}, rhs2::NDArray{T}
+) where {T}
+    return nda_binary_op!(out, op, rhs1, rhs2)
+end
+function _nda_binary_op_promoted!(out::NDArray{T}, op, rhs1::NDArray, rhs2::NDArray{T}) where {T}
+    p1 = unchecked_promote_arr(rhs1, T)  # always new when eltype ≠ T
+    result = nda_binary_op!(out, op, p1, rhs2)
+    destroy!(p1)
+    return result
+end
+function _nda_binary_op_promoted!(out::NDArray{T}, op, rhs1::NDArray{T}, rhs2::NDArray) where {T}
+    p2 = unchecked_promote_arr(rhs2, T)
+    result = nda_binary_op!(out, op, rhs1, p2)
+    destroy!(p2)
+    return result
+end
+function _nda_binary_op_promoted!(out::NDArray{T}, op, rhs1::NDArray, rhs2::NDArray) where {T}
+    p1 = unchecked_promote_arr(rhs1, T)
+    p2 = unchecked_promote_arr(rhs2, T)
+    result = nda_binary_op!(out, op, p1, p2)
+    destroy!(p1)
+    destroy!(p2)
+    return result
+end
+
+@inline function _nda_three_dot_promoted!(
+    rhs1::NDArray{T}, rhs2::NDArray{T}, out::NDArray{T}
+) where {T}
+    return nda_three_dot_arg(rhs1, rhs2, out)
+end
+function _nda_three_dot_promoted!(rhs1::NDArray, rhs2::NDArray{T}, out::NDArray{T}) where {T}
+    p1 = unchecked_promote_arr(rhs1, T)
+    result = nda_three_dot_arg(p1, rhs2, out)
+    destroy!(p1)
+    return result
+end
+function _nda_three_dot_promoted!(rhs1::NDArray{T}, rhs2::NDArray, out::NDArray{T}) where {T}
+    p2 = unchecked_promote_arr(rhs2, T)
+    result = nda_three_dot_arg(rhs1, p2, out)
+    destroy!(p2)
+    return result
+end
+function _nda_three_dot_promoted!(rhs1::NDArray, rhs2::NDArray, out::NDArray{T}) where {T}
+    p1 = unchecked_promote_arr(rhs1, T)
+    p2 = unchecked_promote_arr(rhs2, T)
+    result = nda_three_dot_arg(p1, p2, out)
+    destroy!(p1)
+    destroy!(p2)
+    return result
+end
+
+@inline function _nda_three_dot_checked!(
+    rhs1::NDArray{T}, rhs2::NDArray{T}, out::NDArray{T}
+) where {T}
+    return nda_three_dot_arg(rhs1, rhs2, out)
+end
+function _nda_three_dot_checked!(rhs1::NDArray, rhs2::NDArray{T}, out::NDArray{T}) where {T}
+    p1 = checked_promote_arr(rhs1, T)
+    result = nda_three_dot_arg(p1, rhs2, out)
+    destroy!(p1)
+    return result
+end
+function _nda_three_dot_checked!(rhs1::NDArray{T}, rhs2::NDArray, out::NDArray{T}) where {T}
+    p2 = checked_promote_arr(rhs2, T)
+    result = nda_three_dot_arg(rhs1, p2, out)
+    destroy!(p2)
+    return result
+end
+function _nda_three_dot_checked!(rhs1::NDArray, rhs2::NDArray, out::NDArray{T}) where {T}
+    p1 = checked_promote_arr(rhs1, T)
+    p2 = checked_promote_arr(rhs2, T)
+    result = nda_three_dot_arg(p1, p2, out)
+    destroy!(p1)
+    destroy!(p2)
+    return result
+end
+
 # Do not need broadcast operation when same shape
 function Base.:(-)(rhs1::NDArray{A,N}, rhs2::NDArray{B,N}) where {A,B,N}
     promote_shape(size(rhs1), size(rhs2))
     T_OUT = __checked_promote_op(-, A, B)
     out = cuNumeric.zeros(T_OUT, size(rhs1))
-    return nda_binary_op!(
-        out,
-        cuNumeric.SUBTRACT,
-        unchecked_promote_arr(rhs1, T_OUT),
-        unchecked_promote_arr(rhs2, T_OUT),
-    )
+    return _nda_binary_op_promoted!(out, cuNumeric.SUBTRACT, rhs1, rhs2)
 end
 
 # Do not need broadcast operation when same shape
@@ -59,19 +133,18 @@ function Base.:(+)(rhs1::NDArray{A,N}, rhs2::NDArray{B,N}) where {A,B,N}
     promote_shape(size(rhs1), size(rhs2))
     T_OUT = __checked_promote_op(+, A, B)
     out = cuNumeric.zeros(T_OUT, size(rhs1))
-    return nda_binary_op!(
-        out, cuNumeric.ADD, unchecked_promote_arr(rhs1, T_OUT), unchecked_promote_arr(rhs2, T_OUT)
-    )
+    return _nda_binary_op_promoted!(out, cuNumeric.ADD, rhs1, rhs2)
 end
 
-function Base.:(*)(val::V, arr::NDArray{A}) where {A,V}
-    T = __my_promote_type(A, V)
-    out = cuNumeric.zeros(T, size(arr))
-    return nda_binary_op!(out, cuNumeric.MULTIPLY, NDArray(T(val)), unchecked_promote_arr(arr, T))
-end
+Base.:(*)(val::V, arr::NDArray{A}) where {A,V} = _mul_scalar(__my_promote_type(A, V), val, arr)
+Base.:(*)(arr::NDArray{A}, val::V) where {A,V} = val * arr
 
-function Base.:(*)(arr::NDArray{A}, val::V) where {A,V}
-    val * arr
+_mul_scalar(::Type{T}, val, arr::NDArray{T}) where {T} = nda_multiply_scalar(arr, T(val))
+function _mul_scalar(::Type{U}, val, arr::NDArray) where {U}
+    promoted = unchecked_promote_arr(arr, U)  # always a new array when U ≠ eltype
+    out = nda_multiply_scalar(promoted, U(val))
+    destroy!(promoted)
+    return out
 end
 
 function Base.:(*)(rhs1::NDArray{A,2}, rhs2::NDArray{B,2}) where {A,B}
@@ -79,7 +152,7 @@ function Base.:(*)(rhs1::NDArray{A,2}, rhs2::NDArray{B,2}) where {A,B}
         throw(DimensionMismatch("Matrix dimensions incompatible: $(size(rhs1)) × $(size(rhs2))"))
     T = __my_promote_type(A, B)
     out = cuNumeric.zeros(T, (size(rhs1, 1), size(rhs2, 2)))
-    return nda_three_dot_arg(unchecked_promote_arr(rhs1, T), unchecked_promote_arr(rhs2, T), out)
+    return _nda_three_dot_promoted!(rhs1, rhs2, out)
 end
 
 function Base.:(*)(rhs1::NDArray{Bool,2}, rhs2::NDArray{Bool,2})
@@ -143,7 +216,7 @@ function LinearAlgebra.mul!(
             ),
         )
     end
-    return nda_three_dot_arg(checked_promote_arr(rhs1, T), checked_promote_arr(rhs2, T), out)
+    return _nda_three_dot_checked!(rhs1, rhs2, out)
 end
 
 function LinearAlgebra.mul!(out::NDArray, rhs1::NDArray{Bool,2}, rhs2::NDArray{Bool,2})
@@ -182,11 +255,16 @@ for (julia_fn, op_code) in floaty_binary_op_map
             return nda_binary_op!(out, $(op_code), rhs1, rhs2)
         end
 
-        # If input is not already float, promote to that
+        # If input is not already float, promote to that (temps always new → always destroy)
         @inline function __broadcast(
             f::typeof($(julia_fn)), out::NDArray{A}, rhs1::NDArray{B}, rhs2::NDArray{B}
         ) where {A<:SUPPORTED_FLOAT_TYPES,B<:Union{SUPPORTED_INT_TYPES,Bool}}
-            return __broadcast(f, out, checked_promote_arr(rhs1, A), checked_promote_arr(rhs2, A))
+            p1 = checked_promote_arr(rhs1, A)
+            p2 = checked_promote_arr(rhs2, A)
+            result = __broadcast(f, out, p1, p2)
+            destroy!(p1)
+            destroy!(p2)
+            return result
         end
     end
 end
@@ -195,18 +273,24 @@ end
     f::typeof(Base.:(+)), out::NDArray{O}, rhs1::NDArray{Bool}, rhs2::NDArray{Bool}
 ) where {O<:Integer}
     assertpromotion(".+", Bool, O)
-    return nda_binary_op!(
-        out, cuNumeric.ADD, unchecked_promote_arr(rhs1, O), unchecked_promote_arr(rhs2, O)
-    )
+    p1 = unchecked_promote_arr(rhs1, O)  # always new (Bool → O)
+    p2 = unchecked_promote_arr(rhs2, O)
+    result = nda_binary_op!(out, cuNumeric.ADD, p1, p2)
+    destroy!(p1)
+    destroy!(p2)
+    return result
 end
 
 @inline function __broadcast(
     f::typeof(Base.:(-)), out::NDArray{O}, rhs1::NDArray{Bool}, rhs2::NDArray{Bool}
 ) where {O<:Integer}
     assertpromotion(".-", Bool, O)
-    return nda_binary_op!(
-        out, cuNumeric.SUBTRACT, unchecked_promote_arr(rhs1, O), unchecked_promote_arr(rhs2, O)
-    )
+    p1 = unchecked_promote_arr(rhs1, O)
+    p2 = unchecked_promote_arr(rhs2, O)
+    result = nda_binary_op!(out, cuNumeric.SUBTRACT, p1, p2)
+    destroy!(p1)
+    destroy!(p2)
+    return result
 end
 
 # function Base.:(==)(lhs::NDArray{A}, rhs::NDArray{B}) where {A,B}

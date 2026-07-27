@@ -4,6 +4,7 @@ project(cuNumericWrapper)
 
 set(cuNumericWrapperVersion 0.0.1)
 message(STATUS "Project version: v${cuNumericWrapperVersion}")
+
 set(CXX_CUNUMERICJL_WRAPPER cunumeric_jl_wrapper)
 set(C_INTERFACE_LIB cunumeric_c_wrapper)
 
@@ -20,19 +21,21 @@ find_package(cupynumeric REQUIRED)
 
 # CxxWrap Stuff
 if(NOT BINARYBUILDER)
-execute_process(
-  COMMAND julia -e "println(DEPOT_PATH[1])"
-  OUTPUT_VARIABLE JULIA_DEP_PATH
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
+    execute_process(
+        COMMAND julia -e "println(DEPOT_PATH[1])"
+        OUTPUT_VARIABLE JULIA_DEP_PATH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
 
-set(JlCxx_DIR "${JULIA_DEP_PATH}/dev/libcxxwrap_julia_jll/override")
-message(STATUS "Setting JlCxx_DIR to ${JlCxx_DIR} (not using BinaryBuilder)")
+    set(JlCxx_DIR "${JULIA_DEP_PATH}/dev/libcxxwrap_julia_jll/override")
+    message(STATUS "Setting JlCxx_DIR to ${JlCxx_DIR} (not using BinaryBuilder)")
 endif()
 
 find_package(JlCxx REQUIRED)
+
 get_target_property(JlCxx_location JlCxx::cxxwrap_julia LOCATION)
 get_filename_component(JlCxx_location ${JlCxx_location} DIRECTORY)
+
 set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib;${JlCxx_location}")
 message(STATUS "Found JlCxx at ${JlCxx_location}")
 
@@ -54,7 +57,9 @@ endif()
 
 # Library: C++ wrapper
 add_library(${CXX_CUNUMERICJL_WRAPPER} SHARED ${SOURCES})
-set_target_properties(${CXX_CUNUMERICJL_WRAPPER} PROPERTIES VERSION ${cuNumericWrapperVersion})
+set_target_properties(${CXX_CUNUMERICJL_WRAPPER} PROPERTIES
+    VERSION ${cuNumericWrapperVersion}
+)
 
 target_link_libraries(${CXX_CUNUMERICJL_WRAPPER} PRIVATE
     cupynumeric::cupynumeric
@@ -77,7 +82,9 @@ set(C_SOURCES
 )
 
 add_library(${C_INTERFACE_LIB} SHARED ${C_SOURCES})
-set_target_properties(${C_INTERFACE_LIB} PROPERTIES VERSION ${cuNumericWrapperVersion})
+set_target_properties(${C_INTERFACE_LIB} PROPERTIES
+    VERSION ${cuNumericWrapperVersion}
+)
 
 target_link_libraries(${C_INTERFACE_LIB} PRIVATE
     cupynumeric::cupynumeric

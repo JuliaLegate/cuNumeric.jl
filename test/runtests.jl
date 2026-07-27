@@ -41,6 +41,8 @@ end
 using cuNumeric
 VERBOSE && cuNumeric.versioninfo()
 
+@info "Broadcast fusion: FUSE_BROADCAST_EXPRS=$(cuNumeric.FUSE_BROADCAST_EXPRS) FUSE_BROADCAST_MIN_OPS=$(cuNumeric.FUSE_BROADCAST_MIN_OPS)"
+
 # TODO
 # After loading cuNumeric, we should verify that the Legate config has set a GPU device
 # Right now, if you have a gpu device, but your LEGATE_CONFIG is cpu only,
@@ -57,6 +59,7 @@ include("tests/unary_tests.jl")
 include("tests/binary_tests.jl")
 include("tests/scoping.jl")
 include("tests/scoping-advanced.jl")
+include("tests/broadcast_fusion_tests.jl")
 
 @testset verbose = true "AXPY" begin
     N = 100
@@ -88,11 +91,11 @@ end
 
     @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
         allowpromotion(true) do
-            test_unary_function_set(cuNumeric.floaty_unary_ops_no_args, T, N)
+            return test_unary_function_set(cuNumeric.floaty_unary_ops_no_args, T, N)
         end
 
         allowpromotion(T == Bool) do
-            test_unary_function_set(cuNumeric.unary_op_map_no_args, T, N)
+            return test_unary_function_set(cuNumeric.unary_op_map_no_args, T, N)
         end
         # Special cases for unary ops that dont use . syntax
         @testset "- (Negation)" begin
@@ -204,7 +207,7 @@ end
     @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
         allowpromotion(true) do
             test_binary_function_set(cuNumeric.floaty_binary_op_map, T, N)
-            test_binary_function_set(cuNumeric.binary_op_map, T, N)
+            return test_binary_function_set(cuNumeric.binary_op_map, T, N)
         end
 
         arr_jl = my_rand(T, N)
@@ -461,11 +464,17 @@ end
 end
 
 if run_gpu_tests
+    @testset verbose = true "Broadcast Fusion" begin
+        test_broadcast_fusion()
+        test_broadcast_fusion_edge_cases()
+        test_broadcast_fusion_ptx_cache()
+    end
+
     # @testset verbose = true "CUDA Tests" begin
     #     cuda_unaryop(rtol(Float32))
     #     cuda_binaryop(rtol(Float32))
     # end
-    @warn "CUDA tests are turned off inside Pkg.test for now. --check-bounds=yes causes issues."
+    @warn "CUDA @cuda_task tests are turned off inside Pkg.test for now. --check-bounds=yes causes issues."
 else
     @warn "The CUDA tests will not be run as a CUDA-enabled device is not available"
 end

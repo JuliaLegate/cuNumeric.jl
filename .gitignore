@@ -18,8 +18,9 @@ debug
 debug/*
 
 # benchmark outputs
-benchmark/results
+benchmark/results**
 benchmark/results/*
+benchmark/plots**
 
 compile_wrapper.sh
 
@@ -28,8 +29,8 @@ compile_wrapper.sh
 build
 build/*
 build.log
-*.log
-*.err
+*.log**
+*.err**
 kernel.ptx
 *.perf
 *.folded
@@ -94,3 +95,8 @@ node_modules
 *.out
 *.app
 .githash
+
+# VitePress caches/output (keep docs/src/.vitepress/config.mts + theme/)
+docs/.vitepress/
+docs/src/.vitepress/cache/
+docs/src/.vitepress/dist/

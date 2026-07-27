@@ -52,9 +52,12 @@ fi
 echo "cupynumeric_jll major.minor: $VER"
 SPEC="cupynumeric=$VER.*"
 
+# numpy 2.3 dropped the private numpy.linalg.linalg path that cupynumeric 25.10 imports.
+NUMPY_SPEC="numpy<2.3"
+
 if [[ -n "$INTO_ENV" ]]; then
     echo "Installing $SPEC into existing env '$INTO_ENV'..."
-    conda install -y -n "$INTO_ENV" -c conda-forge -c legate "$SPEC"
+    conda install -y -n "$INTO_ENV" -c conda-forge -c legate "$SPEC" "$NUMPY_SPEC"
     echo "Done. Activate with: conda activate $INTO_ENV"
     exit 0
 fi
@@ -68,6 +71,6 @@ if conda env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
 fi
 
 echo "Creating env '$ENV_NAME' with $SPEC..."
-conda create -y -n "$ENV_NAME" -c conda-forge -c legate "$SPEC"
+conda create -y -n "$ENV_NAME" -c conda-forge -c legate "$SPEC" "$NUMPY_SPEC"
 
 echo "Done. Activate with: conda activate $ENV_NAME"

@@ -39,17 +39,28 @@ function solve_batched(a::NDArray{T,N}, b::NDArray, x::NDArray) where {T,N}
     tiled_a = Legate.partition_by_tiling(store_a, collect(tilesize_a))
     tiled_b = Legate.partition_by_tiling(store_b, collect(tilesize_b))
     tiled_x = Legate.partition_by_tiling(store_x, collect(tilesize_b))
+    # Same Legate Julia-wrapper pin class as Launch `_add_task_array!` / get_store
+    # temps: one could finalize store_/tiled_ handles here after partition/add_*
+    # copies ownership into the task. Not enabled yet — weak linalg test coverage.
+    # finalize(store_a.handle)
+    # finalize(store_b.handle)
+    # finalize(store_x.handle)
 
-    rt = Legate.get_runtime()
-    domain = Legate.domain_from_shape(Legate.Shape(Legate.to_cxx_vector(color_shape)))
-    lib = cuNumeric.get_lib()
-    task = Legate.create_manual_task(rt, lib, cuNumeric.SOLVE, domain)
+    @task_scope "solve" begin
+        rt = Legate.get_runtime()
+        domain = Legate.domain_from_shape(Legate.Shape(Legate.to_cxx_vector(color_shape)))
+        lib = cuNumeric.get_lib()
+        task = Legate.create_manual_task(rt, lib, cuNumeric.SOLVE, domain)
 
-    Legate.add_input(task, tiled_a)
-    Legate.add_input(task, tiled_b)
-    Legate.add_output(task, tiled_x)
+        Legate.add_input(task, tiled_a)
+        # finalize(tiled_a.handle)
+        Legate.add_input(task, tiled_b)
+        # finalize(tiled_b.handle)
+        Legate.add_output(task, tiled_x)
+        # finalize(tiled_x.handle)
 
-    Legate.submit_manual_task(rt, task)
+        Legate.submit_manual_task(rt, task)
+    end
 end
 
 # solve runs in floating point:
@@ -60,6 +71,18 @@ _solve_eltype(::Type{T}) where {T<:_SOLVE_PROMOTABLE} = Float64
 _solve_eltype(::Type{T}) where {T<:SUPPORTED_SOLVE_TYPES} = T
 
 # Type/dim guards dispatch on one argument at a time, then forward to `_solve`.
+"""
+    cuNumeric.solve(A, b)
+
+Solve linear system(s) `A * x = b`.
+
+`A` must have shape `(..., m, m)`. `b` must have shape `(..., m)` or `(..., m, n)`.
+The result has the same shape as `b`. Batch dimensions are supported; the
+implementation always uses the batched Legate `SOLVE` path.
+
+Accepted element types are `Float32`, `Float64`, `ComplexF32`, and `ComplexF64`.
+Integer or `Bool` inputs promote to `Float64` only when promotion is allowed.
+"""
 function solve(a::NDArray{<:_SOLVE_ACCEPTED}, b::NDArray{<:_SOLVE_ACCEPTED})
     A, B = eltype(a), eltype(b)
     O = promote_type(_solve_eltype(A), _solve_eltype(B))
