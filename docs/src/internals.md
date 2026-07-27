@@ -1,0 +1,52 @@
+# Internals
+
+This page describes the implementation details of kernel fusion, manual memory management via `@analyze_lifetimes` and automatic memory management via GC heuristics. For docs on how to use these features, see [Kernel Fusion](./perf/kernel_fusion.md) and [Reduce Allocations](./perf/reduce_allocations.md).
+
+## Broadcast fusion
+
+We compile nested Julia broadcast expressions on `NDArray` to a single CUDA kernel instead of launching one kernel per operation.
+
+### Pipeline
+
+- **Expression:** You write a dotted or `@.` expression such as `y .= @. a * b + c`.
+- **Broadcast tree:** Julia builds the `Broadcasted` tree.
+- **Fused path:** Flatten the tree, build a kernel with CUDA.jl, and launch it with Legate.
+- **Unfused path:** `unravel_broadcast_tree` recursively unravels the tree and executes each operation one at a time.
+
+## Lifetimes and GC
+
+Julia's GC sees an `NDArray` as a small handle. The actual data is owned by the Legate runtime. This means that to Julia's GC `NDArrays` do not create memory pressure and GC is never executed. To avoid out-of-memory errors we created the `@analyze_lifetiems` macro so users can manually manage the lifetimes of a code block and also manually track device memory to automatically invoke GC.
+
+### Eager last-use freeing with `@analyze_lifetimes`
+
+`@analyze_lifetimes` rewrites a block at macro-expansion time:
+
+- Hoist temporary allocations into named temps.
+- Find each temp's static last use.
+- Insert calls to free temporary `NDArrays` after last-use.
+
+Under broadcast fusion, intermediate dotted nodes are **not** real `NDArray` allocations. The macro switches to a fusion-aware hoist that keeps dotted trees lazy and only treats slices, broadcast roots, and non-broadcast calls as real allocations. When fusion is off, every call (including dotted ops) is treated as a real allocation.
+
+```julia
+@analyze_lifetimes begin
+    result = A[1:end, :] .+ B[1:end, :]
+    C .= result .* 2
+end
+```
+
+Use `@show_lifetimes` to print the rewritten block and the free sites without running the code. That is pure AST work and works without a GPU.
+
+Limits to keep in mind:
+
+- Analysis is statement-linear. It is not a full control-flow graph pass. Wrap hot loop bodies, not entire programs.
+- Some paths free eagerly outside the macro (for example LHS slice views created during indexed assignment).
+
+Relevant source: `src/scoping.jl`.
+
+### Allocation-driven GC heuristics
+
+Every `NDArray` registers its byte size on construct and free. When predicted live bytes cross soft (~80%) or hard (~90%) fractions of available memory, and enough new growth has accumulated since the last collection, cuNumeric.jl triggers Julia `GC.gc`.
+
+`@analyze_lifetimes` reduces peak live temps. The heuristics catch cases the macro cannot see.
+
+Relevant source: `src/memory.jl`.

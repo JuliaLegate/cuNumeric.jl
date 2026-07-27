@@ -38,8 +38,12 @@ on:
       - 'lib/CNPreferences/src/**'
       - '.github/workflows/developer.yml'
 jobs:
+  pkg_resolve:
+    uses: ./.github/workflows/pkg_resolve.yml
+
   docs:
-    name : Developer CI test
+    name: Developer CI test
+    needs: pkg_resolve
     permissions:
       contents: read
       packages: write
@@ -55,7 +59,7 @@ jobs:
         shell: bash
     env:
         LEGATE_AUTO_CONFIG: 0
-        NO_CUDA: ON
+        LEGATE_WRAPPER_ENABLE_CUDA: OFF
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
@@ -86,6 +90,36 @@ jobs:
         uses: julia-actions/cache@v2
         with:
             cache-name: julia-developer-ci
+
+      # Parse commit message or PR body for [legate-branch: <branch>].
+      # Example: include "[legate-branch: my-feature]" anywhere in the message.
+      - name: Detect Legate branch override
+        id: legate-branch
+        run: |
+          MSG=$(printf '%s\n%s' \
+            "${{ github.event.head_commit.message }}" \
+            "${{ github.event.pull_request.body }}")
+          BRANCH=$(echo "$MSG" | grep -oiP 'legate[-_]branch:\s*\K\S+' | head -1 | tr -d '[]' || true)
+          echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
+          if [[ -n "$BRANCH" ]]; then
+            echo "Using Legate.jl branch override: $BRANCH"
+          else
+            echo "No Legate.jl branch override — using JLL"
+          fi
+
+      - name: Clone and develop Legate.jl branch override
+        if: steps.legate-branch.outputs.branch != ''
+        run: |
+          git clone --depth 1 --branch ${{ steps.legate-branch.outputs.branch }} \
+            ${{ github.server_url }}/${{ github.repository_owner }}/Legate.jl.git \
+            /tmp/Legate.jl
+          julia --color=yes -e '
+              using Pkg;
+              Pkg.develop(PackageSpec(path = "/tmp/Legate.jl/lib/LegatePreferences"))
+              Pkg.develop(PackageSpec(path = "/tmp/Legate.jl"))
+              using LegatePreferences; LegatePreferences.use_developer_mode();
+              Pkg.build("Legate")
+          '
 
       - name: Setup cuNumeric.jl with build from src wrappers
         run: |

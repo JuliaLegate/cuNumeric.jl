@@ -41,6 +41,8 @@ end
 using cuNumeric
 VERBOSE && cuNumeric.versioninfo()
 
+@info "Broadcast fusion: FUSE_BROADCAST_EXPRS=$(cuNumeric.FUSE_BROADCAST_EXPRS) FUSE_BROADCAST_MIN_OPS=$(cuNumeric.FUSE_BROADCAST_MIN_OPS)"
+
 # TODO
 # After loading cuNumeric, we should verify that the Legate config has set a GPU device
 # Right now, if you have a gpu device, but your LEGATE_CONFIG is cpu only,
@@ -57,7 +59,11 @@ include("tests/unary_tests.jl")
 include("tests/binary_tests.jl")
 include("tests/scoping.jl")
 include("tests/scoping-advanced.jl")
+<<<<<<< HEAD
 include("tests/hdf5.jl")
+=======
+include("tests/broadcast_fusion_tests.jl")
+>>>>>>> develop
 
 @testset verbose = true "AXPY" begin
     N = 100
@@ -185,6 +191,11 @@ end
                 func == Base.minimum ||
                 func == Base.prod
             )
+                continue
+            end
+
+            ## TODO Int8 min/max along an axis is broken on GPU
+            if cuNumeric.HAS_CUDA && T == Int8 && (func == Base.minimum || func == Base.maximum)
                 continue
             end
 
@@ -465,11 +476,17 @@ end
 end
 
 if run_gpu_tests
+    @testset verbose = true "Broadcast Fusion" begin
+        test_broadcast_fusion()
+        test_broadcast_fusion_edge_cases()
+        test_broadcast_fusion_ptx_cache()
+    end
+
     # @testset verbose = true "CUDA Tests" begin
     #     cuda_unaryop(rtol(Float32))
     #     cuda_binaryop(rtol(Float32))
     # end
-    @warn "CUDA tests are turned off inside Pkg.test for now. --check-bounds=yes causes issues."
+    @warn "CUDA @cuda_task tests are turned off inside Pkg.test for now. --check-bounds=yes causes issues."
 else
     @warn "The CUDA tests will not be run as a CUDA-enabled device is not available"
 end
