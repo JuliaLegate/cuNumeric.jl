@@ -22,12 +22,6 @@ const post_gc_host_bytes = Atomic{Int64}(0)
 # how much new memory must accumulate before GC fires again
 const gc_hysteresis_frac = Ref{Float64}(0.05)
 
-# memory measured right after the last GC
-const post_gc_device_bytes = Atomic{Int64}(0)
-const post_gc_host_bytes = Atomic{Int64}(0)
-# how much new memory must accumulate before GC fires again
-const gc_hysteresis_frac = Ref{Float64}(0.05)
-
 @doc"""
     init_gc!()
 

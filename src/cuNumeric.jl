@@ -70,7 +70,8 @@ const SUPPORTED_NUMERIC_TYPES = Union{
 
 # solve has no integer backend kernel
 const SUPPORTED_SOLVE_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
-
+const SUPPORTED_SVD_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
+const SUPPORTED_QR_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
 const SUPPORTED_ARRAY_TYPES = Union{Bool,SUPPORTED_NUMERIC_TYPES}
 const SUPPORTED_TYPES = Union{SUPPORTED_ARRAY_TYPES,String}
 
@@ -150,6 +151,7 @@ const TASK_SCOPE_NAMES = CNPreferences.TASK_SCOPE_NAMES
 
 # NDArray internal
 include("ndarray/detail/ndarray.jl")
+include("ndarray/detail/linalg.jl")
 
 # Utilities
 include("cuda/strided_device_array.jl")
