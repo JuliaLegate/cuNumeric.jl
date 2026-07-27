@@ -33,9 +33,16 @@ function test_hdf5_roundtrip(::Type{T}, shape::Tuple) where {T}
         cuNumeric.Legate.runtime_sync()
         @test isfile(path)
 
-        output = cuNumeric.h5read(path, dataset)
+        output = cuNumeric.h5read(path, dataset; layout=:row)
         @test eltype(output) == T
         @test size(output) == shape
         @allowscalar @test cuNumeric.compare(expected, output, 0, 0)
+
+        if length(shape) > 1
+            col_output = cuNumeric.h5read(path, dataset; layout=:col)
+            col_expected = permutedims(expected, reverse(1:length(shape)))
+            @test size(col_output) == reverse(shape)
+            @allowscalar @test cuNumeric.compare(col_expected, col_output, 0, 0)
+        end
     end
 end

@@ -829,6 +829,16 @@ function Base.isapprox(arr::NDArray{T}, arr2::NDArray{T}; atol=0, rtol=0) where 
     return compare(arr, arr2, atol, rtol)
 end
 
+"""
+    h5write(path::String, dataset::String, arr::NDArray)
+
+Write an `NDArray` directly to an HDF5 dataset without a host copy or dimension flip.
+
+# Arguments
+- `path`: Path to the HDF5 file.
+- `dataset`: Name of the dataset to write.
+- `arr`: The array to write.
+"""
 function h5write(path::String, dataset::String, arr::NDArray{T,N}) where {T,N}
     st_handle = get_store(arr)
     # NDArrays are row-major, so this writes straight through (no dim flip, no warning).
@@ -836,12 +846,24 @@ function h5write(path::String, dataset::String, arr::NDArray{T,N}) where {T,N}
     return Legate.h5write(path, dataset, la)
 end
 
-function h5read(path::String, dataset::String)
-    # Read the raw row-major store; `layout` only affects la.dims, which we bypass below.
-    la = Legate.h5read(path, dataset)
+"""
+    h5read(path::String, dataset::String; layout::Symbol=:row) -> NDArray
+
+Read a dataset from an HDF5 file into an `NDArray`.
+
+# Arguments
+- `path`: Path to the HDF5 file.
+- `dataset`: Name of the dataset to read.
+
+# Keywords
+- `layout`: On-disk memory order, either `:row` (default) or `:col`.
+"""
+function h5read(path::String, dataset::String; kwargs...)
+    la = Legate.h5read(path, dataset; kwargs...)
     T = eltype(la)
     N = Int(Legate.dim(la))
     st = Legate.data(la.handle)  # call data on the raw impl
     ptr = nda_store_to_ndarray(st)  # pass directly
-    return NDArray(ptr, T, Val(N), nothing)
+    arr = NDArray(ptr, T, Val(N), nothing)
+    return la.order === :col && N > 1 ? transpose(arr) : arr
 end
