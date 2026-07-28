@@ -106,6 +106,20 @@ function test_scoping_regressions(T, N)
         @test res isa cuNumeric.NDArray
         @test all(Array(res) .== T(4.0))
     end
+
+    if cuNumeric.FUSE_BROADCAST_EXPRS
+        @testset "Indexed fused assignment preserves Array view semantics" begin
+            src = reshape(T.(1:20), 4, 5)
+            out = fill(T(-1), 6, 7)
+            @analyze_lifetimes begin
+                producer = src .* T(2)
+                out[2:(end - 1), 2:(end - 1)] = producer .+ T(1)
+            end
+            @test out[2:(end - 1), 2:(end - 1)] == src .* T(2) .+ T(1)
+            @test all(out[[1, end], :] .== T(-1))
+            @test all(out[:, [1, end]] .== T(-1))
+        end
+    end
 end
 
 function run_all_ops(FT, N)

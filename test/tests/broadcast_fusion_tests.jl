@@ -430,6 +430,20 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         a2 .= a2 .* s1 .+ b
         @allowscalar @test cuNumeric.compare(ja .* s1 .+ jb, a2, atol, rtol)
     end
+
+    @testset "cross-statement fusion into a slice" begin
+        N = 16
+        ja = reshape(T.(1:(N * N)), N, N)
+        a = @allowscalar NDArray(ja)
+        out = cuNumeric.zeros(T, (N + 2, N + 2))
+        @analyze_lifetimes begin
+            producer = a .* s1
+            out[2:(end - 1), 2:(end - 1)] = producer .+ s2
+        end
+        expected = zeros(T, N + 2, N + 2)
+        expected[2:(end - 1), 2:(end - 1)] = ja .* s1 .+ s2
+        @allowscalar @test cuNumeric.compare(expected, out, atol, rtol)
+    end
 end
 
 #= Broadcast fusion PTX compilation cache.

@@ -114,7 +114,8 @@ function insert_finalizers(exprs::Vector, assigned_vars::Set{Symbol})
         return v
     end
 
-    is_indexed_assign(s) = s isa Expr && s.head == :(=) && !(s.args[1] isa Symbol)
+    is_indexed_assign(s) =
+        s isa Expr && s.head in (:(=), :(.=)) && !(s.args[1] isa Symbol)
     result_symbol(s) =
         if s isa Symbol
             s
@@ -312,6 +313,129 @@ end
 
 is_broadcast_op(op) = op isa Symbol && startswith(string(op), ".")
 
+function _is_broadcast_syntax(e)
+    return e isa Expr &&
+           (
+        (e.head == :call && !isempty(e.args) && is_broadcast_op(e.args[1])) ||
+        (e.head == :. && length(e.args) == 2)
+    )
+end
+
+function _symbol_occurrences(x, target::Symbol)
+    x === target && return 1
+    x isa Expr || return 0
+    return sum(arg -> _symbol_occurrences(arg, target), x.args; init=0)
+end
+
+function _substitute_symbols(x, replacements::Dict{Symbol,Any})
+    x isa Symbol && return get(replacements, x, x)
+    x isa Expr || return x
+
+    # A symbol assignment introduces/redefines its LHS; only substitute in RHS.
+    if x.head == :(=) && x.args[1] isa Symbol
+        return Expr(:(=), x.args[1], _substitute_symbols(x.args[2], replacements))
+    end
+    return Expr(x.head, (_substitute_symbols(arg, replacements) for arg in x.args)...)
+end
+
+function _indexed_assignment_base(stmt)
+    if stmt isa Expr && stmt.head == :(=) &&
+        stmt.args[1] isa Expr && stmt.args[1].head == :ref
+        base = stmt.args[1].args[1]
+        return base isa Symbol ? base : nothing
+    end
+    return nothing
+end
+
+function _safe_to_delay_broadcast(
+    stmts, def_idx::Int, use_idx::Int, dependencies::Set{Symbol}, lazy_defs::Set{Int}
+)
+    for i in (def_idx + 1):(use_idx - 1)
+        stmt = stmts[i]
+        stmt isa LineNumberNode && continue
+        i in lazy_defs && continue
+
+        # An indexed write to an unrelated array does not invalidate the lazy
+        # producer. Any other intervening statement is conservatively a barrier.
+        mutated = _indexed_assignment_base(stmt)
+        mutated !== nothing && !(mutated in dependencies) && continue
+        return false
+    end
+    return true
+end
+
+"""
+Inline single-use broadcast temporaries across statements before lifetime
+hoisting. This lets a stencil such as
+
+    lap = ...
+    out[slice] = scale .* lap .+ ...
+
+become one broadcast tree writing directly to `out[slice]`.
+
+Only broadcast definitions are delayed, and only across other lazy definitions
+or indexed writes to arrays not referenced by the producer.
+"""
+function inline_single_use_broadcasts(block)
+    Meta.isexpr(block, (:block, :begin)) || return block
+    stmts = collect(block.args)
+
+    definitions = Dict{Symbol,Tuple{Int,Any}}()
+    lazy_defs = Set{Int}()
+    for (i, stmt) in enumerate(stmts)
+        if stmt isa Expr && stmt.head == :(=) && stmt.args[1] isa Symbol &&
+            _is_broadcast_syntax(stmt.args[2])
+            definitions[stmt.args[1]] = (i, stmt.args[2])
+            push!(lazy_defs, i)
+        end
+    end
+
+    inlineable = Dict{Symbol,Tuple{Int,Int,Any}}()
+    for (sym, (def_idx, rhs)) in definitions
+        use_indices = Int[]
+        occurrences = 0
+        for i in (def_idx + 1):length(stmts)
+            n = _symbol_occurrences(stmts[i], sym)
+            if n > 0
+                occurrences += n
+                push!(use_indices, i)
+            end
+        end
+        occurrences == 1 || continue
+        use_idx = only(use_indices)
+        deps = Set(walk_symbols(rhs))
+        _safe_to_delay_broadcast(stmts, def_idx, use_idx, deps, lazy_defs) || continue
+        inlineable[sym] = (def_idx, use_idx, rhs)
+    end
+
+    replacements = Dict{Symbol,Any}()
+    removed = Set(first(info) for info in values(inlineable))
+    out = Any[]
+    for (i, stmt) in enumerate(stmts)
+        i in removed && begin
+            sym = only(sym for (sym, info) in inlineable if first(info) == i)
+            replacements[sym] = _substitute_symbols(inlineable[sym][3], replacements)
+            continue
+        end
+
+        stmt = _substitute_symbols(stmt, replacements)
+
+        # A materialized indexed assignment with a broadcast RHS normally
+        # allocates a temporary and copies it into the slice. If the destination
+        # base is absent from the RHS, write the fused tree directly to the view.
+        if stmt isa Expr && stmt.head == :(=) &&
+            stmt.args[1] isa Expr && stmt.args[1].head == :ref &&
+            _is_broadcast_syntax(stmt.args[2])
+            base = stmt.args[1].args[1]
+            if base isa Symbol && !(base in Set(walk_symbols(stmt.args[2])))
+                stmt = Expr(:(.=), stmt.args[1], stmt.args[2])
+            end
+        end
+        push!(out, stmt)
+    end
+    return Expr(block.head, out...)
+end
+
 function find_broadcast_assignments(ex, assigned_vars::Set{Symbol})
     local_assigned = Set{Symbol}()
 
@@ -335,16 +459,32 @@ function find_broadcast_assignments(ex, assigned_vars::Set{Symbol})
 
     # Inside a broadcast tree: hoist slices, keep dotted ops/f.(…) lazy, and
     # delegate anything else to rewrite() (it breaks the tree → real NDArray).
-    function rewrite_bcast(e)::Tuple{Any,Vector{Expr}}
+    #
+    # The slice cache is deliberately scoped to one fused tree. Repeated views
+    # then become one task argument and are still destroyed immediately after
+    # that task's last use. Sharing the cache across trees would keep transformed
+    # stores alive across task submissions, which can force runtime copies and
+    # delay device-memory reclamation.
+    function rewrite_bcast(e, slice_cache::Dict{Any,Symbol})::Tuple{Any,Vector{Expr}}
         e isa Expr || return e, Expr[]
-        e.head == :ref && return fresh_tmp(e)
+        if e.head == :ref
+            cached = get(slice_cache, e, nothing)
+            cached === nothing || return cached, Expr[]
+            tmp, bind = fresh_tmp(e)
+            slice_cache[e] = tmp
+            return tmp, bind
+        end
         if e.head == :call && is_broadcast_op(e.args[1])
-            args, hoisted = maphoist(rewrite_bcast, e.args[2:end])
+            args, hoisted = maphoist(
+                x -> rewrite_bcast(x, slice_cache), e.args[2:end]
+            )
             return Expr(:call, e.args[1], args...), hoisted
         end
         if e.head == :. && length(e.args) == 2 &&
             e.args[2] isa Expr && e.args[2].head == :tuple
-            args, hoisted = maphoist(rewrite_bcast, e.args[2].args)
+            args, hoisted = maphoist(
+                x -> rewrite_bcast(x, slice_cache), e.args[2].args
+            )
             return Expr(:., e.args[1], Expr(:tuple, args...)), hoisted
         end
         return rewrite(e)
@@ -363,8 +503,27 @@ function find_broadcast_assignments(ex, assigned_vars::Set{Symbol})
         # .= RHS is a broadcast tree: only the slices inside it are hoisted.
         if e.head == :(.=)
             lhs, rhs = e.args
-            new_lhs, lts = rewrite(lhs)
-            new_rhs, rts = rewrite_bcast(rhs)
+            # Preserve Julia's indexed `.=` semantics. Hoisting `A[inds...]`
+            # directly is valid for NDArray (whose getindex returns a view), but
+            # produces a detached copy for Array. An explicit view works for
+            # both, while still giving the lifetime pass a concrete NDArray
+            # wrapper to destroy immediately after task submission.
+            new_lhs, lts =
+                if lhs isa Expr && lhs.head == :ref
+                    view_expr = Base.macroexpand(
+                        @__MODULE__,
+                        Expr(
+                            :macrocall,
+                            GlobalRef(Base, Symbol("@view")),
+                            LineNumberNode(0),
+                            lhs,
+                        ),
+                    )
+                    fresh_tmp(view_expr)
+                else
+                    rewrite(lhs)
+                end
+            new_rhs, rts = rewrite_bcast(rhs, Dict{Any,Symbol}())
             return Expr(:(.=), new_lhs, new_rhs), vcat(lts, rts)
         end
 
@@ -372,7 +531,7 @@ function find_broadcast_assignments(ex, assigned_vars::Set{Symbol})
 
         # Broadcast root: hoist the fused result as one temp.
         if e.head == :call && is_broadcast_op(e.args[1])
-            inner, hoisted = rewrite_bcast(e)
+            inner, hoisted = rewrite_bcast(e, Dict{Any,Symbol}())
             tmp, bind = fresh_tmp(inner)
             return tmp, vcat(hoisted, bind)
         end
@@ -411,6 +570,7 @@ end
 
 function process_broadcast_scope(block)
     assigned_vars = Set{Symbol}()
+    block = inline_single_use_broadcasts(block)
     rewritten = find_broadcast_assignments(block, assigned_vars)
     result = insert_finalizers(rewritten, assigned_vars)
     counter[] = 0
