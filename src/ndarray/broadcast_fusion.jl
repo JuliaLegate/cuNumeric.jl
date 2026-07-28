@@ -12,7 +12,7 @@ Base.@propagate_inbounds _gpu_broadcast_getindex(x::Number, I) = x
 # `A[CartesianIndex(I, 1, 1, ...)]`, which is wrong for our linear work ids.
 # Dest already uses linear `dest[I]`; reads must use the same strided linear path.
 Base.@propagate_inbounds @inline function _gpu_broadcast_getindex(
-    x::CuStridedDeviceArray, I::Integer
+    x::CuStridedDeviceArray, I::Union{Integer,CartesianIndex}
 )
     return @inbounds x[I]
 end
@@ -135,10 +135,14 @@ function make_linear_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, stat
     @kernel unsafe_indices = true function broadcast_kernel_linear_splat(dest, runtime_args...)
         I = _broadcast_linear_work_id()
         if I <= length(dest)
+            # All fused array leaves have the destination shape. Convert the
+            # work id to a C-order coordinate once, then reuse it for every
+            # strided operand instead of repeating div/rem in each getindex.
+            CI = _c_order_cartesian_index(dest, I)
             @inbounds args_modified = _materialize_broadcast_args(
-                arg_plan, runtime_args, static_args, I
+                arg_plan, runtime_args, static_args, CI
             )
-            @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+            @inbounds dest[CI] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
         end
     end
 
@@ -330,7 +334,7 @@ function get_ptx(
     # dump_module=true keeps only_entry=false so linked libdevice helpers (e.g. cos
     # slowpaths) are not emptied into unresolved .externs before cuModuleLoad.
     CUDATools.code_ptx(buf, obj.f, (typeof(ctx), DEST_T, arg_types...);
-        raw=false, dump_module=true, kernel=true)
+        raw=false, dump_module=true, kernel=true, ptx=v"9.0")
 
     return String(take!(buf)), threads, ctx
 end

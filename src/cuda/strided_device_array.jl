@@ -44,23 +44,40 @@ function Base.unsafe_convert(
     return a.ptr
 end
 
-# 0-based element offset from a 1-based linear index in Julia column-major order
-# over `dims`, using Legate element `strides`.
-#
-# Must not use checked rem/div or signed↔unsigned converts — those emit
-# DivideError / InexactError → gpu_report_exception and break LoadPTX.
+# Use C order so adjacent GPU threads access adjacent cuPyNumeric elements.
+# Unchecked arithmetic avoids GPU exception paths that break LoadPTX.
 @inline _bitcast_uint(x::Int) = reinterpret(UInt, x)
 @inline _bitcast_int(x::UInt) = reinterpret(Int, x)
+
+@inline function _c_order_coords(dims::Dims, idx::UInt, ::Val{1})
+    return (_bitcast_int(idx) + 1,)
+end
+
+@inline function _c_order_coords(dims::Dims, idx::UInt, ::Val{D}) where {D}
+    @inbounds dlen = _bitcast_uint(Int(dims[D]))
+    quotient = Core.Intrinsics.udiv_int(idx, dlen)
+    coord = _bitcast_int(idx - quotient * dlen) + 1
+    return (_c_order_coords(dims, quotient, Val(D - 1))..., coord)
+end
+
+@inline function _c_order_cartesian_index(
+    A::CuStridedDeviceArray{<:Any,N}, I::Integer
+) where {N}
+    idx = _bitcast_uint(Int(I) - 1)
+    return CartesianIndex(_c_order_coords(A.dims, idx, Val(N)))
+end
 
 @inline function _strided_elem_offset(dims::Dims{N}, strides::Dims{N}, I::Integer) where {N}
     idx = _bitcast_uint(Int(I) - 1)
     off = 0
-    @inbounds for d in 1:N
+    @inbounds for d in N:-1:2
         dlen = _bitcast_uint(Int(dims[d]))
-        c = _bitcast_int(Core.Intrinsics.urem_int(idx, dlen))
-        idx = Core.Intrinsics.udiv_int(idx, dlen)
+        quotient = Core.Intrinsics.udiv_int(idx, dlen)
+        c = _bitcast_int(idx - quotient * dlen)
         off += c * Int(strides[d])
+        idx = quotient
     end
+    @inbounds off += _bitcast_int(idx) * Int(strides[1])
     return off
 end
 
