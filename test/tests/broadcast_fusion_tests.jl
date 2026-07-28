@@ -197,7 +197,7 @@ function test_broadcast_fusion(; T=Float32, N=100, atol=1e-5, rtol=1e-5)
     end
 end
 
-#= Edge cases for linear-only broadcast fusion.
+#= Edge cases for same-shaped broadcast fusion.
  * Complements `test_broadcast_fusion` with size extremes, 2D same-shape,
  * fusion gating for shape mismatch, 0-d fallback, and dest/input aliasing.
 =#
@@ -271,6 +271,17 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         dest = cuNumeric.zeros(T, M, N)
         bc = Base.Broadcast.instantiate(Base.broadcasted(+, a, b))
         @test cuNumeric.can_fuse_linear_broadcast(dest, bc)
+    end
+
+    @testset "2D Cartesian launch shapes" begin
+        for (M, N) in ((1, 513), (513, 1), (37, 513))
+            ja = rand(T, M, N)
+            jb = rand(T, M, N)
+            a = @allowscalar NDArray(ja)
+            b = @allowscalar NDArray(jb)
+            result = a .+ b .* s1
+            @allowscalar @test cuNumeric.compare(ja .+ jb .* s1, result, atol, rtol)
+        end
     end
 
     @testset "scalar gaps: A .^ 2 and scalar*A*scalar" begin

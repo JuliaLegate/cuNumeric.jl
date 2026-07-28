@@ -196,7 +196,7 @@ end
     # Fused writes `dest` in place (no post-fuse `nda_move`); promotion is
     # checked pre-launch in `fuse_broadcast_tree!`. CPU vs GPU is compile-time
     # via `@static if FUSE_BROADCAST_EXPRS && HAS_CUDA`.
-    # Linear-only fusion requires same-shaped NDArray leaves; otherwise fall back.
+    # Fusion requires same-shaped NDArray leaves; otherwise fall back.
     # Single-op exprs (length < `FUSE_BROADCAST_MIN_OPS`) stay unfused by default.
     @static if FUSE_BROADCAST_EXPRS && HAS_CUDA
         if _should_attempt_broadcast_fusion(dest, bc)
