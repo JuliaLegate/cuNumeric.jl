@@ -86,14 +86,13 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
     blocks, threads, taskid=cuNumeric.RUN_PTX, ctx=nothing, validate_shapes=true)
     max_shape = if validate_shapes
         # Generic PTX tasks retain the existing padding/shape behavior.
-        ndarrays = vcat(inputs..., outputs...)
-        mx = findmax(arr -> arr.nbytes, ndarrays)
-        shape = size(ndarrays[mx[2]])
+        ndarrays = vcat(inputs..., outputs...) # returns (nbytes, position)
+        mx = findmax(arr -> arr.nbytes, ndarrays) # first elem nbytes
+        shape = size(ndarrays[mx[2]]) # second elem max position
         @assert !isnothing(shape)
         shape
     else
-        # Fused linear broadcast has already verified that every array leaf
-        # matches the destination shape.
+        # Fused linear broadcast verifies shapes match
         nothing
     end
 
