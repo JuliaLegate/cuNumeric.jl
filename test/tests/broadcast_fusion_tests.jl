@@ -292,6 +292,55 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         end
     end
 
+    @testset "3D linear launch" begin
+        dims = (17, 19, 23)
+        ja = rand(T, dims...)
+        jb = rand(T, dims...)
+        a = @allowscalar NDArray(ja)
+        b = @allowscalar NDArray(jb)
+
+        result = a .+ b .* s1
+        @allowscalar @test cuNumeric.compare(ja .+ jb .* s1, result, atol, rtol)
+
+        a_alias = @allowscalar NDArray(copy(ja))
+        a_alias .= a_alias .* s1 .+ b
+        @allowscalar @test cuNumeric.compare(ja .* s1 .+ jb, a_alias, atol, rtol)
+
+        parent_dims = (19, 23, 29)
+        jpa = rand(T, parent_dims...)
+        jpb = rand(T, parent_dims...)
+        pa = @allowscalar NDArray(jpa)
+        pb = @allowscalar NDArray(jpb)
+        av = cuNumeric.nda_get_slice(
+            pa, cuNumeric.slice_array((1, 18), (2, 21), (3, 26))
+        )
+        bv = cuNumeric.nda_get_slice(
+            pb, cuNumeric.slice_array((0, 17), (1, 20), (2, 25))
+        )
+        @test cuNumeric._is_ndarray_slice(av)
+        @test cuNumeric._is_ndarray_slice(bv)
+
+        sliced_result = av .+ bv .* s1
+        expected_sliced = jpa[2:18, 3:21, 4:26] .+ jpb[1:17, 2:20, 3:25] .* s1
+        @allowscalar @test cuNumeric.compare(
+            expected_sliced, sliced_result, atol, rtol
+        )
+
+        out = @allowscalar NDArray(zeros(T, parent_dims...))
+        out_view = cuNumeric.nda_get_slice(
+            out, cuNumeric.slice_array((1, 18), (2, 21), (3, 26))
+        )
+        out_view .= av .+ bv .* s1
+        expected_out = zeros(T, parent_dims...)
+        expected_out[2:18, 3:21, 4:26] = expected_sliced
+        @allowscalar @test cuNumeric.compare(expected_out, out, atol, rtol)
+
+        a4 = @allowscalar NDArray(rand(T, 2, 3, 4, 5))
+        @test_throws ArgumentError cuNumeric.nda_get_slice(
+            a4, cuNumeric.slice_array((0, 2), (0, 3), (0, 4), (0, 5))
+        )
+    end
+
     @testset "scalar gaps: A .^ 2 and scalar*A*scalar" begin
         N = 64
         ja = rand(T, N)

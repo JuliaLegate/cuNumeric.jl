@@ -160,6 +160,7 @@ function nda_get_slice(arr::NDArray{T,N}, slices::Vector{Slice}) where {T,N}
             NDArray_t, (NDArray_t, Ptr{Slice}, Cint),
             arr.ptr, pointer(slices), length(slices))
     end
+    ptr == C_NULL && throw(ArgumentError("NDArray slicing only supports ranks 1-3"))
     # Keep parent so callers can detect views (slices share the parent store).
     return NDArray(ptr, T, Val(N), arr)
 end
