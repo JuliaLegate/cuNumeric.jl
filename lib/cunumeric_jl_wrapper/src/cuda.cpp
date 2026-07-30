@@ -407,6 +407,35 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
     return;
   }
 
+  if (dim == 3) {
+    const auto shape = out.shape<3>();
+    const auto extents = shape.hi - shape.lo + legate::Point<3>::ONES();
+    const std::uint64_t dim1 = extents[0];
+    const std::uint64_t dim2 = extents[1];
+    const std::uint64_t dim3 = extents[2];
+
+    assert(dim1 > 0 && dim2 > 0 && dim3 > 0);
+
+    lp.tx = static_cast<std::uint32_t>(std::min<std::uint64_t>(budget, dim3));
+    const std::uint32_t yz_budget = budget / lp.tx;
+    lp.ty =
+        static_cast<std::uint32_t>(std::min<std::uint64_t>(yz_budget, dim2));
+    const std::uint32_t z_budget = yz_budget / lp.ty;
+    lp.tz = static_cast<std::uint32_t>(
+        std::min<std::uint64_t>({z_budget, dim1, 64}));
+    lp.bx = static_cast<std::uint32_t>((dim3 + lp.tx - 1) / lp.tx);
+    lp.by = static_cast<std::uint32_t>((dim2 + lp.ty - 1) / lp.ty);
+    lp.bz = static_cast<std::uint32_t>((dim1 + lp.tz - 1) / lp.tz);
+
+#ifdef CUDA_DEBUG
+    std::cerr << "[RunPTXBroadcastTask] local shape=" << dim1 << "x" << dim2
+              << "x" << dim3 << " -> blocks=(" << lp.bx << "," << lp.by << ","
+              << lp.bz << ") threads=(" << lp.tx << "," << lp.ty << "," << lp.tz
+              << ") budget=" << budget << std::endl;
+#endif
+    return;
+  }
+
   std::uint64_t volume = 0;
 
 #define CU_BCAST_FILL_VOLUME(D)       \
@@ -417,9 +446,6 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
   switch (dim) {
     case 1:
       CU_BCAST_FILL_VOLUME(1);
-      break;
-    case 3:
-      CU_BCAST_FILL_VOLUME(3);
       break;
     case 4:
       CU_BCAST_FILL_VOLUME(4);

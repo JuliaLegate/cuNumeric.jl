@@ -292,7 +292,16 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         end
     end
 
-    @testset "3D linear launch" begin
+    @testset "3D Cartesian launch" begin
+        for dims in ((3, 3, 2053), (3, 2053, 3), (2053, 3, 3))
+            ja = rand(T, dims...)
+            jb = rand(T, dims...)
+            a = @allowscalar NDArray(ja)
+            b = @allowscalar NDArray(jb)
+            result = a .+ b .* s1
+            @allowscalar @test cuNumeric.compare(ja .+ jb .* s1, result, atol, rtol)
+        end
+
         dims = (17, 19, 23)
         ja = rand(T, dims...)
         jb = rand(T, dims...)

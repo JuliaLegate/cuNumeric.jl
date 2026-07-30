@@ -171,10 +171,49 @@ function make_cartesian_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, s
     return broadcast_kernel_cartesian_splat
 end
 
+@inline function _broadcast_cartesian_work_id_3d()
+    i =
+        (Int(CUDACore.blockIdx().z) - 1) * Int(CUDACore.blockDim().z) +
+        Int(CUDACore.threadIdx().z)
+    j =
+        (Int(CUDACore.blockIdx().y) - 1) * Int(CUDACore.blockDim().y) +
+        Int(CUDACore.threadIdx().y)
+    k =
+        (Int(CUDACore.blockIdx().x) - 1) * Int(CUDACore.blockDim().x) +
+        Int(CUDACore.threadIdx().x)
+    return CartesianIndex(i, j, k)
+end
+
+function make_cartesian_kernel_3d(
+    dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args
+)
+    f = bc.f
+
+    @kernel unsafe_indices = true function broadcast_kernel_cartesian_3d_splat(
+        dest, runtime_args...
+    )
+        I = _broadcast_cartesian_work_id_3d()
+        if I[1] <= size(dest, 1) && I[2] <= size(dest, 2) && I[3] <= size(dest, 3)
+            @inbounds args_modified = _materialize_broadcast_args(
+                arg_plan, runtime_args, static_args, I
+            )
+            @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+        end
+    end
+
+    return broadcast_kernel_cartesian_3d_splat
+end
+
 function make_broadcast_kernel(
     dest::NDArray{<:Any,2}, bc::Base.Broadcast.Broadcasted, arg_plan, static_args
 )
     return make_cartesian_kernel(dest, bc, arg_plan, static_args)
+end
+
+function make_broadcast_kernel(
+    dest::NDArray{<:Any,3}, bc::Base.Broadcast.Broadcasted, arg_plan, static_args
+)
+    return make_cartesian_kernel_3d(dest, bc, arg_plan, static_args)
 end
 
 function make_broadcast_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args)
@@ -490,7 +529,7 @@ function _describe_fused_broadcast(
     isempty(actual_scalars) || field("scalars", join(repr.(actual_scalars), ", "))
     isempty(static_args) || field("static", join(repr.(static_args), ", "))
     field("arg_map", "$(Int.(arg_map))  (0=output, >=1=input idx+1, <0=scalar)")
-    indexing = ndims(dest) == 2 ? "cartesian" : "linear"
+    indexing = ndims(dest) in (2, 3) ? "cartesian" : "linear"
     field(
         "launch",
         "host thread budget=$(fkm.threads), indexing=$indexing, " *
