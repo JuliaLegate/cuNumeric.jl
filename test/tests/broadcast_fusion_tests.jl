@@ -274,7 +274,15 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
     end
 
     @testset "2D Cartesian launch shapes" begin
-        for (M, N) in ((1, 513), (513, 1), (37, 513))
+        # Include extents larger than the maximum thread budget.
+        for (M, N) in (
+            (1, 513),
+            (513, 1),
+            (37, 513),
+            (3, 2053),
+            (2053, 3),
+            (1031, 1033),
+        )
             ja = rand(T, M, N)
             jb = rand(T, M, N)
             a = @allowscalar NDArray(ja)
@@ -313,6 +321,7 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         @allowscalar @test cuNumeric.compare(expected_x, result_x, atol, rtol)
 
         dest_x = similar(result_x)
+        @test !cuNumeric._is_ndarray_slice(dest_x)
         bc_x = Base.Broadcast.instantiate(
             Base.broadcasted(
                 +,
@@ -335,12 +344,25 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
             ja[2:(end - 1), 1:(end - 2)]
         @allowscalar @test cuNumeric.compare(expected_y, result_y, atol, rtol)
 
-        # Assign into a slice destination
+        # Single-op fallback must update the slice's parent.
         out = @allowscalar NDArray(zeros(T, N, N))
-        out[2:(end - 1), 2:(end - 1)] = result_x .+ result_y
+        out_interior = out[2:(end - 1), 2:(end - 1)]
+        @test !cuNumeric._is_ndarray_slice(out)
+        @test cuNumeric._is_ndarray_slice(out_interior)
+        bc_out = Base.Broadcast.instantiate(Base.broadcasted(+, result_x, result_y))
+        @test cuNumeric.can_fuse_linear_broadcast(out_interior, bc_out)
+        out_interior .= result_x .+ result_y
         expected_out = zeros(T, N, N)
         expected_out[2:(end - 1), 2:(end - 1)] = expected_x .+ expected_y
         @allowscalar @test cuNumeric.compare(expected_out, out, atol, rtol)
+
+        # Multi-op fused write into a slice.
+        out_fused = @allowscalar NDArray(zeros(T, N, N))
+        fused_interior = out_fused[2:(end - 1), 2:(end - 1)]
+        fused_interior .= result_x .+ result_y .* two
+        expected_fused = zeros(T, N, N)
+        expected_fused[2:(end - 1), 2:(end - 1)] = expected_x .+ expected_y .* two
+        @allowscalar @test cuNumeric.compare(expected_fused, out_fused, atol, rtol)
     end
 
     @testset "fused/unfused scalar promotion parity" begin
@@ -440,6 +462,14 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         a2 = @allowscalar NDArray(copy(ja))
         a2 .= a2 .* s1 .+ b
         @allowscalar @test cuNumeric.compare(ja .* s1 .+ jb, a2, atol, rtol)
+
+        M, N2 = 37, 65
+        j2a = rand(T, M, N2)
+        j2b = rand(T, M, N2)
+        a2d = @allowscalar NDArray(copy(j2a))
+        b2d = @allowscalar NDArray(j2b)
+        a2d .= a2d .* s1 .+ b2d
+        @allowscalar @test cuNumeric.compare(j2a .* s1 .+ j2b, a2d, atol, rtol)
     end
 end
 

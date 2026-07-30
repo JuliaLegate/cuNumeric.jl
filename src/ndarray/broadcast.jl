@@ -148,14 +148,25 @@ function unravel_broadcast_tree(bc::Broadcasted)
     return result
 end
 
-@inline function _copyto_unfused!(dest::NDArray{T}, temp_result::NDArray{T}) where {T}
-    nda_move(dest, temp_result)
+# Slice destinations must assign into their parent store.
+@inline function _store_broadcast_result!(
+    dest::NDArray{T}, temp_result::NDArray{T}
+) where {T}
+    if _is_ndarray_slice(dest)
+        nda_assign(dest, temp_result)
+        destroy!(temp_result)
+    else
+        nda_move(dest, temp_result)
+    end
     return dest
 end
 
+@inline _copyto_unfused!(dest::NDArray{T}, temp_result::NDArray{T}) where {T} =
+    _store_broadcast_result!(dest, temp_result)
+
 @inline function _copyto_unfused!(dest::NDArray{T}, temp_result::NDArray) where {T}
     promoted = checked_promote_arr(temp_result, T)
-    nda_move(dest, promoted)
+    _store_broadcast_result!(dest, promoted)
     destroy!(temp_result)
     return dest
 end

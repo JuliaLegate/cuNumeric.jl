@@ -66,6 +66,8 @@ mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
     end
 end
 
+@inline _is_ndarray_slice(arr::NDArray) = arr.parent isa NDArray
+
 """
     destroy!(arr::NDArray)
 
