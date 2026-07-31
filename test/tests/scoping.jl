@@ -108,6 +108,37 @@ function test_scoping_regressions(T, N)
     end
 
     if cuNumeric.FUSE_BROADCAST_EXPRS
+        @testset "Inter-broadcast fusion logger" begin
+            source = quote
+                product = A .* B
+                shifted = product .+ T(2)
+                C[:, :] = shifted ./ T(3)
+            end
+            _, events = cuNumeric._inline_single_use_broadcasts(source)
+
+            @test length(events) == 1
+            fused = sprint(Base.show_unquoted, events[1].fused)
+            @test !occursin("product", fused)
+            @test !occursin("shifted", fused)
+            @test occursin(".=", fused)
+
+            old_debug = cuNumeric.BCAST_FUSION_DEBUG[]
+            try
+                cuNumeric.BCAST_FUSION_DEBUG[] = true
+                io = IOBuffer()
+                cuNumeric._maybe_log_inter_broadcast_fusion(
+                    events[1].before, events[1].fused; io
+                )
+                log = String(take!(io))
+                @test occursin("inter-broadcast fusion rewrite", log)
+                @test occursin("product =", log)
+                @test occursin("shifted =", log)
+                @test occursin("fused", log)
+            finally
+                cuNumeric.BCAST_FUSION_DEBUG[] = old_debug
+            end
+        end
+
         @testset "Indexed fused assignment preserves Array view semantics" begin
             src = reshape(T.(1:20), 4, 5)
             out = fill(T(-1), 6, 7)

@@ -376,8 +376,8 @@ become one broadcast tree writing directly to `out[slice]`.
 Only broadcast definitions are delayed, and only across other lazy definitions
 or indexed writes to arrays not referenced by the producer.
 """
-function inline_single_use_broadcasts(block)
-    Meta.isexpr(block, (:block, :begin)) || return block
+function _inline_single_use_broadcasts(block)
+    Meta.isexpr(block, (:block, :begin)) || return block, NamedTuple[]
     stmts = collect(block.args)
 
     definitions = Dict{Symbol,Tuple{Int,Any}}()
@@ -409,32 +409,66 @@ function inline_single_use_broadcasts(block)
     end
 
     replacements = Dict{Symbol,Any}()
+    replacement_sources = Dict{Symbol,Vector{Int}}()
     removed = Set(first(info) for info in values(inlineable))
+    def_symbols = Dict(info[1] => sym for (sym, info) in inlineable)
+    fusion_events = NamedTuple[]
     out = Any[]
     for (i, stmt) in enumerate(stmts)
         i in removed && begin
-            sym = only(sym for (sym, info) in inlineable if first(info) == i)
+            sym = def_symbols[i]
+            source_indices = Int[]
+            for dependency in walk_symbols(stmt.args[2])
+                haskey(replacement_sources, dependency) || continue
+                append!(source_indices, replacement_sources[dependency])
+            end
+            unique!(source_indices)
+            sort!(source_indices)
+            push!(source_indices, i)
+            replacement_sources[sym] = source_indices
             replacements[sym] = _substitute_symbols(inlineable[sym][3], replacements)
             continue
         end
+
+        original_stmt = stmt
+        source_indices = Int[]
+        for dependency in walk_symbols(original_stmt)
+            haskey(replacement_sources, dependency) || continue
+            append!(source_indices, replacement_sources[dependency])
+        end
+        unique!(source_indices)
+        sort!(source_indices)
 
         stmt = _substitute_symbols(stmt, replacements)
 
         # A materialized indexed assignment with a broadcast RHS normally
         # allocates a temporary and copies it into the slice. If the destination
         # base is absent from the RHS, write the fused tree directly to the view.
+        direct_write = false
         if stmt isa Expr && stmt.head == :(=) &&
             stmt.args[1] isa Expr && stmt.args[1].head == :ref &&
             _is_broadcast_syntax(stmt.args[2])
             base = stmt.args[1].args[1]
             if base isa Symbol && !(base in Set(walk_symbols(stmt.args[2])))
                 stmt = Expr(:(.=), stmt.args[1], stmt.args[2])
+                direct_write = true
             end
+        end
+
+        if !isempty(source_indices) || direct_write
+            before = Expr(
+                :block,
+                (deepcopy(stmts[source_idx]) for source_idx in source_indices)...,
+                deepcopy(original_stmt),
+            )
+            push!(fusion_events, (; before, fused=deepcopy(stmt)))
         end
         push!(out, stmt)
     end
-    return Expr(block.head, out...)
+    return Expr(block.head, out...), fusion_events
 end
+
+inline_single_use_broadcasts(block) = first(_inline_single_use_broadcasts(block))
 
 function find_broadcast_assignments(ex, assigned_vars::Set{Symbol})
     local_assigned = Set{Symbol}()
@@ -570,15 +604,54 @@ end
 
 function process_broadcast_scope(block)
     assigned_vars = Set{Symbol}()
-    block = inline_single_use_broadcasts(block)
+    block, fusion_events = _inline_single_use_broadcasts(block)
     rewritten = find_broadcast_assignments(block, assigned_vars)
     result = insert_finalizers(rewritten, assigned_vars)
+    if !isempty(fusion_events)
+        log_calls = Expr[]
+        for event in fusion_events
+            before = QuoteNode(event.before)
+            fused = QuoteNode(event.fused)
+            push!(
+                log_calls,
+                :(cuNumeric._maybe_log_inter_broadcast_fusion($before, $fused)),
+            )
+        end
+        result = Expr(:block, log_calls..., result.args...)
+    end
     counter[] = 0
     return result
 end
 
+# Log the source statements that were recombined by inter-statement broadcast
+# fusion and the fused expression they become. The call is injected into the
+# analyzed block so `BCAST_FUSION_DEBUG[]` is checked when the block executes,
+# rather than earlier when its macro is expanded.
+function _print_fusion_expr(io::IO, expr)
+    clean = expr isa Expr ? Base.remove_linenums!(deepcopy(expr)) : expr
+    rendered = sprint(Base.show_unquoted, clean)
+    for line in eachline(IOBuffer(rendered))
+        println(io, "    ", line)
+    end
+    return nothing
+end
+
+function _maybe_log_inter_broadcast_fusion(before, fused; io::IO=stdout)
+    BCAST_FUSION_DEBUG[] || return nothing
+    println(io, "\n", "="^40, " inter-broadcast fusion rewrite")
+    println(io, "  before")
+    _print_fusion_expr(io, before)
+    println(io, "  fused")
+    _print_fusion_expr(io, fused)
+    return nothing
+end
+
 # Pretty-print the @analyze_lifetimes rewrite (see @show_lifetimes below).
 _is_delete_call(s) = Meta.isexpr(s, :call) && s.args[1] == :(cuNumeric.maybe_insert_delete)
+function _is_fusion_log_call(s)
+    return Meta.isexpr(s, :call) &&
+           s.args[1] == :(cuNumeric._maybe_log_inter_broadcast_fusion)
+end
 
 # Flatten nested begin/blocks into a linear statement list, dropping line nodes.
 function _flatten_stmts(x)
@@ -603,7 +676,9 @@ function print_lifetime_analysis(block; io::IO=stdout)
 
     n = 0
     for s in stmts
-        if _is_delete_call(s)
+        if _is_fusion_log_call(s)
+            continue
+        elseif _is_delete_call(s)
             printstyled(io, lpad("✗ free ", 11), s.args[2], "\n"; color=:red)
         else
             n += 1

@@ -5,7 +5,7 @@ Debug the layer that matches the problem:
 | Question | Tool |
 |---|---|
 | Which operations did Legate submit, and when did they run? | [Legate logs and profiles](#trace-legate-runtime-work) |
-| Did a broadcast become one fused kernel? | [`BCAST_FUSION_DEBUG`](#inspect-fused-broadcasts-with-bcast_fusion_debug) |
+| How were broadcasts fused? | [`BCAST_FUSION_DEBUG`](#inspect-fused-broadcasts-with-bcast_fusion_debug) |
 | Where does `@analyze_lifetimes` free temporaries? | [`@show_lifetimes`](#inspect-lifetime-rewrites-with-show_lifetimes) |
 
 ## Trace Legate runtime work
@@ -74,7 +74,9 @@ cuNumeric already supplies names for individual operations when task-scope namin
 
 ## Inspect fused broadcasts with `BCAST_FUSION_DEBUG`
 
-When broadcast fusion is on, set `cuNumeric.BCAST_FUSION_DEBUG[] = true` to print each fused kernel before launch: the expression tree, inputs, scalars, arg map, and launch geometry.
+When broadcast fusion is on, set `cuNumeric.BCAST_FUSION_DEBUG[] = true` to
+print inter-statement rewrites and each fused kernel's expression tree,
+arguments, and launch geometry.
 
 ```julia
 using cuNumeric
@@ -91,7 +93,20 @@ C .= @. A * B + 2.0f0
 cuNumeric.BCAST_FUSION_DEBUG[] = false
 ```
 
-Example output:
+For example, a single-use producer inside `@analyze_lifetimes` is reported as:
+
+```text
+======================================== inter-broadcast fusion rewrite
+  before
+    begin
+        product = A .* B
+        C[:, :] = product .+ 2.0f0
+    end
+  fused
+    C[:, :] .= A .* B .+ 2.0f0
+```
+
+The fused kernel is reported separately:
 
 ```text
 ======================================== fused broadcast kernel
