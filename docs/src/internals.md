@@ -41,7 +41,7 @@ Limits to keep in mind:
 - Analysis is statement-linear. It is not a full control-flow graph pass. Wrap hot loop bodies, not entire programs.
 - Some paths free eagerly outside the macro (for example LHS slice views created during indexed assignment).
 
-Relevant source: `src/scoping.jl`.
+Relevant source: `src/scoping/`.
 
 ### Allocation-driven GC heuristics
 

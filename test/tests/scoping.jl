@@ -114,29 +114,24 @@ function test_scoping_regressions(T, N)
                 shifted = product .+ T(2)
                 C[:, :] = shifted ./ T(3)
             end
-            _, events = cuNumeric._inline_single_use_broadcasts(source)
-
-            @test length(events) == 1
-            fused = sprint(Base.show_unquoted, events[1].fused)
+            rewritten = cuNumeric.InterBroadcastFusion.rewrite_scope(source)
+            stmts = cuNumeric._flatten_stmts(rewritten)
+            log_call = only(filter(cuNumeric.InterBroadcastFusion.is_log_call, stmts))
+            fused_stmt = only(filter(!cuNumeric.InterBroadcastFusion.is_log_call, stmts))
+            fused = sprint(Base.show_unquoted, fused_stmt)
             @test !occursin("product", fused)
             @test !occursin("shifted", fused)
             @test occursin(".=", fused)
 
-            old_debug = cuNumeric.BCAST_FUSION_DEBUG[]
-            try
-                cuNumeric.BCAST_FUSION_DEBUG[] = true
-                io = IOBuffer()
-                cuNumeric._maybe_log_inter_broadcast_fusion(
-                    events[1].before, events[1].fused; io
-                )
-                log = String(take!(io))
-                @test occursin("inter-broadcast fusion rewrite", log)
-                @test occursin("product =", log)
-                @test occursin("shifted =", log)
-                @test occursin("fused", log)
-            finally
-                cuNumeric.BCAST_FUSION_DEBUG[] = old_debug
-            end
+            io = IOBuffer()
+            cuNumeric.InterBroadcastFusion.maybe_log_rewrite(
+                true, log_call.args[3].value, log_call.args[4].value; io
+            )
+            log = String(take!(io))
+            @test occursin("inter-broadcast fusion rewrite", log)
+            @test occursin("product =", log)
+            @test occursin("shifted =", log)
+            @test occursin("fused", log)
         end
 
         @testset "Indexed fused assignment preserves Array view semantics" begin
