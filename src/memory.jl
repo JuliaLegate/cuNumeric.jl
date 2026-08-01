@@ -100,6 +100,5 @@ function maybe_collect()
         recalibrate_allocator!()
     end
 
-    
     return nothing
 end
