@@ -1,4 +1,17 @@
 # Lifetime analysis when broadcast expressions are evaluated eagerly.
+#
+#   result = f(A[2:end-1, :])
+#   consume(result)
+#
+# becomes a linear sequence of named allocations:
+#
+#   tmp1 = A[2:end-1, :]
+#   tmp2 = f(tmp1)
+#   result = tmp2
+#   tmp3 = consume(result)
+#   tmp3
+#
+# Finalizer insertion is a separate pass in scoping.jl.
 
 function rewrite_eager_lifetimes(scope)
     assigned_vars = Set{Symbol}()

@@ -4,6 +4,17 @@ export rewrite_scope
 
 using ..ScopingUtils
 
+# Recombine single-use broadcast statements before lifetime analysis:
+#
+#   product = A .* B
+#   C[:, :] = product .+ 2
+#
+# becomes:
+#
+#   C[:, :] .= A .* B .+ 2
+#
+# The pass is syntax-only and has no NDArray or cuNumeric dependencies.
+
 function _substitute_symbols(expr, replacements::Dict{Symbol,Any})
     assignment = _assignment(expr)
     isnothing(assignment) && return _replace_symbols(expr, replacements)

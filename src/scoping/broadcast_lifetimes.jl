@@ -1,4 +1,16 @@
 # Lifetime analysis for lazy broadcast expression trees.
+#
+#   C[2:end-1, :] .= A[2:end-1, :] .* B[2:end-1, :] .+ 2
+#
+# hoists only materialized values while leaving the dotted tree intact:
+#
+#   tmp1 = @view C[2:end-1, :]
+#   tmp2 = A[2:end-1, :]
+#   tmp3 = B[2:end-1, :]
+#   tmp1 .= tmp2 .* tmp3 .+ 2
+#
+# The destination view and input slices are real handles; the `.*` and `.+`
+# nodes are lazy and become one fused broadcast kernel.
 
 function _expand_view(expr)
     return Base.macroexpand(@__MODULE__, :(@view $expr))

@@ -40,6 +40,14 @@ function _hoist_temporary(expr, assigned_vars)
     return temporary, [:($temporary = $expr)]
 end
 
+# Turn the named allocations produced by either lifetime rewriter into an
+# executable scope. For example, if tmp1 and tmp2 are last used by statement 3:
+#
+#   3  tmp3 = f(tmp1, tmp2)
+#      maybe_insert_delete(tmp1)
+#      maybe_insert_delete(tmp2)
+#
+# The final value of the block is protected because it escapes to the caller.
 """
     insert_finalizers(stmts::Vector)
 Insert `cuNumeric.maybe_insert_delete(var)` after the last use of each temporary variable.

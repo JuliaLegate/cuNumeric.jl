@@ -73,9 +73,6 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   using jlcxx::TypeVar;
   using legate_util::HalfType;
 
-  // Map C++ complex types to Julia complex types
-  mod.map_type<std::complex<double>>("ComplexF64");
-  mod.map_type<std::complex<float>>("ComplexF32");
   mod.map_type<HalfType>("Float16");
 
   // These are the types/dims used to generate templated functions

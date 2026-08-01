@@ -2,6 +2,16 @@ module ScopingUtils
 
 using MacroTools: MacroTools
 
+# Shared syntax vocabulary for every scoping pass. For example:
+#
+#   _assignment(:(result = A .+ B))
+#       -> (lhs=:result, rhs=:(A .+ B))
+#   _reference(:(A[2:end-1, :]))
+#       -> (array=:A, indices=Any[:(2:end-1), :(:)])
+#
+# Keeping these matches here means the transformation files describe policy
+# instead of repeating Expr head/argument indexing.
+
 export _assignment, _broadcast_assignment, _call, _dotcall,
     _flatten_statements, _is_broadcast_op, _is_broadcast_syntax, _maphoist,
     _reference, _prepend_statements, _replace_symbols, _rewrite_children,
