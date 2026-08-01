@@ -2,46 +2,23 @@ module InterBroadcastFusion
 
 export rewrite_scope
 
-import ..cuNumeric: walk_symbols
-
-_is_broadcast_op(op) = op isa Symbol && startswith(string(op), ".")
-
-function _is_broadcast_syntax(expr)
-    return expr isa Expr &&
-           (
-        (expr.head == :call && !isempty(expr.args) && _is_broadcast_op(expr.args[1])) ||
-        (expr.head == :. && length(expr.args) == 2)
-    )
-end
-
-function _symbol_occurrences(expr, target::Symbol)
-    expr === target && return 1
-    expr isa Expr || return 0
-    return sum(arg -> _symbol_occurrences(arg, target), expr.args; init=0)
-end
+using ..ScopingUtils
 
 function _substitute_symbols(expr, replacements::Dict{Symbol,Any})
-    expr isa Symbol && return get(replacements, expr, expr)
-    expr isa Expr || return expr
-
-    # A symbol assignment introduces/redefines its LHS; only substitute in RHS.
-    if expr.head == :(=) && expr.args[1] isa Symbol
-        return Expr(
-            :(=), expr.args[1], _substitute_symbols(expr.args[2], replacements)
-        )
-    end
-    return Expr(
-        expr.head, (_substitute_symbols(arg, replacements) for arg in expr.args)...
-    )
+    assignment = _assignment(expr)
+    isnothing(assignment) && return _replace_symbols(expr, replacements)
+    assignment.lhs isa Symbol || return _replace_symbols(expr, replacements)
+    rhs = _replace_symbols(assignment.rhs, replacements)
+    return :($(assignment.lhs) = $rhs)
 end
 
 function _indexed_assignment_base(stmt)
-    if stmt isa Expr && stmt.head == :(=) &&
-        stmt.args[1] isa Expr && stmt.args[1].head == :ref
-        base = stmt.args[1].args[1]
-        return base isa Symbol ? base : nothing
-    end
-    return nothing
+    assignment = _assignment(stmt)
+    isnothing(assignment) && return nothing
+    reference = _reference(assignment.lhs)
+    isnothing(reference) && return nothing
+    reference.array isa Symbol || return nothing
+    return reference.array
 end
 
 function _safe_to_delay_broadcast(
@@ -49,49 +26,82 @@ function _safe_to_delay_broadcast(
 )
     for i in (def_idx + 1):(use_idx - 1)
         stmt = stmts[i]
-        stmt isa LineNumberNode && continue
         i in lazy_defs && continue
 
         # An indexed write to an unrelated array does not invalidate the lazy
         # producer. Any other intervening statement is conservatively a barrier.
         mutated = _indexed_assignment_base(stmt)
-        mutated !== nothing && !(mutated in dependencies) && continue
+        if !isnothing(mutated) && !(mutated in dependencies)
+            continue
+        end
         return false
     end
     return true
 end
 
+function _single_use_index(stmts, symbol::Symbol, def_idx::Int)
+    use_idx = nothing
+    for i in (def_idx + 1):length(stmts)
+        symbols = walk_symbols(stmts[i])
+        occurrences = count(candidate -> candidate == symbol, symbols)
+        occurrences == 0 && continue
+        if occurrences != 1 || !isnothing(use_idx)
+            return nothing
+        end
+        use_idx = i
+    end
+    return use_idx
+end
+
+function _source_indices(expr, replacement_sources)
+    indices = Int[]
+    for symbol in walk_symbols(expr)
+        append!(indices, get(replacement_sources, symbol, Int[]))
+    end
+    unique!(indices)
+    sort!(indices)
+    return indices
+end
+
+function _fuse_into_destination(stmt)
+    assignment = _assignment(stmt)
+    isnothing(assignment) && return stmt
+    _is_broadcast_syntax(assignment.rhs) || return stmt
+
+    reference = _reference(assignment.lhs)
+    isnothing(reference) && return stmt
+    reference.array isa Symbol || return stmt
+
+    if reference.array in walk_symbols(assignment.rhs)
+        return stmt
+    end
+    return Expr(:(.=), assignment.lhs, assignment.rhs)
+end
+
 function _rewrite_scope(scope)
-    Meta.isexpr(scope, (:block, :begin)) || return scope, NamedTuple[]
-    stmts = collect(scope.args)
+    stmts = _scope_statements(scope)
+    isnothing(stmts) && return scope, NamedTuple[]
 
     definitions = Dict{Symbol,Tuple{Int,Any}}()
     lazy_defs = Set{Int}()
     for (i, stmt) in enumerate(stmts)
-        if stmt isa Expr && stmt.head == :(=) && stmt.args[1] isa Symbol &&
-            _is_broadcast_syntax(stmt.args[2])
-            definitions[stmt.args[1]] = (i, stmt.args[2])
+        assignment = _assignment(stmt)
+        if !isnothing(assignment) && assignment.lhs isa Symbol &&
+            _is_broadcast_syntax(assignment.rhs)
+            definitions[assignment.lhs] = (i, assignment.rhs)
             push!(lazy_defs, i)
         end
     end
 
-    inlineable = Dict{Symbol,Tuple{Int,Int,Any}}()
+    inlineable = Dict{Symbol,Tuple{Int,Any}}()
     for (sym, (def_idx, rhs)) in definitions
-        use_indices = Int[]
-        occurrences = 0
-        for i in (def_idx + 1):length(stmts)
-            count = _symbol_occurrences(stmts[i], sym)
-            if count > 0
-                occurrences += count
-                push!(use_indices, i)
-            end
-        end
-        occurrences == 1 || continue
-        use_idx = only(use_indices)
+        use_idx = _single_use_index(stmts, sym, def_idx)
+        isnothing(use_idx) && continue
         dependencies = Set(walk_symbols(rhs))
-        _safe_to_delay_broadcast(stmts, def_idx, use_idx, dependencies, lazy_defs) ||
+        if !_safe_to_delay_broadcast(stmts, def_idx, use_idx, dependencies, lazy_defs)
             continue
-        inlineable[sym] = (def_idx, use_idx, rhs)
+        end
+        inlineable[sym] = (def_idx, rhs)
     end
 
     replacements = Dict{Symbol,Any}()
@@ -104,50 +114,25 @@ function _rewrite_scope(scope)
     for (i, original_stmt) in enumerate(stmts)
         if i in removed
             sym = def_symbols[i]
-            source_indices = Int[]
-            for dependency in walk_symbols(original_stmt.args[2])
-                haskey(replacement_sources, dependency) || continue
-                append!(source_indices, replacement_sources[dependency])
-            end
-            unique!(source_indices)
-            sort!(source_indices)
+            assignment = _assignment(original_stmt)
+            source_indices = _source_indices(assignment.rhs, replacement_sources)
             push!(source_indices, i)
             replacement_sources[sym] = source_indices
-            replacements[sym] = _substitute_symbols(inlineable[sym][3], replacements)
+            replacements[sym] = _substitute_symbols(inlineable[sym][2], replacements)
             continue
         end
 
-        source_indices = Int[]
-        for dependency in walk_symbols(original_stmt)
-            haskey(replacement_sources, dependency) || continue
-            append!(source_indices, replacement_sources[dependency])
-        end
-        unique!(source_indices)
-        sort!(source_indices)
-
+        source_indices = _source_indices(original_stmt, replacement_sources)
         stmt = _substitute_symbols(original_stmt, replacements)
 
-        # A materialized indexed assignment with a broadcast RHS normally
-        # allocates a temporary and copies it into the slice. If the destination
-        # base is absent from the RHS, write the fused tree directly to the view.
-        direct_write = false
-        if stmt isa Expr && stmt.head == :(=) &&
-            stmt.args[1] isa Expr && stmt.args[1].head == :ref &&
-            _is_broadcast_syntax(stmt.args[2])
-            base = stmt.args[1].args[1]
-            if base isa Symbol && !(base in Set(walk_symbols(stmt.args[2])))
-                stmt = Expr(:(.=), stmt.args[1], stmt.args[2])
-                direct_write = true
-            end
-        end
-
-        if !isempty(source_indices) || direct_write
+        if !isempty(source_indices)
+            stmt = _fuse_into_destination(stmt)
             before = Expr(
                 :block,
-                (deepcopy(stmts[source_idx]) for source_idx in source_indices)...,
-                deepcopy(original_stmt),
+                (stmts[source_idx] for source_idx in source_indices)...,
+                original_stmt,
             )
-            push!(fusion_events, (; before, fused=deepcopy(stmt)))
+            push!(fusion_events, (; before, fused=stmt))
         end
         push!(rewritten, stmt)
     end
@@ -155,36 +140,25 @@ function _rewrite_scope(scope)
     return Expr(scope.head, rewritten...), fusion_events
 end
 
-const _LOG_FUNCTION = GlobalRef(@__MODULE__, :maybe_log_rewrite)
-const _DEBUG_FLAG = GlobalRef(parentmodule(@__MODULE__), :BCAST_FUSION_DEBUG)
-
-function _log_call(event)
-    before = QuoteNode(event.before)
-    fused = QuoteNode(event.fused)
-    enabled = Expr(:ref, _DEBUG_FLAG)
-    return Expr(:call, _LOG_FUNCTION, enabled, before, fused)
-end
-
 """
-    rewrite_scope(scope) -> scope
+    rewrite_scope(scope; on_rewrite=nothing) -> scope
 
 Fuse eligible single-use broadcast producers into their consumer and return the
-rewritten scope. Runtime log hooks are included for rewrites and are controlled
-by `cuNumeric.BCAST_FUSION_DEBUG[]`.
+rewritten scope. When provided, `on_rewrite` is called with a named tuple
+containing the `before` and `fused` expressions for each rewrite.
 """
-function rewrite_scope(scope)
+function rewrite_scope(scope; on_rewrite=nothing)
     rewritten, fusion_events = _rewrite_scope(scope)
-    isempty(fusion_events) && return rewritten
-    log_calls = (_log_call(event) for event in fusion_events)
-    return Expr(rewritten.head, log_calls..., rewritten.args...)
-end
-
-function is_log_call(expr)
-    return Meta.isexpr(expr, :call) && expr.args[1] == _LOG_FUNCTION
+    if !isnothing(on_rewrite)
+        for event in fusion_events
+            on_rewrite(event)
+        end
+    end
+    return rewritten
 end
 
 function _print_expr(io::IO, expr)
-    clean = expr isa Expr ? Base.remove_linenums!(deepcopy(expr)) : expr
+    clean = _strip_lines(expr)
     rendered = sprint(Base.show_unquoted, clean)
     for line in eachline(IOBuffer(rendered))
         println(io, "    ", line)
@@ -192,13 +166,12 @@ function _print_expr(io::IO, expr)
     return nothing
 end
 
-function maybe_log_rewrite(enabled::Bool, before, fused; io::IO=stdout)
-    enabled || return nothing
+function log_rewrite(event; io::IO=stdout)
     println(io, "\n", "="^40, " inter-broadcast fusion rewrite")
     println(io, "  before")
-    _print_expr(io, before)
+    _print_expr(io, event.before)
     println(io, "  fused")
-    _print_expr(io, fused)
+    _print_expr(io, event.fused)
     return nothing
 end
 

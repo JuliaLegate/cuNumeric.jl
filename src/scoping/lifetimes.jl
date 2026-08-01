@@ -1,40 +1,33 @@
 # Lifetime analysis when broadcast expressions are evaluated eagerly.
 
-function find_ndarray_assignments(ex, assigned_vars::Set{Symbol})
-    cache = Dict{Any,Symbol}()         # expression → temp mapping
-    local_assigned = Set{Symbol}()    # track all assigned symbols
+function rewrite_eager_lifetimes(scope)
+    assigned_vars = Set{Symbol}()
+    fresh_tmp(expr) = _hoist_temporary(expr, assigned_vars)
 
-    function fresh_tmp(expr)
-        counter[] += 1
-        tmp = Symbol(:tmp, counter[])
-        cache[expr] = tmp
-        push!(local_assigned, tmp)
-        return tmp, [:($tmp = $expr)]
-    end
+    function rewrite(expr)::Tuple{Any,Vector{Expr}}
+        if !(expr isa Expr)
+            return expr, Expr[]
+        end
 
-    function rewrite(e)::Tuple{Any,Vector{Expr}}
-        e isa Expr || return e, Expr[]
-
-        if e.head == :(=)
-            lhs, rhs = e.args
-            lhs isa Symbol && push!(local_assigned, lhs)
+        assignment = _assignment(expr)
+        if !isnothing(assignment)
+            (; lhs, rhs) = assignment
+            if lhs isa Symbol
+                push!(assigned_vars, lhs)
+            end
             new_rhs, temps = rewrite(rhs)
             return :($lhs = $new_rhs), temps
         end
 
-        if e.head == :(.=)
-            lhs, rhs = e.args
+        broadcast_assignment = _broadcast_assignment(expr)
+        if !isnothing(broadcast_assignment)
+            (; lhs, rhs) = broadcast_assignment
             new_lhs, lhs_temps = rewrite(lhs)
             # Do not hoist the top-level call of the RHS to preserve fusion.
-            if rhs isa Expr && rhs.head == :call
-                op = rhs.args[1]
-                new_rhs_args, rhs_temps = Any[], Expr[]
-                for arg in rhs.args[2:end]
-                    new_arg, temps = rewrite(arg)
-                    push!(new_rhs_args, new_arg)
-                    append!(rhs_temps, temps)
-                end
-                new_rhs = Expr(:call, op, new_rhs_args...)
+            call = _call(rhs)
+            if !isnothing(call)
+                new_rhs_args, rhs_temps = _maphoist(rewrite, call.args)
+                new_rhs = Expr(:call, call.f, new_rhs_args...)
                 return Expr(:(.=), new_lhs, new_rhs), vcat(lhs_temps, rhs_temps)
             end
 
@@ -42,48 +35,25 @@ function find_ndarray_assignments(ex, assigned_vars::Set{Symbol})
             return Expr(:(.=), new_lhs, new_rhs), vcat(lhs_temps, rhs_temps)
         end
 
-        e.head == :ref && return fresh_tmp(e)
+        reference = _reference(expr)
+        if !isnothing(reference)
+            return fresh_tmp(expr)
+        end
 
-        if e.head == :call
-            op = e.args[1]
-            new_args, hoisted = Any[], Expr[]
-            for arg in e.args[2:end]
-                new_arg, temps = rewrite(arg)
-                push!(new_args, new_arg)
-                append!(hoisted, temps)
-            end
-            tmp, bind = fresh_tmp(Expr(:call, op, new_args...))
+        call = _call(expr)
+        if !isnothing(call)
+            new_args, hoisted = _maphoist(rewrite, call.args)
+            tmp, bind = fresh_tmp(Expr(:call, call.f, new_args...))
             return tmp, vcat(hoisted, bind)
         end
 
-        new_args, hoisted = Any[], Expr[]
-        is_block = e.head == :block || e.head == :begin
-        for arg in e.args
-            new_arg, temps = rewrite(arg)
-            if is_block && !(arg isa LineNumberNode)
-                append!(new_args, temps)
-                push!(new_args, new_arg)
-            else
-                push!(new_args, new_arg)
-                append!(hoisted, temps)
-            end
-        end
-        return Expr(e.head, new_args...), hoisted
+        return _rewrite_children(rewrite, expr)
     end
 
-    new_ex, temps = rewrite(ex)
-    union!(assigned_vars, local_assigned)
-
-    if new_ex isa Expr && new_ex.head == :block
-        return Expr(:block, temps..., new_ex.args...)
-    end
-    return Expr(:block, temps..., new_ex)
+    rewritten, temps = rewrite(scope)
+    return _prepend_statements(rewritten, temps), assigned_vars
 end
 
 function process_lifetime_scope(scope)
-    assigned_vars = Set{Symbol}()
-    rewritten = find_ndarray_assignments(scope, assigned_vars)
-    result = insert_finalizers(rewritten, assigned_vars)
-    counter[] = 0
-    return result
+    return _process_lifetime_scope(scope, rewrite_eager_lifetimes)
 end

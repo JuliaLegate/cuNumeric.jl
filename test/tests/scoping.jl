@@ -107,6 +107,23 @@ function test_scoping_regressions(T, N)
         @test all(Array(res) .== T(4.0))
     end
 
+    @testset "Scoping AST utilities" begin
+        utils = cuNumeric.ScopingUtils
+        @test utils._assignment(:(x = y)) == (lhs=:x, rhs=:y)
+        @test utils._broadcast_assignment(:(A[:] .= x)).rhs == :x
+        @test utils._call(:(f(x, y))) == (f=:f, args=Any[:x, :y])
+        @test utils._dotcall(:(f.(x, y))) == (f=:f, args=Any[:x, :y])
+        @test utils._reference(:(A[i, j])) == (array=:A, indices=Any[:i, :j])
+        @test utils._is_broadcast_syntax(:(x .* y))
+        @test utils._replace_symbols(:(x .+ y), Dict(:x => :(a .* b))) ==
+            :((a .* b) .+ y)
+        @test isnothing(
+            utils._assignment(quote
+                x = y
+            end),
+        )
+    end
+
     if cuNumeric.FUSE_BROADCAST_EXPRS
         @testset "Inter-broadcast fusion logger" begin
             source = quote
@@ -114,24 +131,35 @@ function test_scoping_regressions(T, N)
                 shifted = product .+ T(2)
                 C[:, :] = shifted ./ T(3)
             end
-            rewritten = cuNumeric.InterBroadcastFusion.rewrite_scope(source)
-            stmts = cuNumeric._flatten_stmts(rewritten)
-            log_call = only(filter(cuNumeric.InterBroadcastFusion.is_log_call, stmts))
-            fused_stmt = only(filter(!cuNumeric.InterBroadcastFusion.is_log_call, stmts))
+            events = NamedTuple[]
+            rewritten = cuNumeric.InterBroadcastFusion.rewrite_scope(
+                source; on_rewrite=event -> push!(events, event)
+            )
+            stmts = cuNumeric.ScopingUtils._flatten_statements(rewritten)
+            fused_stmt = only(stmts)
             fused = sprint(Base.show_unquoted, fused_stmt)
             @test !occursin("product", fused)
             @test !occursin("shifted", fused)
             @test occursin(".=", fused)
 
             io = IOBuffer()
-            cuNumeric.InterBroadcastFusion.maybe_log_rewrite(
-                true, log_call.args[3].value, log_call.args[4].value; io
-            )
+            cuNumeric.InterBroadcastFusion.log_rewrite(only(events); io)
             log = String(take!(io))
             @test occursin("inter-broadcast fusion rewrite", log)
             @test occursin("product =", log)
             @test occursin("shifted =", log)
             @test occursin("fused", log)
+
+            untouched = quote
+                C[:, :] = A .* B
+            end
+            empty!(events)
+            rewritten = cuNumeric.InterBroadcastFusion.rewrite_scope(
+                untouched; on_rewrite=event -> push!(events, event)
+            )
+            @test isempty(events)
+            @test cuNumeric.ScopingUtils._strip_lines(rewritten) ==
+                cuNumeric.ScopingUtils._strip_lines(untouched)
         end
 
         @testset "Indexed fused assignment preserves Array view semantics" begin
