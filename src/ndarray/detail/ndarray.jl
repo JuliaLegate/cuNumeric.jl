@@ -35,7 +35,7 @@ end
 
 get_n_dim(ptr::NDArray_t) = Int(ccall((:nda_array_dim, libnda), Int32, (NDArray_t,), ptr))
 
-abstract type AbstractNDArray{T<:SUPPORTED_TYPES,N} end
+abstract type AbstractNDArray{T<:SUPPORTED_TYPES,N} <: AbstractArray{T,N} end
 
 @doc"""
 The NDArray type represents a multi-dimensional array in cuNumeric.
