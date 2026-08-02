@@ -446,6 +446,8 @@ end
 @testset verbose = true "Scoping" begin
     N = 100
 
+    @testset "Rewrite pipeline" test_scoping_rewrite_pipeline()
+
     @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)
         allowscalar() do
             results = run_all_ops(T, N)

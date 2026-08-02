@@ -76,7 +76,9 @@ cuNumeric already supplies names for individual operations when task-scope namin
 
 When broadcast fusion is on, set `cuNumeric.BCAST_FUSION_DEBUG[] = true` to
 print inter-statement rewrites and each fused kernel's expression tree,
-arguments, and launch geometry.
+arguments, and launch geometry. Inter-statement rewrites are reported when
+`@analyze_lifetimes` expands, so enable the flag before defining or evaluating
+the expression you want to inspect. Kernel details are reported at runtime.
 
 ```julia
 using cuNumeric
@@ -88,7 +90,10 @@ A = cuNumeric.ones(Float32, N, N)
 B = cuNumeric.ones(Float32, N, N)
 C = cuNumeric.zeros(Float32, N, N)
 
-C .= @. A * B + 2.0f0
+@analyze_lifetimes begin
+    product = A .* B
+    C[:, :] = product .+ 2.0f0
+end
 
 cuNumeric.BCAST_FUSION_DEBUG[] = false
 ```
@@ -105,6 +110,10 @@ For example, a single-use producer inside `@analyze_lifetimes` is reported as:
   fused
     C[:, :] .= A .* B .+ 2.0f0
 ```
+
+`before` contains exactly the statements that were recombined, and `fused`
+contains their replacement. No rewrite block is printed when the pass leaves
+the statements unchanged.
 
 The fused kernel is reported separately:
 
@@ -126,7 +135,7 @@ How to read it:
 - `expr` is the fused op tree.
 - `inputs` / `scalars` are the runtime arguments passed into the kernel.
 - `arg_map` encodes how kernel slots map to the output (`0`), inputs (`>= 1`), and scalars (`< 0`).
-- If nothing prints, the expression took the unfused path (for example shape-mismatched leaves, fusion disabled, or below the min-ops threshold).
+- If no kernel block prints, the expression took the unfused path (for example shape-mismatched leaves, fusion disabled, or below the min-ops threshold).
 
 Turn the flag off when you are done. It prints on every fused launch and can be noisy in loops.
 

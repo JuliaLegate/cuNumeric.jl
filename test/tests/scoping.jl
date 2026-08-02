@@ -86,6 +86,113 @@ const SLICE_OPS = Dict(
     ),
 )
 
+function test_scoping_rewrite_pipeline()
+    utils = cuNumeric.ScopingUtils
+
+    @testset "Syntax helpers" begin
+        @test utils._assignment(:(x = y)) == (lhs=:x, rhs=:y)
+        @test utils._broadcast_assignment(:(A[:] .= x)).rhs == :x
+        @test utils._call(:(f(x, y))) == (f=:f, args=Any[:x, :y])
+        @test utils._dotcall(:(f.(x, y))) == (f=:f, args=Any[:x, :y])
+        @test utils._reference(:(A[i, j])) == (array=:A, indices=Any[:i, :j])
+        @test utils._is_broadcast_syntax(:(x .* y))
+        @test utils._replace_symbols(:(x .+ y), Dict(:x => :(a .* b))) ==
+            :((a .* b) .+ y)
+        @test isnothing(
+            utils._assignment(quote
+                x = y
+            end),
+        )
+    end
+
+    @testset "Inter-broadcast fusion" begin
+        source = quote
+            product = A .* B
+            shifted = product .+ 2
+            C[:, :] = shifted ./ 3
+        end
+        events = NamedTuple[]
+        rewritten = cuNumeric.InterBroadcastFusion.rewrite_scope(
+            source; on_rewrite=event -> push!(events, event)
+        )
+        stmts = utils._flatten_statements(rewritten)
+        fused = sprint(Base.show_unquoted, only(stmts))
+        @test !occursin("product", fused)
+        @test !occursin("shifted", fused)
+        @test occursin(".=", fused)
+
+        io = IOBuffer()
+        cuNumeric.InterBroadcastFusion.log_rewrite(only(events); io)
+        log = String(take!(io))
+        @test occursin("product =", log)
+        @test occursin("shifted =", log)
+        @test occursin("fused", log)
+
+        untouched = quote
+            C[:, :] = A .* B
+        end
+        empty!(events)
+        rewritten = cuNumeric.InterBroadcastFusion.rewrite_scope(
+            untouched; on_rewrite=event -> push!(events, event)
+        )
+        @test isempty(events)
+        @test utils._strip_lines(rewritten) == utils._strip_lines(untouched)
+    end
+
+    @testset "Fusion-aware lifetime rewrite" begin
+        source = quote
+            C[2:(end - 1), 2:(end - 1)] .=
+                A[2:(end - 1), 2:(end - 1)] .* B[2:(end - 1), 2:(end - 1)] .+ 2
+        end
+
+        cuNumeric.counter[] = 0
+        try
+            rewritten, assigned = cuNumeric.rewrite_broadcast_lifetimes(source)
+            stmts = utils._flatten_statements(rewritten)
+
+            @test assigned == Set([:tmp1, :tmp2, :tmp3])
+            @test utils._assignment(stmts[1]).lhs == :tmp1
+            @test utils._assignment(stmts[2]) ==
+                (lhs=:tmp2, rhs=:(A[2:(end - 1), 2:(end - 1)]))
+            @test utils._assignment(stmts[3]) ==
+                (lhs=:tmp3, rhs=:(B[2:(end - 1), 2:(end - 1)]))
+            @test !isnothing(utils._broadcast_assignment(stmts[4]))
+
+            finalized = cuNumeric.insert_finalizers(rewritten, assigned)
+            freed = Set{Symbol}()
+            for stmt in utils._flatten_statements(finalized)
+                argument = cuNumeric._delete_argument(stmt)
+                isnothing(argument) || push!(freed, argument)
+            end
+            @test freed == assigned
+        finally
+            cuNumeric.counter[] = 0
+        end
+    end
+
+    @testset "Eager lifetime rewrite" begin
+        source = quote
+            result = f(A[2:(end - 1), 2:(end - 1)])
+            consume(result)
+        end
+
+        cuNumeric.counter[] = 0
+        try
+            rewritten, assigned = cuNumeric.rewrite_eager_lifetimes(source)
+            stmts = utils._flatten_statements(rewritten)
+
+            @test assigned == Set([:result, :tmp1, :tmp2, :tmp3])
+            @test utils._assignment(stmts[1]) ==
+                (lhs=:tmp1, rhs=:(A[2:(end - 1), 2:(end - 1)]))
+            @test utils._call(utils._assignment(stmts[2]).rhs).f == :f
+            @test utils._assignment(stmts[3]) == (lhs=:result, rhs=:tmp2)
+            @test utils._call(utils._assignment(stmts[4]).rhs).f == :consume
+        finally
+            cuNumeric.counter[] = 0
+        end
+    end
+end
+
 function test_scoping_regressions(T, N)
     A = cuNumeric.ones(T, (N, N))
     B = cuNumeric.ones(T, (N, N))
@@ -108,32 +215,6 @@ function test_scoping_regressions(T, N)
     end
 
     if cuNumeric.FUSE_BROADCAST_EXPRS
-        @testset "Inter-broadcast fusion logger" begin
-            source = quote
-                product = A .* B
-                shifted = product .+ T(2)
-                C[:, :] = shifted ./ T(3)
-            end
-            rewritten = cuNumeric.InterBroadcastFusion.rewrite_scope(source)
-            stmts = cuNumeric._flatten_stmts(rewritten)
-            log_call = only(filter(cuNumeric.InterBroadcastFusion.is_log_call, stmts))
-            fused_stmt = only(filter(!cuNumeric.InterBroadcastFusion.is_log_call, stmts))
-            fused = sprint(Base.show_unquoted, fused_stmt)
-            @test !occursin("product", fused)
-            @test !occursin("shifted", fused)
-            @test occursin(".=", fused)
-
-            io = IOBuffer()
-            cuNumeric.InterBroadcastFusion.maybe_log_rewrite(
-                true, log_call.args[3].value, log_call.args[4].value; io
-            )
-            log = String(take!(io))
-            @test occursin("inter-broadcast fusion rewrite", log)
-            @test occursin("product =", log)
-            @test occursin("shifted =", log)
-            @test occursin("fused", log)
-        end
-
         @testset "Indexed fused assignment preserves Array view semantics" begin
             src = reshape(T.(1:20), 4, 5)
             out = fill(T(-1), 6, 7)
