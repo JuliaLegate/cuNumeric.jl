@@ -401,7 +401,7 @@ function get_ptx(
     # dump_module=true keeps only_entry=false so linked libdevice helpers (e.g. cos
     # slowpaths) are not emptied into unresolved .externs before cuModuleLoad.
     CUDATools.code_ptx(buf, obj.f, (typeof(ctx), DEST_T, arg_types...);
-        raw=false, dump_module=true, kernel=true, ptx=v"7.8")
+        raw=false, dump_module=true, kernel=true, ptx=v"9.0")
 
     return String(take!(buf)), threads, ctx
 end
