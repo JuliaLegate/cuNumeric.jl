@@ -34,15 +34,16 @@ For more details, see [Hardware](./configuration/hardware.md).
 
 The semantics of `NDArray` closely mirror Julia's `Array`, and in most cases it is a drop-in replacement. You can use the same constructors (i.e., `zeros`, `ones`, `rand`), broadcasting, slicing, and linear algebra. Under the hood a few details differ from Base, and knowing them can help you write fast code.
 
-**Data may live across many devices.** An `NDArray` is a logical array whose physical buffers can be partitioned over GPUs and CPUs by the Legate runtime. You write ordinary array code and Legate decides where the data lives and how/when it is communicated between devices. As a result, elementwise indexing (i.e. `arr[1]`) is slow (and is prevented by default). Scalar indexing like this forces synchronization and blocks other tasks from executing.
+**Data may live across many devices.** An `NDArray` is a logical array whose physical buffers can be partitioned over GPUs and CPUs by the Legate runtime. You write ordinary array code and Legate decides where the data lives and how/when it is communicated between devices. As a result, elementwise indexing (i.e. `arr[1]`) is slow (and is prevented by default). Scalar indexing like this forces synchronization and blocks other tasks from executing. Functions like `println` result in data being copied to the host and can also be slow.
 
 **Slices are views.** Indexing an `NDArray` with ranges returns a view onto the same store, not a copy. That differs from Base Julia, where `A[1:n]` allocates a new `Array`. Mutations through an `NDArray` slice are visible through other aliases of the same data.
 
-**Reductions return arrays, not Julia scalars.** Reductions such as `sum(A)` produce a **0D or 1D** `NDArray` (axis reductions produce a lower-rank `NDArray`), rather than a bare `Float64` / `Float32`. That keeps the Legate task graph asynchronous instead of forcing synchronization to communite with the Julia runtime. When you need a plain Julia number, call `unwrap`:
+**Reductions return arrays, not Julia scalars.** Reductions such as `sum(A)` produce a **0D or 1D** `NDArray` (axis reductions produce a lower-rank `NDArray`), rather than a bare `Float64` / `Float32`. That keeps the Legate task graph asynchronous instead of forcing synchronization to communite with the Julia runtime. When you need a plain Julia number, call `unwrap` or `only`:
 
 ```julia
 s = sum(A)          # NDArray{T,0}
 x = unwrap(s)       # T, e.g. Float32
+x2 = only(s)
 ```
 
 **The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into Legate's task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them (for example `println`, `unwrap`, or converting with `Array(A)`). Hiding latency enables performant code.

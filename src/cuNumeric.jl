@@ -166,6 +166,7 @@ const FUSE_BROADCAST_EXPRS = CNPreferences.FUSE_BROADCAST
 const FUSE_BROADCAST_MIN_OPS = CNPreferences.FUSE_BROADCAST_MIN_OPS
 
 # Functionality
+include("ndarray/diagonal.jl")
 include("ndarray/promotion.jl")
 include("cuda/cuda_ptx_task.jl")
 include("ndarray/broadcast_fusion.jl")
