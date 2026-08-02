@@ -9,8 +9,8 @@
 #   tmp3 = B[2:end-1, :]
 #   tmp1 .= tmp2 .* tmp3 .+ 2
 #
-# The destination view and input slices are real handles; the `.*` and `.+`
-# nodes are lazy and become one fused broadcast kernel.
+# The destination view and input slices are objects that need lifetime management; 
+# the `.*` and `.+` nodes are lazy and become one fused broadcast kernel.
 
 function _expand_view(expr)
     return Base.macroexpand(@__MODULE__, :(@view $expr))
