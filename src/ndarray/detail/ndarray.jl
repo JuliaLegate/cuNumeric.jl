@@ -236,15 +236,19 @@ end
 
 # src will be unused after this
 function nda_move(dst::NDArray{T,N}, src::NDArray{T,N}) where {T,N}
+    @assert dst.nbytes == src.nbytes
+
     @task_scope "move!" begin
         ccall((:nda_move, libnda),
             Cvoid, (NDArray_t, NDArray_t),
             dst.ptr, src.ptr)
     end
 
-    src.ptr = Ptr{Cvoid}(0)
+    # src's allocation moved into dst; only its empty wrapper remains.
     src.nbytes = 0
-    return register_free!(dst.nbytes)
+    destroy!(src)
+    register_free!(dst.nbytes)
+    return dst
 end
 
 # operations

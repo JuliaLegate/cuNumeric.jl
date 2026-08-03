@@ -683,6 +683,7 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
             threads=fkm.threads,
             taskid=cuNumeric.RUN_PTX_BROADCAST,
             ctx=fkm.ctx,
+            validate_shapes=false,
         )
     end
 
