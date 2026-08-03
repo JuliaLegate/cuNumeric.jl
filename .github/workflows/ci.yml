@@ -38,15 +38,27 @@ jobs:
     name: Check for wrapper changes
     runs-on: ubuntu-latest
     outputs:
-      wrapper_changed: ${{ steps.filter.outputs.wrapper }}
+      wrapper_changed: ${{ steps.wrapper-changes.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
         with:
-          filters: |
-            wrapper:
-              - 'lib/cunumeric_jl_wrapper/**'
+          fetch-depth: 0
+      - name: Compare wrapper against main
+        id: wrapper-changes
+        shell: bash
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+
+          if git diff --quiet origin/main...HEAD -- lib/cunumeric_jl_wrapper; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            if [[ "$status" -eq 1 ]]; then
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+            else
+              exit "$status"
+            fi
+          fi
 
   test:
     name: Julia ${{ matrix.julia }} - ${{ matrix.os }}
