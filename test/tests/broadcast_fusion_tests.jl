@@ -45,6 +45,29 @@ function test_broadcast_fusion(; T=Float32, N=100, atol=1e-5, rtol=1e-5)
     s2 = T(1.0)
     s3 = T(0.5)
 
+    @testset "Debug formatting" begin
+        input_indices = Dict(objectid(a) => 0, objectid(b) => 1)
+        tree = Base.broadcasted(+, Base.broadcasted(*, a, b), s1)
+
+        @test cuNumeric._bcast_runtime_tree_str(tree, input_indices, Any[s1]) ==
+            "+(*(input{0}, input{1}), $(repr(s1)))"
+        @test cuNumeric._kernel_signature(
+            a,
+            [a, b],
+            Any[s1],
+            Int32[0, 1, 2, -1],
+            "gpu_broadcast_kernel_linear_splat",
+        ) ==
+            "broadcast.gpu_broadcast_kernel_linear_splat(input{0}, input{1}, $(repr(s1)))"
+        @test cuNumeric._ndarray_debug_summary(a) ==
+            "NDArray{$T, 1} ($(size(a, 1)),)"
+
+        slice = a[2:(end - 1)]
+        @test cuNumeric._ndarray_debug_summary(slice) ==
+            "NDArray{$T, 1} ($(size(slice, 1)),) slice, parent ($(size(a, 1)),)"
+        cuNumeric.destroy!(slice)
+    end
+
     # two different arrays
     @testset "A + B (two different arrays)" begin
         expected = julia_a .+ julia_b

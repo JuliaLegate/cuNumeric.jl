@@ -22,6 +22,9 @@ function rewrite_eager_lifetimes(scope)
             return expr, Expr[]
         end
 
+        # Scalar arithmetic cannot allocate an NDArray, so keep it inline.
+        _is_scalar_expression(expr) && return expr, Expr[]
+
         assignment = _assignment(expr)
         if !isnothing(assignment)
             (; lhs, rhs) = assignment

@@ -96,6 +96,9 @@ function test_scoping_rewrite_pipeline()
         @test utils._dotcall(:(f.(x, y))) == (f=:f, args=Any[:x, :y])
         @test utils._reference(:(A[i, j])) == (array=:A, indices=Any[:i, :j])
         @test utils._is_broadcast_syntax(:(x .* y))
+        @test utils._is_scalar_expression(:(args.dx ^ 2))
+        @test utils._is_scalar_expression(:(args.f + args.k))
+        @test !utils._is_scalar_expression(:(A ^ 2))
         @test utils._replace_symbols(:(x .+ y), Dict(:x => :(a .* b))) ==
             :((a .* b) .+ y)
         @test isnothing(
@@ -165,6 +168,24 @@ function test_scoping_rewrite_pipeline()
                 isnothing(argument) || push!(freed, argument)
             end
             @test freed == assigned
+        finally
+            cuNumeric.counter[] = 0
+        end
+    end
+
+    @testset "Scalar arithmetic stays inline" begin
+        source = quote
+            C .= A ./ args.dx^2 .+ (args.f + args.k)
+        end
+
+        cuNumeric.counter[] = 0
+        try
+            rewritten, assigned = cuNumeric.rewrite_broadcast_lifetimes(source)
+            rendered = sprint(Base.show_unquoted, utils._strip_lines(rewritten))
+
+            @test isempty(assigned)
+            @test occursin("args.dx ^ 2", rendered)
+            @test occursin("args.f + args.k", rendered)
         finally
             cuNumeric.counter[] = 0
         end
@@ -290,16 +311,15 @@ function test_scoping_regressions(T, N)
     end
 
     if cuNumeric.FUSE_BROADCAST_EXPRS
-        @testset "Indexed fused assignment preserves Array view semantics" begin
-            src = reshape(T.(1:20), 4, 5)
-            out = fill(T(-1), 6, 7)
+        @testset "Indexed fused assignment writes through NDArray slices" begin
+            out = cuNumeric.zeros(T, (N + 2, N + 2))
             @analyze_lifetimes begin
-                producer = src .* T(2)
+                producer = A .* T(2)
                 out[2:(end - 1), 2:(end - 1)] = producer .+ T(1)
             end
-            @test out[2:(end - 1), 2:(end - 1)] == src .* T(2) .+ T(1)
-            @test all(out[[1, end], :] .== T(-1))
-            @test all(out[:, [1, end]] .== T(-1))
+            expected = zeros(T, N + 2, N + 2)
+            expected[2:(end - 1), 2:(end - 1)] .= T(3)
+            @test Array(out) == expected
         end
     end
 end

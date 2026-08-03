@@ -13,9 +13,10 @@ using MacroTools: MacroTools
 # instead of repeating Expr head/argument indexing.
 
 export _assignment, _broadcast_assignment, _call, _dotcall,
-    _flatten_statements, _is_broadcast_op, _is_broadcast_syntax, _maphoist,
-    _reference, _prepend_statements, _replace_symbols, _rewrite_children,
-    _scope_statements, _strip_lines, walk_symbols
+    _flatten_statements, _is_broadcast_op, _is_broadcast_syntax,
+    _is_scalar_expression, _maphoist, _reference, _prepend_statements,
+    _replace_symbols, _rewrite_children, _scope_statements, _strip_lines,
+    walk_symbols
 
 function _assignment(expr)
     MacroTools.isexpr(expr, :(=)) || return nothing
@@ -49,6 +50,25 @@ function _is_broadcast_syntax(expr)
         return true
     end
     return !isnothing(_dotcall(expr))
+end
+
+const _SCALAR_ARITHMETIC = (:+, :-, :*, :/, :^, :%, :fld, :cld, :mod, :rem)
+
+function _is_property_access(expr)
+    return MacroTools.isexpr(expr, :.) && length(expr.args) == 2 &&
+           expr.args[2] isa QuoteNode
+end
+
+_is_scalar_expression(::Number) = true
+_is_scalar_expression(expr::QuoteNode) = _is_scalar_expression(expr.value)
+_is_scalar_expression(::Any) = false
+
+function _is_scalar_expression(expr::Expr)
+    _is_property_access(expr) && return true
+
+    call = _call(expr)
+    return !isnothing(call) && call.f in _SCALAR_ARITHMETIC &&
+           all(_is_scalar_expression, call.args)
 end
 
 function _reference(expr)

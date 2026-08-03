@@ -4,17 +4,13 @@
 #
 # hoists only materialized values while leaving the dotted tree intact:
 #
-#   tmp1 = @view C[2:end-1, :]
+#   tmp1 = C[2:end-1, :]
 #   tmp2 = A[2:end-1, :]
 #   tmp3 = B[2:end-1, :]
 #   tmp1 .= tmp2 .* tmp3 .+ 2
 #
-# The destination view and input slices are objects that need lifetime management; 
+# The destination and input slices are objects that need lifetime management;
 # the `.*` and `.+` nodes are lazy and become one fused broadcast kernel.
-
-function _expand_view(expr)
-    return Base.macroexpand(@__MODULE__, :(@view $expr))
-end
 
 function rewrite_broadcast_lifetimes(scope)
     assigned_vars = Set{Symbol}()
@@ -64,6 +60,10 @@ function rewrite_broadcast_lifetimes(scope)
             return expr, Expr[]
         end
 
+        # Scalar arithmetic is evaluated while the broadcast tree is built;
+        # it does not create an NDArray whose lifetime needs to be tracked.
+        _is_scalar_expression(expr) && return expr, Expr[]
+
         assignment = _assignment(expr)
         if !isnothing(assignment)
             (; lhs, rhs) = assignment
@@ -78,13 +78,13 @@ function rewrite_broadcast_lifetimes(scope)
         broadcast_assignment = _broadcast_assignment(expr)
         if !isnothing(broadcast_assignment)
             (; lhs, rhs) = broadcast_assignment
-            # An explicit view preserves indexed `.=` semantics for both Array
-            # and NDArray while giving the lifetime pass a wrapper to destroy.
+            # NDArray slices are writable views. Hoist the destination slice so
+            # the fused broadcast writes through it, then destroy its handle.
             lhs_reference = _reference(lhs)
             if isnothing(lhs_reference)
                 new_lhs, lhs_temps = rewrite_materialized(lhs)
             else
-                new_lhs, lhs_temps = fresh_tmp(_expand_view(lhs))
+                new_lhs, lhs_temps = fresh_tmp(lhs)
             end
             new_rhs, rhs_temps = rewrite_lazy_broadcast(rhs, Dict{Any,Symbol}())
             return Expr(:(.=), new_lhs, new_rhs), vcat(lhs_temps, rhs_temps)
