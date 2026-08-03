@@ -211,7 +211,7 @@ macro cuda_task(call_expr)
             local _buf = IOBuffer()
             local _types = map_ndarray_cuda_types($(fargs...))
             # generate ptx using CUDA.jl
-            CUDATools.code_ptx(_buf, $fname, _types; raw=false, dump_module=true, kernel=true)
+            CUDATools.code_ptx(_buf, $fname, _types; raw=false, dump_module=true, kernel=true, ptx=v"9.0")
 
             local _ptx = String(take!(_buf))
             local _func_name = extract_kernel_name(_ptx)

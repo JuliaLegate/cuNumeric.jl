@@ -276,8 +276,14 @@ CN_NDArray* nda_get_slice(CN_NDArray* arr, const CN_Slice* slices,
       NDArray result = arr->obj[slice_list];
       return new CN_NDArray{NDArray(std::move(result))};
     }
+    case 3: {
+      std::initializer_list<legate::Slice> slice_list = {
+          to_legate_slice(slices[0]), to_legate_slice(slices[1]),
+          to_legate_slice(slices[2])};
+      NDArray result = arr->obj[slice_list];
+      return new CN_NDArray{NDArray(std::move(result))};
+    }
     default:
-      assert(0 && "dim gteq 3 not supported yet");
       return nullptr;
   }
 }

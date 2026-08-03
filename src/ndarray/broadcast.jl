@@ -148,14 +148,25 @@ function unravel_broadcast_tree(bc::Broadcasted)
     return result
 end
 
-@inline function _copyto_unfused!(dest::NDArray{T}, temp_result::NDArray{T}) where {T}
-    nda_move(dest, temp_result)
+# Slice destinations must assign into their parent store.
+@inline function _store_broadcast_result!(
+    dest::NDArray{T}, temp_result::NDArray{T}
+) where {T}
+    if _is_ndarray_slice(dest)
+        nda_assign(dest, temp_result)
+        destroy!(temp_result)
+    else
+        nda_move(dest, temp_result)
+    end
     return dest
 end
 
+@inline _copyto_unfused!(dest::NDArray{T}, temp_result::NDArray{T}) where {T} =
+    _store_broadcast_result!(dest, temp_result)
+
 @inline function _copyto_unfused!(dest::NDArray{T}, temp_result::NDArray) where {T}
     promoted = checked_promote_arr(temp_result, T)
-    nda_move(dest, promoted)
+    _store_broadcast_result!(dest, promoted)
     destroy!(temp_result)
     return dest
 end
@@ -196,7 +207,7 @@ end
     # Fused writes `dest` in place (no post-fuse `nda_move`); promotion is
     # checked pre-launch in `fuse_broadcast_tree!`. CPU vs GPU is compile-time
     # via `@static if FUSE_BROADCAST_EXPRS && HAS_CUDA`.
-    # Linear-only fusion requires same-shaped NDArray leaves; otherwise fall back.
+    # Fusion requires same-shaped NDArray leaves; otherwise fall back.
     # Single-op exprs (length < `FUSE_BROADCAST_MIN_OPS`) stay unfused by default.
     @static if FUSE_BROADCAST_EXPRS && HAS_CUDA
         if _should_attempt_broadcast_fusion(dest, bc)
