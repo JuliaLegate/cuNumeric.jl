@@ -62,6 +62,18 @@ include("tests/scoping-advanced.jl")
 include("tests/hdf5.jl")
 include("tests/broadcast_fusion_tests.jl")
 
+@testset "Array Accessors" begin
+    for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
+        value = rand(T)
+        arr = cuNumeric.zeros(T, 2, 2)
+
+        allowscalar() do
+            arr[1, 2] = value
+            @test arr[1, 2] == value
+        end
+    end
+end
+
 @testset verbose = true "AXPY" begin
     N = 100
     @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)

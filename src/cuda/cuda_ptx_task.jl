@@ -83,14 +83,18 @@ end
 
 function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
     outputs::Tuple{Vararg{NDArray}}, scalars::Tuple{Vararg{Any}};
-    blocks, threads, taskid=cuNumeric.RUN_PTX, ctx=nothing)
-
-    # we find the largest input/output.
-    ndarrays = vcat(inputs..., outputs...)
-    mx = findmax(arr -> arr.nbytes, ndarrays) # returns (nbytes, position)
-    max_size = mx[1] # first elem nbytes
-    max_shape = size(ndarrays[mx[2]]) # second elem max position
-    @assert !isnothing(max_shape)
+    blocks, threads, taskid=cuNumeric.RUN_PTX, ctx=nothing, validate_shapes=true)
+    max_shape = if validate_shapes
+        # Generic PTX tasks retain the existing padding/shape behavior.
+        ndarrays = vcat(inputs..., outputs...) # returns (nbytes, position)
+        mx = findmax(arr -> arr.nbytes, ndarrays) # first elem nbytes
+        shape = size(ndarrays[mx[2]]) # second elem max position
+        @assert !isnothing(shape)
+        shape
+    else
+        # Fused linear broadcast verifies shapes match
+        nothing
+    end
 
     rt = Legate.get_runtime()
     lib = cuNumeric.get_lib()
@@ -98,13 +102,13 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
 
     input_vars = Vector{Legate.Variable}()
     for arr in inputs
-        check_sz!(arr, max_shape; copy=true)
+        validate_shapes && check_sz!(arr, max_shape; copy=true)
         push!(input_vars, _add_task_array!(Legate.add_input, task, arr))
     end
 
     output_vars = Vector{Legate.Variable}()
     for arr in outputs
-        check_sz!(arr, max_shape; copy=false)
+        validate_shapes && check_sz!(arr, max_shape; copy=false)
         push!(output_vars, _add_task_array!(Legate.add_output, task, arr))
     end
 
@@ -132,15 +136,14 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
 end
 
 function launch(kernel::CUDATask, inputs, outputs, scalars;
-    blocks, threads, taskid=cuNumeric.RUN_PTX, ctx=nothing)
+    blocks, threads, taskid=cuNumeric.RUN_PTX, ctx=nothing, validate_shapes=true)
     return Launch(kernel,
         isa(inputs, Tuple) ? inputs : (inputs,),
         isa(outputs, Tuple) ? outputs : (outputs,),
         isa(scalars, Tuple) ? scalars : (scalars,);
         blocks=isa(blocks, Tuple) ? blocks : (blocks,),
         threads=isa(threads, Tuple) ? threads : (threads,),
-        taskid=taskid,
-        ctx=ctx,
+        taskid=taskid, ctx=ctx, validate_shapes=validate_shapes,
     )
 end
 

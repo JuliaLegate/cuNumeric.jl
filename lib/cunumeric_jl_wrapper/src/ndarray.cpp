@@ -205,7 +205,7 @@ CN_Type* nda_array_type(const CN_NDArray* arr) {
 }
 
 uint64_t nda_nbytes(CN_NDArray* arr) {
-  return (uint64_t)nda_array_type(arr)->obj.size() * nda_array_size(arr);
+  return static_cast<uint64_t>(arr->obj.type().size()) * nda_array_size(arr);
 }
 
 void nda_array_shape(const CN_NDArray* arr, uint64_t* out_shape) {
@@ -253,38 +253,33 @@ CN_NDArray* nda_unary_reduction_axes(CuPyNumericUnaryRedCode op_code,
   return new CN_NDArray{NDArray(std::move(result))};
 }
 
-NDArray get_slice(NDArray arr, std::vector<legate::Slice> slices) {
-  switch (slices.size()) {
-    case 1: {
-      std::initializer_list<legate::Slice> slice_list = {slices[0]};
-      return arr[slice_list];
-    }
-    case 2: {
-      std::initializer_list<legate::Slice> slice_list = {slices[0], slices[1]};
-      return arr[slice_list];
-    }
-    default: {
-      assert(0 && "dim gteq 3 not supported yet\b");
-    }
-  };
-  assert(0 && "you should not enter here\n");
+static legate::Slice to_legate_slice(const CN_Slice& slice) {
+  std::optional<int64_t> start =
+      slice.has_start ? std::optional<int64_t>{slice.start} : std::nullopt;
+  std::optional<int64_t> stop =
+      slice.has_stop ? std::optional<int64_t>{slice.stop} : std::nullopt;
+  return legate::Slice(start, stop);
 }
 
 CN_NDArray* nda_get_slice(CN_NDArray* arr, const CN_Slice* slices,
                           int32_t ndim) {
-  std::vector<legate::Slice> slice_vec;
-  slice_vec.reserve(ndim);
-  for (int i = 0; i < ndim; ++i) {
-    std::optional<int64_t> start = slices[i].has_start
-                                       ? std::optional<int64_t>{slices[i].start}
-                                       : std::nullopt;
-    std::optional<int64_t> stop = slices[i].has_stop
-                                      ? std::optional<int64_t>{slices[i].stop}
-                                      : std::nullopt;
-    slice_vec.emplace_back(legate::Slice(start, stop));
+  switch (ndim) {
+    case 1: {
+      std::initializer_list<legate::Slice> slice_list = {
+          to_legate_slice(slices[0])};
+      NDArray result = arr->obj[slice_list];
+      return new CN_NDArray{NDArray(std::move(result))};
+    }
+    case 2: {
+      std::initializer_list<legate::Slice> slice_list = {
+          to_legate_slice(slices[0]), to_legate_slice(slices[1])};
+      NDArray result = arr->obj[slice_list];
+      return new CN_NDArray{NDArray(std::move(result))};
+    }
+    default:
+      assert(0 && "dim gteq 3 not supported yet");
+      return nullptr;
   }
-  NDArray result = get_slice(arr->obj, slice_vec);
-  return new CN_NDArray{NDArray(std::move(result))};
 }
 
 CN_NDArray* nda_store_to_ndarray(CN_Store* st) {
