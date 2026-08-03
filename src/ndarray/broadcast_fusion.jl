@@ -8,11 +8,9 @@ end
 
 Base.@propagate_inbounds _gpu_broadcast_getindex(x::Number, I) = x
 
-# Bypass Broadcast.newindex: for N-D arrays, `_broadcast_getindex(A, I::Int)` becomes
-# `A[CartesianIndex(I, 1, 1, ...)]`, which is wrong for our linear work ids.
-# Dest already uses linear `dest[I]`; reads must use the same strided linear path.
+# Same-shaped fused operands already use the destination index.
 Base.@propagate_inbounds @inline function _gpu_broadcast_getindex(
-    x::CuStridedDeviceArray, I::Integer
+    x::CuStridedDeviceArray, I::Union{Integer,CartesianIndex}
 )
     return @inbounds x[I]
 end
@@ -145,6 +143,83 @@ function make_linear_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, stat
     return broadcast_kernel_linear_splat
 end
 
+@inline function _broadcast_cartesian_work_id()
+    row =
+        (Int(CUDACore.blockIdx().y) - 1) * Int(CUDACore.blockDim().y) +
+        Int(CUDACore.threadIdx().y)
+    col =
+        (Int(CUDACore.blockIdx().x) - 1) * Int(CUDACore.blockDim().x) +
+        Int(CUDACore.threadIdx().x)
+    return CartesianIndex(row, col)
+end
+
+function make_cartesian_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args)
+    f = bc.f
+
+    @kernel unsafe_indices = true function broadcast_kernel_cartesian_splat(
+        dest, runtime_args...
+    )
+        I = _broadcast_cartesian_work_id()
+        if I[1] <= size(dest, 1) && I[2] <= size(dest, 2)
+            @inbounds args_modified = _materialize_broadcast_args(
+                arg_plan, runtime_args, static_args, I
+            )
+            @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+        end
+    end
+
+    return broadcast_kernel_cartesian_splat
+end
+
+@inline function _broadcast_cartesian_work_id_3d()
+    i =
+        (Int(CUDACore.blockIdx().z) - 1) * Int(CUDACore.blockDim().z) +
+        Int(CUDACore.threadIdx().z)
+    j =
+        (Int(CUDACore.blockIdx().y) - 1) * Int(CUDACore.blockDim().y) +
+        Int(CUDACore.threadIdx().y)
+    k =
+        (Int(CUDACore.blockIdx().x) - 1) * Int(CUDACore.blockDim().x) +
+        Int(CUDACore.threadIdx().x)
+    return CartesianIndex(i, j, k)
+end
+
+function make_cartesian_kernel_3d(
+    dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args
+)
+    f = bc.f
+
+    @kernel unsafe_indices = true function broadcast_kernel_cartesian_3d_splat(
+        dest, runtime_args...
+    )
+        I = _broadcast_cartesian_work_id_3d()
+        if I[1] <= size(dest, 1) && I[2] <= size(dest, 2) && I[3] <= size(dest, 3)
+            @inbounds args_modified = _materialize_broadcast_args(
+                arg_plan, runtime_args, static_args, I
+            )
+            @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+        end
+    end
+
+    return broadcast_kernel_cartesian_3d_splat
+end
+
+function make_broadcast_kernel(
+    dest::NDArray{<:Any,2}, bc::Base.Broadcast.Broadcasted, arg_plan, static_args
+)
+    return make_cartesian_kernel(dest, bc, arg_plan, static_args)
+end
+
+function make_broadcast_kernel(
+    dest::NDArray{<:Any,3}, bc::Base.Broadcast.Broadcasted, arg_plan, static_args
+)
+    return make_cartesian_kernel_3d(dest, bc, arg_plan, static_args)
+end
+
+function make_broadcast_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args)
+    return make_linear_kernel(dest, bc, arg_plan, static_args)
+end
+
 struct FusedBroadcastMetadata
     ctx::Any # KA.CompilerMetadata (compilation / arg layout; not global ndrange)
     threads::Int # occupancy thread budget; device chooses final launch dims
@@ -156,12 +231,10 @@ end
 const _BCAST_PTX_CACHE = Dict{Tuple{Any,DataType,DataType},FusedBroadcastMetadata}()
 const _BCAST_PTX_CACHE_LOCK = ReentrantLock()
 
-# Linear-only fusion: every NDArray leaf must match `dest` shape. Shape-mismatched
-# broadcasts (e.g. matrix .+ vector) need cartesian / Extruded indexing and are
-# handled by the unfused path instead.
+# Every NDArray leaf must match `dest` shape. Shape-mismatched broadcasts
+# (e.g. matrix .+ vector) are handled by the unfused path.
 #
-# Slice views are allowed: RunPTXBroadcastTask packs element strides so linear
-# `I` indexes through CuStridedDeviceArray correctly.
+# Slice views are allowed: RunPTXBroadcastTask packs their element strides.
 @inline _can_fuse_linear_broadcast_leaf(dest, ::Number) = true
 @inline _can_fuse_linear_broadcast_leaf(dest, ::Base.RefValue) = true
 @inline function _can_fuse_linear_broadcast_leaf(dest, x::NDArray)
@@ -182,7 +255,7 @@ end
 end
 
 """
-Return true when fused linear broadcast is safe for `bc` into `dest`.
+Return true when same-shaped broadcast fusion is safe for `bc` into `dest`.
 
 Requires every NDArray leaf to have the same size as `dest`. Scalars / RefValues
 are allowed. Unknown leaf types refuse fusion (fall back to unfused).
@@ -196,22 +269,20 @@ Also refuses 0-d destinations: `RunPTXBroadcastTask` only supports dims in
     return _can_fuse_linear_broadcast_leaf(dest, bc)
 end
 
-# After Broadcast.preprocess, same-shape arrays are wrapped in Extruded with all
-# keeps=true. Unwrap those so the kernel indexes CuStridedDeviceArray with linear `I`
-# (avoids Extruded/CartesianIndices paths that emit gpu_report_exception in PTX).
-@inline function _unwrap_linear_fusion_arg(x::Base.Broadcast.Extruded)
+# Same-shaped operands do not need Broadcast's dynamic index projection.
+@inline function _unwrap_fusion_arg(x::Base.Broadcast.Extruded)
     if all(x.keeps)
         return x.x
     end
     throw(
         ArgumentError(
-            "Broadcast fusion (linear-only) does not support shape-mismatched " *
+            "Broadcast fusion does not support shape-mismatched " *
             "Extruded arguments; use the unfused broadcast path",
         ),
     )
 end
-@inline _unwrap_linear_fusion_arg(x) = x
-@inline _unwrap_linear_fusion_args(args::Tuple) = _unwrap_linear_fusion_arg.(args)
+@inline _unwrap_fusion_arg(x) = x
+@inline _unwrap_fusion_args(args::Tuple) = _unwrap_fusion_arg.(args)
 
 # Host-side scalar alignment for fusion — same as unfused
 # `T_IN = __my_promote_type(...); unchecked_promote_arr.(args, T_IN)`, but
@@ -330,7 +401,7 @@ function get_ptx(
     # dump_module=true keeps only_entry=false so linked libdevice helpers (e.g. cos
     # slowpaths) are not emptied into unresolved .externs before cuModuleLoad.
     CUDATools.code_ptx(buf, obj.f, (typeof(ctx), DEST_T, arg_types...);
-        raw=false, dump_module=true, kernel=true)
+        raw=false, dump_module=true, kernel=true, ptx=v"9.0")
 
     return String(take!(buf)), threads, ctx
 end
@@ -458,9 +529,10 @@ function _describe_fused_broadcast(
     isempty(actual_scalars) || field("scalars", join(repr.(actual_scalars), ", "))
     isempty(static_args) || field("static", join(repr.(static_args), ", "))
     field("arg_map", "$(Int.(arg_map))  (0=output, >=1=input idx+1, <0=scalar)")
+    indexing = ndims(dest) in (2, 3) ? "cartesian" : "linear"
     field(
         "launch",
-        "host thread budget=$(fkm.threads), indexing=linear, " *
+        "host thread budget=$(fkm.threads), indexing=$indexing, " *
         "blocks=device(local tile), global_ndrange=$ndrange",
     )
     field(
@@ -548,13 +620,13 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
     # not is-bits types. We split these out manually into static args and handle
     # them separately from runtime args (i.e., arrays, scalars)
     runtime_args, static_args, arg_plan = split_broadcast_args_for_kernel(
-        _unwrap_linear_fusion_args(bc.args)
+        _unwrap_fusion_args(bc.args)
     )
     # Host-only, before PTX cache: same `__my_promote_type` + Number convert as
     # unfused `T_IN` / `unchecked_promote_arr`. Kernel sees already-aligned types.
     runtime_args = _align_fused_runtime_args(runtime_args)
 
-    broadcast_kernel = make_linear_kernel(dest, bc, arg_plan, static_args)
+    broadcast_kernel = make_broadcast_kernel(dest, bc, arg_plan, static_args)
 
     ndrange = ndims(dest) > 0 ? size(dest) : (1,)
 
