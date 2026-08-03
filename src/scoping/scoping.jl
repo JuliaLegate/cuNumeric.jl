@@ -14,6 +14,10 @@ Wraps a block of code so that all temporary `NDArray` allocations
 at the end of the block. Ensures proper cleanup of GPU memory by
 inserting `maybe_insert_delete` calls automatically.
 
+Assignments created inside the macro are scoped to its lexical region. Existing
+arrays can still be mutated in place, and the final value of the block is
+returned, but internal bindings do not leak into the surrounding scope.
+
 When broadcast fusion is enabled (`FUSE_BROADCAST_EXPRS`), dotted operators
 (`.+`, `.*`, etc.) form a lazy `Base.Broadcast.Broadcasted` tree compiled into
 a single PTX kernel; intermediate nodes are not real `NDArray` allocations and
@@ -22,7 +26,9 @@ broadcast-aware analysis in that case and the plain analysis otherwise.
 """
 macro analyze_lifetimes(block)
     on_rewrite = BCAST_FUSION_DEBUG[] ? InterBroadcastFusion.log_rewrite : nothing
-    return esc(process_ndarray_scope(block; on_rewrite))
+    rewritten = process_ndarray_scope(block; on_rewrite)
+    bindings = union(_assigned_symbols(block), _assigned_symbols(rewritten))
+    return esc(_lexical_scope(rewritten, bindings))
 end
 
 const counter = Ref(0)
@@ -32,6 +38,43 @@ function maybe_insert_delete(var::NDArray)
 end
 
 maybe_insert_delete(x) = x
+
+# `@analyze_lifetimes` is an ownership region, analogous to a C++ `{ ... }`
+# block. Bind every source and generated assignment explicitly so it cannot
+# accidentally reuse or leak a caller local with the same name. Indexed and
+# broadcast assignments are mutations, not new bindings, and remain visible.
+function _assigned_symbols(expr)
+    assigned = Set{Symbol}()
+
+    function collect_binding(lhs)
+        if lhs isa Symbol
+            push!(assigned, lhs)
+        elseif lhs isa Expr && lhs.head in (:tuple, :parameters)
+            foreach(collect_binding, lhs.args)
+        elseif lhs isa Expr && lhs.head in (:(::), :(...))
+            collect_binding(first(lhs.args))
+        end
+        return nothing
+    end
+
+    function visit(node)
+        node isa Expr || return nothing
+        assignment = _assignment(node)
+        if !isnothing(assignment)
+            collect_binding(assignment.lhs)
+        end
+        foreach(visit, node.args)
+        return nothing
+    end
+
+    visit(expr)
+    return assigned
+end
+
+function _lexical_scope(body, bindings::Set{Symbol})
+    ordered = sort!(collect(bindings); by=string)
+    return Expr(:let, Expr(:block, ordered...), body)
+end
 
 function _hoist_temporary(expr, assigned_vars)
     counter[] += 1
@@ -101,12 +144,25 @@ function insert_finalizers(exprs::Vector, assigned_vars::Set{Symbol})
         end
         return false
     end
-    function result_symbol(stmt)
-        stmt isa Symbol && return stmt
+    function result_symbols(stmt)
+        stmt isa Symbol && return Set([stmt])
+
         assignment = _assignment(stmt)
-        isnothing(assignment) && return nothing
-        assignment.lhs isa Symbol || return nothing
-        return assignment.lhs
+        if !isnothing(assignment)
+            return result_symbols(assignment.rhs)
+        end
+
+        if stmt isa Expr && stmt.head in (:tuple, :parameters)
+            return mapreduce(result_symbols, union, stmt.args; init=Set{Symbol}())
+        end
+        if stmt isa Expr && stmt.head == :kw
+            return result_symbols(last(stmt.args))
+        end
+        if stmt isa Expr && stmt.head == :(::)
+            return result_symbols(first(stmt.args))
+        end
+
+        return Set{Symbol}()
     end
 
     # Pass 2: insert finalizers
@@ -119,17 +175,16 @@ function insert_finalizers(exprs::Vector, assigned_vars::Set{Symbol})
     # return `nothing` rather than leak it or hand back a dangling handle.
     terminal_indexed = n > 0 && is_indexed_assign(stmts[n])
 
-    protected = nothing
+    protected = Set{Symbol}()
     if n > 0 && !terminal_indexed
-        rs = result_symbol(stmts[n])
-        if rs isa Symbol
-            protected = canon(rs)
+        for result in result_symbols(stmts[n])
+            push!(protected, canon(result))
         end
     end
 
     function emit_delete!(v)
         c = canon(v)
-        if c in freed || c == protected
+        if c in freed || c in protected
             return nothing
         end
         push!(freed, c)

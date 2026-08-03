@@ -191,6 +191,81 @@ function test_scoping_rewrite_pipeline()
             cuNumeric.counter[] = 0
         end
     end
+
+    @testset "Multiple returned bindings" begin
+        source = quote
+            tmp1 = f(A)
+            first_result = tmp1
+            tmp2 = g(A)
+            second_result = tmp2
+            (first_result, second_result)
+        end
+        assigned = Set([:tmp1, :first_result, :tmp2, :second_result])
+        finalized = cuNumeric.insert_finalizers(source, assigned)
+        freed = Set(
+            filter(
+                !isnothing, map(cuNumeric._delete_argument, utils._flatten_statements(finalized))
+            ),
+        )
+
+        @test isempty(freed)
+    end
+
+    @testset "Lexical lifetime scope" begin
+        function hidden_binding()
+            @analyze_lifetimes begin
+                internal_result = 41
+                nothing
+            end
+            return internal_result
+        end
+
+        function shadowed_binding()
+            internal_result = :outer
+            @analyze_lifetimes begin
+                internal_result = :inner
+                nothing
+            end
+            return internal_result
+        end
+
+        function hidden_destructured_bindings()
+            @analyze_lifetimes begin
+                internal_first, internal_second = (1, 2)
+                nothing
+            end
+            return internal_first, internal_second
+        end
+
+        output = [0]
+        returned = @analyze_lifetimes begin
+            internal_result = 42
+            output[1] = internal_result
+            internal_result
+        end
+
+        @test_throws UndefVarError hidden_binding()
+        @test_throws UndefVarError hidden_destructured_bindings()
+        @test shadowed_binding() == :outer
+        @test output == [42]
+        @test returned == 42
+
+        if cuNumeric.FUSE_BROADCAST_EXPRS
+            function hidden_fused_binding(a, b, destination)
+                @analyze_lifetimes begin
+                    fused_result = a .* b
+                    destination .= fused_result .+ 1
+                end
+                return fused_result
+            end
+
+            destination = zeros(Int, 2)
+            @test_throws UndefVarError hidden_fused_binding(
+                [2, 3], [4, 5], destination
+            )
+            @test destination == [9, 16]
+        end
+    end
 end
 
 function test_scoping_regressions(T, N)
