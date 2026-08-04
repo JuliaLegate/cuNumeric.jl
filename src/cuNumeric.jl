@@ -252,6 +252,8 @@ function __init__()
 
     _is_precompiling() && return nothing
 
+    _register_scoping_error_hint!()
+
     # Cannot set LEGATE_CONFIG on CI machines used
     # to register packages. So we will just skip starting
     # legate/cunumeric when using registry CI machines.

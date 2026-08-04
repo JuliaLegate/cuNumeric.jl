@@ -258,6 +258,19 @@ function test_scoping_rewrite_pipeline()
             return internal_first, internal_second
         end
 
+        function unrelated_undefined_binding()
+            return unrelated_result
+        end
+
+        function rendered_error(f)
+            try
+                f()
+            catch exc
+                return sprint(io -> showerror(io, exc, catch_backtrace()))
+            end
+            return ""
+        end
+
         output = [0]
         returned = @analyze_lifetimes begin
             internal_result = 42
@@ -267,6 +280,13 @@ function test_scoping_rewrite_pipeline()
 
         @test_throws UndefVarError hidden_binding()
         @test_throws UndefVarError hidden_destructured_bindings()
+        @test occursin(
+            "If `internal_result` was created there", rendered_error(hidden_binding)
+        )
+        @test occursin(
+            "If `unrelated_result` was created there",
+            rendered_error(unrelated_undefined_binding),
+        )
         @test shadowed_binding() == :outer
         @test output == [42]
         @test returned == 42

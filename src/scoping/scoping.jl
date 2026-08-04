@@ -76,6 +76,20 @@ function _lexical_scope(body, bindings::Set{Symbol})
     return Expr(:let, Expr(:block, ordered...), body)
 end
 
+function _register_scoping_error_hint!()
+    isdefined(Base.Experimental, :register_error_hint) || return nothing
+    Base.Experimental.register_error_hint(UndefVarError) do io, exc
+        return print(
+            io,
+            "\nHint: bindings assigned inside `@analyze_lifetimes` are local to its " *
+            "block. If `",
+            exc.var,
+            "` was created there, return it from the block to use it afterward.",
+        )
+    end
+    return nothing
+end
+
 function _hoist_temporary(expr, assigned_vars)
     counter[] += 1
     temporary = Symbol(:tmp, counter[])
