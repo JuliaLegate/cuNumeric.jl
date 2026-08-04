@@ -155,13 +155,21 @@ function (::Type{<:Array{A}})(arr::NDArray{B,1}) where {A,B}
     return make_array(A, Ptr{A}(get_ptr(arr)), size(arr))
 end
 
-# TODO: query the store's DimOrdering instead of assuming row-major (C-order).
-# Julia Arrays are column-major, so for C-ordered buffers we transpose, wrap,
-# then transpose back so `Array(nda)` matches `nda[i,j]`.
+# Copy logically into Julia's column-major storage.
+# Legate may map an NDArray in C or Fortran order.
+function _copy_to_julia_array(arr::NDArray{T,N}) where {T,N}
+    out = Array{T}(undef, size(arr))
+    store = Legate.attach_external_col_major(out)
+    ptr = cuNumeric.nda_store_to_ndarray(store.handle)
+    finalize(store.handle)
+    attached = NDArray(ptr, T, Val(N), out)
+    copyto!(attached, arr)
+    get_ptr(attached) # Block until the copy into `out` completes.
+    return out
+end
+
 function (::Type{<:Array{A}})(arr::NDArray{B}) where {A,B}
-    t = transpose(arr)
-    w = make_array(B, Ptr{B}(get_ptr(t)), size(t))
-    out = collect(permutedims(w, reverse(1:ndims(w))))
+    out = _copy_to_julia_array(arr)
     return A === B ? out : copyto!(Array{A}(undef, size(arr)), out)
 end
 

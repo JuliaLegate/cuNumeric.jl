@@ -349,6 +349,12 @@ function Base.any(input::NDArray{Bool}; dims=Colon())
     return _bool_reduction_impl(cuNumeric.ANY, input, dims)
 end
 
+# Boolean multiplication is logical conjunction. cuPyNumeric's PROD reduction
+# uses a numeric fill identity, which Legate rejects for a Boolean target.
+function Base.prod(input::NDArray{Bool}; dims=Colon())
+    return _unary_reduction_impl(Base.prod, cuNumeric.ALL, input, dims)
+end
+
 #! ONLY ADD ONCE REDUCTIONS RETURN A SCALAR
 # function StatsBase.mean(arr::NDArray{T}) where T
 #     return sum(arr) ./ prod(size(arr))
