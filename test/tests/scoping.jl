@@ -140,6 +140,18 @@ function test_scoping_rewrite_pipeline()
         )
         @test isempty(events)
         @test utils._strip_lines(rewritten) == utils._strip_lines(untouched)
+
+        dotted = quote
+            tmp = @. A + B
+            result .= @. tmp * C + Float64(1.0)
+        end
+        expanded = cuNumeric._expand_dot_macros(dotted, @__MODULE__)
+        @test !occursin("@__dot__", sprint(Base.show_unquoted, expanded))
+
+        rewritten = cuNumeric.InterBroadcastFusion.rewrite_scope(expanded)
+        rendered = sprint(Base.show_unquoted, utils._strip_lines(rewritten))
+        @test !occursin("tmp =", rendered)
+        @test occursin("Float64.(1.0)", rendered)
     end
 
     @testset "Fusion-aware lifetime rewrite" begin
@@ -340,6 +352,16 @@ function test_scoping_regressions(T, N)
             expected = zeros(T, N + 2, N + 2)
             expected[2:(end - 1), 2:(end - 1)] .= T(3)
             @test Array(out) == expected
+        end
+
+        @testset "Nested @. macros fuse before lifetime analysis" begin
+            multiplier = cuNumeric.ones(T, (N, N))
+            result = cuNumeric.zeros(T, (N, N))
+            @analyze_lifetimes begin
+                tmp = @. A + B
+                result .= @. tmp * multiplier + T(1.0)
+            end
+            @test Array(result) == fill(T(3), N, N)
         end
     end
 end

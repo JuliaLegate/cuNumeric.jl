@@ -6,6 +6,32 @@ using .ScopingUtils
 
 include("inter_broadcast_fusion.jl")
 
+const _DOT_MACRO_NAME = Symbol("@__dot__")
+
+_is_dot_macro(::Any) = false
+_is_dot_macro(name::Symbol) = name === _DOT_MACRO_NAME
+_is_dot_macro(name::GlobalRef) = name.name === _DOT_MACRO_NAME
+
+function _is_dot_macro(name::Expr)
+    name.head === :. || return false
+    quoted_name = last(name.args)
+    return quoted_name isa QuoteNode && quoted_name.value === _DOT_MACRO_NAME
+end
+
+_expand_dot_macros(value, ::Module) = value
+
+function _expand_dot_macros(expr::Expr, caller::Module)
+    expr.head in (:quote, :inert) && return expr
+
+    if expr.head === :macrocall && _is_dot_macro(first(expr.args))
+        expanded = Base.macroexpand(caller, expr; recursive=false)
+        return _expand_dot_macros(expanded, caller)
+    end
+
+    args = map(arg -> _expand_dot_macros(arg, caller), expr.args)
+    return Expr(expr.head, args...)
+end
+
 @doc"""
     @analyze_lifetimes expr
 
@@ -25,6 +51,7 @@ are not individually hoisted. The macro automatically selects the
 broadcast-aware analysis in that case and the plain analysis otherwise.
 """
 macro analyze_lifetimes(block)
+    block = _expand_dot_macros(block, __module__)
     on_rewrite = BCAST_FUSION_DEBUG[] ? InterBroadcastFusion.log_rewrite : nothing
     rewritten = process_ndarray_scope(block; on_rewrite)
     bindings = union(_assigned_symbols(block), _assigned_symbols(rewritten))
@@ -314,5 +341,6 @@ you can see exactly where each temporary is freed. Pure AST work, so it runs on
 CPU-only checkouts.
 """
 macro show_lifetimes(block)
+    block = _expand_dot_macros(block, __module__)
     return :(print_lifetime_analysis($(QuoteNode(block))))
 end
