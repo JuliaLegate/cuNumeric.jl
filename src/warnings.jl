@@ -119,10 +119,119 @@ end
     return nothing
 end
 
+const _CUNUMERIC_MODULE = @__MODULE__
+
+# Sentinel for stack frames with no recoverable module. Prefer this over `nothing`
+# so `_module_of_stackframe` is type-stable as `Module`. Must not match Base /
+# LinearAlgebra / cuNumeric checks below.
+const _UNKNOWN_STACK_MODULE = Module(:__cuNumeric_unknown_stack_module__, false, false)
+
+@inline function _is_cunumeric_module(m::Module)
+    m === _UNKNOWN_STACK_MODULE && return false
+    m === _CUNUMERIC_MODULE && return true
+    pm = parentmodule(m)
+    while pm !== m
+        pm === _CUNUMERIC_MODULE && return true
+        m = pm
+        pm = parentmodule(m)
+    end
+    return false
+end
+
+@inline function _is_linalg_module(m::Module)
+    m === _UNKNOWN_STACK_MODULE && return false
+    m === LinearAlgebra && return true
+    nameof(m) === :LinearAlgebra && return true
+    pm = parentmodule(m)
+    while pm !== m
+        (pm === LinearAlgebra || nameof(pm) === :LinearAlgebra) && return true
+        m = pm
+        pm = parentmodule(m)
+    end
+    return false
+end
+
+# Note: LinearAlgebra (and other stdlibs) often have parentmodule === Base, so callers
+# must check `_is_linalg_module` before treating a frame as Base.
+@inline function _is_base_module(m::Module)
+    m === _UNKNOWN_STACK_MODULE && return false
+    m === Base && return true
+    nameof(m) === :Base && return true
+    pm = parentmodule(m)
+    while pm !== m
+        (pm === Base || nameof(pm) === :Base) && return true
+        m = pm
+        pm = parentmodule(m)
+    end
+    return false
+end
+
+_module_from_def(def::Method) = def.module
+_module_from_def(def::Module) = def
+_module_from_def(_) = _UNKNOWN_STACK_MODULE
+
+_module_of_linfo(linfo::Core.MethodInstance) = _module_from_def(linfo.def)
+_module_of_linfo(linfo::Method) = linfo.module
+_module_of_linfo(_) = _UNKNOWN_STACK_MODULE
+
+_module_of_stackframe(frame::Base.StackTraces.StackFrame) = _module_of_linfo(frame.linfo)
+
+# Keyword bodies often look like `#cholesky!#272`; surface `cholesky!`.
+function _clean_stack_func_name(fname)
+    fname_sym = ifelse(fname isa Symbol, fname, Symbol(string(fname)))
+    s = string(fname_sym)
+    m = match(r"^#([^#]+)#\d+$", s)
+    return m === nothing ? fname_sym : Symbol(m.captures[1])
+end
+
+"""
+Best-effort: first Base or LinearAlgebra frame above cuNumeric scalar-index frames.
+Walk top-down, skip cuNumeric/Core (and frames with unknown module). The first remaining
+frame wins: if it is LinearAlgebra or Base (including Base submodules), return
+`(modname, func)`; otherwise return `nothing` for the plain message (e.g. user `Main`).
+Check LinearAlgebra before Base — stdlibs often parent to Base.
+"""
+@noinline function _scalar_indexing_stdlib_caller()
+    for frame in stacktrace()
+        m = _module_of_stackframe(frame)
+        # Skip frames with unknown module (same as previous `nothing` skip).
+        m === _UNKNOWN_STACK_MODULE && continue
+        (m === Core || _is_cunumeric_module(m)) && continue
+        clean_name = _clean_stack_func_name(frame.func)
+        if _is_linalg_module(m)
+            return (:LinearAlgebra, clean_name)
+        elseif _is_base_module(m)
+            return (:Base, clean_name)
+        else
+            # User / other package code — keep the plain scalar-indexing message.
+            return nothing
+        end
+    end
+    return nothing
+end
+
+# Returns (enriched::Bool, desc::String). Enriched = Base or LinearAlgebra stdlib caller.
 function scalardesc(op)
-    desc = """Invocation of $op resulted in scalar indexing of an NDArray.
+    caller = _scalar_indexing_stdlib_caller()
+    if caller !== nothing
+        modname, fname = caller
+        # Base/LinearAlgebra AbstractArray fallback — specific lead + allowscalar guidance.
+        # No "Scalar indexing is disallowed." header (not part of the enriched template).
+        return true,
+        "Invocation of $op resulted in scalar indexing of an `NDArray`." *
+        " This scalar indexing was triggered via `$modname.$fname`." *
+        " This $modname path is probably not implemented yet for `NDArray`." *
+        " Using `allowscalar` or `@allowscalar` might allow this function to work slowly, \
+        but it has not been tested."
+    end
+
+    # Plain user-level scalar indexing (unchanged).
+    return false, """Invocation of $op resulted in scalar indexing of an `NDArray`.
               This is typically caused by calling an iterating implementation of a method.
-              This is very slow and should be avoided.
+              This is very slow and should be avoided. This can also happen if an external
+              method (i.e., LinearAlgebra.kron) is not re-implemented in cuNumeric.jl. Because
+              `NDArray`s subtype `AbstractArray`, the method call will dispatch to the
+              `AbstractArray` implementation, which often iterates over the array.
 
               If you want to allow scalar iteration, use `allowscalar` or `@allowscalar`
               to enable scalar iteration globally or for the operations in question."""
@@ -138,7 +247,7 @@ function promotiondesc(op, ::Type{FROM}, ::Type{TO}) where {FROM,TO}
 end
 
 @noinline function warnscalar(op)
-    desc = scalardesc(op)
+    _, desc = scalardesc(op)
     @warn("""Performing scalar indexing on task $(current_task()).
              $desc""")
 end
@@ -150,9 +259,14 @@ end
 end
 
 @noinline function errorscalar(op)
-    desc = scalardesc(op)
-    error("""Scalar indexing is disallowed.
-             $desc""")
+    enriched, desc = scalardesc(op)
+    if enriched
+        error(desc)
+    else
+        # Plain path keeps the historical disallow header.
+        error("""Scalar indexing is disallowed.
+                 $desc""")
+    end
 end
 
 @noinline function errordouble(op, ::Type{FROM}, ::Type{TO}) where {FROM,TO}

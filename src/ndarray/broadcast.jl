@@ -26,6 +26,20 @@ Base.BroadcastStyle(::DefaultArrayStyle{0}, a::NDArrayStyle) = a
 Base.BroadcastStyle(::NDArrayStyle, ::DefaultArrayStyle) = _nd_forbid_mix()
 Base.BroadcastStyle(::DefaultArrayStyle, ::NDArrayStyle) = _nd_forbid_mix()
 
+# Like Base Diagonal vs Array: structured Diagonal style wins over dense NDArray
+# so D.+A uses StructuredMatrixStyle{Diagonal} (our early densify ArgumentError)
+# instead of ArrayConflict → host Matrix + scalar indexing.
+function Base.BroadcastStyle(
+    ::LinearAlgebra.StructuredMatrixStyle{<:Diagonal}, ::NDArrayStyle
+)
+    LinearAlgebra.StructuredMatrixStyle{Diagonal}()
+end
+function Base.BroadcastStyle(
+    ::NDArrayStyle, ::LinearAlgebra.StructuredMatrixStyle{<:Diagonal}
+)
+    LinearAlgebra.StructuredMatrixStyle{Diagonal}()
+end
+
 Base.broadcastable(A::NDArray) = A
 
 #* IS THERE A BETTER WAY TO ALLOCATE THE NEW ARRAY???
@@ -37,6 +51,12 @@ Base.similar(arr::NDArray{T}, dims::Base.DimOrInd...) where {T} = similar(arr, T
 Base.similar(arr::NDArray, ::Type{T}) where {T} = similar(arr, T, size(arr))
 
 #* IS THERE A BETTER WAY TO ALLOCATE THE NEW ARRAY???
+function Base.similar(
+    ::Type{NDArray{T}},
+    shape::Tuple{Union{Integer,Base.OneTo},Vararg{Union{Integer,Base.OneTo}}},
+) where {T}
+    return cuNumeric.zeros(T, map(Int, Base.to_shape.(shape)))
+end
 Base.similar(::Type{NDArray{T}}, axes) where {T} = cuNumeric.zeros(T, Base.to_shape.(axes))
 function Base.similar(bc::Broadcasted{NDArrayStyle{N}}, ::Type{ElType}) where {N,ElType}
     return similar(NDArray{ElType}, axes(bc))
@@ -161,8 +181,9 @@ end
     return dest
 end
 
-@inline _copyto_unfused!(dest::NDArray{T}, temp_result::NDArray{T}) where {T} =
-    _store_broadcast_result!(dest, temp_result)
+@inline _copyto_unfused!(dest::NDArray{T}, temp_result::NDArray{T}) where {T} = _store_broadcast_result!(
+    dest, temp_result
+)
 
 @inline function _copyto_unfused!(dest::NDArray{T}, temp_result::NDArray) where {T}
     promoted = checked_promote_arr(temp_result, T)

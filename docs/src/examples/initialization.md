@@ -3,6 +3,7 @@
 Create `NDArray`s with the usual Julia-style constructors. The default element type is `Float32` unless you pass one.
 
 ```julia
+using LinearAlgebra
 using cuNumeric
 
 # Zeros / ones / fill
@@ -15,9 +16,10 @@ F = cuNumeric.fill(7.5f0, (2, 3))
 T = cuNumeric.trues(2, 3)
 Fbool = cuNumeric.falses(2, 3)
 
-# Identity
-I = cuNumeric.eye(5)
-I16 = cuNumeric.eye(Float32, 5)
+# Identity: prefer Diagonal / I; densify only when needed (no eye)
+D = Diagonal(cuNumeric.ones(Float32, 5))
+I32 = NDArray{Float32}(I, 5, 5)   # dense identity
+Ib = NDArray(I, 5, 5)             # Bool identity
 
 # Uniform random values (default Float32; backend draws Float64 then converts)
 R = cuNumeric.rand(4, 4)

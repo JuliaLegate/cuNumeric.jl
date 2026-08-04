@@ -20,6 +20,8 @@
 
 export unwrap
 
+# See TODO.md (Base / LinearAlgebra sections) for AbstractArray and LA gaps.
+
 @doc"""
     cuNumeric.transpose(arr::NDArray)
 

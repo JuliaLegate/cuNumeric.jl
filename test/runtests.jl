@@ -90,6 +90,10 @@ end
     include("tests/linalg.jl")
 end
 
+@testset verbose = true "Diagonal / UniformScaling" begin
+    include("tests/diagonal.jl")
+end
+
 @testset verbose = true "GEMM" begin
     N = 50
     M = 25

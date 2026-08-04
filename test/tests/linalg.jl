@@ -32,11 +32,11 @@
     end
 end
 
-@testset "eye" begin
+@testset "identity via I" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
         n = 5
         ref = Matrix{T}(I, n, n)
-        out = cuNumeric.eye(T, n)
+        out = NDArray{T}(I, n, n)
         allowscalar() do
             @test cuNumeric.compare(ref, out, atol(T), rtol(T))
         end
@@ -186,21 +186,20 @@ end
     end
 end
 
-
 function check_svd_reconstruction(ref_A::AbstractMatrix, u, s, vh, tol_a, tol_r)
-    U  = Array(u)
-    S  = Array(s)
+    U = Array(u)
+    S = Array(s)
     Vh = Array(vh)
     A_rec = U * Diagonal(S) * Vh
     return isapprox(ref_A, A_rec; atol=tol_a, rtol=tol_r)
 end
 
 function check_svd_orthonormality(u, vh, tol_a, tol_r)
-    U  = Array(u)
+    U = Array(u)
     Vh = Array(vh)
     ku = size(U, 2)
     kv = size(Vh, 1)
-    ok_u  = isapprox(U'  * U,  Matrix{eltype(U)}(I, ku, ku);  atol=tol_a, rtol=tol_r)
+    ok_u = isapprox(U' * U, Matrix{eltype(U)}(I, ku, ku); atol=tol_a, rtol=tol_r)
     ok_vh = isapprox(Vh * Vh', Matrix{eltype(Vh)}(I, kv, kv); atol=tol_a, rtol=tol_r)
     return ok_u && ok_vh
 end
@@ -208,7 +207,7 @@ end
 @testset "svd square matrix" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         A_ref = my_rand(T, 5, 5)
-        nda   = cuNumeric.NDArray(A_ref)
+        nda = cuNumeric.NDArray(A_ref)
         u, s, vh = cuNumeric.svd(nda)
         allowscalar() do
             @test check_svd_reconstruction(A_ref, u, s, vh, atol(T), rtol(T))
@@ -220,7 +219,7 @@ end
 @testset "svd tall matrix (m > n)" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         A_ref = my_rand(T, 6, 4)
-        nda   = cuNumeric.NDArray(A_ref)
+        nda = cuNumeric.NDArray(A_ref)
         u, s, vh = cuNumeric.svd(nda, false)  # thin SVD for reconstruction test
         allowscalar() do
             @test check_svd_reconstruction(A_ref, u, s, vh, atol(T), rtol(T))
@@ -228,41 +227,41 @@ end
         end
     end
 end
- 
+
 @testset "svd thin output shapes (full_matrices=false)" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         m, n = 6, 4
-        k     = min(m, n)
+        k = min(m, n)
         A_ref = my_rand(T, m, n)
-        nda   = cuNumeric.NDArray(A_ref)
+        nda = cuNumeric.NDArray(A_ref)
         u, s, vh = cuNumeric.svd(nda, false)
         allowscalar() do
-            @test size(Array(u))  == (m, k)
-            @test size(Array(s))  == (k,)
+            @test size(Array(u)) == (m, k)
+            @test size(Array(s)) == (k,)
             @test size(Array(vh)) == (k, n)
             @test check_svd_reconstruction(A_ref, u, s, vh, atol(T), rtol(T))
         end
     end
 end
- 
+
 @testset "svd full output shapes (full_matrices=true)" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         m, n = 6, 4
         A_ref = my_rand(T, m, n)
-        nda   = cuNumeric.NDArray(A_ref)
+        nda = cuNumeric.NDArray(A_ref)
         u, s, vh = cuNumeric.svd(nda, true)
         allowscalar() do
-            @test size(Array(u))  == (m, m)
-            @test size(Array(s))  == (min(m, n),)
+            @test size(Array(u)) == (m, m)
+            @test size(Array(s)) == (min(m, n),)
             @test size(Array(vh)) == (n, n)
         end
     end
 end
- 
+
 @testset "svd singular values non-negative and sorted" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         A_ref = my_rand(T, 5, 5)
-        nda   = cuNumeric.NDArray(A_ref)
+        nda = cuNumeric.NDArray(A_ref)
         _, s, _ = cuNumeric.svd(nda)
         allowscalar() do
             sv = Array(s)
@@ -271,27 +270,27 @@ end
         end
     end
 end
- 
+
 @testset "svd identity matrix" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
-        n     = 4
+        n = 4
         A_ref = Matrix{T}(I, n, n)
-        nda   = cuNumeric.NDArray(A_ref)
+        nda = cuNumeric.NDArray(A_ref)
         _, s, _ = cuNumeric.svd(nda)
         allowscalar() do
             @test cuNumeric.compare(ones(T, n), s, atol(T), rtol(T))
         end
     end
 end
- 
+
 @testset "svd rank-1 matrix" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         # outer product of two vectors: exactly one nonzero singular value
         # 5x4 satisfies the M >= N constraint
-        v1    = T.(collect(1:5))
-        v2    = T.(collect(1:4))
+        v1 = T.(collect(1:5))
+        v2 = T.(collect(1:4))
         A_ref = v1 * v2'
-        nda   = cuNumeric.NDArray(A_ref)
+        nda = cuNumeric.NDArray(A_ref)
         _, s, _ = cuNumeric.svd(nda)
         allowscalar() do
             sv = Array(s)
@@ -316,8 +315,8 @@ end
 @testset "qr reconstruction" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_QR_TYPES)
         A_ref = my_rand(T, 6, 4)
-        nda   = cuNumeric.NDArray(A_ref)
-        q, r  = cuNumeric.qr(nda)
+        nda = cuNumeric.NDArray(A_ref)
+        q, r = cuNumeric.qr(nda)
         allowscalar() do
             Q = Array(q)
             R = Array(r)
@@ -332,8 +331,8 @@ end
 @testset "qr square matrix" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_QR_TYPES)
         A_ref = my_rand(T, 5, 5)
-        nda   = cuNumeric.NDArray(A_ref)
-        q, r  = cuNumeric.qr(nda)
+        nda = cuNumeric.NDArray(A_ref)
+        q, r = cuNumeric.qr(nda)
         allowscalar() do
             Q = Array(q)
             R = Array(r)
@@ -353,7 +352,9 @@ end
             q, r = cuNumeric.qr(A)
             allowscalar() do
                 @test eltype(Array(q)) == Float64
-                @test isapprox(Float64.(vals), Array(q) * Array(r); atol=atol(Float64), rtol=rtol(Float64))
+                @test isapprox(
+                    Float64.(vals), Array(q) * Array(r); atol=atol(Float64), rtol=rtol(Float64)
+                )
             end
         end
     end

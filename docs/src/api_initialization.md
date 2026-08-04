@@ -32,11 +32,22 @@ cuNumeric.trues
 cuNumeric.falses
 ```
 
-## eye
+## Identity
 
-```@docs
-cuNumeric.eye
+There is no NumPy-style `eye`. Prefer `Diagonal` for diagonal scaling and
+`LinearAlgebra.I` for UniformScaling ops (`A + I`, `D + I`, …). Densify only
+when a full identity matrix is required:
+
+```julia
+using LinearAlgebra
+using cuNumeric
+
+D = Diagonal(cuNumeric.ones(Float32, 5))  # preferred for diagonal work
+I32 = NDArray{Float32}(I, 5, 5)           # dense Float32 identity
+Ib = NDArray(I, 5, 5)                     # Bool identity (same as Matrix(I, ...))
 ```
+
+See [Linear Algebra](./linalg.md#diagonal-and-identity) for preferred patterns.
 
 ## rand
 

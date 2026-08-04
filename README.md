@@ -101,3 +101,5 @@ More worked examples (initialization, Gray-Scott, …) are in the documentation 
 ### Known Limitations
 
 - There is no support for `Float16` or `ComplexF16`
+- Arrays with 4 or more dimensions might have worse performance
+- Maximum array dimension is 6
