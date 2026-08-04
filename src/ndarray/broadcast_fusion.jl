@@ -284,6 +284,22 @@ end
 @inline _unwrap_fusion_arg(x) = x
 @inline _unwrap_fusion_args(args::Tuple) = _unwrap_fusion_arg.(args)
 
+# `Broadcast.flatten` discards the result types of nested scalar-only nodes.
+# Materialize those nodes first so an explicit conversion such as
+# `Float32.(1.0)` reaches runtime-argument alignment as a `Float32` scalar.
+@inline _fold_fused_scalar_broadcasts(x) = x
+@inline function _fold_fused_scalar_broadcasts(
+    bc::Base.Broadcast.Broadcasted{<:Base.Broadcast.DefaultArrayStyle{0}}
+)
+    args = map(_fold_fused_scalar_broadcasts, bc.args)
+    scalar_bc = Base.Broadcast.Broadcasted(bc.style, bc.f, args, bc.axes)
+    return Base.Broadcast.materialize(scalar_bc)
+end
+@inline function _fold_fused_scalar_broadcasts(bc::Base.Broadcast.Broadcasted)
+    args = map(_fold_fused_scalar_broadcasts, bc.args)
+    return Base.Broadcast.Broadcasted(bc.style, bc.f, args, bc.axes)
+end
+
 # Host-side scalar alignment for fusion — same as unfused
 # `T_IN = __my_promote_type(...); unchecked_promote_arr.(args, T_IN)`, but
 # `unchecked_promote_scalar` keeps Numbers as scalars for the PTX arg buffer.
@@ -629,6 +645,10 @@ end
 function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcast.Broadcasted}
     # Promotion checks use the pre-flatten tree (same shape as unfused unravel).
     _assert_fused_broadcast_promotion(dest, bc)
+
+    # Preserve the values and types produced by scalar-only subtrees before
+    # flattening turns their inputs into top-level runtime arguments.
+    bc = _fold_fused_scalar_broadcasts(bc)
 
     # Capture the readable tree before flatten collapses the nesting.
     bc_scope = bc
