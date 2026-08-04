@@ -284,6 +284,22 @@ end
 @inline _unwrap_fusion_arg(x) = x
 @inline _unwrap_fusion_args(args::Tuple) = _unwrap_fusion_arg.(args)
 
+# `Broadcast.flatten` discards the result types of nested scalar-only nodes.
+# Materialize those nodes first so an explicit conversion such as
+# `Float32.(1.0)` reaches runtime-argument alignment as a `Float32` scalar.
+@inline _fold_fused_scalar_broadcasts(x) = x
+@inline function _fold_fused_scalar_broadcasts(
+    bc::Base.Broadcast.Broadcasted{<:Base.Broadcast.DefaultArrayStyle{0}}
+)
+    args = map(_fold_fused_scalar_broadcasts, bc.args)
+    scalar_bc = Base.Broadcast.Broadcasted(bc.style, bc.f, args, bc.axes)
+    return Base.Broadcast.materialize(scalar_bc)
+end
+@inline function _fold_fused_scalar_broadcasts(bc::Base.Broadcast.Broadcasted)
+    args = map(_fold_fused_scalar_broadcasts, bc.args)
+    return Base.Broadcast.Broadcasted(bc.style, bc.f, args, bc.axes)
+end
+
 # Host-side scalar alignment for fusion — same as unfused
 # `T_IN = __my_promote_type(...); unchecked_promote_arr.(args, T_IN)`, but
 # `unchecked_promote_scalar` keeps Numbers as scalars for the PTX arg buffer.
@@ -456,18 +472,21 @@ function _bcast_tree_str(bc::Base.Broadcast.Broadcasted)
     end
 end
 
-function _bcast_scope_name(bc::Base.Broadcast.Broadcasted, ndarray_to_input_idx)
+function _bcast_runtime_tree_str(
+    bc::Base.Broadcast.Broadcasted, ndarray_to_input_idx, actual_scalars=nothing
+)
     scalar_idx = 0
-    tree = _bcast_tree_str(bc) do x
+    return _bcast_tree_str(bc) do x
         if x isa NDArray
             input_idx = get(ndarray_to_input_idx, objectid(x), nothing)
-            return input_idx === nothing ? "NDArray" : string("input", input_idx)
+            return input_idx === nothing ? "NDArray" : "input{$input_idx}"
         end
 
         if x isa Number
             idx = scalar_idx
             scalar_idx += 1
-            return string("scalar", idx)
+            value = isnothing(actual_scalars) ? x : actual_scalars[idx + 1]
+            return repr(value)
         end
 
         if x isa Base.RefValue
@@ -475,14 +494,24 @@ function _bcast_scope_name(bc::Base.Broadcast.Broadcasted, ndarray_to_input_idx)
             if value isa Number
                 idx = scalar_idx
                 scalar_idx += 1
-                return string("scalar", idx)
+                runtime_value =
+                    isnothing(actual_scalars) ? value : actual_scalars[idx + 1]
+                return repr(runtime_value)
             end
             return repr(value)
         end
 
         return string("<", typeof(x), ">")
     end
-    return string("broadcast.", tree)
+end
+
+function _bcast_scope_name(
+    bc::Base.Broadcast.Broadcasted, ndarray_to_input_idx, actual_scalars=nothing
+)
+    return string(
+        "broadcast.",
+        _bcast_runtime_tree_str(bc, ndarray_to_input_idx, actual_scalars),
+    )
 end
 
 # Recover the kernel's plain name
@@ -493,7 +522,17 @@ function _demangle_head(s::AbstractString)
 end
 
 # `arg_map` records the kernel's argument order (0=output, ≥1=input idx+1,
-# <0=scalar idx); reconstruct it as a readable `output -> name(args...)` call.
+# <0=scalar idx). Scalar slots are replaced with their values in the signature.
+function _kernel_arg_name(a::Integer)
+    return if a == 0
+        "output"
+    elseif a > 0
+        "input{$(a - 1)}"
+    else
+        "scalar{$(-a - 1)}"
+    end
+end
+
 function _kernel_signature(
     dest::NDArray,
     unique_ndarrays::AbstractVector{<:NDArray},
@@ -501,16 +540,17 @@ function _kernel_signature(
     arg_map::AbstractVector{<:Integer},
     func::AbstractString,
 )
-    token(a::Integer) =
-        if a == 0
-            "output"
-        elseif a > 0
-            string("input", a - 1)
-        else
-            string("scalar", -a - 1)
-        end
+    token(a) = a < 0 ? repr(actual_scalars[-a]) : _kernel_arg_name(a)
     call_args = [token(a) for a in arg_map if a != 0]
     return string("broadcast.", _demangle_head(func), "(", join(call_args, ", "), ")")
+end
+
+function _ndarray_debug_summary(nd::NDArray)
+    summary = "NDArray{$(eltype(nd)), $(ndims(nd))} $(size(nd))"
+    if _is_ndarray_slice(nd)
+        return "$summary slice, parent $(size(nd.parent))"
+    end
+    return summary
 end
 
 function _describe_fused_broadcast(
@@ -520,15 +560,14 @@ function _describe_fused_broadcast(
     field(k, v) = println(io, "  ", rpad(k, 8), v)
     println(io, "\n", "="^40, " fused broadcast kernel")
     field("expr", tree_str)
-    field("output", "$(typeof(dest)) $(size(dest))")
-    field("inputs", "$(length(unique_ndarrays)) unique NDArray(s)")
+    field("output", _ndarray_debug_summary(dest))
+    field("inputs", "input{N} ($(length(unique_ndarrays)) unique)")
+    println(io, "    ", rpad("N", 4), "value")
     for (i, nd) in enumerate(unique_ndarrays)
         alias = objectid(nd) == objectid(dest) ? "  (aliases output)" : ""
-        println(io, "    [", i - 1, "] ", typeof(nd), " ", size(nd), alias)
+        println(io, "    ", rpad(string(i - 1), 4), _ndarray_debug_summary(nd), alias)
     end
-    isempty(actual_scalars) || field("scalars", join(repr.(actual_scalars), ", "))
     isempty(static_args) || field("static", join(repr.(static_args), ", "))
-    field("arg_map", "$(Int.(arg_map))  (0=output, >=1=input idx+1, <0=scalar)")
     indexing = ndims(dest) in (2, 3) ? "cartesian" : "linear"
     field(
         "launch",
@@ -607,9 +646,12 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
     # Promotion checks use the pre-flatten tree (same shape as unfused unravel).
     _assert_fused_broadcast_promotion(dest, bc)
 
+    # Preserve the values and types produced by scalar-only subtrees before
+    # flattening turns their inputs into top-level runtime arguments.
+    bc = _fold_fused_scalar_broadcasts(bc)
+
     # Capture the readable tree before flatten collapses the nesting.
     bc_scope = bc
-    tree_str = BCAST_FUSION_DEBUG[] ? _bcast_tree_str(bc) : ""
 
     bc = Base.Broadcast.preprocess(dest, bc)
     bc = Base.Broadcast.instantiate(bc)
@@ -666,11 +708,23 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
 
     input_ndarrays = tuple(unique_ndarrays...)
 
-    BCAST_FUSION_DEBUG[] && _describe_fused_broadcast(
-        dest, tree_str, unique_ndarrays, actual_scalars, static_args, arg_map, fkm, ndrange
-    )
+    if BCAST_FUSION_DEBUG[]
+        tree_str = _bcast_runtime_tree_str(
+            bc_scope, ndarray_to_input_idx, actual_scalars
+        )
+        _describe_fused_broadcast(
+            dest,
+            tree_str,
+            unique_ndarrays,
+            actual_scalars,
+            static_args,
+            arg_map,
+            fkm,
+            ndrange,
+        )
+    end
 
-    @task_scope _bcast_scope_name(bc_scope, ndarray_to_input_idx) begin
+    @task_scope _bcast_scope_name(bc_scope, ndarray_to_input_idx, actual_scalars) begin
         # `blocks=1` is a placeholder; RunPTXBroadcastTask overwrites grid dims
         # from the local PhysicalArray. `threads` is only the occupancy budget (tx).
         # Scalars after ctx: num_kernel_args, arg_map...

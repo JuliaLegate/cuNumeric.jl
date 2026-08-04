@@ -5,7 +5,7 @@ Debug the layer that matches the problem:
 | Question | Tool |
 |---|---|
 | Which operations did Legate submit, and when did they run? | [Legate logs and profiles](#trace-legate-runtime-work) |
-| Did a broadcast become one fused kernel? | [`BCAST_FUSION_DEBUG`](#inspect-fused-broadcasts-with-bcast_fusion_debug) |
+| How were broadcasts fused? | [`BCAST_FUSION_DEBUG`](#inspect-fused-broadcasts-with-bcast_fusion_debug) |
 | Where does `@analyze_lifetimes` free temporaries? | [`@show_lifetimes`](#inspect-lifetime-rewrites-with-show_lifetimes) |
 
 ## Trace Legate runtime work
@@ -38,7 +38,8 @@ export LEGATE_CONFIG="--gpus 1 --cpus 4 --logging legate=debug --log-to-file"
 julia --project=. workload.jl
 ```
 
-cuNumeric operations now carry short labels such as `zeros`, `matmul`, and `broadcast.+(*(input0, input1), scalar0)`. Search for those labels in `legate_*.log` to connect runtime messages to calls in `workload.jl`.
+With task-scope naming enabled and Julia restarted, cuNumeric operations carry short labels such as `zeros`, `matmul`, and
+`broadcast.+(*(input{0}, input{1}), 2.0f0)`. Search for those labels in `legate_*.log` to connect runtime messages to calls in `workload.jl`.
 
 For a timeline instead, replace the logging flags with `--profile`, run the same workload, and process the resulting `legate_*.prof` files with `legate_prof`.
 
@@ -74,44 +75,71 @@ cuNumeric already supplies names for individual operations when task-scope namin
 
 ## Inspect fused broadcasts with `BCAST_FUSION_DEBUG`
 
-When broadcast fusion is on, set `cuNumeric.BCAST_FUSION_DEBUG[] = true` to print each fused kernel before launch: the expression tree, inputs, scalars, arg map, and launch geometry.
+When broadcast fusion is on, set `cuNumeric.BCAST_FUSION_DEBUG[] = true` to
+print inter-statement rewrites and each fused kernel's expression tree,
+arguments, and launch geometry. Inter-statement rewrites are reported when
+`@analyze_lifetimes` expands, so enable the flag before defining or evaluating
+the expression you want to inspect. Kernel details are reported at runtime.
 
 ```julia
 using cuNumeric
 
 cuNumeric.BCAST_FUSION_DEBUG[] = true
 
-N = 8
+N = 10
 A = cuNumeric.ones(Float32, N, N)
 B = cuNumeric.ones(Float32, N, N)
 C = cuNumeric.zeros(Float32, N, N)
 
-C .= @. A * B + 2.0f0
+@analyze_lifetimes begin
+    product = A[2:end-1, 2:end-1] .* B[2:end-1, 2:end-1]
+    C[2:end-1, 2:end-1] = product .+ 2.0f0
+end
 
 cuNumeric.BCAST_FUSION_DEBUG[] = false
 ```
 
-Example output:
+For example, a single-use producer inside `@analyze_lifetimes` is reported as:
+
+```text
+======================================== inter-broadcast fusion rewrite
+  before
+    begin
+        product = A[2:end - 1, 2:end - 1] .* B[2:end - 1, 2:end - 1]
+        C[2:end - 1, 2:end - 1] = product .+ 2.0f0
+    end
+  fused
+    C[2:end - 1, 2:end - 1] .= A[2:end - 1, 2:end - 1] .* B[2:end - 1, 2:end - 1] .+ 2.0f0
+```
+
+`before` contains exactly the statements that were recombined, and `fused`
+contains their replacement. No rewrite block is printed when the pass leaves
+the statements unchanged.
+
+The fused kernel is reported separately:
 
 ```text
 ======================================== fused broadcast kernel
-  expr    +(*(NDArray, NDArray), 2.0f0)
-  output  NDArray{Float32, 2, false, Nothing} (8, 8)
-  inputs  2 unique NDArray(s)
-    [0] NDArray{Float32, 2, false, Nothing} (8, 8)
-    [1] NDArray{Float32, 2, false, Nothing} (8, 8)
-  scalars 2.0f0
-  arg_map [0, 1, 2, -1]  (0=output, >=1=input idx+1, <0=scalar)
-  launch  host thread budget=1024, indexing=linear, blocks=device(local tile), global_ndrange=(8, 8)
-  call    broadcast.gpu_broadcast_kernel_linear_splat(input0, input1, scalar0)
+  expr    +(*(input{0}, input{1}), 2.0f0)
+  output  NDArray{Float32, 2} (8, 8) slice, parent (10, 10)
+  inputs  input{N} (2 unique)
+    N   value
+    0   NDArray{Float32, 2} (8, 8) slice, parent (10, 10)
+    1   NDArray{Float32, 2} (8, 8) slice, parent (10, 10)
+  launch  host thread budget=1024, indexing=cartesian, blocks=device(local tile), global_ndrange=(8, 8)
+  call    broadcast.gpu_broadcast_kernel_cartesian_splat(input{0}, input{1}, 2.0f0)
 ```
 
 How to read it:
 
-- `expr` is the fused op tree.
-- `inputs` / `scalars` are the runtime arguments passed into the kernel.
-- `arg_map` encodes how kernel slots map to the output (`0`), inputs (`>= 1`), and scalars (`< 0`).
-- If nothing prints, the expression took the unfused path (for example shape-mismatched leaves, fusion disabled, or below the min-ops threshold).
+- `expr` is the fused op tree. Its `input{N}` names index the `inputs` table;
+  scalar arguments appear directly as their runtime values.
+- `inputs` summarizes each runtime array without exposing internal `NDArray`
+  type parameters. A slice includes its parent shape. Source names such as `A`
+  are available in the static lifetime rewrite, but Julia does not retain those
+  binding names on the runtime array object.
+- `call` shows the packed kernel argument order, including reused inputs.
+- If no kernel block prints, the expression took the unfused path (for example shape-mismatched leaves, fusion disabled, or below the min-ops threshold).
 
 Turn the flag off when you are done. It prints on every fused launch and can be noisy in loops.
 

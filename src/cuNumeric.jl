@@ -174,7 +174,7 @@ include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
 include("ndarray/linalg.jl")
-include("scoping.jl")
+include("scoping/scoping.jl")
 
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147
 mutable struct ArgcArgv
@@ -251,6 +251,8 @@ function __init__()
     @initcxx
 
     _is_precompiling() && return nothing
+
+    _register_scoping_error_hint!()
 
     # Cannot set LEGATE_CONFIG on CI machines used
     # to register packages. So we will just skip starting

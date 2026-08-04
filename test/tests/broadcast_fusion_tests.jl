@@ -45,6 +45,29 @@ function test_broadcast_fusion(; T=Float32, N=100, atol=1e-5, rtol=1e-5)
     s2 = T(1.0)
     s3 = T(0.5)
 
+    @testset "Debug formatting" begin
+        input_indices = Dict(objectid(a) => 0, objectid(b) => 1)
+        tree = Base.broadcasted(+, Base.broadcasted(*, a, b), s1)
+
+        @test cuNumeric._bcast_runtime_tree_str(tree, input_indices, Any[s1]) ==
+            "+(*(input{0}, input{1}), $(repr(s1)))"
+        @test cuNumeric._kernel_signature(
+            a,
+            [a, b],
+            Any[s1],
+            Int32[0, 1, 2, -1],
+            "gpu_broadcast_kernel_linear_splat",
+        ) ==
+            "broadcast.gpu_broadcast_kernel_linear_splat(input{0}, input{1}, $(repr(s1)))"
+        @test cuNumeric._ndarray_debug_summary(a) ==
+            "NDArray{$T, 1} ($(size(a, 1)),)"
+
+        slice = a[2:(end - 1)]
+        @test cuNumeric._ndarray_debug_summary(slice) ==
+            "NDArray{$T, 1} ($(size(slice, 1)),) slice, parent ($(size(a, 1)),)"
+        cuNumeric.destroy!(slice)
+    end
+
     # two different arrays
     @testset "A + B (two different arrays)" begin
         expected = julia_a .+ julia_b
@@ -528,6 +551,20 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         b2d = @allowscalar NDArray(j2b)
         a2d .= a2d .* s1 .+ b2d
         @allowscalar @test cuNumeric.compare(j2a .* s1 .+ j2b, a2d, atol, rtol)
+    end
+
+    @testset "cross-statement fusion into a slice" begin
+        N = 16
+        ja = reshape(T.(1:(N * N)), N, N)
+        a = @allowscalar NDArray(ja)
+        out = cuNumeric.zeros(T, (N + 2, N + 2))
+        @analyze_lifetimes begin
+            producer = a .* s1
+            out[2:(end - 1), 2:(end - 1)] = producer .+ s2
+        end
+        expected = zeros(T, N + 2, N + 2)
+        expected[2:(end - 1), 2:(end - 1)] = ja .* s1 .+ s2
+        @allowscalar @test cuNumeric.compare(expected, out, atol, rtol)
     end
 end
 

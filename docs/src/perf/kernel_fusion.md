@@ -12,6 +12,47 @@ y .= .-a .+ b .* c
 y .= @. -a + b * c
 ```
 
+## Avoid preallocated intermediate broadcast buffers
+
+Preallocation is useful for a final output or a buffer that must persist across
+iterations. It can be counterproductive for a single-use intermediate inside
+`@analyze_lifetimes`, however. An in-place `.=` assignment is an observable
+mutation, so inter-statement broadcast fusion treats it as a kernel boundary:
+
+```julia
+tmp = cuNumeric.zeros(Float32, N, N)
+result = cuNumeric.zeros(Float32, N, N)
+
+@analyze_lifetimes begin
+    tmp .= @. A + B
+    result .= @. tmp * C + 1.0f0
+end
+```
+
+This materializes `tmp` before the second expression and requires separate
+kernel launches. Instead, use an ordinary assignment for a single-use
+intermediate and keep `.=` for the final destination:
+
+```julia
+result = cuNumeric.zeros(Float32, N, N)
+
+@analyze_lifetimes begin
+    tmp = @. A + B
+    result .= @. tmp * C + 1.0f0
+end
+```
+
+The inter-statement pass can substitute `tmp` into its only consumer, producing
+the equivalent of `result .= @. (A + B) * C + 1.0f0`. The intermediate is never
+materialized, so the full expression can run as one fused kernel.
+
+This rewrite is intentionally conservative: the intermediate must have one
+use, no intervening statement may invalidate its inputs, and all normal fusion
+requirements still apply. Keep preallocation when an intermediate is reused,
+must preserve mutation semantics, or cannot be fused. Use
+[`BCAST_FUSION_DEBUG`](../debugging.md#inspect-fused-broadcasts-with-bcast_fusion_debug)
+to confirm whether the rewrite occurred.
+
 Fusion applies when CUDA is available, the array leaves share the same shape, and the expression has at least `FUSE_BROADCAST_MIN_OPS` ops (default 2). Otherwise cuNumeric falls back to evaluating one op at a time. Shape-mismatched broadcasts such as `matrix .+ vector` use the unfused path.
 
 Toggle fusion through `CNPreferences` (restart Julia after changing these):
