@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -44,7 +44,7 @@ is_same(arr1::Array, arr2::NDArray) = @allowscalar (arr1 == arr2)[1]
 is_same(arr1::Array, arr2::Array) = (arr1 == arr2)
 
 function my_rand(::Type{F}, dims...; L=F(-1000), R=F(1000)) where {F<:AbstractFloat}
-    L .+ (R-L) .* rand(F, dims...)
+    return L .+ (R-L) .* rand(F, dims...)
 end
 function my_rand(::Type{I}, dims...; L=nothing, R=nothing) where {I<:Integer}
     L_default = I <: Unsigned ? 0 : max(-255, Int64(typemin(I)))
@@ -55,7 +55,7 @@ function my_rand(::Type{I}, dims...; L=nothing, R=nothing) where {I<:Integer}
     return floor.(I, res)
 end
 function my_rand(::Type{CT}, dims...; L=T(-100), R=T(100)) where {T,CT<:Complex{T}}
-    Complex.(my_rand(T, dims...; L=L, R=R), my_rand(T, dims...; L=L, R=R))
+    return Complex.(my_rand(T, dims...; L=L, R=R), my_rand(T, dims...; L=L, R=R))
 end
 my_rand(::Type{Bool}, dims...) = rand(Bool, dims...)
 
@@ -110,6 +110,9 @@ end
 function safe_compare(x::AbstractArray{T}, y::NDArray{T}, rtol, atol) where {T}
     for CI in CartesianIndices(x)
         if !safe_isapprox(x[CI], y[Tuple(CI)...], rtol, atol)
+            println("Failed at index $(Tuple(CI))")
+            println("x[$(Tuple(CI))] = $(x[CI])")
+            println("y[$(Tuple(CI))] = $(y[Tuple(CI)...])")
             return false
         end
     end

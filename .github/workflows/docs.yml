@@ -1,44 +1,21 @@
 name: Docs
 on:
   push:
-    paths:
-      - '.github/workflows/docs.yml'
-      - 'src/**'
-      - 'docs/src/**'
-      - 'docs/make.jl'
-      - 'docs/Project.toml'
-      - 'README.md'
-    tags:
-      - 'v*'
+    # After merge: deploy live docs. Feature branches only run via pull_request.
     branches:
       - main
   pull_request:
     paths:
-    - '.github/workflows/docs.yml'
-    - 'src/**'
-    - 'docs/src/**'
-    - 'docs/make.jl'
-    - 'docs/Project.toml'
-    - 'README.md'
+      - '.github/workflows/docs.yml'
+      - '.github/workflows/docs-tags.yml'
+      - 'src/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'lib/CNPreferences/**'
+  workflow_dispatch:
 jobs:
-  check_changes:
-    name: Check for wrapper changes
-    runs-on: ubuntu-latest
-    outputs:
-      wrapper_changed: ${{ steps.filter.outputs.wrapper }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            wrapper:
-              - 'lib/cunumeric_jl_wrapper/**'
-
   docs:
-    name : Documentation
-    needs: check_changes
-    if: ${{ github.base_ref == 'main' || needs.check_changes.outputs.wrapper_changed != 'true' }}
+    name: Documentation
     permissions:
       actions: write
       contents: write

@@ -67,7 +67,7 @@ function find_paths(
         CNPreferences.to_mode(mode), cupynumeric_jll_module, cupynumeric_jll_wrapper_module
     )
     set_preferences!(CNPreferences, "CUPYNUMERIC_LIBDIR" => libcupynumeric_path; force=true)
-    set_preferences!(
+    return set_preferences!(
         CNPreferences, "CUPYNUMERIC_WRAPPER_LIBDIR" => libcupynumeric_wrapper_path; force=true
     )
 end

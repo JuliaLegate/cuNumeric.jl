@@ -27,6 +27,12 @@ using Legate
 using Libdl
 using CxxWrap
 
+using CUDATools: CUDATools
+using CUDACore: CUDACore
+import CUDACore: CuArray
+import KernelAbstractions: @kernel, @index
+import KernelAbstractions as KA
+
 using cupynumeric_jll
 using cunumeric_jl_wrapper_jll
 
@@ -64,7 +70,8 @@ const SUPPORTED_NUMERIC_TYPES = Union{
 
 # solve has no integer backend kernel
 const SUPPORTED_SOLVE_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
-
+const SUPPORTED_SVD_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
+const SUPPORTED_QR_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
 const SUPPORTED_ARRAY_TYPES = Union{Bool,SUPPORTED_NUMERIC_TYPES}
 const SUPPORTED_TYPES = Union{SUPPORTED_ARRAY_TYPES,String}
 
@@ -139,24 +146,35 @@ include("memory.jl")
 # allowscalar and allowpromotion
 include("warnings.jl")
 
+# Compile-time so task scope instrumentation is fully elided when disabled.
+const TASK_SCOPE_NAMES = CNPreferences.TASK_SCOPE_NAMES
+
 # NDArray internal
 include("ndarray/detail/ndarray.jl")
+include("ndarray/detail/linalg.jl")
 
-# NDArray interface
+# Utilities
+include("cuda/strided_device_array.jl")
+include("cuda/cuda_util.jl")
+include("utilities/version.jl")
+include("util.jl")
+
+# Compile-time so the fusion branch is elided; flip via CNPreferences before loading.
+const FUSE_BROADCAST_EXPRS = CNPreferences.FUSE_BROADCAST
+# Fuse when broadcast tree length is at least this (see `_broadcast_tree_length`).
+# Default 2 skips single-op exprs like `y .= cos.(x)`. Use 1 to fuse everything.
+const FUSE_BROADCAST_MIN_OPS = CNPreferences.FUSE_BROADCAST_MIN_OPS
+
+# Functionality
 include("ndarray/promotion.jl")
+include("cuda/cuda_ptx_task.jl")
+include("ndarray/broadcast_fusion.jl")
 include("ndarray/broadcast.jl")
 include("ndarray/ndarray.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
 include("ndarray/linalg.jl")
-
-# scoping macro
 include("scoping.jl")
-
-# Utilities
-include("utilities/version.jl")
-include("utilities/cuda_stubs.jl")
-include("util.jl")
 
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147
 mutable struct ArgcArgv
@@ -239,7 +257,11 @@ function __init__()
     # legate/cunumeric when using registry CI machines.
     get(ENV, "JULIA_REGISTRYCI_AUTOMERGE", false) == "true" && return nothing
 
+    # Start runtime, but only if not pre-compiling
     ensure_runtime!()
+
+    # Requries runtime to be started
+    return _setup_cuda_tasking()
 end
 
 end #module cuNumeric

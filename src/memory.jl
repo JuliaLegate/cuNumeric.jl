@@ -16,7 +16,6 @@ const current_host_bytes = Atomic{Int64}(0)   # predicted host allocations
 const soft_frac = Ref{Float64}(0.80)
 const hard_frac = Ref{Float64}(0.90)
 const AUTO_GC_ENABLE = Ref{Bool}(false)
-
 # memory measured right after the last GC
 const post_gc_device_bytes = Atomic{Int64}(0)
 const post_gc_host_bytes = Atomic{Int64}(0)
@@ -33,7 +32,7 @@ function init_gc!()
     total_device_bytes[] = query_total_device_memory()
     total_host_bytes[] = query_total_host_memory()
     # @info "[cuNumeric GC] $(total_device_bytes[]) framebuffer available"
-    AUTO_GC_ENABLE[] = true
+    return AUTO_GC_ENABLE[] = true
 end
 
 @doc"""
