@@ -52,7 +52,7 @@ mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
         handle = new{T,N,false,Nothing}(ptr, nbytes, nothing, nothing)
-        finalizer(destroy!, handle)
+        finalizer(_finalize_ndarray!, handle)
         return handle
     end
 
@@ -61,12 +61,20 @@ mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
         handle = new{T,N,false,P}(ptr, nbytes, nothing, parent)
-        finalizer(destroy!, handle)
+        finalizer(_finalize_ndarray!, handle)
         return handle
     end
 end
 
 @inline _is_ndarray_slice(arr::NDArray) = arr.parent isa NDArray
+
+# Julia can run pending finalizers from the scheduler after the current task has
+# finished. Legate handle destruction may unmap regions and therefore requires
+# an active task context, so perform GC-triggered cleanup in a scheduled task.
+function _finalize_ndarray!(arr::NDArray)
+    @async destroy!(arr)
+    return nothing
+end
 
 """
     destroy!(arr::NDArray)
@@ -562,7 +570,7 @@ function compare(
     end
 
     for CI in CartesianIndices(julia_array)
-        x = julia_array[CI];
+        x = julia_array[CI]
         y = arr[Tuple(CI)...]
         if !isapprox(x, y; atol=atol, rtol=rtol)
             return false
@@ -587,7 +595,7 @@ function compare(arr::NDArray{T,N}, arr2::NDArray{T,N}, atol::Real, rtol::Real) 
 
     dims = shape(arr)
     for CI in CartesianIndices(dims)
-        x = arr[Tuple(CI)...];
+        x = arr[Tuple(CI)...]
         y = arr2[Tuple(CI)...]
         if !isapprox(x, y; atol=atol, rtol=rtol)
             return false
