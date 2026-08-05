@@ -322,7 +322,7 @@ stores_cudevicearray(::Type{T}) where {T<:Number} = false
 stores_cudevicearray(::Type{T}) where {T<:Bool} = false
 
 function stores_cudevicearray(::Type{T}) where {T}
-    throw(error("Broadcast fusion. Don't know what to do with type: $T"))
+    return throw(error("Broadcast fusion. Don't know what to do with type: $T"))
 end
 
 function find_cudevicearray_offsets_and_indices(::Type{BC_ARGS}) where {BC_ARGS}
@@ -414,10 +414,7 @@ function get_ptx(
     threads == 0 && return "", 0, ctx
 
     buf = IOBuffer()
-    # dump_module=true keeps only_entry=false so linked libdevice helpers (e.g. cos
-    # slowpaths) are not emptied into unresolved .externs before cuModuleLoad.
-    CUDATools.code_ptx(buf, obj.f, (typeof(ctx), DEST_T, arg_types...);
-        raw=false, dump_module=true, kernel=true, ptx=v"9.0")
+    _emit_compatible_ptx(buf, obj.f, (typeof(ctx), DEST_T, arg_types...))
 
     return String(take!(buf)), threads, ctx
 end
