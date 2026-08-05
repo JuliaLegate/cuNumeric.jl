@@ -6,6 +6,9 @@ steps:
         plugins:
           - JuliaCI/julia#v1:
               version: "1.11"
+              # Developer builds install local wrapper overrides into the depot.
+              # Keep them in a separate cache so they cannot leak into JLL tests.
+              cache_dir: "${HOME}/.cache/julia-buildkite-plugin-developer"
         command: ".buildkite/run_developer_ci.sh"
         artifact_paths:
           - "deps/build.log"
