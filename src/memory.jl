@@ -1,4 +1,50 @@
-using Base.Threads: Atomic, atomic_add!, atomic_sub!, atomic_xchg!
+using Base.Threads: Atomic, atomic_add!, atomic_sub!, atomic_xchg!, SpinLock
+
+# Legate only permits handle destruction on the launch thread, but GC finalizers can
+# run on another thread (e.g. 1.12's interactive thread), so they enqueue here and the
+# launch thread drains later. Presized buffers keep the finalizer enqueue alloc-free.
+const _RUNTIME_TID = Ref{Int}(0)
+const _free_lock = SpinLock()
+const _free_queue = Ptr{Cvoid}[]   # producers (finalizers) push
+const _free_drain = Ptr{Cvoid}[]   # launch thread swaps into here to free
+
+function _init_deferred_free!()
+    _RUNTIME_TID[] = Threads.threadid()
+    sizehint!(_free_queue, 1 << 16)
+    sizehint!(_free_drain, 1 << 16)
+    return nothing
+end
+
+# Runs in finalizers on any thread: no Legate call, no block, no steady-state alloc.
+@inline function _enqueue_free!(ptr::Ptr{Cvoid})
+    ptr == C_NULL && return nothing
+    lock(_free_lock)
+    push!(_free_queue, ptr)
+    unlock(_free_lock)
+    return nothing
+end
+
+@doc"""
+    drain_pending_frees!()
+
+Destroy NDArray handles queued by finalizers. No-op off the launch thread. Called
+automatically from the op/allocation path, so user code rarely needs it.
+"""
+function drain_pending_frees!()
+    Threads.threadid() == _RUNTIME_TID[] || return nothing
+    isempty(_free_queue) && return nothing
+
+    lock(_free_lock)
+    append!(_free_drain, _free_queue)
+    empty!(_free_queue)
+    unlock(_free_lock)
+
+    for ptr in _free_drain
+        nda_destroy_array(ptr)
+    end
+    empty!(_free_drain)
+    return nothing
+end
 
 query_total_device_memory() = ccall((:nda_query_total_device_memory, libnda),
     Int64, ())
@@ -118,6 +164,7 @@ end
 
 function _collect!(full::Bool)
     GC.gc(full)
+    drain_pending_frees!()   # free what GC just enqueued
     recalibrate_allocator!()
     atomic_xchg!(post_gc_device_bytes, current_device_bytes[])
     atomic_xchg!(post_gc_host_bytes, current_host_bytes[])

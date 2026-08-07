@@ -19,7 +19,12 @@
 
 using Pkg
 using Preferences
+
+# The build only needs Legate's paths/tooling, not a running runtime.
+# Setting this env prevents a segfault on Julia 1.12
+ENV["LEGATE_SKIP_RUNTIME"] = "true"
 using Legate
+
 using CNPreferences
 using CUDACore: CUDACore
 

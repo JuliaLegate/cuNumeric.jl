@@ -2,10 +2,14 @@ steps:
   - group: ":hammer: Developer"
     key: "developer"
     steps:
-      - label: "GPU - Julia 1.11 (source wrapper, fusion {{matrix.fusion}})"
+      - label: "GPU - Julia {{matrix.julia}} (source wrapper, fusion {{matrix.fusion}})"
         plugins:
           - JuliaCI/julia#v1:
-              version: "1.11"
+              version: "{{matrix.julia}}"
+              # Developer builds install version-specific (CxxWrap ABI) wrapper
+              # overrides into the depot, so key the cache per Julia version and keep
+              # it separate from the JLL cache.
+              cache_dir: "${HOME}/.cache/julia-buildkite-plugin-developer-{{matrix.julia}}"
         command: ".buildkite/run_developer_ci.sh"
         artifact_paths:
           - "deps/build.log"
@@ -25,6 +29,10 @@ steps:
           CUNUMERIC_FUSION: "{{matrix.fusion}}"
         matrix:
           setup:
+            julia:
+              - "1.10"
+              - "1.11"
+              - "1.12"
             fusion:
               - "on"
               - "off"
