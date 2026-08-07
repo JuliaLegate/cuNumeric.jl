@@ -8,9 +8,15 @@ struct Slice
     stop::Int64
 end
 
+# All op/allocation submissions pass through here; flush queued frees first so they
+# land in program order relative to operations rather than at arbitrary GC points.
 macro task_scope(scope_name, body)
-    TASK_SCOPE_NAMES || return esc(body)
+    TASK_SCOPE_NAMES || return quote
+        drain_pending_frees!()
+        $(esc(body))
+    end
     return quote
+        drain_pending_frees!()
         Legate.with_scope($(esc(scope_name))) do
             return $(esc(body))
         end
@@ -52,7 +58,7 @@ mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
         handle = new{T,N,false,Nothing}(ptr, nbytes, nothing, nothing)
-        finalizer(destroy!, handle)
+        finalizer(_finalize_ndarray!, handle)
         return handle
     end
 
@@ -61,9 +67,22 @@ mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
         handle = new{T,N,false,P}(ptr, nbytes, nothing, parent)
-        finalizer(destroy!, handle)
+        finalizer(_finalize_ndarray!, handle)
         return handle
     end
+end
+
+# May run off the launch thread, so defer the Legate free to drain_pending_frees!.
+# Accounting is atomic and safe to do here immediately.
+function _finalize_ndarray!(arr::NDArray)
+    ptr = arr.ptr
+    ptr == C_NULL && return nothing
+    arr.ptr = Ptr{Cvoid}(0)
+    nbytes = arr.nbytes
+    arr.nbytes = 0
+    nbytes > 0 && register_free!(nbytes)
+    _enqueue_free!(ptr)
+    return nothing
 end
 
 @inline _is_ndarray_slice(arr::NDArray) = arr.parent isa NDArray
@@ -562,7 +581,7 @@ function compare(
     end
 
     for CI in CartesianIndices(julia_array)
-        x = julia_array[CI];
+        x = julia_array[CI]
         y = arr[Tuple(CI)...]
         if !isapprox(x, y; atol=atol, rtol=rtol)
             return false
@@ -587,7 +606,7 @@ function compare(arr::NDArray{T,N}, arr2::NDArray{T,N}, atol::Real, rtol::Real) 
 
     dims = shape(arr)
     for CI in CartesianIndices(dims)
-        x = arr[Tuple(CI)...];
+        x = arr[Tuple(CI)...]
         y = arr2[Tuple(CI)...]
         if !isapprox(x, y; atol=atol, rtol=rtol)
             return false

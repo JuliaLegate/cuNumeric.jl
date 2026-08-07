@@ -191,7 +191,7 @@ end
 getargv(a::ArgcArgv) = Base.unsafe_convert(CxxPtr{CxxPtr{CxxChar}}, a.argv)
 
 function my_on_exit()
-    # @info "Cleaning Up cuNumeric"
+    return drain_pending_frees!()   # flush before Legate tears down
 end
 
 global cuNumeric_config_str::String = ""
@@ -214,6 +214,8 @@ function _start_runtime()
     AA = ArgcArgv(String[])
     # AA = ArgcArgv([Base.julia_cmd()[1]])
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
+
+    _init_deferred_free!()   # record launch thread for deferred frees (memory.jl)
 
     # setup /src/memory.jl
     cuNumeric.init_gc!()
