@@ -96,7 +96,7 @@ jobs:
         id: julia-cache
         uses: julia-actions/cache@v2
         with:
-            # per-version: developer wrapper overrides are CxxWrap-ABI-specific
+            # per-version: dev wrappers are ABI-specific
             cache-name: julia-developer-ci-${{ matrix.julia }}
 
       # Parse commit message or PR body for [legate-branch: <branch>].
@@ -122,35 +122,32 @@ jobs:
             ${{ github.server_url }}/${{ github.repository_owner }}/Legate.jl.git \
             /tmp/Legate.jl
 
-      # Fresh throwaway project (not the cached global env) so dev-mode prefs/paths
-      # don't get cached stale across runs; test/Project.toml is left untouched.
+      # Develop into the workspace root so its members (incl. dev/) resolve to the override.
       - name: Build and test cuNumeric (developer mode)
         env:
           GPUTESTS: "0"
+          LEGATE_CHECKOUT: /tmp/Legate.jl
         run: |
-          CI_PROJECT="$(mktemp -d)"
-
-          # Resolve against source checkouts / Legate override, not the pinned manifest.
-          rm -f Manifest.toml test/Manifest.toml dev/Manifest.toml
+          rm -f Manifest.toml test/Manifest.toml dev/Manifest.toml \
+                LocalPreferences.toml test/LocalPreferences.toml
 
           if [[ -n "${{ steps.legate-branch.outputs.branch }}" ]]; then
-            ( cd /tmp/Legate.jl && julia --color=yes --project="$CI_PROJECT" -e '
+            julia --color=yes --project=. -e '
                 using Pkg
-                Pkg.develop(PackageSpec(path = "lib/LegatePreferences"))
-                Pkg.develop(PackageSpec(path = "."))
+                Pkg.develop(PackageSpec(path = joinpath(ENV["LEGATE_CHECKOUT"], "lib/LegatePreferences")))
+                Pkg.develop(PackageSpec(path = ENV["LEGATE_CHECKOUT"]))
                 using LegatePreferences; LegatePreferences.use_developer_mode()
                 Pkg.build("Legate")
-            ' )
+            '
           fi
 
-          julia --color=yes --project="$CI_PROJECT" -e '
+          julia --color=yes --project=. -e '
               using Pkg
               Pkg.develop(PackageSpec(path = "lib/CNPreferences"))
               using CNPreferences; CNPreferences.use_developer_mode()
-              Pkg.develop(PackageSpec(path = "."))
               Pkg.build("cuNumeric")
           '
 
-          cp "$CI_PROJECT/LocalPreferences.toml" test/LocalPreferences.toml
+          cp LocalPreferences.toml test/LocalPreferences.toml
 
-          julia --color=yes --project="$CI_PROJECT" -e 'using Pkg; Pkg.test("cuNumeric")'
+          julia --color=yes --project=. -e 'using Pkg; Pkg.test("cuNumeric")'
