@@ -1,7 +1,27 @@
 const KERNEL_OFFSET = sizeof(CUDACore.KernelState)
+const _COMPATIBLE_PTX_VERSION = Ref{VersionNumber}()
+
+function _select_compatible_ptx_version()
+    compiler_version = CUDACore.compiler_version()
+    driver_version = CUDACore.driver_version()
+    compatible = intersect(
+        Set(CUDACore.llvm_compat().ptx),
+        Set(CUDACore.ptxas_compat(compiler_version).ptx),
+        Set(CUDACore.ptxas_compat(driver_version).ptx),
+    )
+    filter!(>=(v"6.2"), compatible)
+    isempty(compatible) && error(
+        "No PTX ISA is supported by the active NVPTX backend, " *
+        "CUDA compiler $compiler_version, and CUDA driver $driver_version",
+    )
+    ptx = maximum(compatible)
+    @debug "Selected compatible PTX ISA" ptx compiler_version driver_version
+    return ptx
+end
 
 function _setup_cuda_tasking()
     if CUDACore.functional()
+        _COMPATIBLE_PTX_VERSION[] = _select_compatible_ptx_version()
         # in cuda.jl to notify /wrapper/src/cuda.cpp about CUDA.jl kernel state size
         register_kernel_state_size(UInt64(KERNEL_OFFSET))
         # in /wrapper/src/cuda.cpp

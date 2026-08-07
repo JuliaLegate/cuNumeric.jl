@@ -164,6 +164,14 @@ function ptx_task(ptx::String, kernel_name)
     return issue_execution_fence(; block=false)
 end
 
+function _emit_compatible_ptx(io, f, types)
+    ptx_version = _COMPATIBLE_PTX_VERSION[]
+    # dump_module=true keeps linked libdevice helpers in the emitted module.
+    return CUDATools.code_ptx(
+        io, f, types; raw=false, dump_module=true, kernel=true, ptx=ptx_version
+    )
+end
+
 """
     @cuda_task(f(args...))
 
@@ -209,18 +217,18 @@ macro cuda_task(call_expr)
     return esc(
         quote
             local _buf = IOBuffer()
-            local _types = map_ndarray_cuda_types($(fargs...))
+            local _types = cuNumeric.map_ndarray_cuda_types($(fargs...))
             # generate ptx using CUDA.jl
-            CUDATools.code_ptx(_buf, $fname, _types; raw=false, dump_module=true, kernel=true, ptx=v"9.0")
+            cuNumeric._emit_compatible_ptx(_buf, $fname, _types)
 
             local _ptx = String(take!(_buf))
-            local _func_name = extract_kernel_name(_ptx)
+            local _func_name = cuNumeric.extract_kernel_name(_ptx)
 
             # issue ptx_task within legate runtime to register cufunction ptr with cucontext
-            ptx_task(_ptx, _func_name)
+            cuNumeric.ptx_task(_ptx, _func_name)
 
             # create a cuNumeric.CUDAtask that stores some info for a launch config
-            CUDATask(_func_name, _types)
+            cuNumeric.CUDATask(_func_name, _types)
         end,
     )
 end
