@@ -22,6 +22,9 @@ sh "$CMAKE_INSTALLER" --skip-license --prefix="$CMAKE_ROOT"
 export PATH="$CMAKE_ROOT/bin:$PATH"
 cmake --version
 
+# Resolve against source checkouts / Legate override, not the pinned manifest.
+rm -f Manifest.toml test/Manifest.toml dev/Manifest.toml
+
 LEGATE_BRANCH_INPUT="${BUILDKITE_MESSAGE:-}"
 if [[ "${BUILDKITE_PULL_REQUEST:-false}" =~ ^[0-9]+$ ]]; then
     echo "Reading Legate branch override from pull request #$BUILDKITE_PULL_REQUEST"

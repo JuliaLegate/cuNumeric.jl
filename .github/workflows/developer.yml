@@ -115,35 +115,42 @@ jobs:
             echo "No Legate.jl branch override — using JLL"
           fi
 
-      - name: Clone and develop Legate.jl branch override
+      - name: Clone Legate.jl branch override
         if: steps.legate-branch.outputs.branch != ''
         run: |
           git clone --depth 1 --branch ${{ steps.legate-branch.outputs.branch }} \
             ${{ github.server_url }}/${{ github.repository_owner }}/Legate.jl.git \
             /tmp/Legate.jl
-          julia --color=yes -e '
-              using Pkg;
-              Pkg.develop(PackageSpec(path = "/tmp/Legate.jl/lib/LegatePreferences"))
-              Pkg.develop(PackageSpec(path = "/tmp/Legate.jl"))
-              using LegatePreferences; LegatePreferences.use_developer_mode();
-              Pkg.build("Legate")
-          '
 
-      - name: Setup cuNumeric.jl with build from src wrappers
+      # Fresh throwaway project (not the cached global env) so dev-mode prefs/paths
+      # don't get cached stale across runs; test/Project.toml is left untouched.
+      - name: Build and test cuNumeric (developer mode)
+        env:
+          GPUTESTS: "0"
         run: |
-          julia --color=yes -e '
-              using Pkg;
+          CI_PROJECT="$(mktemp -d)"
+
+          # Resolve against source checkouts / Legate override, not the pinned manifest.
+          rm -f Manifest.toml test/Manifest.toml dev/Manifest.toml
+
+          if [[ -n "${{ steps.legate-branch.outputs.branch }}" ]]; then
+            ( cd /tmp/Legate.jl && julia --color=yes --project="$CI_PROJECT" -e '
+                using Pkg
+                Pkg.develop(PackageSpec(path = "lib/LegatePreferences"))
+                Pkg.develop(PackageSpec(path = "."))
+                using LegatePreferences; LegatePreferences.use_developer_mode()
+                Pkg.build("Legate")
+            ' )
+          fi
+
+          julia --color=yes --project="$CI_PROJECT" -e '
+              using Pkg
               Pkg.develop(PackageSpec(path = "lib/CNPreferences"))
-              using CNPreferences; CNPreferences.use_developer_mode();
+              using CNPreferences; CNPreferences.use_developer_mode()
               Pkg.develop(PackageSpec(path = "."))
+              Pkg.build("cuNumeric")
           '
-          julia --color=yes --project=test -e '
-              using Pkg;
-              Pkg.develop(PackageSpec(path = "lib/CNPreferences"))
-              using CNPreferences; CNPreferences.use_developer_mode();
-          '
-          julia --color=yes -e 'using Pkg; Pkg.build("cuNumeric")'
 
-      - name: Perform Test
-        run: |
-          GPUTESTS=0 julia --color=yes -e 'using Pkg; Pkg.test("cuNumeric")'
+          cp "$CI_PROJECT/LocalPreferences.toml" test/LocalPreferences.toml
+
+          julia --color=yes --project="$CI_PROJECT" -e 'using Pkg; Pkg.test("cuNumeric")'
