@@ -38,6 +38,10 @@ atol(::Type{I}) where {I<:Integer} = atol(float(I))
 rtol(::Type{Complex{T}}) where {T} = rtol(T)
 atol(::Type{Complex{T}}) where {T} = atol(T)
 
+# Reduction rounding error grows with the number of elements reduced (n).
+reduction_rtol(::Type{T}, n) where {T} = rtol(T) * n
+reduction_atol(::Type{T}, n) where {T} = atol(T) * n
+
 is_same(arr1::NDArray, arr2::NDArray) = @allowscalar (arr1 == arr2)[1]
 is_same(arr1::NDArray, arr2::Array) = @allowscalar (arr1 == arr2)[1]
 is_same(arr1::Array, arr2::NDArray) = @allowscalar (arr1 == arr2)[1]
