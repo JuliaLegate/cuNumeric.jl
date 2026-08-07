@@ -42,7 +42,7 @@ jobs:
     uses: ./.github/workflows/pkg_resolve.yml
 
   docs:
-    name: Developer CI test
+    name: Developer CI test - Julia ${{ matrix.julia }}
     needs: pkg_resolve
     permissions:
       contents: read
@@ -50,6 +50,13 @@ jobs:
       attestations: write
       id-token: write
       actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        julia:
+          - '1.10'
+          - '1.11'
+          - '1.12'
     # runs-on: [self-hosted, linux, x64]
     runs-on: ubuntu-latest
     container:
@@ -75,7 +82,7 @@ jobs:
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
         with:
-          version: '1.11'
+          version: ${{ matrix.julia }}
 
       - name: Install CMake 3.30.7
         run: |
@@ -89,7 +96,8 @@ jobs:
         id: julia-cache
         uses: julia-actions/cache@v2
         with:
-            cache-name: julia-developer-ci
+            # per-version: developer wrapper overrides are CxxWrap-ABI-specific
+            cache-name: julia-developer-ci-${{ matrix.julia }}
 
       # Parse commit message or PR body for [legate-branch: <branch>].
       # Example: include "[legate-branch: my-feature]" anywhere in the message.
