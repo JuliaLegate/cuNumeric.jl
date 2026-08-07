@@ -96,8 +96,11 @@ function test_unary_reduction_dims(
         for d in 1:N
             julia_res = func(julia_arr; dims=d)
             cunumeric_res = func(cunumeric_arr; dims=d)
+            n = size(julia_arr, d)
             allowscalar() do
-                @test cuNumeric.compare(julia_res, cunumeric_res, atol(T), rtol(T))
+                @test cuNumeric.compare(
+                    julia_res, cunumeric_res, reduction_atol(T, n), reduction_rtol(T, n)
+                )
             end
         end
 

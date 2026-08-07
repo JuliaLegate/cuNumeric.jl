@@ -166,9 +166,13 @@ end
                 cunumeric_res = reduction(cunumeric_arr)
                 julia_res = reduction(julia_arr)
 
+                n = length(julia_arr)
                 allowscalar() do
                     # assumes 0D result
-                    @test isapprox(julia_res, cunumeric_res[]; atol=atol(T), rtol=rtol(T))
+                    @test isapprox(
+                        julia_res, cunumeric_res[];
+                        atol=reduction_atol(T, n), rtol=reduction_rtol(T, n),
+                    )
                 end
             end
         end
@@ -283,7 +287,7 @@ end
 @testset "Copy-To" begin
     a = cuNumeric.zeros(2, 2)
     b = cuNumeric.ones(2, 2)
-    copyto!(a, b);
+    copyto!(a, b)
     @test is_same(a, b)
 end
 
