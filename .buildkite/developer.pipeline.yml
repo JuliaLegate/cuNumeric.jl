@@ -6,10 +6,9 @@ steps:
         plugins:
           - JuliaCI/julia#v1:
               version: "{{matrix.julia}}"
-              # Developer builds install version-specific (CxxWrap ABI) wrapper
-              # overrides into the depot, so key the cache per Julia version and keep
-              # it separate from the JLL cache.
-              cache_dir: "${HOME}/.cache/julia-buildkite-plugin-developer-{{matrix.julia}}"
+              # Per version AND fusion: dev wrappers are ABI-specific, and same-depot
+              # concurrent jobs contend on Pkg locks. Separate from the JLL cache.
+              cache_dir: "${HOME}/.cache/julia-buildkite-plugin-developer-{{matrix.julia}}-{{matrix.fusion}}"
         command: ".buildkite/run_developer_ci.sh"
         artifact_paths:
           - "deps/build.log"
