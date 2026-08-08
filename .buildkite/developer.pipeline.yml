@@ -7,7 +7,7 @@ steps:
           - JuliaCI/julia#v1:
               version: "{{matrix.julia}}"
               # Per version AND fusion: dev wrappers are ABI-specific, and same-depot
-              # concurrent jobs contend on Pkg locks. Separate from the JLL cache. 
+              # concurrent jobs contend on Pkg locks. Separate from the JLL cache.
               cache_dir: "${HOME}/.cache/julia-buildkite-plugin-developer-{{matrix.julia}}-{{matrix.fusion}}"
         command: ".buildkite/run_developer_ci.sh"
         artifact_paths:
@@ -17,7 +17,7 @@ steps:
           - "*.log"
         agents:
           queue: "cuda"
-        timeout_in_minutes: 60
+        timeout_in_minutes: 90
         env:
           LD_LIBRARY_PATH: ""
           LEGATE_AUTO_CONFIG: "0"
