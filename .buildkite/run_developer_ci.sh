@@ -24,11 +24,12 @@ cmake --version
 rm -f Manifest.toml test/Manifest.toml dev/Manifest.toml \
       LocalPreferences.toml test/LocalPreferences.toml
 
-# Drop stale wrapper overrides (they dangle across runs/agents) and their compiled
-# caches, so the baked-in override path can't linger. libcxxwrap override is kept.
+# Dev mode rebuilds the wrapper .so each run, so drop stale overrides and the .ji that
+# bake @wrapmodule bindings (cuNumeric/Legate + wrapper JLLs) — a cached .ji would
+# mismatch the fresh .so and segfault. libcxxwrap override is kept.
 DEPOT="$(julia --startup-file=no -e 'print(DEPOT_PATH[1])')"
 rm -rf "$DEPOT"/packages/*/*/override \
-       "$DEPOT"/compiled/v*/{cunumeric_jl_wrapper_jll,legate_jl_wrapper_jll}
+       "$DEPOT"/compiled/v*/{cuNumeric,Legate,cunumeric_jl_wrapper_jll,legate_jl_wrapper_jll}
 
 LEGATE_BRANCH_INPUT="${BUILDKITE_MESSAGE:-}"
 if [[ "${BUILDKITE_PULL_REQUEST:-false}" =~ ^[0-9]+$ ]]; then
