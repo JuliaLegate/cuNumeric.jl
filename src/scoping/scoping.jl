@@ -32,6 +32,28 @@ function _expand_dot_macros(expr::Expr, caller::Module)
     return Expr(expr.head, args...)
 end
 
+# A block yields its final expression, not a `return` (which exits the enclosing
+# function). Accept `return expr` only as the final statement and rewrite it to a
+# plain trailing expression so it flows through analysis like any other value.
+function _normalize_return(block)
+    if block isa Expr && block.head === :return
+        return isempty(block.args) ? :nothing : only(block.args)
+    end
+    stmts = _scope_statements(block)
+    isnothing(stmts) && return block
+    for (i, stmt) in enumerate(stmts)
+        stmt isa Expr && stmt.head === :return || continue
+        i == length(stmts) || throw(
+            ArgumentError(
+                "@analyze_lifetimes: `return` is only allowed as the block's final statement"
+            ),
+        )
+        value = isempty(stmt.args) ? :nothing : only(stmt.args)
+        return Expr(block.head, stmts[1:(end - 1)]..., value)
+    end
+    return block
+end
+
 @doc"""
     @analyze_lifetimes expr
 
@@ -56,6 +78,9 @@ its consumer, so a real `NDArray` escapes rather than a lazy broadcast tree:
         (x, y)          # returned -> x and y stay materialized
     end
 
+A trailing `return expr` is accepted as an explicit spelling of the final
+statement (`return (x, y)` above); a `return` anywhere else is an error.
+
 When broadcast fusion is enabled (`FUSE_BROADCAST_EXPRS`), dotted operators
 (`.+`, `.*`, etc.) form a lazy `Base.Broadcast.Broadcasted` tree compiled into
 a single PTX kernel; intermediate nodes are not real `NDArray` allocations and
@@ -63,7 +88,7 @@ are not individually hoisted. The macro automatically selects the
 broadcast-aware analysis in that case and the plain analysis otherwise.
 """
 macro analyze_lifetimes(block)
-    block = _expand_dot_macros(block, __module__)
+    block = _normalize_return(_expand_dot_macros(block, __module__))
     on_rewrite = BCAST_FUSION_DEBUG[] ? InterBroadcastFusion.log_rewrite : nothing
     rewritten = process_ndarray_scope(block; on_rewrite)
     bindings = union(_assigned_symbols(block), _assigned_symbols(rewritten))
@@ -361,6 +386,6 @@ you can see exactly where each temporary is freed. Pure AST work, so it runs on
 CPU-only checkouts.
 """
 macro show_lifetimes(block)
-    block = _expand_dot_macros(block, __module__)
+    block = _normalize_return(_expand_dot_macros(block, __module__))
     return :(print_lifetime_analysis($(QuoteNode(block))))
 end

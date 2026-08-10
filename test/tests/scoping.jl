@@ -357,6 +357,24 @@ function test_scoping_regressions(T, N)
         @test all(Array(y) .== T(4))
     end
 
+    @testset "Return forms yield materialized bindings" begin
+        # `x = y` alias, tuple, and trailing `return` all return real NDArrays.
+        aliased = @analyze_lifetimes begin
+            y = A .+ B
+            x = y
+        end
+        @test aliased isa cuNumeric.NDArray
+        @test all(Array(aliased) .== T(2))
+
+        rx, ry = @analyze_lifetimes begin
+            rx = A .+ B
+            ry = rx .^ 2
+            return (rx, ry)
+        end
+        @test rx isa cuNumeric.NDArray && ry isa cuNumeric.NDArray
+        @test all(Array(rx) .== T(2)) && all(Array(ry) .== T(4))
+    end
+
     if cuNumeric.FUSE_BROADCAST_EXPRS
         @testset "Indexed fused assignment writes through NDArray slices" begin
             out = cuNumeric.zeros(T, (N + 2, N + 2))
