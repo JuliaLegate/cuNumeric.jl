@@ -89,7 +89,7 @@ function _fuse_into_destination(stmt)
     return Expr(:(.=), assignment.lhs, assignment.rhs)
 end
 
-function _rewrite_scope(scope)
+function _rewrite_scope(scope, protected)
     stmts = _scope_statements(scope)
     isnothing(stmts) && return scope, NamedTuple[]
 
@@ -106,6 +106,8 @@ function _rewrite_scope(scope)
 
     inlineable = Dict{Symbol,Tuple{Int,Any}}()
     for (sym, (def_idx, rhs)) in definitions
+        # Never inline a returned producer; it must escape as a real NDArray.
+        sym in protected && continue
         use_idx = _single_use_index(stmts, sym, def_idx)
         isnothing(use_idx) && continue
         dependencies = Set(walk_symbols(rhs))
@@ -152,14 +154,16 @@ function _rewrite_scope(scope)
 end
 
 """
-    rewrite_scope(scope; on_rewrite=nothing) -> scope
+    rewrite_scope(scope; on_rewrite=nothing, protected=Set{Symbol}()) -> scope
 
 Fuse eligible single-use broadcast producers into their consumer and return the
-rewritten scope. When provided, `on_rewrite` is called with a named tuple
-containing the `before` and `fused` expressions for each rewrite.
+rewritten scope. Symbols in `protected` — typically whatever the scope returns —
+are never fused so they stay materialized. When provided, `on_rewrite` is called
+with a named tuple containing the `before` and `fused` expressions for each
+rewrite.
 """
-function rewrite_scope(scope; on_rewrite=nothing)
-    rewritten, fusion_events = _rewrite_scope(scope)
+function rewrite_scope(scope; on_rewrite=nothing, protected=Set{Symbol}())
+    rewritten, fusion_events = _rewrite_scope(scope, protected)
     if !isnothing(on_rewrite)
         for event in fusion_events
             on_rewrite(event)

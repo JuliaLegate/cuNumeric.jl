@@ -342,6 +342,21 @@ function test_scoping_regressions(T, N)
         @test all(Array(res) .== T(4.0))
     end
 
+    @testset "Returned bindings stay materialized" begin
+        # A returned producer must come back as a materialized NDArray, not a
+        # lazy broadcast tree; `c` stays a private intermediate that fuses away.
+        x, y = @analyze_lifetimes begin
+            x = A .+ B
+            c = x .* A
+            y = c .^ 2
+            (x, y)
+        end
+        @test x isa cuNumeric.NDArray
+        @test y isa cuNumeric.NDArray
+        @test all(Array(x) .== T(2))
+        @test all(Array(y) .== T(4))
+    end
+
     if cuNumeric.FUSE_BROADCAST_EXPRS
         @testset "Indexed fused assignment writes through NDArray slices" begin
             out = cuNumeric.zeros(T, (N + 2, N + 2))

@@ -116,6 +116,8 @@ function rewrite_broadcast_lifetimes(scope)
 end
 
 function process_broadcast_lifetime_scope(scope; on_rewrite=nothing)
-    scope = InterBroadcastFusion.rewrite_scope(scope; on_rewrite)
+    # Returned producers must stay materialized, so exempt them from fusion.
+    protected = _returned_symbols(scope)
+    scope = InterBroadcastFusion.rewrite_scope(scope; on_rewrite, protected)
     return _process_lifetime_scope(scope, rewrite_broadcast_lifetimes)
 end
