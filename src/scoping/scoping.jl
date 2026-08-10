@@ -44,6 +44,18 @@ Assignments created inside the macro are scoped to its lexical region. Existing
 arrays can still be mutated in place, and the final value of the block is
 returned, but internal bindings do not leak into the surrounding scope.
 
+The block's final statement determines what leaves the region. Any binding it
+returns (a bare name or the elements of a returned tuple) is both protected from
+the automatic free and, under fusion, kept materialized rather than inlined into
+its consumer, so a real `NDArray` escapes rather than a lazy broadcast tree:
+
+    x, y = @analyze_lifetimes begin
+        x = e1 .+ e2
+        c = x .* e1     # not returned, single-use -> fused into y
+        y = c .^ 2
+        (x, y)          # returned -> x and y stay materialized
+    end
+
 When broadcast fusion is enabled (`FUSE_BROADCAST_EXPRS`), dotted operators
 (`.+`, `.*`, etc.) form a lazy `Base.Broadcast.Broadcasted` tree compiled into
 a single PTX kernel; intermediate nodes are not real `NDArray` allocations and
@@ -124,6 +136,35 @@ function _hoist_temporary(expr, assigned_vars)
     return temporary, [:($temporary = $expr)]
 end
 
+# Symbols a statement yields by reference (bare name or tuple elements): the
+# values that escape the block, so they are exempt from the free and never fused.
+function _result_symbols(stmt)
+    stmt isa Symbol && return Set([stmt])
+
+    assignment = _assignment(stmt)
+    if !isnothing(assignment)
+        return _result_symbols(assignment.rhs)
+    end
+
+    if stmt isa Expr && stmt.head in (:tuple, :parameters)
+        return mapreduce(_result_symbols, union, stmt.args; init=Set{Symbol}())
+    end
+    if stmt isa Expr && stmt.head == :kw
+        return _result_symbols(last(stmt.args))
+    end
+    if stmt isa Expr && stmt.head == :(::)
+        return _result_symbols(first(stmt.args))
+    end
+
+    return Set{Symbol}()
+end
+
+function _returned_symbols(scope)
+    stmts = _scope_statements(scope)
+    (isnothing(stmts) || isempty(stmts)) && return Set{Symbol}()
+    return _result_symbols(last(stmts))
+end
+
 # Turn the named allocations produced by either lifetime rewriter into an
 # executable scope. For example, if tmp1 and tmp2 are last used by statement 3:
 #
@@ -185,27 +226,6 @@ function insert_finalizers(exprs::Vector, assigned_vars::Set{Symbol})
         end
         return false
     end
-    function result_symbols(stmt)
-        stmt isa Symbol && return Set([stmt])
-
-        assignment = _assignment(stmt)
-        if !isnothing(assignment)
-            return result_symbols(assignment.rhs)
-        end
-
-        if stmt isa Expr && stmt.head in (:tuple, :parameters)
-            return mapreduce(result_symbols, union, stmt.args; init=Set{Symbol}())
-        end
-        if stmt isa Expr && stmt.head == :kw
-            return result_symbols(last(stmt.args))
-        end
-        if stmt isa Expr && stmt.head == :(::)
-            return result_symbols(first(stmt.args))
-        end
-
-        return Set{Symbol}()
-    end
-
     # Pass 2: insert finalizers
     out = Any[]
     n = length(stmts)
@@ -218,7 +238,7 @@ function insert_finalizers(exprs::Vector, assigned_vars::Set{Symbol})
 
     protected = Set{Symbol}()
     if n > 0 && !terminal_indexed
-        for result in result_symbols(stmts[n])
+        for result in _result_symbols(stmts[n])
             push!(protected, canon(result))
         end
     end
