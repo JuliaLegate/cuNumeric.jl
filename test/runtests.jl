@@ -30,6 +30,8 @@ const init_code = quote
     using LinearAlgebra
     using Random
     import Random: rand
+
+    ENV["LEGATE_SKIP_RUNTIME"] = "false"
     using cuNumeric
 
     $cuda_init
@@ -56,6 +58,6 @@ filter!(test -> !startswith(first(test), "defunct/"), testsuite)
 
 # Set this back to false. Might be set to true so the parent process
 # i.e., the process executing this file does not start the runtime first.
-test_worker = () -> addworker(; env=["LEGATE_SKIP_RUNTIME" => "false"])
+test_worker = () -> addworker()
 
 runtests(cuNumeric, ARGS; testsuite, init_code, test_worker)
