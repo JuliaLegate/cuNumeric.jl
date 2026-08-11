@@ -30,6 +30,7 @@ const init_code = quote
     using LinearAlgebra
     using Random
     import Random: rand
+    using cuNumeric
 
     $cuda_init
 
