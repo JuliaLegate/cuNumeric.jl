@@ -1,4 +1,4 @@
-using cuNumeric: cuNumeric
+using cuNumeric
 using CUDA: CUDA
 using ParallelTestRunner
 using Pkg
@@ -37,6 +37,8 @@ const init_code = quote
     include("util.jl")
 end
 
+# Find all tests, remove ones that are not relevant to the current configuration
+
 testsuite = find_tests(@__DIR__)
 delete!(testsuite, "util")
 
@@ -52,4 +54,8 @@ end
 
 filter!(test -> !startswith(first(test), "defunct/"), testsuite)
 
-runtests(cuNumeric, ARGS; testsuite, init_code)
+# Set this back to false. Might be set to true so the parent process
+# i.e., the process executing this file does not start the runtime first.
+test_worker = () -> addworker(; env=["LEGATE_SKIP_RUNTIME" => "false"])
+
+runtests(cuNumeric, ARGS; testsuite, init_code, test_worker)

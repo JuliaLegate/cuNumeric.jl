@@ -126,6 +126,7 @@ jobs:
       - name: Build and test cuNumeric (developer mode)
         env:
           LEGATE_CHECKOUT: /tmp/Legate.jl
+          LEGATE_SKIP_RUNTIME: "true"
         run: |
           rm -f Manifest.toml test/Manifest.toml dev/Manifest.toml \
                 LocalPreferences.toml test/LocalPreferences.toml

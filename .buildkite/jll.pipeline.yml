@@ -42,6 +42,7 @@ steps:
           LEGATE_SHOW_CONFIG: "1"
           GPUTESTS: "1"
           LEGATE_TEST: "1"
+          LEGATE_SKIP_RUNTIME: "true"
           LEGATE_CONFIG: "--cpus 1 --gpus 1 --utility 1 --fbmem 250 --logging legate=info,level=2 --log-to-file 1"
         matrix:
           setup:
