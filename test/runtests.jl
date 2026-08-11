@@ -17,15 +17,21 @@ run_gpu_tests && @info "CUDA information:\n" * sprint(io -> CUDA.versioninfo(io)
 # dependencies pointed through via `[sources]`
 Pkg.precompile()
 
+cuda_init = if run_gpu_tests
+    quote
+        using CUDA
+        import CUDA: i32
+    end
+else
+    :()
+end
+
 const init_code = quote
     using LinearAlgebra
     using Random
     import Random: rand
 
-    if run_gpu_tests
-        using CUDA
-        import CUDA: i32
-    end
+    $cuda_init
 
     include("util.jl")
 end
