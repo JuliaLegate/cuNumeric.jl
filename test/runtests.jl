@@ -40,11 +40,14 @@ end
 testsuite = find_tests(@__DIR__)
 delete!(testsuite, "util")
 
-run_fusion_tests = run_gpu_tests && cuNumeric.FUSE_BROADCAST_EXPRS
+if !run_gpu_tests
+    @warn "CUDA GPU not available, skipping GPU-only tests"
+    filter!(test -> !startswith(first(test), "gpu_only/"), testsuite)
+end
 
-if !run_fusion_tests
-    @warn "Fusion tests will not be run. Either CUDA is not available or fusion is disabled."
-    delete!(testsuite, "tests/broadcast_fusion")
+if !run_gpu_tests || !cuNumeric.FUSE_BROADCAST_EXPRS
+    @warn "Broadcast fusion is disabled, skipping fusion tests"
+    filter!(test -> !startswith(first(test), "gpu_only/broadcast_fusion"), testsuite)
 end
 
 runtests(cuNumeric, ARGS; testsuite, init_code)
