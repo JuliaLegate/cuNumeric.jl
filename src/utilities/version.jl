@@ -65,6 +65,9 @@ function versioninfo(io::IO=stdout)
     Legate Auto Config: $is_auto_config
     Legate Config:      $legate_config
 
+    Brodcast Fusion:   $(FUSE_BROADCAST_EXPRS)
+    Brodcast Min Ops:  $(FUSE_BROADCAST_MIN_OPS)
+
     Hostname:         $hostname
     Julia Version:    $(VERSION)
     C++ Compiler:     $compiler

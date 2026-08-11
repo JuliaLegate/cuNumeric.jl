@@ -125,7 +125,6 @@ jobs:
       # Develop into the workspace root so its members (incl. dev/) resolve to the override.
       - name: Build and test cuNumeric (developer mode)
         env:
-          GPUTESTS: "0"
           LEGATE_CHECKOUT: /tmp/Legate.jl
         run: |
           rm -f Manifest.toml test/Manifest.toml dev/Manifest.toml \
@@ -157,4 +156,4 @@ jobs:
 
           cp LocalPreferences.toml test/LocalPreferences.toml
 
-          julia --color=yes --project=. -e 'using Pkg; Pkg.test("cuNumeric")'
+          julia --color=yes --project=. -e 'using Pkg; Pkg.test("cuNumeric"; test_args=["--quickfail", "--jobs=8", "--verbose"])'

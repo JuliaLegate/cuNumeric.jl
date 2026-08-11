@@ -18,6 +18,81 @@
  *            Nader Rahal <naderrahhal2026@u.northwestern.edu>
 =#
 
+function gemm(N, M, T, max_diff)
+    if T == Bool
+        a = cuNumeric.trues(5, 5)
+        b = cuNumeric.as_type(cuNumeric.trues(5, 5), Float32)
+        c = cuNumeric.as_type(cuNumeric.trues(5, 5), Float64)
+        @test_throws ArgumentError a * a # Bool * Bool not supported
+        @allowpromotion d = a * b
+        @allowpromotion e = a * c
+        @test @allowscalar cuNumeric.compare(5 * ones(Float32, 5, 5), d, 0.0, max_diff)
+        @test @allowscalar cuNumeric.compare(5 * ones(Float64, 5, 5), e, 0.0, max_diff)
+        return nothing
+    end
+
+    if T <: Integer
+        a = cuNumeric.ones(Int32, 5, 5)
+        a_jl = ones(Int32, 5, 5)
+        b = cuNumeric.ones(Float32, 5, 5)
+        b_jl = ones(Float32, 5, 5)
+        @test_throws ArgumentError a * a
+        @test @allowscalar cuNumeric.compare(a_jl * b_jl, a * b, 0.0, max_diff)
+        return nothing
+    end
+
+    dims_to_test = [(N, N), (N, M), (M, N)]
+
+    @testset for dims in dims_to_test
+        # Base julia arrays
+        A_cpu = rand(T, dims[1], dims[2])
+        B_cpu = rand(T, dims[2], dims[1])
+        C_out_cpu = zeros(T, dims[1], dims[1])
+
+        # cunumeric arrays
+        A = cuNumeric.NDArray(A_cpu)
+        B = cuNumeric.NDArray(B_cpu)
+        C_out = cuNumeric.zeros(T, dims[1], dims[1])
+
+        # Julia result
+        C_cpu = A_cpu * B_cpu
+        LinearAlgebra.mul!(C_out_cpu, A_cpu, B_cpu)
+
+        @test C_cpu == C_out_cpu # really just making sure test is written right...
+
+        A = cuNumeric.as_type(A, T)
+        B = cuNumeric.as_type(B, T)
+        C = cuNumeric.zeros(T, N, N)
+
+        C = A * B
+        LinearAlgebra.mul!(C_out, A, B)
+
+        allowscalar() do
+            @test isapprox(C, C_cpu, rtol=max_diff)
+            @test isapprox(C, C_out, rtol=max_diff)
+
+            if T != Float64
+                C_wider = cuNumeric.zeros(Float64, dims[1], dims[1])
+                @test_throws "Implicit promotion" LinearAlgebra.mul!(C_wider, A, B)
+            end
+        end
+
+        # Integer output with FP input
+        if !(T <: Integer)
+            bad = cuNumeric.zeros(Int, dims[1], dims[1])
+            @test_throws ArgumentError mul!(bad, A, B)
+        end
+    end
+end
+
+@testset "GEMM" begin
+    N = 50
+    M = 25
+    @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
+        gemm(N, M, T, rtol(T))
+    end
+end
+
 @testset "transpose" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
         A = my_rand(T, 4, 3)
@@ -186,21 +261,20 @@ end
     end
 end
 
-
 function check_svd_reconstruction(ref_A::AbstractMatrix, u, s, vh, tol_a, tol_r)
-    U  = Array(u)
-    S  = Array(s)
+    U = Array(u)
+    S = Array(s)
     Vh = Array(vh)
     A_rec = U * Diagonal(S) * Vh
     return isapprox(ref_A, A_rec; atol=tol_a, rtol=tol_r)
 end
 
 function check_svd_orthonormality(u, vh, tol_a, tol_r)
-    U  = Array(u)
+    U = Array(u)
     Vh = Array(vh)
     ku = size(U, 2)
     kv = size(Vh, 1)
-    ok_u  = isapprox(U'  * U,  Matrix{eltype(U)}(I, ku, ku);  atol=tol_a, rtol=tol_r)
+    ok_u = isapprox(U' * U, Matrix{eltype(U)}(I, ku, ku); atol=tol_a, rtol=tol_r)
     ok_vh = isapprox(Vh * Vh', Matrix{eltype(Vh)}(I, kv, kv); atol=tol_a, rtol=tol_r)
     return ok_u && ok_vh
 end
@@ -208,7 +282,7 @@ end
 @testset "svd square matrix" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         A_ref = my_rand(T, 5, 5)
-        nda   = cuNumeric.NDArray(A_ref)
+        nda = cuNumeric.NDArray(A_ref)
         u, s, vh = cuNumeric.svd(nda)
         allowscalar() do
             @test check_svd_reconstruction(A_ref, u, s, vh, atol(T), rtol(T))
@@ -220,7 +294,7 @@ end
 @testset "svd tall matrix (m > n)" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         A_ref = my_rand(T, 6, 4)
-        nda   = cuNumeric.NDArray(A_ref)
+        nda = cuNumeric.NDArray(A_ref)
         u, s, vh = cuNumeric.svd(nda, false)  # thin SVD for reconstruction test
         allowscalar() do
             @test check_svd_reconstruction(A_ref, u, s, vh, atol(T), rtol(T))
@@ -228,41 +302,41 @@ end
         end
     end
 end
- 
+
 @testset "svd thin output shapes (full_matrices=false)" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         m, n = 6, 4
-        k     = min(m, n)
+        k = min(m, n)
         A_ref = my_rand(T, m, n)
-        nda   = cuNumeric.NDArray(A_ref)
+        nda = cuNumeric.NDArray(A_ref)
         u, s, vh = cuNumeric.svd(nda, false)
         allowscalar() do
-            @test size(Array(u))  == (m, k)
-            @test size(Array(s))  == (k,)
+            @test size(Array(u)) == (m, k)
+            @test size(Array(s)) == (k,)
             @test size(Array(vh)) == (k, n)
             @test check_svd_reconstruction(A_ref, u, s, vh, atol(T), rtol(T))
         end
     end
 end
- 
+
 @testset "svd full output shapes (full_matrices=true)" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         m, n = 6, 4
         A_ref = my_rand(T, m, n)
-        nda   = cuNumeric.NDArray(A_ref)
+        nda = cuNumeric.NDArray(A_ref)
         u, s, vh = cuNumeric.svd(nda, true)
         allowscalar() do
-            @test size(Array(u))  == (m, m)
-            @test size(Array(s))  == (min(m, n),)
+            @test size(Array(u)) == (m, m)
+            @test size(Array(s)) == (min(m, n),)
             @test size(Array(vh)) == (n, n)
         end
     end
 end
- 
+
 @testset "svd singular values non-negative and sorted" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         A_ref = my_rand(T, 5, 5)
-        nda   = cuNumeric.NDArray(A_ref)
+        nda = cuNumeric.NDArray(A_ref)
         _, s, _ = cuNumeric.svd(nda)
         allowscalar() do
             sv = Array(s)
@@ -271,27 +345,27 @@ end
         end
     end
 end
- 
+
 @testset "svd identity matrix" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
-        n     = 4
+        n = 4
         A_ref = Matrix{T}(I, n, n)
-        nda   = cuNumeric.NDArray(A_ref)
+        nda = cuNumeric.NDArray(A_ref)
         _, s, _ = cuNumeric.svd(nda)
         allowscalar() do
             @test cuNumeric.compare(ones(T, n), s, atol(T), rtol(T))
         end
     end
 end
- 
+
 @testset "svd rank-1 matrix" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         # outer product of two vectors: exactly one nonzero singular value
         # 5x4 satisfies the M >= N constraint
-        v1    = T.(collect(1:5))
-        v2    = T.(collect(1:4))
+        v1 = T.(collect(1:5))
+        v2 = T.(collect(1:4))
         A_ref = v1 * v2'
-        nda   = cuNumeric.NDArray(A_ref)
+        nda = cuNumeric.NDArray(A_ref)
         _, s, _ = cuNumeric.svd(nda)
         allowscalar() do
             sv = Array(s)
@@ -316,8 +390,8 @@ end
 @testset "qr reconstruction" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_QR_TYPES)
         A_ref = my_rand(T, 6, 4)
-        nda   = cuNumeric.NDArray(A_ref)
-        q, r  = cuNumeric.qr(nda)
+        nda = cuNumeric.NDArray(A_ref)
+        q, r = cuNumeric.qr(nda)
         allowscalar() do
             Q = Array(q)
             R = Array(r)
@@ -332,8 +406,8 @@ end
 @testset "qr square matrix" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_QR_TYPES)
         A_ref = my_rand(T, 5, 5)
-        nda   = cuNumeric.NDArray(A_ref)
-        q, r  = cuNumeric.qr(nda)
+        nda = cuNumeric.NDArray(A_ref)
+        q, r = cuNumeric.qr(nda)
         allowscalar() do
             Q = Array(q)
             R = Array(r)
@@ -353,7 +427,9 @@ end
             q, r = cuNumeric.qr(A)
             allowscalar() do
                 @test eltype(Array(q)) == Float64
-                @test isapprox(Float64.(vals), Array(q) * Array(r); atol=atol(Float64), rtol=rtol(Float64))
+                @test isapprox(
+                    Float64.(vals), Array(q) * Array(r); atol=atol(Float64), rtol=rtol(Float64)
+                )
             end
         end
     end

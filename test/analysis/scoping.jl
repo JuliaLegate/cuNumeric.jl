@@ -419,3 +419,7 @@ function run_all_ops(FT, N)
 
     return results
 end
+
+@testset verbose = true "Rewrite pipeline" begin
+    test_scoping_rewrite_pipeline()
+end

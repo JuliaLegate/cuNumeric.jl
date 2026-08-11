@@ -31,7 +31,12 @@
 
 _broadcast_fusion_user_add(x, y) = x + y
 
-function test_broadcast_fusion(; T=Float32, N=100, atol=1e-5, rtol=1e-5)
+@testset "Broadcast Fusion" begin
+    T=Float32
+    N=100
+    atol=1e-5
+    rtol=1e-5
+
     # Create test arrays with known non-zero values
     julia_a = rand(T, N)
     julia_b = rand(T, N)
@@ -224,7 +229,10 @@ end
  * Complements `test_broadcast_fusion` with size extremes, 2D same-shape,
  * fusion gating for shape mismatch, 0-d fallback, and dest/input aliasing.
 =#
-function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
+@testset "Broadcast Fusion Edge Cases" begin
+    T=Float32
+    atol=1e-5
+    rtol=1e-5
     s1 = T(2.5)
     s2 = T(1.0)
 
@@ -575,7 +583,10 @@ end
  * With `FUSE_BROADCAST_MIN_OPS > 1`, single-op exprs are unfused — tests
  * should set min ops to 1 (LocalPreferences / ENV) to exercise the cache.
 =#
-function test_broadcast_fusion_ptx_cache(; T=Float32, N=64)
+@testset "Broadcast Fusion PTX Cache" begin
+    T=Float32
+    N=64
+
     if !(cuNumeric.FUSE_BROADCAST_EXPRS && cuNumeric.HAS_CUDA)
         @info "Skipping PTX cache tests (need FUSE_BROADCAST_EXPRS && HAS_CUDA)"
         return nothing

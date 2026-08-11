@@ -23,7 +23,7 @@ steps:
                 fi
                 julia --project -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
           - JuliaCI/julia-test#v1:
-              test_args: "--quickfail"
+              test_args: "--quickfail --jobs=8 --verbose"
           - JuliaCI/julia-coverage#v1:
               dirs:
                 - src
@@ -42,7 +42,7 @@ steps:
           LEGATE_SHOW_CONFIG: "1"
           GPUTESTS: "1"
           LEGATE_TEST: "1"
-          LEGATE_CONFIG: "--cpus 1 --gpus 1 --utility 1 --fbmem 500 --logging legate=info,level=2 --log-to-file 1"
+          LEGATE_CONFIG: "--cpus 1 --gpus 1 --utility 1 --fbmem 250 --logging legate=info,level=2 --log-to-file 1"
         matrix:
           setup:
             julia:

@@ -46,3 +46,11 @@ function test_hdf5_roundtrip(::Type{T}, shape::Tuple) where {T}
         end
     end
 end
+
+@testset "HDF5" begin
+    for T in (Float32, Float64, Int32, Int64)
+        @testset "$T $shape" for shape in ((7,), (3, 4), (2, 3, 4))
+            test_hdf5_roundtrip(T, shape)
+        end
+    end
+end

@@ -35,8 +35,8 @@ function axpy_advanced(T, N)
     α = T(56.6)
 
     # base Julia arrays
-    x_cpu = Base.zeros(T, dims);
-    y_cpu = Base.zeros(T, dims);
+    x_cpu = Base.zeros(T, dims)
+    y_cpu = Base.zeros(T, dims)
 
     # cunumeric arrays
     x = cuNumeric.zeros(T, dims)
@@ -111,5 +111,41 @@ function axpy_advanced(T, N)
         result_cpu = α * x_cpu + y_cpu
 
         @test safe_compare(result_cpu, result, atol(T), rtol(T))
+    end
+end
+
+function axpy_basic(T, N)
+    α = T(56.6)
+    dims = (N, N)
+
+    # Base julia arrays
+    x_cpu = rand(T, dims)
+    y_cpu = rand(T, dims)
+
+    # cunumeric arrays
+    x = cuNumeric.zeros(T, dims)
+    y = cuNumeric.zeros(T, dims)
+
+    # Initialize NDArrays with same random values as julia arrays
+    @allowscalar for i in 1:N
+        for j in 1:N
+            x[i, j] = x_cpu[i, j]
+            y[i, j] = y_cpu[i, j]
+        end
+    end
+
+    result = α .* x .+ y
+    result_cpu = α .* x_cpu .+ y_cpu
+    allowscalar() do
+        @test cuNumeric.compare(result, result_cpu, atol(T), rtol(T))
+        @test cuNumeric.compare(result_cpu, result, atol(T), rtol(T))
+    end
+end
+
+@testset "AXPY" begin
+    N = 100
+    @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)
+        @testset "basic" axpy_basic(T, N)
+        @testset "advanced" axpy_advanced(T, N)
     end
 end

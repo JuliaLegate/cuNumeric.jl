@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -29,7 +29,7 @@ struct ParamsGS{T<:AbstractFloat}
     function ParamsGS{T}(
         dx::T=one(T), c_u::T=one(T), c_v::T=T(0.3), f::T=T(0.03), k::T=T(0.06)
     ) where {T<:AbstractFloat}
-        new(dx, dx/5, c_u, c_v, f, k)
+        return new(dx, dx/5, c_u, c_v, f, k)
     end
 end
 
@@ -143,7 +143,7 @@ function step_base(u, v, u_new, v_new, args::ParamsGS)
     v_new[:, 1] = v[:, end - 1]
     v_new[:, end] = v[:, 2]
     v_new[1, :] = v[end - 1, :]
-    v_new[end, :] = v[2, :]
+    return v_new[end, :] = v[2, :]
 end
 
 function gray_scott(FT, n_steps, u_rand, v_rand)
@@ -188,4 +188,24 @@ function gray_scott_base(FT, n_steps, u_rand, v_rand)
     end
 
     return u, v
+end
+
+@testset "Gray-Scott 2D" begin
+    N = 100
+    @testset verbose = true for T in Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)
+        allowscalar() do
+            results = run_all_ops(T, N)
+            for (name, (c_base, c_scoped)) in results
+                @test cuNumeric.compare(c_base, c_scoped, atol(T), rtol(T))
+            end
+
+            u_rand = cuNumeric.rand(T, (15, 15))
+            v_rand = cuNumeric.rand(T, (15, 15))
+
+            u, v = gray_scott_base(T, N, u_rand, v_rand)
+            u_scoped, v_scoped = gray_scott(T, N, u_rand, v_rand)
+
+            @test cuNumeric.compare(u, u_scoped, atol(T) * N, rtol(T) * 10)
+        end
+    end
 end
