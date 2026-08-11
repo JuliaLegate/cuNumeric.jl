@@ -2,6 +2,7 @@ using cuNumeric: cuNumeric
 using CUDA: CUDA
 using ParallelTestRunner
 using Pkg
+using InteractiveUtils: versioninfo
 
 run_gpu_tests = CUDA.functional()
 
@@ -36,7 +37,7 @@ run_fusion_tests = run_gpu_tests && cuNumeric.FUSE_BROADCAST_EXPRS
 
 if !run_fusion_tests
     @warn "Fusion tests will not be run. Either CUDA is not available or fusion is disabled."
-    delete!(test_suite, "tests/broadcast_fusion")
+    delete!(testsuite, "tests/broadcast_fusion")
 end
 
 runtests(cuNumeric, ARGS; testsuite, init_code)
