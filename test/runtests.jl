@@ -50,4 +50,6 @@ if !run_gpu_tests || !cuNumeric.FUSE_BROADCAST_EXPRS
     filter!(test -> !startswith(first(test), "gpu_only/broadcast_fusion"), testsuite)
 end
 
+filter!(test -> !startswith(first(test), "defunct/"), testsuite)
+
 runtests(cuNumeric, ARGS; testsuite, init_code)
