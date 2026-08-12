@@ -43,6 +43,8 @@ end
 
 testsuite = find_tests(@__DIR__)
 delete!(testsuite, "util")
+delete!(testsuite, "array/unary/tests")
+delete!(testsuite, "array/binary/tests")
 
 if !run_gpu_tests
     @warn "CUDA GPU not available, skipping GPU-only tests"
@@ -56,8 +58,4 @@ end
 
 filter!(test -> !startswith(first(test), "defunct/"), testsuite)
 
-# Set this back to false. Might be set to true so the parent process
-# i.e., the process executing this file does not start the runtime first.
-test_worker = (_...) -> addworker()
-
-runtests(cuNumeric, ARGS; testsuite, init_code, test_worker)
+runtests(cuNumeric, ARGS; testsuite, init_code)
