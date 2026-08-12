@@ -10,9 +10,6 @@ run_gpu_tests = CUDA.functional()
 run_gpu_tests && @info "CUDA information:\n" * sprint(io -> CUDA.versioninfo(io))
 @info "cuNumeric information:\n" * sprint(io -> cuNumeric.versioninfo(io))
 
-########################################################
-########################################################
-
 # Forcibly precompile the current environment in parallel: Pkg sometimes ignores
 # dependencies pointed through via `[sources]`
 Pkg.precompile()
