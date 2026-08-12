@@ -41,9 +41,9 @@ function test_unary_operation(func, julia_arr, cunumeric_arr, T)
     cunumeric_res2 = map(func, cunumeric_arr)
 
     allowscalar() do
-        @test cuNumeric.compare(julia_res, cunumeric_in_place, atol(T_OUT), rtol(T_OUT))
-        @test cuNumeric.compare(julia_res, cunumeric_res, atol(T_OUT), rtol(T_OUT))
-        @test cuNumeric.compare(julia_res, cunumeric_res2, atol(T_OUT), rtol(T_OUT))
+        @test safe_compare(julia_res, cunumeric_in_place, atol(T_OUT), rtol(T_OUT))
+        @test safe_compare(julia_res, cunumeric_res, atol(T_OUT), rtol(T_OUT))
+        @test safe_compare(julia_res, cunumeric_res2, atol(T_OUT), rtol(T_OUT))
     end
 end
 
@@ -98,7 +98,7 @@ function test_unary_reduction_dims(
             cunumeric_res = func(cunumeric_arr; dims=d)
             n = size(julia_arr, d)
             allowscalar() do
-                @test cuNumeric.compare(
+                @test safe_compare(
                     julia_res, cunumeric_res, reduction_atol(T, n), reduction_rtol(T, n)
                 )
             end
@@ -132,7 +132,7 @@ function run_unary_tests(types; include_bool_reductions::Bool=false)
                 allowscalar() do
                     allowpromotion(T == Bool) do
                         T_OUT = T == Bool ? cuNumeric.DEFAULT_INT : T
-                        @test cuNumeric.compare(T_OUT.(-arr), -arr_cn, atol(T), rtol(T))
+                        @test safe_compare(T_OUT.(-arr), -arr_cn, atol(T), rtol(T))
                     end
                 end
             end
@@ -145,13 +145,13 @@ function run_unary_tests(types; include_bool_reductions::Bool=false)
 
                     allowscalar() do
                         allowpromotion(true) do
-                            @test cuNumeric.compare(real(arr), real(arr_cn), atol(T), rtol(T))
-                            @test cuNumeric.compare(imag(arr), imag(arr_cn), atol(T), rtol(T))
-                            @test cuNumeric.compare(conj(arr), conj(arr_cn), atol(T), rtol(T))
+                            @test safe_compare(real(arr), real(arr_cn), atol(T), rtol(T))
+                            @test safe_compare(imag(arr), imag(arr_cn), atol(T), rtol(T))
+                            @test safe_compare(conj(arr), conj(arr_cn), atol(T), rtol(T))
 
-                            @test cuNumeric.compare(real.(arr), real.(arr_cn), atol(T), rtol(T))
-                            @test cuNumeric.compare(imag.(arr), imag.(arr_cn), atol(T), rtol(T))
-                            @test cuNumeric.compare(conj.(arr), conj.(arr_cn), atol(T), rtol(T))
+                            @test safe_compare(real.(arr), real.(arr_cn), atol(T), rtol(T))
+                            @test safe_compare(imag.(arr), imag.(arr_cn), atol(T), rtol(T))
+                            @test safe_compare(conj.(arr), conj.(arr_cn), atol(T), rtol(T))
                         end
                     end
                 end

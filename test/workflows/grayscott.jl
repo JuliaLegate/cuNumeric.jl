@@ -618,7 +618,7 @@ end
         allowscalar() do
             results = run_all_ops(T, N)
             for (name, (c_base, c_scoped)) in results
-                @test cuNumeric.compare(c_base, c_scoped, atol(T), rtol(T))
+                @test safe_compare(c_base, c_scoped, atol(T), rtol(T))
             end
 
             u_rand = cuNumeric.rand(T, (15, 15))
@@ -627,7 +627,7 @@ end
             u, v = gray_scott_base(T, N, u_rand, v_rand)
             u_scoped, v_scoped = gray_scott(T, N, u_rand, v_rand)
 
-            @test cuNumeric.compare(u, u_scoped, atol(T) * N, rtol(T) * 10)
+            @test safe_compare(u, u_scoped, atol(T) * N, rtol(T) * 10)
         end
     end
 end

@@ -59,13 +59,13 @@
         allowpromotion(true) do
             allowscalar() do
                 # Power is array
-                @test cuNumeric.compare(
+                @test safe_compare(
                     base_jl .^ pwrs, base_cn .^ pwrs_cn, atol(T_OUT), rtol(T_OUT)
                 ) skip=TEST_BROKEN
 
                 # Power is scalar
                 for p in pwrs
-                    @test cuNumeric.compare(base_jl .^ p, base_cn .^ p, atol(T_OUT), rtol(T_OUT))
+                    @test safe_compare(base_jl .^ p, base_cn .^ p, atol(T_OUT), rtol(T_OUT))
                 end
             end
         end
@@ -85,8 +85,8 @@
                 res_cn = arr_cn .^ -1
                 res_cn2 = inv.(arr_cn)
                 allowscalar() do
-                    @test cuNumeric.compare(res_jl, res_cn, atol(T_OUT), rtol(T_OUT))
-                    @test cuNumeric.compare(res_jl, res_cn2, atol(T_OUT), rtol(T_OUT))
+                    @test safe_compare(res_jl, res_cn, atol(T_OUT), rtol(T_OUT))
+                    @test safe_compare(res_jl, res_cn2, atol(T_OUT), rtol(T_OUT))
                 end
             end
         end
@@ -103,7 +103,7 @@
 
             allowpromotion(true) do
                 allowscalar() do
-                    @test cuNumeric.compare(res_jl, res_cn, atol(T_OUT), rtol(T_OUT))
+                    @test safe_compare(res_jl, res_cn, atol(T_OUT), rtol(T_OUT))
                 end
             end
         end

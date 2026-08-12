@@ -137,8 +137,8 @@ function axpy_basic(T, N)
     result = α .* x .+ y
     result_cpu = α .* x_cpu .+ y_cpu
     allowscalar() do
-        @test cuNumeric.compare(result, result_cpu, atol(T), rtol(T))
-        @test cuNumeric.compare(result_cpu, result, atol(T), rtol(T))
+        @test safe_compare(result, result_cpu, atol(T), rtol(T))
+        @test safe_compare(result_cpu, result, atol(T), rtol(T))
     end
 end
 

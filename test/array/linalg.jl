@@ -26,8 +26,8 @@ function gemm(N, M, T, max_diff)
         @test_throws ArgumentError a * a # Bool * Bool not supported
         @allowpromotion d = a * b
         @allowpromotion e = a * c
-        @test @allowscalar cuNumeric.compare(5 * ones(Float32, 5, 5), d, 0.0, max_diff)
-        @test @allowscalar cuNumeric.compare(5 * ones(Float64, 5, 5), e, 0.0, max_diff)
+        @test @allowscalar safe_compare(5 * ones(Float32, 5, 5), d, 0.0, max_diff)
+        @test @allowscalar safe_compare(5 * ones(Float64, 5, 5), e, 0.0, max_diff)
         return nothing
     end
 
@@ -37,7 +37,7 @@ function gemm(N, M, T, max_diff)
         b = cuNumeric.ones(Float32, 5, 5)
         b_jl = ones(Float32, 5, 5)
         @test_throws ArgumentError a * a
-        @test @allowscalar cuNumeric.compare(a_jl * b_jl, a * b, 0.0, max_diff)
+        @test @allowscalar safe_compare(a_jl * b_jl, a * b, 0.0, max_diff)
         return nothing
     end
 
@@ -102,7 +102,7 @@ end
         out = cuNumeric.transpose(nda)
 
         allowscalar() do
-            @test cuNumeric.compare(ref, out, atol(T), rtol(T))
+            @test safe_compare(ref, out, atol(T), rtol(T))
         end
     end
 end
@@ -113,7 +113,7 @@ end
         ref = Matrix{T}(I, n, n)
         out = cuNumeric.eye(T, n)
         allowscalar() do
-            @test cuNumeric.compare(ref, out, atol(T), rtol(T))
+            @test safe_compare(ref, out, atol(T), rtol(T))
         end
     end
 end
@@ -156,7 +156,7 @@ end
             out = cuNumeric.diag(nda; k=k)
 
             allowscalar() do
-                @test cuNumeric.compare(ref, out, atol(T), rtol(T))
+                @test safe_compare(ref, out, atol(T), rtol(T))
             end
         end
     end
@@ -170,7 +170,7 @@ end
 #     out = cuNumeric.ravel(nda)
 
 #     allowscalar() do
-#         @test cuNumeric.compare(ref, out, atol(Int32), rtol(Int32))
+#         @test safe_compare(ref, out, atol(Int32), rtol(Int32))
 #     end
 # end
 
@@ -197,7 +197,7 @@ end
         end
         x = cuNumeric.solve(A, b)
         allowscalar() do
-            @test cuNumeric.compare(fill(T(0.25), n, 1), x, atol(T), rtol(T))
+            @test safe_compare(fill(T(0.25), n, 1), x, atol(T), rtol(T))
         end
     end
 end
@@ -210,7 +210,7 @@ end
         x = cuNumeric.solve(A, b)
         ref = reshape(T.(collect(1:n)), n, 1)
         allowscalar() do
-            @test cuNumeric.compare(ref, x, atol(T), rtol(T))
+            @test safe_compare(ref, x, atol(T), rtol(T))
         end
     end
 end
@@ -224,7 +224,7 @@ end
         x = cuNumeric.solve(A, b)
         ref = A_ref \ b_ref
         allowscalar() do
-            @test cuNumeric.compare(ref, x, atol(T), rtol(T))
+            @test safe_compare(ref, x, atol(T), rtol(T))
         end
     end
 end
@@ -237,7 +237,7 @@ end
         @test ndims(x) == 1
         ref = A_ref \ b_ref
         allowscalar() do
-            @test cuNumeric.compare(ref, x, atol(T), rtol(T))
+            @test safe_compare(ref, x, atol(T), rtol(T))
         end
     end
 end
@@ -255,7 +255,7 @@ end
             x = cuNumeric.solve(A, b)
             ref = Float64[1 0; 0 1] \ Float64[1; 1;;]
             allowscalar() do
-                @test cuNumeric.compare(ref, x, atol(Float64), rtol(Float64))
+                @test safe_compare(ref, x, atol(Float64), rtol(Float64))
             end
         end
     end
@@ -353,7 +353,7 @@ end
         nda = cuNumeric.NDArray(A_ref)
         _, s, _ = cuNumeric.svd(nda)
         allowscalar() do
-            @test cuNumeric.compare(ones(T, n), s, atol(T), rtol(T))
+            @test safe_compare(ones(T, n), s, atol(T), rtol(T))
         end
     end
 end

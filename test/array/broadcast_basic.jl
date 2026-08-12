@@ -147,16 +147,16 @@ end
             cunumeric_arr_2D = NDArray(julia_arr_2D)
             allowpromotion(true) do
                 for cn_arr in (cunumeric_arr, cunumeric_arr_2D)
-                    @test cuNumeric.compare(s * julia_arr, s * cunumeric_arr, atol(T), rtol(T))
-                    @test cuNumeric.compare(julia_arr * s, cunumeric_arr * s, atol(T), rtol(T))
-                    @test cuNumeric.compare(s .* julia_arr, s .* cunumeric_arr, atol(T), rtol(T))
-                    @test cuNumeric.compare(julia_arr .* s, cunumeric_arr .* s, atol(T), rtol(T))
-                    @test cuNumeric.compare(s .+ julia_arr, s .+ cunumeric_arr, atol(T), rtol(T))
-                    @test cuNumeric.compare(julia_arr .+ s, cunumeric_arr .+ s, atol(T), rtol(T))
-                    @test cuNumeric.compare(s .- julia_arr, s .- cunumeric_arr, atol(T), rtol(T))
-                    @test cuNumeric.compare(julia_arr .- s, cunumeric_arr .- s, atol(T), rtol(T))
-                    @test cuNumeric.compare(s ./ julia_arr, s ./ cunumeric_arr, atol(T), rtol(T))
-                    @test cuNumeric.compare(
+                    @test safe_compare(s * julia_arr, s * cunumeric_arr, atol(T), rtol(T))
+                    @test safe_compare(julia_arr * s, cunumeric_arr * s, atol(T), rtol(T))
+                    @test safe_compare(s .* julia_arr, s .* cunumeric_arr, atol(T), rtol(T))
+                    @test safe_compare(julia_arr .* s, cunumeric_arr .* s, atol(T), rtol(T))
+                    @test safe_compare(s .+ julia_arr, s .+ cunumeric_arr, atol(T), rtol(T))
+                    @test safe_compare(julia_arr .+ s, cunumeric_arr .+ s, atol(T), rtol(T))
+                    @test safe_compare(s .- julia_arr, s .- cunumeric_arr, atol(T), rtol(T))
+                    @test safe_compare(julia_arr .- s, cunumeric_arr .- s, atol(T), rtol(T))
+                    @test safe_compare(s ./ julia_arr, s ./ cunumeric_arr, atol(T), rtol(T))
+                    @test safe_compare(
                         s .* julia_arr .+ s, s .* cunumeric_arr .+ s, atol(T), rtol(T)
                     )
                     @test s + s ≈ (NDArray(s) + NDArray(s))[] # atol=atol(T) r_tol=atol(T)
@@ -172,20 +172,20 @@ end
             julia_arr = [-3, -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
             cunumeric_arr = NDArray(julia_arr)
 
-            @test cuNumeric.compare(true * julia_arr, true * cunumeric_arr, atol(Int), rtol(Int))
-            @test cuNumeric.compare(false * julia_arr, false * cunumeric_arr, atol(Int), rtol(Int))
-            @test cuNumeric.compare(true .* julia_arr, true .* cunumeric_arr, atol(Int), rtol(Int))
-            @test cuNumeric.compare(
+            @test safe_compare(true * julia_arr, true * cunumeric_arr, atol(Int), rtol(Int))
+            @test safe_compare(false * julia_arr, false * cunumeric_arr, atol(Int), rtol(Int))
+            @test safe_compare(true .* julia_arr, true .* cunumeric_arr, atol(Int), rtol(Int))
+            @test safe_compare(
                 false .* julia_arr, false .* cunumeric_arr, atol(Int), rtol(Int)
             )
 
             julia_arr = [true, false, true, false, false, true, true]
             cunumeric_arr = NDArray(julia_arr)
 
-            @test cuNumeric.compare(4 * julia_arr, 4 * cunumeric_arr, atol(Int), rtol(Int))
-            @test cuNumeric.compare(4 .* julia_arr, 4 .* cunumeric_arr, atol(Int), rtol(Int))
-            @test cuNumeric.compare(4 .+ julia_arr, 4 .+ cunumeric_arr, atol(Int), rtol(Int))
-            @test cuNumeric.compare(
+            @test safe_compare(4 * julia_arr, 4 * cunumeric_arr, atol(Int), rtol(Int))
+            @test safe_compare(4 .* julia_arr, 4 .* cunumeric_arr, atol(Int), rtol(Int))
+            @test safe_compare(4 .+ julia_arr, 4 .+ cunumeric_arr, atol(Int), rtol(Int))
+            @test safe_compare(
                 julia_arr ./ 3, cunumeric_arr ./ 3, atol(Float64), rtol(Float64)
             )
         end

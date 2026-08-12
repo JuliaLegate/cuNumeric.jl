@@ -92,7 +92,7 @@ function make_cunumeric_arrays(julia_arrs_1D, julia_arrs_2D, T, N; count::Int=1)
     return cunumeric_arrs..., cunumeric_arrs_2D...
 end
 
-function safe_isapprox(x, y, rtol, atol)
+function safe_isapprox(x, y, atol, rtol)
     # Handle NaN
     if isnan(x) && isnan(y)
         return true
@@ -108,22 +108,58 @@ function safe_isapprox(x, y, rtol, atol)
         return false
     end
 
-    return isapprox(x, y; rtol=rtol, atol=atol)
+    return isapprox(x, y; atol=atol, rtol=rtol)
 end
 
-function safe_compare(x::AbstractArray{T}, y::NDArray{T}, rtol, atol) where {T}
-    for CI in CartesianIndices(x)
-        if !safe_isapprox(x[CI], y[Tuple(CI)...], rtol, atol)
-            println("Failed at index $(Tuple(CI))")
-            println("x[$(Tuple(CI))] = $(x[CI])")
-            println("y[$(Tuple(CI))] = $(y[Tuple(CI)...])")
-            return false
+function _safe_compare_fail(idx, left, right, atol, rtol)
+    absdiff = abs(left - right)
+    scale = max(abs(left), abs(right))
+    tol = max(atol, rtol * scale)
+    @error "safe_compare mismatch" index=idx left=left right=right absdiff=absdiff atol=atol rtol=rtol tol=tol
+    return false
+end
+
+# Argument order matches cuNumeric.compare(..., atol, rtol) and existing call sites.
+function safe_compare(
+    julia_array::AbstractArray{T1,N}, arr::NDArray{T2,N}, atol, rtol
+) where {T1,T2,N}
+    if shape(arr) != size(julia_array)
+        @error "safe_compare shape mismatch" left_size=size(julia_array) right_shape=shape(arr)
+        return false
+    end
+
+    for CI in CartesianIndices(julia_array)
+        x = julia_array[CI]
+        y = arr[Tuple(CI)...]
+        if !safe_isapprox(x, y, atol, rtol)
+            return _safe_compare_fail(Tuple(CI), x, y, atol, rtol)
         end
     end
 
     return true
 end
 
-function safe_compare(x::NDArray{T}, y::AbstractArray{T}, rtol, atol) where {T}
-    return safe_compare(y, x)
+function safe_compare(
+    arr::NDArray{T2,N}, julia_array::AbstractArray{T1,N}, atol, rtol
+) where {T1,T2,N}
+    return safe_compare(julia_array, arr, atol, rtol)
+end
+
+function safe_compare(
+    arr::NDArray{T1,N}, arr2::NDArray{T2,N}, atol, rtol
+) where {T1,T2,N}
+    if shape(arr) != shape(arr2)
+        @error "safe_compare shape mismatch" left_shape=shape(arr) right_shape=shape(arr2)
+        return false
+    end
+
+    for CI in CartesianIndices(shape(arr))
+        x = arr[Tuple(CI)...]
+        y = arr2[Tuple(CI)...]
+        if !safe_isapprox(x, y, atol, rtol)
+            return _safe_compare_fail(Tuple(CI), x, y, atol, rtol)
+        end
+    end
+
+    return true
 end

@@ -64,10 +64,10 @@ function slicing(T, N)
     step(u, v, u_new, v_new, args)
 
     allowscalar() do
-        @test cuNumeric.compare(u, u_cpu, atol(T), rtol(T))
-        @test cuNumeric.compare(v, v_cpu, atol(T), rtol(T))
-        @test cuNumeric.compare(u_new, u_new_cpu, atol(T), rtol(T))
-        @test cuNumeric.compare(v_new, v_new_cpu, atol(T), rtol(T))
+        @test safe_compare(u, u_cpu, atol(T), rtol(T))
+        @test safe_compare(v, v_cpu, atol(T), rtol(T))
+        @test safe_compare(u_new, u_new_cpu, atol(T), rtol(T))
+        @test safe_compare(v_new, v_new_cpu, atol(T), rtol(T))
     end
 end
 

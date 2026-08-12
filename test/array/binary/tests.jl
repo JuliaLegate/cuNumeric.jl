@@ -85,12 +85,12 @@ function run_binary_ops_tests(types)
                 arr_cn2_small = @allowscalar NDArray(arr_jl2_small)
 
                 allowscalar() do
-                    @test cuNumeric.compare(
+                    @test safe_compare(
                         lcm.(arr_jl_small, arr_jl2_small), lcm.(arr_cn_small, arr_cn2_small),
                         atol(T),
                         rtol(T),
                     )
-                    @test cuNumeric.compare(
+                    @test safe_compare(
                         gcd.(arr_jl_small, arr_jl2_small), gcd.(arr_cn_small, arr_cn2_small),
                         atol(T),
                         rtol(T),
