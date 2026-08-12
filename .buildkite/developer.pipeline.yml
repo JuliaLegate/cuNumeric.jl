@@ -1,0 +1,37 @@
+steps:
+  - group: ":hammer: Developer"
+    key: "developer"
+    steps:
+      - label: "GPU - Julia {{matrix.julia}} (source wrapper, fusion {{matrix.fusion}})"
+        plugins:
+          - JuliaCI/julia#v1:
+              version: "{{matrix.julia}}"
+              # Per version AND fusion: dev wrappers are ABI-specific, and same-depot
+              # concurrent jobs contend on Pkg locks. Separate from the JLL cache.
+              cache_dir: "${HOME}/.cache/julia-buildkite-plugin-developer-{{matrix.julia}}-{{matrix.fusion}}"
+        command: ".buildkite/run_developer_ci.sh"
+        artifact_paths:
+          - "deps/build.log"
+          - "deps/*.log"
+          - "deps/*.err"
+          - "*.log"
+        agents:
+          queue: "cuda"
+        timeout_in_minutes: 90
+        env:
+          LD_LIBRARY_PATH: ""
+          LEGATE_AUTO_CONFIG: "0"
+          LEGATE_SHOW_CONFIG: "1"
+          LEGATE_TEST: "1"
+          LEGATE_SKIP_RUNTIME: "true"
+          LEGATE_CONFIG: "--cpus 1 --gpus 1 --utility 1 --fbmem 250 --logging legate=info,level=2 --log-to-file 1"
+          CUNUMERIC_FUSION: "{{matrix.fusion}}"
+        matrix:
+          setup:
+            julia:
+              - "1.10"
+              - "1.11"
+              - "1.12"
+            fusion:
+              - "on"
+              - "off"

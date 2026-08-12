@@ -15,8 +15,13 @@ function get_cxx_version(libpath::AbstractString)
 end
 
 function read_githash()
-    githash_path = joinpath(@__DIR__, "../", "../", ".githash")
-    return isfile(githash_path) ? readchomp(githash_path) : "unknown"
+    try
+        pkg_root = joinpath(@__DIR__, "..", "..")
+        hash = readchomp(`git -C $pkg_root rev-parse HEAD`)
+        isempty(hash) || return hash
+    catch
+    end
+    return "unknown"
 end
 
 @doc"""
@@ -60,6 +65,9 @@ function versioninfo(io::IO=stdout)
     Legate Auto Config: $is_auto_config
     Legate Config:      $legate_config
 
+    Brodcast Fusion:   $(FUSE_BROADCAST_EXPRS)
+    Brodcast Min Ops:  $(FUSE_BROADCAST_MIN_OPS)
+
     Hostname:         $hostname
     Julia Version:    $(VERSION)
     C++ Compiler:     $compiler
@@ -85,5 +93,5 @@ function versioninfo(io::IO=stdout)
       Legate:         $(LegatePreferences.MODE)
     ───────────────────────────────────────────────
     """
-    println(io, str)
+    return println(io, str)
 end

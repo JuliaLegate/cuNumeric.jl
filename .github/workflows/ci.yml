@@ -19,8 +19,6 @@ on:
       - 'deps/build.jl'
       - 'Project.toml'
       - 'lib/CNPreferences/src/**'
-      - '.github/workflows/ci.yml'
-      - 'Dockerfile' # container.yml depends on this
     tags:
       - 'v*'
     branches:
@@ -32,11 +30,40 @@ on:
       - 'deps/build.jl'
       - 'Project.toml'
       - 'lib/CNPreferences/src/**'
-      - '.github/workflows/ci.yml'
-      - 'Dockerfile' # container.yml depends on this
 jobs:
+  pkg_resolve:
+    uses: ./.github/workflows/pkg_resolve.yml
+
+  check_changes:
+    name: Check for wrapper changes
+    runs-on: ubuntu-latest
+    outputs:
+      wrapper_changed: ${{ steps.wrapper-changes.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Compare wrapper against main
+        id: wrapper-changes
+        shell: bash
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+
+          if git diff --quiet origin/main...HEAD -- lib/cunumeric_jl_wrapper; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            if [[ "$status" -eq 1 ]]; then
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+            else
+              exit "$status"
+            fi
+          fi
+
   test:
     name: Julia ${{ matrix.julia }} - ${{ matrix.os }}
+    needs: [pkg_resolve, check_changes]
+    if: ${{ github.base_ref == 'main' || needs.check_changes.outputs.wrapper_changed != 'true' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -61,10 +88,41 @@ jobs:
 
       - uses: julia-actions/cache@v2
 
+      - name: Detect Legate branch override
+        id: legate-branch
+        run: |
+          MSG=$(printf '%s\n%s' \
+            "${{ github.event.head_commit.message }}" \
+            "${{ github.event.pull_request.body }}")
+          BRANCH=$(echo "$MSG" | grep -oiP 'legate[-_]branch:\s*\K\S+' | head -1 | tr -d '[]' || true)
+          echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
+          if [[ -n "$BRANCH" ]]; then
+            echo "Using Legate.jl branch override: $BRANCH"
+          else
+            echo "No Legate.jl branch override — using JLL"
+          fi
+
+      - name: Checkout Legate.jl branch override
+        if: steps.legate-branch.outputs.branch != ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/Legate.jl
+          ref: ${{ steps.legate-branch.outputs.branch }}
+          path: Legate.jl
+
+      - name: Develop Legate.jl branch override
+        if: steps.legate-branch.outputs.branch != ''
+        run: |
+          julia --color=yes -e '
+              using Pkg;
+              Pkg.develop(PackageSpec(path = "Legate.jl/lib/LegatePreferences"))
+              Pkg.develop(PackageSpec(path = "Legate.jl"))
+          '
+
       - name: Run tests
         env:
-          GPUTESTS: "0" # parsed by runtests.jl
           LEGATE_SHOW_CONFIG: "1"
           LEGATE_AUTO_CONFIG: "0"
-          LEGATE_CONFIG: "--cpus 1 --utility 1 --sysmem 4000"
-        run: julia --project -e 'using Pkg; Pkg.test(test_args=["--quickfail"])'
+          LEGATE_SKIP_RUNTIME: "true"
+          LEGATE_CONFIG: "--cpus 1 --utility 1 --sysmem 500"
+        run: julia --project -e 'using Pkg; Pkg.test(test_args=["--quickfail", "--jobs=2", "--verbose"])'

@@ -17,31 +17,14 @@
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 
-const MIN_CUDA_VERSION = v"13.0"
-const MAX_CUDA_VERSION = v"13.9.999"
-const MIN_CUNUMERIC_VERSION = v"25.10.00"
-const MAX_CUNUMERIC_VERSION = v"25.12.00"
+const MIN_CUNUMERIC_VERSION = v"26.06.00"
+const MAX_CUNUMERIC_VERSION = v"26.11.999"
 
 up_dir(dir::String) = abspath(joinpath(dir, ".."))
 
-function get_version(version_file::String)
-    version = nothing
-    open(version_file, "r") do f
-        data = readlines(f)
-        major = parse(Int, split(data[end - 2])[end])
-        minor = parse(Int, lpad(split(data[end - 1])[end], 2, '0'))
-        patch = parse(Int, lpad(split(data[end])[end], 2, '0'))
-        version = VersionNumber(major, minor, patch)
-    end
-    if isnothing(version)
-        error("cuNumeric.jl: Failed to parse version for $(version_file)")
-    end
-    return version
-end
-
 function get_cupynumeric_version(cupynumeric_root::String)
     version_file = joinpath(cupynumeric_root, "include", "cupynumeric", "version_config.hpp")
-    return get_version(version_file)
+    return Legate.BuildTools.get_version(version_file)
 end
 
 function is_supported_version(version::VersionNumber)

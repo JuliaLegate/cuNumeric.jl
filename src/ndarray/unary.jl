@@ -99,11 +99,14 @@ end
 end
 
 function Base.:(-)(input::NDArray{Bool})
-    return -(checked_promote_arr(input, DEFAULT_INT))
+    promoted = checked_promote_arr(input, DEFAULT_INT)  # always new (Bool → Int)
+    out = -(promoted)
+    destroy!(promoted)
+    return out
 end
 
 function Base.sqrt(input::NDArray{T,2}) where {T}
-    error("cuNumeric.jl does not support matrix square root.")
+    return error("cuNumeric.jl does not support matrix square root.")
 end
 
 @inline function __broadcast(
@@ -113,17 +116,31 @@ end
 end
 
 @inline function __broadcast(
+    ::typeof(Base.literal_pow), out::NDArray{O}, _, input::NDArray{O}, ::Type{Val{-1}}
+) where {O}
+    nda_move(out, O(1) ./ input) #! REPLACE WITH RECIP ONCE FIXED
+    return out
+end
+
+@inline function __broadcast(
     ::typeof(Base.literal_pow), out::NDArray{O}, _, input::NDArray, ::Type{Val{-1}}
 ) where {O}
-    nda_move(out, O(1) ./ checked_promote_arr(input, O)) #! REPLACE WITH RECIP ONCE FIXED
+    promoted = checked_promote_arr(input, O)  # always a new array when eltype ≠ O
+    nda_move(out, O(1) ./ promoted) #! REPLACE WITH RECIP ONCE FIXED
+    destroy!(promoted)
     return out
-    # return nda_unary_op!(out, cuNumeric.RECIPROCAL, input)
+end
+
+@inline function __broadcast(::typeof(Base.inv), out::NDArray{O}, input::NDArray{O}) where {O}
+    nda_move(out, O(1) ./ input) #! REPLACE WITH RECIP ONCE FIXED
+    return out
 end
 
 @inline function __broadcast(::typeof(Base.inv), out::NDArray{O}, input::NDArray) where {O}
-    nda_move(out, O(1) ./ checked_promote_arr(input, O)) #! REPLACE WITH RECIP ONCE FIXED
+    promoted = checked_promote_arr(input, O)  # always a new array when eltype ≠ O
+    nda_move(out, O(1) ./ promoted) #! REPLACE WITH RECIP ONCE FIXED
+    destroy!(promoted)
     return out
-    # return nda_unary_op!(out, cuNumeric.RECIPROCAL, checked_promote_arr(input,O))
 end
 
 #! NEEDS TO SUPPORT inv and ^ -1
@@ -163,11 +180,14 @@ for (julia_fn, op_code) in floaty_unary_ops_no_args
             return nda_unary_op!(out, $(op_code), input)
         end
 
-        # If input is not already float, promote to that
+        # If input is not already float, promote to that (temp always new → always destroy)
         @inline function __broadcast(
             f::typeof($julia_fn), out::NDArray{A}, input::NDArray{B}
         ) where {A<:SUPPORTED_FLOAT_TYPES,B<:Union{SUPPORTED_INT_TYPES,Bool}}
-            return __broadcast(f, out, checked_promote_arr(input, A))
+            promoted = checked_promote_arr(input, A)
+            result = __broadcast(f, out, promoted)
+            destroy!(promoted)
+            return result
         end
     end
 end
@@ -209,8 +229,10 @@ The following unary reduction operations are supported and can be applied direct
   • `prod`
   • `sum`
 
-
 These operations follow standard Julia semantics.
+
+Reduction over specific dimensions is supported via the `dims` keyword argument,
+following the same semantics as Julia's base reduction functions.
 
 Examples
 --------
@@ -220,6 +242,14 @@ A = cuNumeric.ones(5)
 
 maximum(A)
 sum(A)
+
+# Reduce over a specific dimension
+B = cuNumeric.ones(3, 4)
+sum(B, dims=1)    # 1×4 result
+sum(B, dims=2)    # 3×1 result
+
+# Reduce over multiple dimensions
+sum(B, dims=(1,2))  # 1×1 result
 ```
 """
 global const unary_reduction_map = Dict{Function,UnaryRedCode}(
@@ -242,26 +272,87 @@ global const unary_reduction_map = Dict{Function,UnaryRedCode}(
 
 #! IT WOULD BE NICE IF THESE JUST RETURNED SCALARS WHEN APPROPRIATE
 # #*TODO HOW TO GET THESE ACTING ON CERTAIN DIMS
+
+function _unary_reduction_apply(out, op_code, input::NDArray{T}, ::Type{T}) where {T}
+    return nda_unary_reduction(out, op_code, input)
+end
+
+function _unary_reduction_apply(out, op_code, input::NDArray, ::Type{U}) where {U}
+    promoted = unchecked_promote_arr(input, U)  # always a new array when U ≠ eltype
+    result = nda_unary_reduction(out, op_code, promoted)
+    destroy!(promoted)
+    return result
+end
+
+function _unary_reduction_axes_apply(op_code, input::NDArray{T}, ::Type{T}, axes) where {T}
+    return nda_unary_reduction_axes(op_code, input, axes, true)
+end
+
+function _unary_reduction_axes_apply(op_code, input::NDArray, ::Type{U}, axes) where {U}
+    promoted = unchecked_promote_arr(input, U)  # always a new array when U ≠ eltype
+    result = nda_unary_reduction_axes(op_code, promoted, axes, true)
+    destroy!(promoted)
+    return result
+end
+
+function _unary_reduction_impl(base_func, op_code, input::NDArray{T}, ::Colon) where {T}
+    T_OUT = Base.promote_op(base_func, Vector{T})
+    is_wider_type(T_OUT, T) && assertpromotion(base_func, T, T_OUT)
+    out = cuNumeric.zeros(T_OUT)
+    return _unary_reduction_apply(out, op_code, input, T_OUT)
+end
+
+function _unary_reduction_impl(base_func, op_code, input::NDArray{T,N}, dims::Integer) where {T,N}
+    T_OUT = Base.promote_op(base_func, Vector{T})
+    is_wider_type(T_OUT, T) && assertpromotion(base_func, T, T_OUT)
+    axes = Int32[dims - 1]
+    return _unary_reduction_axes_apply(op_code, input, T_OUT, axes)
+end
+
+function _unary_reduction_impl(base_func, op_code, input::NDArray{T,N}, dims::Tuple) where {T,N}
+    if length(dims) > 1
+        error(
+            "$(base_func): reducing over multiple dimensions is not yet supported. Got dims=$dims"
+        )
+    end
+    # single element tuple
+    T_OUT = Base.promote_op(base_func, Vector{T})
+    is_wider_type(T_OUT, T) && assertpromotion(base_func, T, T_OUT)
+    axes = Int32[dims[1] - 1]
+    return _unary_reduction_axes_apply(op_code, input, T_OUT, axes)
+end
+
 # Generate code for all unary reductions.
 for (base_func, op_code) in unary_reduction_map
     @eval begin
-        function $(Symbol(base_func))(input::NDArray{T}) where {T}
-            T_OUT = Base.promote_op($base_func, Vector{T})
-            is_wider_type(T_OUT, T) && assertpromotion($base_func, T, T_OUT)
-            out = cuNumeric.zeros(T_OUT) #0D result (not right if reducing along dims)
-            return nda_unary_reduction(out, $(op_code), unchecked_promote_arr(input, T_OUT))
+        function $(Symbol(base_func))(input::NDArray{T,N}; dims=Colon()) where {T,N}
+            return _unary_reduction_impl($base_func, $(op_code), input, dims)
         end
     end
 end
 
-function Base.all(input::NDArray{Bool})
+function _bool_reduction_impl(op_code, input::NDArray{Bool}, ::Colon)
     out = cuNumeric.zeros(Bool)
-    return nda_unary_reduction(out, cuNumeric.ALL, input)
+    return nda_unary_reduction(out, op_code, input)
 end
 
-function Base.any(input::NDArray{Bool})
-    out = cuNumeric.zeros(Bool)
-    return nda_unary_reduction(out, cuNumeric.ANY, input)
+function _bool_reduction_impl(op_code, input::NDArray{Bool}, dims)
+    axes = collect(Int32, (d - 1 for d in (dims isa Integer ? (dims,) : dims)))
+    return nda_unary_reduction_axes(op_code, input, axes, true)
+end
+
+function Base.all(input::NDArray{Bool}; dims=Colon())
+    return _bool_reduction_impl(cuNumeric.ALL, input, dims)
+end
+
+function Base.any(input::NDArray{Bool}; dims=Colon())
+    return _bool_reduction_impl(cuNumeric.ANY, input, dims)
+end
+
+# Boolean multiplication is logical conjunction. cuPyNumeric's PROD reduction
+# uses a numeric fill identity, which Legate rejects for a Boolean target.
+function Base.prod(input::NDArray{Bool}; dims=Colon())
+    return _unary_reduction_impl(Base.prod, cuNumeric.ALL, input, dims)
 end
 
 #! ONLY ADD ONCE REDUCTIONS RETURN A SCALAR

@@ -1,7 +1,15 @@
 [deps]
+CNPreferences = "3e078157-ea10-49d5-bf32-908f777cd46f"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CUDA_Driver_jll = "4ee394cb-3365-5eb0-8335-949819d2adfc"
+InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+ParallelTestRunner = "d3525ed8-44d0-4b2c-a655-542cee43accc"
+Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 StatsBase = "2913bbd2-ae8a-5f71-8c99-4fb6c76f3a91"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+cuNumeric = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
+
+[sources]
+cuNumeric = {path = ".."}

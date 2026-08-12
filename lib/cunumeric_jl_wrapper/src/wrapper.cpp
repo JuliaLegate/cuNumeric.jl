@@ -42,10 +42,7 @@ struct WrapCppOptional {
   }
 };
 
-legate::LogicalArray* get_store(CN_NDArray* arr) {
-  auto res = arr->obj.get_store();
-  return new legate::LogicalArray(std::move(res));
-}
+legate::LogicalArray get_store(CN_NDArray* arr) { return arr->obj.get_store(); }
 
 legate::Library get_lib() {
   auto runtime = cupynumeric::CuPyNumericRuntime::get_runtime();
@@ -61,6 +58,7 @@ void register_tasks() {
   auto library = get_lib();
   ufi::LoadPTXTask::register_variants(library);
   ufi::RunPTXTask::register_variants(library);
+  ufi::RunPTXBroadcastTask::register_variants(library);
 }
 #endif
 
@@ -68,15 +66,13 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   wrap_unary_ops(mod);
   wrap_binary_ops(mod);
   wrap_unary_reds(mod);
+  wrap_linalg_ops(mod);
 
   using jlcxx::ParameterList;
   using jlcxx::Parametric;
   using jlcxx::TypeVar;
   using legate_util::HalfType;
 
-  // Map C++ complex types to Julia complex types
-  mod.map_type<std::complex<double>>("ComplexF64");
-  mod.map_type<std::complex<float>>("ComplexF32");
   mod.map_type<HalfType>("Float16");
 
   // These are the types/dims used to generate templated functions
