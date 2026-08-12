@@ -36,13 +36,21 @@ function test_hdf5_roundtrip(::Type{T}, shape::Tuple) where {T}
         output = cuNumeric.h5read(path, dataset; layout=:row)
         @test eltype(output) == T
         @test size(output) == shape
-        @allowscalar @test cuNumeric.compare(expected, output, 0, 0)
+        @allowscalar @test safe_compare(expected, output, 0, 0)
 
         if length(shape) > 1
             col_output = cuNumeric.h5read(path, dataset; layout=:col)
             col_expected = permutedims(expected, reverse(1:length(shape)))
             @test size(col_output) == reverse(shape)
-            @allowscalar @test cuNumeric.compare(col_expected, col_output, 0, 0)
+            @allowscalar @test safe_compare(col_expected, col_output, 0, 0)
+        end
+    end
+end
+
+@testset "HDF5" begin
+    for T in (Float32, Float64, Int32, Int64)
+        @testset "$T $shape" for shape in ((7,), (3, 4), (2, 3, 4))
+            test_hdf5_roundtrip(T, shape)
         end
     end
 end

@@ -260,6 +260,8 @@ function __init__()
     # to register packages. So we will just skip starting
     # legate/cunumeric when using registry CI machines.
     get(ENV, "JULIA_REGISTRYCI_AUTOMERGE", false) == "true" && return nothing
+    # skip runtime here as well
+    get(ENV, "LEGATE_SKIP_RUNTIME", false) == "true" && return nothing
 
     # Start runtime, but only if not pre-compiling
     ensure_runtime!()

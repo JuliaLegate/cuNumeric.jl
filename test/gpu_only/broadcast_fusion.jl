@@ -31,7 +31,12 @@
 
 _broadcast_fusion_user_add(x, y) = x + y
 
-function test_broadcast_fusion(; T=Float32, N=100, atol=1e-5, rtol=1e-5)
+@testset "Broadcast Fusion" begin
+    T=Float32
+    N=100
+    atol=1e-5
+    rtol=1e-5
+
     # Create test arrays with known non-zero values
     julia_a = rand(T, N)
     julia_b = rand(T, N)
@@ -72,126 +77,126 @@ function test_broadcast_fusion(; T=Float32, N=100, atol=1e-5, rtol=1e-5)
     @testset "A + B (two different arrays)" begin
         expected = julia_a .+ julia_b
         result = a .+ b
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # same array, deduplication
     @testset "A + A (same array twice)" begin
         expected = julia_a .+ julia_a
         result = a .+ a
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # array then scalar
     @testset "A + scalar (array first)" begin
         expected = julia_a .+ s1
         result = a .+ s1
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # scalar then array
     @testset "scalar + A (scalar first)" begin
         expected = s1 .+ julia_a
         result = s1 .+ a
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # array, two scalars, fused
     @testset "A * scalar - scalar (fused)" begin
         expected = julia_a .* s1 .- s2
         result = a .* s1 .- s2
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # scalar-array-scalar
     @testset "scalar * A + scalar" begin
         expected = s1 .* julia_a .+ s2
         result = s1 .* a .+ s2
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # two arrays then scalar
     @testset "A + B + scalar" begin
         expected = julia_a .+ julia_b .+ s1
         result = a .+ b .+ s1
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # scalar then two arrays
     @testset "scalar + A + B" begin
         expected = s1 .+ julia_a .+ julia_b
         result = s1 .+ a .+ b
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # same array twice + scalar (dedup)
     @testset "A + A + scalar (dedup + scalar)" begin
         expected = julia_a .+ julia_a .+ s1
         result = a .+ a .+ s1
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # three different arrays
     @testset "A + B + C (three arrays)" begin
         expected = julia_a .+ julia_b .+ julia_c
         result = a .+ b .+ c
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # same array three times (triple dedup)
     @testset "A + A + A (triple dedup)" begin
         expected = julia_a .+ julia_a .+ julia_a
         result = a .+ a .+ a
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # two scalars then array
     @testset "scalar * scalar + A" begin
         expected = s1 .* s2 .+ julia_a
         result = s1 .* s2 .+ a
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # multiply, two arrays (different PTX kernel name collision test)
     @testset "A * B (multiply)" begin
         expected = julia_a .* julia_b
         result = a .* b
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # same array squared, dedup
     @testset "A * A (self multiply, dedup)" begin
         expected = julia_a .* julia_a
         result = a .* a
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # subtraction, order matters
     @testset "A - B (subtraction)" begin
         expected = julia_a .- julia_b
         result = a .- b
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # scalar minus array
     @testset "scalar - A" begin
         expected = s1 .- julia_a
         result = s1 .- a
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # three arrays, mixed ops
     @testset "A * B + C (three arrays, mixed ops)" begin
         expected = julia_a .* julia_b .+ julia_c
         result = a .* b .+ c
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # two arrays fused, then scaled
     @testset "(A + B) * scalar" begin
         expected = (julia_a .+ julia_b) .* s1
         result = (a .+ b) .* s1
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     if cuNumeric.FUSE_BROADCAST_EXPRS
@@ -201,7 +206,7 @@ function test_broadcast_fusion(; T=Float32, N=100, atol=1e-5, rtol=1e-5)
             @analyze_lifetimes begin
                 z .= T(2.0) .* _broadcast_fusion_user_add.(a, b)
             end
-            @allowscalar @test cuNumeric.compare(expected, z, atol, rtol)
+            @allowscalar @test safe_compare(expected, z, atol, rtol)
         end
     end
 
@@ -209,14 +214,14 @@ function test_broadcast_fusion(; T=Float32, N=100, atol=1e-5, rtol=1e-5)
     @testset "scalar * A + scalar * B" begin
         expected = s1 .* julia_a .+ s2 .* julia_b
         result = s1 .* a .+ s2 .* b
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 
     # same array subtracted, should be all zeros
     @testset "A - A (same array, expect zeros)" begin
         expected = julia_a .- julia_a
         result = a .- a
-        @allowscalar @test cuNumeric.compare(expected, result, atol, rtol)
+        @allowscalar @test safe_compare(expected, result, atol, rtol)
     end
 end
 
@@ -224,7 +229,10 @@ end
  * Complements `test_broadcast_fusion` with size extremes, 2D same-shape,
  * fusion gating for shape mismatch, 0-d fallback, and dest/input aliasing.
 =#
-function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
+@testset "Broadcast Fusion Edge Cases" begin
+    T=Float32
+    atol=1e-5
+    rtol=1e-5
     s1 = T(2.5)
     s2 = T(1.0)
 
@@ -234,7 +242,7 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         a = @allowscalar NDArray(ja)
         b = @allowscalar NDArray(jb)
         result = a .+ b .* s1 .- s2
-        @allowscalar @test cuNumeric.compare(ja .+ jb .* s1 .- s2, result, atol, rtol)
+        @allowscalar @test safe_compare(ja .+ jb .* s1 .- s2, result, atol, rtol)
     end
 
     @testset "very small 1D (N=2)" begin
@@ -243,9 +251,9 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         a = @allowscalar NDArray(ja)
         b = @allowscalar NDArray(jb)
         result = a .+ b
-        @allowscalar @test cuNumeric.compare(ja .+ jb, result, atol, rtol)
+        @allowscalar @test safe_compare(ja .+ jb, result, atol, rtol)
         result = s1 .* a .- b
-        @allowscalar @test cuNumeric.compare(s1 .* ja .- jb, result, atol, rtol)
+        @allowscalar @test safe_compare(s1 .* ja .- jb, result, atol, rtol)
     end
 
     @testset "empty / zero-size 1D" begin
@@ -274,7 +282,7 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         a = @allowscalar NDArray(ja)
         b = @allowscalar NDArray(jb)
         result = a .+ b .* s1 .- s2
-        @allowscalar @test cuNumeric.compare(ja .+ jb .* s1 .- s2, result, atol, rtol)
+        @allowscalar @test safe_compare(ja .+ jb .* s1 .- s2, result, atol, rtol)
         # Gate: same-shape leaves should be fusible.
         dest = cuNumeric.zeros(T, N)
         bc = Base.Broadcast.instantiate(Base.broadcasted(+, a, b))
@@ -288,9 +296,9 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         a = @allowscalar NDArray(ja)
         b = @allowscalar NDArray(jb)
         result = a .+ b .* s1
-        @allowscalar @test cuNumeric.compare(ja .+ jb .* s1, result, atol, rtol)
+        @allowscalar @test safe_compare(ja .+ jb .* s1, result, atol, rtol)
         result = a .+ a .* b .- s2
-        @allowscalar @test cuNumeric.compare(ja .+ ja .* jb .- s2, result, atol, rtol)
+        @allowscalar @test safe_compare(ja .+ ja .* jb .- s2, result, atol, rtol)
         dest = cuNumeric.zeros(T, M, N)
         bc = Base.Broadcast.instantiate(Base.broadcasted(+, a, b))
         @test cuNumeric.can_fuse_linear_broadcast(dest, bc)
@@ -311,7 +319,7 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
             a = @allowscalar NDArray(ja)
             b = @allowscalar NDArray(jb)
             result = a .+ b .* s1
-            @allowscalar @test cuNumeric.compare(ja .+ jb .* s1, result, atol, rtol)
+            @allowscalar @test safe_compare(ja .+ jb .* s1, result, atol, rtol)
         end
     end
 
@@ -322,7 +330,7 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
             a = @allowscalar NDArray(ja)
             b = @allowscalar NDArray(jb)
             result = a .+ b .* s1
-            @allowscalar @test cuNumeric.compare(ja .+ jb .* s1, result, atol, rtol)
+            @allowscalar @test safe_compare(ja .+ jb .* s1, result, atol, rtol)
         end
 
         dims = (17, 19, 23)
@@ -332,11 +340,11 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         b = @allowscalar NDArray(jb)
 
         result = a .+ b .* s1
-        @allowscalar @test cuNumeric.compare(ja .+ jb .* s1, result, atol, rtol)
+        @allowscalar @test safe_compare(ja .+ jb .* s1, result, atol, rtol)
 
         a_alias = @allowscalar NDArray(copy(ja))
         a_alias .= a_alias .* s1 .+ b
-        @allowscalar @test cuNumeric.compare(ja .* s1 .+ jb, a_alias, atol, rtol)
+        @allowscalar @test safe_compare(ja .* s1 .+ jb, a_alias, atol, rtol)
 
         parent_dims = (19, 23, 29)
         jpa = rand(T, parent_dims...)
@@ -354,7 +362,7 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
 
         sliced_result = av .+ bv .* s1
         expected_sliced = jpa[2:18, 3:21, 4:26] .+ jpb[1:17, 2:20, 3:25] .* s1
-        @allowscalar @test cuNumeric.compare(
+        @allowscalar @test safe_compare(
             expected_sliced, sliced_result, atol, rtol
         )
 
@@ -365,7 +373,7 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         out_view .= av .+ bv .* s1
         expected_out = zeros(T, parent_dims...)
         expected_out[2:18, 3:21, 4:26] = expected_sliced
-        @allowscalar @test cuNumeric.compare(expected_out, out, atol, rtol)
+        @allowscalar @test safe_compare(expected_out, out, atol, rtol)
 
         a4 = @allowscalar NDArray(rand(T, 2, 3, 4, 5))
         @test_throws ArgumentError cuNumeric.nda_get_slice(
@@ -379,9 +387,9 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         a = @allowscalar NDArray(ja)
         # Literal power uses RefValue{Val} / static-arg lowering.
         result = a .^ 2
-        @allowscalar @test cuNumeric.compare(ja .^ 2, result, atol, rtol)
+        @allowscalar @test safe_compare(ja .^ 2, result, atol, rtol)
         result = s1 .* a .* s2
-        @allowscalar @test cuNumeric.compare(s1 .* ja .* s2, result, atol, rtol)
+        @allowscalar @test safe_compare(s1 .* ja .* s2, result, atol, rtol)
     end
 
     # Gray-Scott-style slice stencils: strided views must fuse correctly via
@@ -399,7 +407,7 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         expected_x =
             ja[3:end, 2:(end - 1)] .- two .* ja[2:(end - 1), 2:(end - 1)] .+
             ja[1:(end - 2), 2:(end - 1)]
-        @allowscalar @test cuNumeric.compare(expected_x, result_x, atol, rtol)
+        @allowscalar @test safe_compare(expected_x, result_x, atol, rtol)
 
         dest_x = similar(result_x)
         @test !cuNumeric._is_ndarray_slice(dest_x)
@@ -423,7 +431,7 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         expected_y =
             ja[2:(end - 1), 3:end] .- two .* ja[2:(end - 1), 2:(end - 1)] .+
             ja[2:(end - 1), 1:(end - 2)]
-        @allowscalar @test cuNumeric.compare(expected_y, result_y, atol, rtol)
+        @allowscalar @test safe_compare(expected_y, result_y, atol, rtol)
 
         # Single-op fallback must update the slice's parent.
         out = @allowscalar NDArray(zeros(T, N, N))
@@ -435,7 +443,7 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         out_interior .= result_x .+ result_y
         expected_out = zeros(T, N, N)
         expected_out[2:(end - 1), 2:(end - 1)] = expected_x .+ expected_y
-        @allowscalar @test cuNumeric.compare(expected_out, out, atol, rtol)
+        @allowscalar @test safe_compare(expected_out, out, atol, rtol)
 
         # Multi-op fused write into a slice.
         out_fused = @allowscalar NDArray(zeros(T, N, N))
@@ -443,7 +451,7 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         fused_interior .= result_x .+ result_y .* two
         expected_fused = zeros(T, N, N)
         expected_fused[2:(end - 1), 2:(end - 1)] = expected_x .+ expected_y .* two
-        @allowscalar @test cuNumeric.compare(expected_fused, out_fused, atol, rtol)
+        @allowscalar @test safe_compare(expected_fused, out_fused, atol, rtol)
     end
 
     @testset "fused/unfused scalar promotion parity" begin
@@ -456,8 +464,8 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         bc_i64 = Base.Broadcast.instantiate(Base.broadcasted(*, 2, a))
         @test cuNumeric.can_fuse_linear_broadcast(dest, bc_i64)
         result = 2 .* a
-        @allowscalar @test cuNumeric.compare(T(2) .* ja, result, atol, rtol)
-        @allowscalar @test cuNumeric.compare(
+        @allowscalar @test safe_compare(T(2) .* ja, result, atol, rtol)
+        @allowscalar @test safe_compare(
             result,
             cuNumeric.unravel_broadcast_tree(bc_i64),
             atol,
@@ -538,11 +546,11 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         a = @allowscalar NDArray(copy(ja))
         b = @allowscalar NDArray(jb)
         a .+= b
-        @allowscalar @test cuNumeric.compare(ja .+ jb, a, atol, rtol)
+        @allowscalar @test safe_compare(ja .+ jb, a, atol, rtol)
 
         a2 = @allowscalar NDArray(copy(ja))
         a2 .= a2 .* s1 .+ b
-        @allowscalar @test cuNumeric.compare(ja .* s1 .+ jb, a2, atol, rtol)
+        @allowscalar @test safe_compare(ja .* s1 .+ jb, a2, atol, rtol)
 
         M, N2 = 37, 65
         j2a = rand(T, M, N2)
@@ -550,7 +558,7 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         a2d = @allowscalar NDArray(copy(j2a))
         b2d = @allowscalar NDArray(j2b)
         a2d .= a2d .* s1 .+ b2d
-        @allowscalar @test cuNumeric.compare(j2a .* s1 .+ j2b, a2d, atol, rtol)
+        @allowscalar @test safe_compare(j2a .* s1 .+ j2b, a2d, atol, rtol)
     end
 
     @testset "cross-statement fusion into a slice" begin
@@ -564,7 +572,7 @@ function test_broadcast_fusion_edge_cases(; T=Float32, atol=1e-5, rtol=1e-5)
         end
         expected = zeros(T, N + 2, N + 2)
         expected[2:(end - 1), 2:(end - 1)] = ja .* s1 .+ s2
-        @allowscalar @test cuNumeric.compare(expected, out, atol, rtol)
+        @allowscalar @test safe_compare(expected, out, atol, rtol)
     end
 end
 
@@ -575,7 +583,10 @@ end
  * With `FUSE_BROADCAST_MIN_OPS > 1`, single-op exprs are unfused — tests
  * should set min ops to 1 (LocalPreferences / ENV) to exercise the cache.
 =#
-function test_broadcast_fusion_ptx_cache(; T=Float32, N=64)
+@testset "Broadcast Fusion PTX Cache" begin
+    T=Float32
+    N=64
+
     if !(cuNumeric.FUSE_BROADCAST_EXPRS && cuNumeric.HAS_CUDA)
         @info "Skipping PTX cache tests (need FUSE_BROADCAST_EXPRS && HAS_CUDA)"
         return nothing

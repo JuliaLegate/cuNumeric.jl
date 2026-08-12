@@ -83,5 +83,5 @@ cp LocalPreferences.toml test/LocalPreferences.toml
 
 julia --color=yes --project=. -e '
     using Pkg
-    Pkg.test("cuNumeric"; test_args = ["--quickfail"])
+    Pkg.test("cuNumeric"; test_args = ["--quickfail", "--jobs=8", "--verbose"])
 '

@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -58,5 +58,62 @@ function test_binary_function_set(func_dict, T, N)
 
         test_binary_operation(func, arrs_jl[1:2]..., arrs_cunum[1:2]..., T)
         test_binary_operation(func, arrs_jl[3:4]..., arrs_cunum[3:4]..., T)
+    end
+end
+
+function run_binary_ops_tests(types)
+    @testset "Binary Ops" begin
+        N = 100
+
+        @testset for T in types
+            allowpromotion(true) do
+                test_binary_function_set(cuNumeric.floaty_binary_op_map, T, N)
+                return test_binary_function_set(cuNumeric.binary_op_map, T, N)
+            end
+
+            arr_jl = my_rand(T, N)
+            arr_jl2 = my_rand(T, N)
+            arr_cn = @allowscalar NDArray(arr_jl)
+            arr_cn2 = @allowscalar NDArray(arr_jl2)
+
+            # lcm/gcd require specific handling for integers and avoid overflow
+            if T <: cuNumeric.SUPPORTED_INT_TYPES && T != Bool
+                range_limit = (T == Int8 || T == UInt8) ? 10 : 100
+                arr_jl_small = my_rand(T, N; L=1, R=range_limit)
+                arr_jl2_small = my_rand(T, N; L=1, R=range_limit)
+                arr_cn_small = @allowscalar NDArray(arr_jl_small)
+                arr_cn2_small = @allowscalar NDArray(arr_jl2_small)
+
+                allowscalar() do
+                    @test safe_compare(
+                        lcm.(arr_jl_small, arr_jl2_small), lcm.(arr_cn_small, arr_cn2_small),
+                        atol(T),
+                        rtol(T),
+                    )
+                    @test safe_compare(
+                        gcd.(arr_jl_small, arr_jl2_small), gcd.(arr_cn_small, arr_cn2_small),
+                        atol(T),
+                        rtol(T),
+                    )
+                end
+            end
+
+            allowscalar() do
+                @test unwrap(arr_cn == arr_cn)
+                @test !unwrap(arr_cn == arr_cn2)
+                @test unwrap(arr_cn != arr_cn2)
+                @test !unwrap(arr_cn != arr_cn)
+                @test unwrap(all(arr_cn .== arr_cn))
+            end
+        end
+    end
+end
+
+function run_binary_copyto_tests()
+    @testset "Copy-To" begin
+        a = cuNumeric.zeros(2, 2)
+        b = cuNumeric.ones(2, 2)
+        copyto!(a, b)
+        @test is_same(a, b)
     end
 end

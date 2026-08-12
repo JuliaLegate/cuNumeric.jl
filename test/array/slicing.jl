@@ -32,7 +32,7 @@ struct Params{T}
     function Params(
         ::Type{T}, dx=T(0.1), c_u=T(1.0), c_v=T(0.3), f=T(0.03), k=T(0.06)
     ) where {T<:AbstractFloat}
-        new{T}(dx, dx/T(5), c_u, c_v, f, k)
+        return new{T}(dx, dx/T(5), c_u, c_v, f, k)
     end
 end
 
@@ -44,8 +44,8 @@ function slicing(T, N)
     u = cuNumeric.zeros(T, dims)
     v = cuNumeric.zeros(T, dims)
 
-    u_cpu = rand(T, dims);
-    v_cpu = rand(T, dims);
+    u_cpu = rand(T, dims)
+    v_cpu = rand(T, dims)
 
     @allowscalar for i in 1:N
         for j in 1:N
@@ -64,10 +64,10 @@ function slicing(T, N)
     step(u, v, u_new, v_new, args)
 
     allowscalar() do
-        @test cuNumeric.compare(u, u_cpu, atol(T), rtol(T))
-        @test cuNumeric.compare(v, v_cpu, atol(T), rtol(T))
-        @test cuNumeric.compare(u_new, u_new_cpu, atol(T), rtol(T))
-        @test cuNumeric.compare(v_new, v_new_cpu, atol(T), rtol(T))
+        @test safe_compare(u, u_cpu, atol(T), rtol(T))
+        @test safe_compare(v, v_cpu, atol(T), rtol(T))
+        @test safe_compare(u_new, u_new_cpu, atol(T), rtol(T))
+        @test safe_compare(v_new, v_new_cpu, atol(T), rtol(T))
     end
 end
 
@@ -122,5 +122,24 @@ function step(u, v, u_new, v_new, args::Params)
     v_new[:, 1] = v[:, end - 1]
     v_new[:, end] = v[:, 2]
     v_new[1, :] = v[end - 1, :]
-    v_new[end, :] = v[2, :]
+    return v_new[end, :] = v[2, :]
+end
+
+@testset "Array Slices" begin
+    N = 100
+    @testset for T in Base.uniontypes(cuNumeric.SUPPORTED_FLOAT_TYPES)
+        slicing(T, N)
+    end
+end
+
+@testset "Basic Array Accessors" begin
+    for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
+        value = rand(T)
+        arr = cuNumeric.zeros(T, 2, 2)
+
+        allowscalar() do
+            arr[1, 2] = value
+            @test arr[1, 2] == value
+        end
+    end
 end
