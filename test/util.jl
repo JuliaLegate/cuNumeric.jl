@@ -38,9 +38,19 @@ atol(::Type{I}) where {I<:Integer} = atol(float(I))
 rtol(::Type{Complex{T}}) where {T} = rtol(T)
 atol(::Type{Complex{T}}) where {T} = atol(T)
 
-# Reduction rounding error grows with the number of elements reduced (n).
+# Reduction compares: association/order differences between Julia and cuNumeric.
+# Forward error for summing n terms is O(n ε Σ|x_i|) (Higham), NOT O(n ε |Σ x_i|).
+# So when partial sums cancel, |result| is small and rtol alone is insufficient —
+# the absolute floor must track the *input* magnitude (`scale`, e.g. maximum(abs, x)).
+#
+# CI example Float32 n=10, |sum|≈0.49, absdiff≈6e-5: relative to the result that
+# looks large (~1e-4), but with |x_i|~1e3 the Higham-scale bound is ~n*eps*scale
+# ≈ 1e-3, and 6e-5 sits comfortably under it (different reduction trees, not a bug).
 reduction_rtol(::Type{T}, n) where {T} = rtol(T) * n
-reduction_atol(::Type{T}, n) where {T} = atol(T) * n
+function reduction_atol(::Type{T}, n, scale=1) where {T}
+    FT = float(real(T))
+    return max(atol(T) * n, n * eps(FT) * abs(scale))
+end
 
 is_same(arr1::NDArray, arr2::NDArray) = @allowscalar (arr1 == arr2)[1]
 is_same(arr1::NDArray, arr2::Array) = @allowscalar (arr1 == arr2)[1]

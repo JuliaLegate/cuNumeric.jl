@@ -97,9 +97,11 @@ function test_unary_reduction_dims(
             julia_res = func(julia_arr; dims=d)
             cunumeric_res = func(cunumeric_arr; dims=d)
             n = size(julia_arr, d)
+            # Input magnitude for Higham-style absolute floor (see reduction_atol).
+            scale = maximum(abs, julia_arr)
             allowscalar() do
                 @test safe_compare(
-                    julia_res, cunumeric_res, reduction_atol(T, n), reduction_rtol(T, n)
+                    julia_res, cunumeric_res, reduction_atol(T, n, scale), reduction_rtol(T, n)
                 )
             end
         end
@@ -181,11 +183,12 @@ function run_unary_tests(types; include_bool_reductions::Bool=false)
                     julia_res = reduction(julia_arr)
 
                     n = length(julia_arr)
+                    scale = maximum(abs, julia_arr)
                     allowscalar() do
                         # assumes 0D result
                         @test isapprox(
                             julia_res, cunumeric_res[];
-                            atol=reduction_atol(T, n), rtol=reduction_rtol(T, n),
+                            atol=reduction_atol(T, n, scale), rtol=reduction_rtol(T, n),
                         )
                     end
                 end
