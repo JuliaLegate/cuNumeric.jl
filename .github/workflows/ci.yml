@@ -144,4 +144,4 @@ jobs:
           LEGATE_AUTO_CONFIG: "0"
           LEGATE_SKIP_RUNTIME: "true"
           LEGATE_CONFIG: "--cpus 1 --utility 1 --sysmem 500"
-        run: julia --project -e 'using Pkg; Pkg.test(test_args=["--quickfail", "--jobs=2", "--verbose"])'
+        run: julia --project -e 'using Pkg; Pkg.test(test_args=["--jobs=2", "--verbose"])'
