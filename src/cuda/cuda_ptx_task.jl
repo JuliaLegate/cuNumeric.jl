@@ -54,8 +54,7 @@ function check_sz!(arr, maxshape; copy=false)
         alligned_equal_size = sz == maxshape
         if !alligned_equal_size
             cuNumeric.add_padding(arr, maxshape; copy=copy)
-            new_size = padded_shape(arr)
-            @warn "[Padding Added] $sz output is now $new_size"
+            @warn "[Padding Added] $sz output is now $maxshape"
         end
     end
 end
@@ -130,8 +129,12 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
         Legate.add_scalar(task, Legate.Scalar(s))
     end
 
-    # all inputs are aligned with all outputs
-    Legate.default_alignment(task, input_vars, output_vars)
+    # Alignment requires equal shapes. Custom kernels may intentionally map a
+    # larger input domain to smaller outputs.
+    ndarrays = (inputs..., outputs...)
+    if length(ndarrays) > 1 && all(arr -> size(arr) == size(first(ndarrays)), ndarrays)
+        Legate.default_alignment(task, input_vars, output_vars)
+    end
     return Legate.submit_auto_task(rt, task)
 end
 
@@ -234,7 +237,8 @@ macro cuda_task(call_expr)
 end
 
 """
-    @launch(; task, blocks=(1,), threads=(256,), inputs=(), outputs=(), scalars=())
+    @launch(; task, blocks=(1,), threads=(256,), inputs=(), outputs=(), scalars=(),
+              validate_shapes=true)
 
 Launch a GPU kernel (previously registered via [`@cuda_task`](@ref))  through the Legate runtime.
 
@@ -245,6 +249,7 @@ Launch a GPU kernel (previously registered via [`@cuda_task`](@ref))  through th
 - `inputs`  — Tuple or single element of input NDArray objects.
 - `outputs` — Tuple or single element of output NDArray objects.
 - `scalars` — Tuple or single element of scalar values.
+- `validate_shapes` — Pad inputs and outputs to a common shape when `true`.
 
 # Description
 The `@launch` macro validates the provided keywords, ensuring only
@@ -273,7 +278,7 @@ mytask = @cuda_task my_kernel(A, B, C)
 macro launch(args...)
     cuNumeric.assert_experimental()
 
-    allowed_keys = Set([:task, :blocks, :threads, :inputs, :outputs, :scalars])
+    allowed_keys = Set([:task, :blocks, :threads, :inputs, :outputs, :scalars, :validate_shapes])
     kwargs = Dict{Symbol,Any}()
 
     for ex in args
@@ -299,12 +304,13 @@ macro launch(args...)
     inputs = get(kwargs, :inputs, :(()))
     outputs = get(kwargs, :outputs, :(()))
     scalars = get(kwargs, :scalars, :(()))
+    validate_shapes = get(kwargs, :validate_shapes, true)
 
     return esc(
         quote
             cuNumeric.launch(
                 $task, $inputs, $outputs, $scalars;
-                blocks=($blocks), threads=($threads),
+                blocks=($blocks), threads=($threads), validate_shapes=($validate_shapes),
             )
         end,
     )

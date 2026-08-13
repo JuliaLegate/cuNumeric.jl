@@ -1,4 +1,10 @@
 
+using CUDA: CUDA, @cuda
+using CUDACore: blockDim, blockIdx, threadIdx
+import CUDACore: i32
+
+cuNumeric.Experimental(true)
+
 function unfused_cunumeric(u, v, f, k)
     F_u = (
         (
@@ -63,7 +69,7 @@ function run_fused_cunumeric(N, u, v)
 
     cuNumeric.@launch task=task threads=threads blocks=blocks inputs=(u, v) outputs=(F_u, F_v) scalars=(
         UInt32(N), f, k
-    )
+    ) validate_shapes=false
 
     return F_u, F_v
 end
@@ -102,8 +108,8 @@ function run_unfused_baseline(N, u, v)
 end
 
 function fusion_test(; N=1024*1024, atol=1.0f-6, rtol=1.0f-6)
-    u = cuNumeric.as_type(cuNumeric.rand(NDArray, N), Float32)
-    v = cuNumeric.as_type(cuNumeric.rand(NDArray, N), Float32)
+    u = cuNumeric.rand(Float32, N)
+    v = cuNumeric.rand(Float32, N)
 
     # using CUDA
     u_base = CUDA.rand(Float32, N)
@@ -116,8 +122,14 @@ function fusion_test(; N=1024*1024, atol=1.0f-6, rtol=1.0f-6)
     # using cuNumeric
     Fu_fused, Fv_fused = run_fused_cunumeric(N, u, v)
     Fu_unfused, Fv_unfused = run_unfused_cunumeric(N, u, v)
-    @test isapprox(Fu_fused, Fu_unfused; atol=atol, rtol=rtol)
-    @test isapprox(Fv_fused, Fv_unfused; atol=atol, rtol=rtol)
+    @test isapprox(Array(Fu_fused), Array(Fu_unfused); atol=atol, rtol=rtol)
+    @test isapprox(Array(Fv_fused), Array(Fv_unfused); atol=atol, rtol=rtol)
 end
 
-fusion_test()
+try
+    @testset "1D fusion comparison" begin
+        fusion_test()
+    end
+finally
+    cuNumeric.Experimental(false)
+end
