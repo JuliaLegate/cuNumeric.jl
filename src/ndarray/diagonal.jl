@@ -155,13 +155,9 @@ function LinearAlgebra.rdiv!(A::NDArray, D::DiagonalNDArray)
 end
 
 function Base.inv(D::DiagonalNDArray{T}) where {T}
-    d = _diag_vec(D)
-
-    # if unwrap(any(d .== zero(T)))
-    #     throw(SingularException(0))
-    # end
-
-    return Diagonal(inv.(d))
+    # Base Julia checks and throws a SingularException. We cannot do
+    # that without unwrapping the NDArray to a Julia scalar.
+    return Diagonal(inv.(_diag_vec(D)))
 end
 
 LinearAlgebra.det(D::DiagonalNDArray) = prod(_diag_vec(D))

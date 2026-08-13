@@ -388,19 +388,18 @@ end
         rdiv!(B, D)
         _host_matrix_compare(Ah / Dh, B, T)
 
-        # Singular: \ yields Inf/NaN (no pre-check); inv throws; / goes through inv
+        # Singular: zeros become Inf/NaN (no SingularException; that needs a host Bool)
         d0 = copy(d)
         d0[2] = zero(T)
         D0 = Diagonal(NDArray(d0))
         r = D0 \ v
+        Di = inv(D0)
+        Q = A / D0
         allowscalar() do
             @test any(isinf, Array(r)) || any(isnan, Array(r))
+            @test any(isinf, Array(Di.diag)) || any(isnan, Array(Di.diag))
+            @test any(isinf, Array(Q)) || any(isnan, Array(Q))
         end
-        # On-device any(diag .== 0); info=0 (no findfirst for first-zero index yet)
-        err_inv = @test_throws SingularException inv(D0)
-        @test err_inv.value.info == 0
-        err_div = @test_throws SingularException A / D0
-        @test err_div.value.info == 0
     end
 
     # Complex: \ works via ./ ; inv/A/D blocked by missing __recip_type

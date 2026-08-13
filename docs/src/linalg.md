@@ -125,9 +125,7 @@ must be `NDArray` unless noted.
 - `D * A`, `A * D`, `D * v` for 2D / 1D `NDArray`
 - `mul!`, `lmul!`, `rmul!` with `NDArray`
 - `D \ B`, `A / D`, `ldiv!`, `rdiv!` with `NDArray`
-- `inv(D)` — zeros on the diagonal throw `SingularException(0)` (on-device `any`
-  check; first-zero index is not reported without `findfirst`); reciprocal
-  on-device
+- `inv(D)` — reciprocal on-device; zeros become Inf (no `SingularException`)
 - `det(D)` — 0-dimensional `NDArray` product of the diagonal
 
 **`NDArray` ± `Diagonal`**
