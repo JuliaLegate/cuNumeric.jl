@@ -19,10 +19,16 @@ Fbool = cuNumeric.falses(2, 3)
 I = cuNumeric.eye(5)
 I16 = cuNumeric.eye(Float32, 5)
 
-# Uniform random values (default Float32; backend draws Float64 then converts)
+# Uniform / normal random values (native Float32 and Float64)
 R = cuNumeric.rand(4, 4)
 R64 = cuNumeric.rand(Float64, 1000)
 cuNumeric.rand!(R64)                      # fill an existing Float64 array
+N = cuNumeric.randn(Float32, 8, 8)
+I = cuNumeric.rand(0:9, 4, 4)             # Int64 in 0:9 (inclusive)
+
+# Private stream / non-default engine (see Random in the Public API)
+g = cuNumeric.default_rng(cuNumeric.PHILOX4_32_10, 1234)
+P = cuNumeric.random(g, Float32, (4, 4))
 ```
 
 Shapes can be passed as separate `Int`s or as a `Tuple` / `Dims`:
@@ -33,4 +39,4 @@ cuNumeric.zeros((2, 3))
 cuNumeric.ones(Float64, (10, 10))
 ```
 
-For signatures and more detail, see [Initialization](../api_initialization.md) in the Public API.
+For signatures and more detail, see [Initialization](../api_initialization.md) and [Random](../api_random.md) in the Public API.

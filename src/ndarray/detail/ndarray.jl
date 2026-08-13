@@ -155,22 +155,66 @@ function nda_full_array(dims::Dims{N}, value::T) where {T,N}
     return NDArray(ptr, T, Val(N))
 end
 
-function nda_random(arr::NDArray, gen_code)
-    @task_scope "rand!" begin
-        ccall((:nda_random, libnda),
-            Cvoid, (NDArray_t, Int32),
-            arr.ptr, Int32(gen_code))
-    end
-end
+# Legacy Float64-only CUPYNUMERIC_RAND wrappers; unused after BitGenerator.
+# function nda_random(arr::NDArray, gen_code)
+#     @task_scope "rand!" begin
+#         ccall((:nda_random, libnda),
+#             Cvoid, (NDArray_t, Int32),
+#             arr.ptr, Int32(gen_code))
+#     end
+# end
+#
+# function nda_random_array(dims::Dims{N}) where {N}
+#     shape = collect(UInt64, dims)
+#     ptr = @task_scope "rand" begin
+#         ccall((:nda_random_array, libnda),
+#             NDArray_t, (Int32, Ptr{UInt64}),
+#             Int32(N), shape)
+#     end
+#     return NDArray(ptr, Float64, Val(N)) #* T is always Float64 cause of cupynumeric
+# end
 
-function nda_random_array(dims::Dims{N}) where {N}
-    shape = collect(UInt64, dims)
-    ptr = @task_scope "rand" begin
-        ccall((:nda_random_array, libnda),
-            NDArray_t, (Int32, Ptr{UInt64}),
-            Int32(N), shape)
+function nda_bitgenerator_distribution!(
+    arr::NDArray,
+    handle::Int32,
+    generator_type::UInt32,
+    seed::UInt64,
+    flags::UInt32,
+    distribution::UInt32,
+    strides::SVector{N,Int64},
+    intparams::SVector{NI,Int64},
+    floatparams::SVector{NF,Float32},
+    doubleparams::SVector{ND,Float64},
+) where {N,NI,NF,ND}
+    # Ref(svec) as a ccall arg is stack-boxed; C++ copies before return.
+    @task_scope "bitgenerator" begin
+        ccall(
+            (:nda_bitgenerator_distribution, libnda),
+            Cvoid,
+            (
+                NDArray_t, Int32, UInt32, UInt64, UInt32, UInt32,
+                Ptr{SVector{N,Int64}}, Int32,
+                Ptr{SVector{NI,Int64}}, Int32,
+                Ptr{SVector{NF,Float32}}, Int32,
+                Ptr{SVector{ND,Float64}}, Int32,
+            ),
+            arr.ptr,
+            handle,
+            generator_type,
+            seed,
+            flags,
+            distribution,
+            Ref(strides),
+            Int32(N),
+            Ref(intparams),
+            Int32(NI),
+            Ref(floatparams),
+            Int32(NF),
+            Ref(doubleparams),
+            Int32(ND),
+        )
     end
-    return NDArray(ptr, Float64, Val(N)) #* T is always Float64 cause of cupynumeric
+    return arr
 end
 
 function nda_get_slice(arr::NDArray{T,N}, slices::Vector{Slice}) where {T,N}

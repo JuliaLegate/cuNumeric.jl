@@ -47,7 +47,20 @@ cuNumeric.rand
 ## rand!
 
 ```@docs
-Random.rand!(::NDArray{Float64})
+Random.rand!(::NDArray{<:AbstractFloat})
 ```
 
-The backend currently draws `Float64` uniforms. `cuNumeric.rand(Float32, dims...)` converts for you. `rand!` on `NDArray` currently requires `Float64` storage.
+## randn
+
+```@docs
+cuNumeric.randn
+```
+
+## randn!
+
+```@docs
+Random.randn!(::NDArray{<:AbstractFloat})
+```
+
+See [Random](./api_random.md) for BitGenerators (`XORWOW`, `MRG32k3a`,
+`PHILOX4_32_10`), `Generator`, and `default_rng`.

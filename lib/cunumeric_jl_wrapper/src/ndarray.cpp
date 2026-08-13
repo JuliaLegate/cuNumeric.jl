@@ -79,6 +79,45 @@ CN_NDArray* nda_random_array(int32_t dim, const uint64_t* shape) {
   return new CN_NDArray{NDArray(std::move(result))};
 }
 
+void nda_bitgenerator_distribution(CN_NDArray* arr, int32_t handle,
+                                   uint32_t generator_type, uint64_t seed,
+                                   uint32_t flags, uint32_t distribution,
+                                   const int64_t* strides, int32_t nstrides,
+                                   const int64_t* intparams, int32_t nint,
+                                   const float* floatparams, int32_t nfloat,
+                                   const double* doubleparams,
+                                   int32_t ndouble) {
+  if (arr->obj.size() == 0) {
+    return;
+  }
+
+  auto runtime = cupynumeric::CuPyNumericRuntime::get_runtime();
+  auto task = runtime->create_task(CuPyNumericOpCode::CUPYNUMERIC_BITGENERATOR);
+
+  auto store = arr->obj.get_store();
+  task.add_output(store);
+
+  // Match cupynumeric/_thunk/deferred.py::bitgenerator_distribution
+  task.add_scalar_arg(Scalar(int32_t(CUPYNUMERIC_BITGENOP_DISTRIBUTION)));
+  task.add_scalar_arg(Scalar(handle));
+  task.add_scalar_arg(Scalar(generator_type));
+  task.add_scalar_arg(Scalar(seed));
+  task.add_scalar_arg(Scalar(flags));
+  task.add_scalar_arg(Scalar(distribution));
+
+  std::vector<int64_t> strides_v(strides, strides + nstrides);
+  std::vector<int64_t> intparams_v(intparams, intparams + nint);
+  std::vector<float> floatparams_v(floatparams, floatparams + nfloat);
+  std::vector<double> doubleparams_v(doubleparams, doubleparams + ndouble);
+
+  task.add_scalar_arg(Scalar(strides_v));
+  task.add_scalar_arg(Scalar(intparams_v));
+  task.add_scalar_arg(Scalar(floatparams_v));
+  task.add_scalar_arg(Scalar(doubleparams_v));
+
+  runtime->submit(std::move(task));
+}
+
 CN_NDArray* nda_reshape_array(CN_NDArray* arr, int32_t dim,
                               const uint64_t* shape) {
   std::vector<int64_t> shp(shape, shape + dim);
