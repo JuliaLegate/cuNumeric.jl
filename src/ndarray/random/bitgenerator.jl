@@ -25,9 +25,9 @@
 """
     BitGenerator
 
-Abstract supertype for cuRAND engines used by [`Generator`](@ref). Concrete
-types are [`XORWOW`](@ref) (default), [`MRG32k3a`](@ref), and
-[`PHILOX4_32_10`](@ref).
+Abstract supertype for cuRAND engines used by [`Generator`](@ref cuNumeric.Generator). Concrete
+types are [`XORWOW`](@ref cuNumeric.XORWOW) (default), [`MRG32k3a`](@ref cuNumeric.MRG32k3a), and
+[`PHILOX4_32_10`](@ref cuNumeric.PHILOX4_32_10).
 """
 abstract type BitGenerator end
 

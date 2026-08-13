@@ -21,8 +21,8 @@
 """
     Generator(bit_generator)
 
-cuPyNumeric-style RNG wrapping a [`BitGenerator`](@ref). Module-level
-[`rand`](@ref), [`randn`](@ref) use a process-global
+cuPyNumeric-style RNG wrapping a [`BitGenerator`](@ref cuNumeric.BitGenerator). Module-level
+[`rand`](@ref cuNumeric.rand), [`randn`](@ref cuNumeric.randn) use a process-global
 XORWOW generator; pass a different engine to `default_rng` for Philox or MRG32k3a.
 """
 struct Generator{B<:BitGenerator}
@@ -39,8 +39,8 @@ const _static_generator = Ref{Union{Nothing,Generator{XORWOW}}}(nothing)
     default_rng(bit_generator)
     default_rng(generator)
 
-Return a [`Generator`](@ref). The no-argument and integer-seed methods use
-[`XORWOW`](@ref). This does **not** replace the process-global generator used
+Return a [`Generator`](@ref cuNumeric.Generator). The no-argument and integer-seed methods use
+[`XORWOW`](@ref cuNumeric.XORWOW). This does **not** replace the process-global generator used
 by module-level `rand` / `randn`.
 
 ```julia
@@ -95,14 +95,25 @@ function random!(g::Generator, arr::NDArray{Float64})
     return arr
 end
 
+# No native Bool distribution. Draw {0,1} as Int16 and compare; that is the
+# usual path to NDArray{Bool}. Do not as_type to Bool (CxxWrap.CxxBool).
+function random!(g::Generator, arr::NDArray{Bool})
+    copyto!(arr, random(g, Bool, size(arr)))
+    return arr
+end
+
 function random!(g::Generator, arr::NDArray{T}) where {T}
-    return error("random! only supports NDArray{<:AbstractFloat} of Float32 or Float64")
+    return error("random! supports Float32, Float64, Bool, Int16, Int32, and Int64 NDArray storage")
 end
 
 function random(g::Generator, ::Type{T}, dims::Dims) where {T<:AbstractFloat}
     arr = zeros(T, dims)
     random!(g, arr)
     return arr
+end
+
+function random(g::Generator, ::Type{Bool}, dims::Dims)
+    return integers(g, Int16, dims; low=0, high=2) .!= Int16(0)
 end
 
 function randn!(g::Generator, arr::NDArray{Float32}; loc::Real=0, scale::Real=1)

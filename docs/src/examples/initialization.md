@@ -25,6 +25,7 @@ R64 = cuNumeric.rand(Float64, 1000)
 cuNumeric.rand!(R64)                      # fill an existing Float64 array
 N = cuNumeric.randn(Float32, 8, 8)
 I = cuNumeric.rand(0:9, 4, 4)             # Int64 in 0:9 (inclusive)
+Coin = cuNumeric.rand(Bool, 8)            # fair coin flips
 
 # Private stream / non-default engine (see Random in the Public API)
 g = cuNumeric.default_rng(cuNumeric.PHILOX4_32_10, 1234)

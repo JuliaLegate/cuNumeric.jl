@@ -61,8 +61,15 @@ end
     @test eltype(R) === Float32
     @test size(R) == (3, 2)
 
-    @test_throws MethodError cuNumeric.rand(Bool, 4)
     @test_throws MethodError cuNumeric.randn(Int32, 4)
+
+    Coin = cuNumeric.rand(Bool, 8, 4)
+    @test eltype(Coin) === Bool
+    @test size(Coin) == (8, 4)
+    @test all(x -> x == true || x == false, _host(Coin))
+    Mask = cuNumeric.falses(16)
+    cuNumeric.rand!(Mask)
+    @test eltype(Mask) === Bool
 end
 
 @testset verbose = true "uniform moments" begin
@@ -76,6 +83,10 @@ end
         @test abs(μ2 - 0.5) < 0.03
         @test abs(v2 - 1 / 12) < 0.01
     end
+
+    μb, vb = _moments(cuNumeric.rand(Bool, 65_536))
+    @test abs(μb - 0.5) < 0.03
+    @test abs(vb - 0.25) < 0.02
 end
 
 @testset verbose = true "normal moments" begin

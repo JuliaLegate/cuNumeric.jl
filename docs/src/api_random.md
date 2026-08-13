@@ -1,23 +1,17 @@
 # Random
 
-Module-level [`rand`](@ref) and [`randn`](@ref) are also listed under
-[Initialization](./api_initialization.md). This page covers the cuPyNumeric RNG
-stack: BitGenerators, `Generator`, and `default_rng`.
+Module-level [`rand`](@ref cuNumeric.rand) and [`randn`](@ref cuNumeric.randn)
+are listed under [Initialization](./api_initialization.md). This page covers
+the cuPyNumeric RNG stack: BitGenerators, `Generator`, and `default_rng`.
 
-Draws go through cuRAND with the [`XORWOW`](@ref) random number generator by default. We support `Float32` and `Float64` uniforms and normals; integers are signed `Int16` / `Int32` / `Int64` only. Ranged integers use Julia `rand(1:10, dims...)` (inclusive).
+Draws go through cuRAND with the [`XORWOW`](@ref cuNumeric.XORWOW) random
+number generator by default. We support `Float32` and `Float64` uniforms and
+normals, `Bool` coin flips, and signed `Int16` / `Int32` / `Int64`. There is no native Bool distribution, so `rand(Bool, …)` draws `Int16` values in `{0,1}` and compares them to zero.
 
-`Random.seed!` is not hooked. Use [`default_rng`](@ref) with an explicit seed
-(or a specific BitGenerator) when you need a private stream. Module-level
-`rand` / `randn` always use a process-global XORWOW generator.
-
-## Module-level
-
-```@docs
-cuNumeric.rand
-Random.rand!(::NDArray{<:AbstractFloat})
-cuNumeric.randn
-Random.randn!(::NDArray{<:AbstractFloat})
-```
+`Random.seed!` is not hooked. Use [`default_rng`](@ref cuNumeric.default_rng)
+with an explicit seed (or a specific BitGenerator) when you need a private
+stream. Module-level `rand` / `randn` always use a process-global XORWOW
+generator.
 
 ## BitGenerators
 

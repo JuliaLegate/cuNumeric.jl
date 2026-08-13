@@ -24,11 +24,12 @@
 @doc"""
     Random.rand!(arr::NDArray{<:AbstractFloat})
     Random.rand!(arr::NDArray{<:Union{Int16,Int32,Int64}})
+    Random.rand!(arr::NDArray{Bool})
 
 Fill `arr` in-place with uniform random values.
 
 Floating arrays are filled from `[0, 1)`. Integer arrays use the full range of
-the element type, matching Julia `rand(T)`.
+the element type, matching Julia `rand(T)`. `Bool` arrays are fair coin flips.
 """
 function Random.rand!(arr::NDArray{<:AbstractFloat})
     return random!(get_static_generator(), arr)
@@ -38,8 +39,12 @@ function Random.rand!(arr::NDArray{T}) where {T<:_RNG_INT_TYPES}
     return integers!(get_static_generator(), arr; low=typemin(T), high=typemax(T))
 end
 
+function Random.rand!(arr::NDArray{Bool})
+    return random!(get_static_generator(), arr)
+end
+
 function Random.rand!(arr::NDArray{T}) where {T}
-    return error("rand! supports Float32, Float64, Int16, Int32, and Int64 NDArray storage")
+    return error("rand! supports Float32, Float64, Bool, Int16, Int32, and Int64 NDArray storage")
 end
 
 @doc"""
@@ -50,17 +55,19 @@ end
 Create a new `NDArray` filled with uniform random values.
 
 Floating types (`Float32` / `Float64`) are drawn natively in `[0, 1)`.
-Integer types `Int16`, `Int32`, and `Int64` use the full range of `T`.
-A unit range (`1:10`) draws inclusive integers, matching Julia `rand(1:10, dims...)`.
+`Bool` is a fair coin flip. Integer types `Int16`, `Int32`, and `Int64` use the
+full range of `T`. A unit range (`1:10`) draws inclusive integers, matching
+Julia `rand(1:10, dims...)`.
 
-Uses a process-global [`XORWOW`](@ref) generator. For a different engine or
-seed, see [`default_rng`](@ref) and [`Generator`](@ref).
+Uses a process-global [`XORWOW`](@ref cuNumeric.XORWOW) generator. For a different engine or
+seed, see [`default_rng`](@ref cuNumeric.default_rng) and [`Generator`](@ref cuNumeric.Generator).
 
 # Examples
 ```@repl
 cuNumeric.rand(2, 2)
 cuNumeric.rand((4, 1))
 cuNumeric.rand(0:9, 4, 4)
+cuNumeric.rand(Bool, 8)
 A = cuNumeric.zeros(Float32, 2, 2); cuNumeric.rand!(A)
 ```
 """
@@ -72,7 +79,9 @@ function rand(::Type{T}, dims::Dims) where {T<:_RNG_INT_TYPES}
     return integers(get_static_generator(), T, dims; low=typemin(T), high=typemax(T))
 end
 
-function rand(::Type{T}, dims::Int...) where {T<:Union{AbstractFloat,_RNG_INT_TYPES}}
+rand(::Type{Bool}, dims::Dims) = random(get_static_generator(), Bool, dims)
+
+function rand(::Type{T}, dims::Int...) where {T<:Union{AbstractFloat,_RNG_INT_TYPES,Bool}}
     return cuNumeric.rand(T, dims)
 end
 rand(dims::Dims) = cuNumeric.rand(DEFAULT_FLOAT, dims)
@@ -91,6 +100,13 @@ function rand(r::AbstractUnitRange{T}, dims::Dims) where {T<:_RNG_INT_TYPES}
 end
 
 rand(r::AbstractUnitRange{<:_RNG_INT_TYPES}, dims::Int...) = cuNumeric.rand(r, dims)
+
+function rand(r::AbstractUnitRange{Bool}, dims::Dims)
+    first(r) == last(r) && return fill(first(r), dims)
+    first(r) == false && last(r) == true && return cuNumeric.rand(Bool, dims)
+    return throw(ArgumentError("empty range $r"))
+end
+rand(r::AbstractUnitRange{Bool}, dims::Int...) = cuNumeric.rand(r, dims)
 
 @doc"""
     Random.randn!(arr::NDArray{<:AbstractFloat})
@@ -111,7 +127,7 @@ end
 
 Create a new `NDArray` filled with standard normal samples.
 
-Uses a process-global [`XORWOW`](@ref) generator. For a different engine, loc,
+Uses a process-global [`XORWOW`](@ref cuNumeric.XORWOW) generator. For a different engine, loc,
 or scale, use `randn!(generator, arr; loc, scale)`.
 
 # Examples
