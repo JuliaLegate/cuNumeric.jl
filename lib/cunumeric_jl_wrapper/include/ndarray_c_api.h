@@ -60,13 +60,6 @@ CN_NDArray* nda_full_array(int32_t dim, const uint64_t* shape, CN_Type type,
                            const void* value);
 void nda_random(CN_NDArray* arr, int32_t code);
 CN_NDArray* nda_random_array(int32_t dim, const uint64_t* shape);
-void nda_bitgenerator_distribution(CN_NDArray* arr, int32_t handle,
-                                   uint32_t generator_type, uint64_t seed,
-                                   uint32_t flags, uint32_t distribution,
-                                   const int64_t* strides, int32_t nstrides,
-                                   const int64_t* intparams, int32_t nint,
-                                   const float* floatparams, int32_t nfloat,
-                                   const double* doubleparams, int32_t ndouble);
 CN_NDArray* nda_reshape_array(CN_NDArray* arr, int32_t dim,
                               const uint64_t* shape);
 CN_NDArray* nda_astype(CN_NDArray* arr, CN_Type type);

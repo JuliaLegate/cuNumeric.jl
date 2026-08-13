@@ -5,5 +5,5 @@ Indexing, reshaping, reductions, comparisons, memory helpers, lifetime macros, a
 ```@autodocs
 Modules = [cuNumeric]
 Pages = ["ndarray/ndarray.jl", "ndarray/linalg.jl", "cuNumeric.jl", "warnings.jl", "util.jl", "memory.jl", "scoping/scoping.jl"]
-Filter = t -> !(t isa Function && nameof(t) in (:zeros, :ones, :fill, :trues, :falses, :eye, :rand, :rand!, :randn, :randn!, :default_rng, :random, :random!))
+Filter = t -> !(t isa Function && nameof(t) in (:zeros, :ones, :fill, :trues, :falses, :eye, :rand, :rand!, :randn, :randn!, :randexp, :randexp!, :default_rng, :random, :random!))
 ```

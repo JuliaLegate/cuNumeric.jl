@@ -174,6 +174,22 @@ end
 #     return NDArray(ptr, Float64, Val(N)) #* T is always Float64 cause of cupynumeric
 # end
 
+# Pack an SVector as a Legate fixed-array scalar. Empty vectors pass a null ptr.
+function _add_vector_scalar!(add!, task, ::SVector{0,T}) where {T}
+    add!(task, Ptr{T}(C_NULL), Int32(0))
+    return nothing
+end
+function _add_vector_scalar!(add!, task, v::SVector{N,T}) where {N,T}
+    ref = Ref(v)
+    GC.@preserve ref begin
+        add!(task, Ptr{T}(Base.unsafe_convert(Ptr{SVector{N,T}}, ref)), Int32(N))
+    end
+    return nothing
+end
+
+# Match cupynumeric/_thunk/deferred.py::bitgenerator_distribution via Julia
+# Legate tasking. Vector scalars still go through tiny C++ helpers because
+# Legate.jl Scalar has no std::vector constructors.
 function nda_bitgenerator_distribution!(
     arr::NDArray,
     handle::Int32,
@@ -186,33 +202,30 @@ function nda_bitgenerator_distribution!(
     floatparams::SVector{NF,Float32},
     doubleparams::SVector{ND,Float64},
 ) where {N,NI,NF,ND}
-    # Ref(svec) as a ccall arg is stack-boxed; C++ copies before return.
+    isempty(arr) && return arr
+
     @task_scope "bitgenerator" begin
-        ccall(
-            (:nda_bitgenerator_distribution, libnda),
-            Cvoid,
-            (
-                NDArray_t, Int32, UInt32, UInt64, UInt32, UInt32,
-                Ptr{SVector{N,Int64}}, Int32,
-                Ptr{SVector{NI,Int64}}, Int32,
-                Ptr{SVector{NF,Float32}}, Int32,
-                Ptr{SVector{ND,Float64}}, Int32,
-            ),
-            arr.ptr,
-            handle,
-            generator_type,
-            seed,
-            flags,
-            distribution,
-            Ref(strides),
-            Int32(N),
-            Ref(intparams),
-            Int32(NI),
-            Ref(floatparams),
-            Int32(NF),
-            Ref(doubleparams),
-            Int32(ND),
-        )
+        rt = Legate.get_runtime()
+        lib = cuNumeric.get_lib()
+        task = Legate.create_auto_task(rt, lib, cuNumeric.BITGENERATOR)
+
+        st = cuNumeric.get_store(arr)
+        Legate.add_output(task, st)
+        finalize(st)
+
+        Legate.add_scalar(task, Legate.Scalar(Int32(cuNumeric.BITGENOP_DISTRIBUTION)))
+        Legate.add_scalar(task, Legate.Scalar(handle))
+        Legate.add_scalar(task, Legate.Scalar(generator_type))
+        Legate.add_scalar(task, Legate.Scalar(seed))
+        Legate.add_scalar(task, Legate.Scalar(flags))
+        Legate.add_scalar(task, Legate.Scalar(distribution))
+
+        _add_vector_scalar!(cuNumeric.add_vector_scalar_i64, task, strides)
+        _add_vector_scalar!(cuNumeric.add_vector_scalar_i64, task, intparams)
+        _add_vector_scalar!(cuNumeric.add_vector_scalar_f32, task, floatparams)
+        _add_vector_scalar!(cuNumeric.add_vector_scalar_f64, task, doubleparams)
+
+        Legate.submit_auto_task(rt, task)
     end
     return arr
 end

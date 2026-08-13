@@ -18,10 +18,12 @@
  *            Nader Rahhal <naderrahhal2026@u.northwestern.edu>
  */
 
+#include <cstdint>
 #include <initializer_list>
 #include <iostream>
 #include <string>  //needed for return type of toString methods
 #include <type_traits>
+#include <vector>
 
 #include "accessors.h"
 #include "cupynumeric.h"
@@ -96,6 +98,34 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   mod.method("_get_store", &get_store);
   mod.method("get_lib", &get_lib);
   mod.method("nda_store_to_ndarray", &nda_store_to_ndarray);
+
+  // Legate.jl Scalar has no vector constructors. BITGENERATOR (and similar)
+  // tasks take fixed-array scalars; these helpers pack them from Julia
+  // pointers.
+  mod.method("add_vector_scalar_i64",
+             [](legate::AutoTask& task, const int64_t* p, int32_t n) {
+               std::vector<int64_t> v;
+               if (n > 0) {
+                 v.assign(p, p + n);
+               }
+               task.add_scalar_arg(legate::Scalar(std::move(v)));
+             });
+  mod.method("add_vector_scalar_f32",
+             [](legate::AutoTask& task, const float* p, int32_t n) {
+               std::vector<float> v;
+               if (n > 0) {
+                 v.assign(p, p + n);
+               }
+               task.add_scalar_arg(legate::Scalar(std::move(v)));
+             });
+  mod.method("add_vector_scalar_f64",
+             [](legate::AutoTask& task, const double* p, int32_t n) {
+               std::vector<double> v;
+               if (n > 0) {
+                 v.assign(p, p + n);
+               }
+               task.add_scalar_arg(legate::Scalar(std::move(v)));
+             });
 
   auto ndarray_accessor =
       mod.add_type<Parametric<TypeVar<1>, TypeVar<2>>>("NDArrayAccessor");

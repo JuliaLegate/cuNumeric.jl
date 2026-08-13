@@ -22,7 +22,7 @@
 # All draws go through get_static_generator().
 
 @doc"""
-    Random.rand!(arr::NDArray{<:AbstractFloat})
+    Random.rand!(arr::NDArray{<:SUPPORTED_FLOAT_TYPES})
     Random.rand!(arr::NDArray{<:Union{Int16,Int32,Int64}})
     Random.rand!(arr::NDArray{Bool})
 
@@ -31,7 +31,7 @@ Fill `arr` in-place with uniform random values.
 Floating arrays are filled from `[0, 1)`. Integer arrays use the full range of
 the element type, matching Julia `rand(T)`. `Bool` arrays are fair coin flips.
 """
-function Random.rand!(arr::NDArray{<:AbstractFloat})
+function Random.rand!(arr::NDArray{<:SUPPORTED_FLOAT_TYPES})
     return random!(get_static_generator(), arr)
 end
 
@@ -71,7 +71,7 @@ cuNumeric.rand(Bool, 8)
 A = cuNumeric.zeros(Float32, 2, 2); cuNumeric.rand!(A)
 ```
 """
-function rand(::Type{T}, dims::Dims) where {T<:AbstractFloat}
+function rand(::Type{T}, dims::Dims) where {T<:SUPPORTED_FLOAT_TYPES}
     return random(get_static_generator(), T, dims)
 end
 
@@ -81,7 +81,7 @@ end
 
 rand(::Type{Bool}, dims::Dims) = random(get_static_generator(), Bool, dims)
 
-function rand(::Type{T}, dims::Int...) where {T<:Union{AbstractFloat,_RNG_INT_TYPES,Bool}}
+function rand(::Type{T}, dims::Int...) where {T<:Union{SUPPORTED_FLOAT_TYPES,_RNG_INT_TYPES,Bool}}
     return cuNumeric.rand(T, dims)
 end
 rand(dims::Dims) = cuNumeric.rand(DEFAULT_FLOAT, dims)
@@ -109,16 +109,16 @@ end
 rand(r::AbstractUnitRange{Bool}, dims::Int...) = cuNumeric.rand(r, dims)
 
 @doc"""
-    Random.randn!(arr::NDArray{<:AbstractFloat})
+    Random.randn!(arr::NDArray{<:SUPPORTED_FLOAT_TYPES})
 
 Fill `arr` in-place with standard normal samples (mean 0, variance 1).
 """
-function Random.randn!(arr::NDArray{<:AbstractFloat})
+function Random.randn!(arr::NDArray{<:SUPPORTED_FLOAT_TYPES})
     return randn!(get_static_generator(), arr)
 end
 
 function Random.randn!(arr::NDArray{T}) where {T}
-    return error("randn! only supports NDArray{<:AbstractFloat} of Float32 or Float64")
+    return error("randn! only supports Float32 and Float64 NDArray storage")
 end
 
 @doc"""
@@ -136,10 +136,48 @@ cuNumeric.randn(2, 2)
 cuNumeric.randn(Float64, 1000)
 ```
 """
-function randn(::Type{T}, dims::Dims) where {T<:AbstractFloat}
+function randn(::Type{T}, dims::Dims) where {T<:SUPPORTED_FLOAT_TYPES}
     return randn(get_static_generator(), T, dims)
 end
 
-randn(::Type{T}, dims::Int...) where {T<:AbstractFloat} = cuNumeric.randn(T, dims)
+randn(::Type{T}, dims::Int...) where {T<:SUPPORTED_FLOAT_TYPES} = cuNumeric.randn(T, dims)
 randn(dims::Dims) = cuNumeric.randn(DEFAULT_FLOAT, dims)
 randn(dims::Int...) = cuNumeric.randn(DEFAULT_FLOAT, dims)
+
+@doc"""
+    Random.randexp!(arr::NDArray{<:SUPPORTED_FLOAT_TYPES})
+
+Fill `arr` in-place with exponential samples of scale 1 (mean 1), matching
+Julia `randexp`.
+"""
+function Random.randexp!(arr::NDArray{<:SUPPORTED_FLOAT_TYPES})
+    return randexp!(get_static_generator(), arr)
+end
+
+function Random.randexp!(arr::NDArray{T}) where {T}
+    return error("randexp! only supports Float32 and Float64 NDArray storage")
+end
+
+@doc"""
+    cuNumeric.randexp([T=Float32,] dims::Int...)
+    cuNumeric.randexp([T=Float32,] dims::Tuple)
+
+Create a new `NDArray` filled with exponential samples of scale 1 (mean 1),
+matching Julia `randexp`.
+
+Uses a process-global [`XORWOW`](@ref cuNumeric.XORWOW) generator. For a
+different engine or scale, use `randexp!(generator, arr; scale)`.
+
+# Examples
+```@repl
+cuNumeric.randexp(2, 2)
+cuNumeric.randexp(Float64, 1000)
+```
+"""
+function randexp(::Type{T}, dims::Dims) where {T<:SUPPORTED_FLOAT_TYPES}
+    return randexp(get_static_generator(), T, dims)
+end
+
+randexp(::Type{T}, dims::Int...) where {T<:SUPPORTED_FLOAT_TYPES} = cuNumeric.randexp(T, dims)
+randexp(dims::Dims) = cuNumeric.randexp(DEFAULT_FLOAT, dims)
+randexp(dims::Int...) = cuNumeric.randexp(DEFAULT_FLOAT, dims)

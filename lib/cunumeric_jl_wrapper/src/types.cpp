@@ -211,4 +211,8 @@ void wrap_bitgenerator_ops(jlcxx::Module& mod) {
                 uint32_t(CUPYNUMERIC_BITGENDIST_NORMAL_32));
   mod.set_const("BITGENDIST_NORMAL_64",
                 uint32_t(CUPYNUMERIC_BITGENDIST_NORMAL_64));
+  mod.set_const("BITGENDIST_EXPONENTIAL_32",
+                uint32_t(CUPYNUMERIC_BITGENDIST_EXPONENTIAL_32));
+  mod.set_const("BITGENDIST_EXPONENTIAL_64",
+                uint32_t(CUPYNUMERIC_BITGENDIST_EXPONENTIAL_64));
 }

@@ -44,7 +44,7 @@ using LinearAlgebra
 import LinearAlgebra: mul!
 
 using Random
-import Random: rand!, randn!
+import Random: rand!, randn!, randexp!
 
 using StaticArrays: SVector
 

@@ -21,6 +21,7 @@
     -- dtype / shape of rand, randn, and in-place fills
     -- uniforms land in [0, 1) with mean 1/2 and variance 1/12
     -- normals match loc / scale moments (default and shifted)
+    -- exponentials match scale moments (mean = var = scale)
     -- Monte-Carlo integral of exp(-x^2) recovers √π
     -- rand(a:b) is inclusive and a small discrete range has the right mean / var
     -- XORWOW / MRG32k3a / PHILOX4_32_10 all draw valid uniforms
@@ -55,7 +56,16 @@ end
         C = cuNumeric.zeros(T, 16)
         Random.randn!(C)
         @test eltype(C) === T
+
+        E = cuNumeric.randexp(T, 16)
+        @test eltype(E) === T
+        @test size(E) == (16,)
+        Random.randexp!(C)
+        @test eltype(C) === T
     end
+
+    @test eltype(cuNumeric.randexp(8)) === Float32
+    @test_throws MethodError cuNumeric.randexp(Int32, 4)
 
     R = cuNumeric.rand(3, 2)
     @test eltype(R) === Float32
@@ -103,6 +113,25 @@ end
         @test abs(μs - 3) < 0.1
         @test abs(vs - 4) < 0.3
     end
+end
+
+@testset verbose = true "exponential moments" begin
+    n = 65_536
+    for T in (Float32, Float64)
+        μ, v = _moments(cuNumeric.randexp(T, n))
+        @test abs(μ - 1) < 0.08
+        @test abs(v - 1) < 0.12
+        @test all(>=(zero(T)), _host(cuNumeric.randexp(T, 1024)))
+
+        g = cuNumeric.default_rng()
+        A = cuNumeric.zeros(T, n)
+        randexp!(g, A; scale=T(2))
+        μs, vs = _moments(A)
+        @test abs(μs - 2) < 0.12
+        @test abs(vs - 4) < 0.4
+    end
+
+    @test_throws ArgumentError randexp!(cuNumeric.default_rng(), cuNumeric.zeros(8); scale=0)
 end
 
 @testset verbose = true "monte carlo" begin

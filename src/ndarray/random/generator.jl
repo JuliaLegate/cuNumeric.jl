@@ -22,7 +22,7 @@
     Generator(bit_generator)
 
 cuPyNumeric-style RNG wrapping a [`BitGenerator`](@ref cuNumeric.BitGenerator). Module-level
-[`rand`](@ref cuNumeric.rand), [`randn`](@ref cuNumeric.randn) use a process-global
+[`rand`](@ref cuNumeric.rand), [`randn`](@ref cuNumeric.randn), [`randexp`](@ref cuNumeric.randexp) use a process-global
 XORWOW generator; pass a different engine to `default_rng` for Philox or MRG32k3a.
 """
 struct Generator{B<:BitGenerator}
@@ -106,7 +106,7 @@ function random!(g::Generator, arr::NDArray{T}) where {T}
     return error("random! supports Float32, Float64, Bool, Int16, Int32, and Int64 NDArray storage")
 end
 
-function random(g::Generator, ::Type{T}, dims::Dims) where {T<:AbstractFloat}
+function random(g::Generator, ::Type{T}, dims::Dims) where {T<:SUPPORTED_FLOAT_TYPES}
     arr = zeros(T, dims)
     random!(g, arr)
     return arr
@@ -133,14 +133,46 @@ function randn!(g::Generator, arr::NDArray{Float64}; loc::Real=0, scale::Real=1)
 end
 
 function randn!(g::Generator, arr::NDArray{T}; loc::Real=0, scale::Real=1) where {T}
-    return error("randn! only supports NDArray{<:AbstractFloat} of Float32 or Float64")
+    return error("randn! only supports Float32 and Float64 NDArray storage")
 end
 
 function randn(
     g::Generator, ::Type{T}, dims::Dims; loc::Real=0, scale::Real=1
-) where {T<:AbstractFloat}
+) where {T<:SUPPORTED_FLOAT_TYPES}
     arr = zeros(T, dims)
     randn!(g, arr; loc=loc, scale=scale)
+    return arr
+end
+
+function randexp!(g::Generator, arr::NDArray{Float32}; scale::Real=1)
+    s = Float32(scale)
+    s > 0 || throw(ArgumentError("scale must be positive, got $scale"))
+    _bitgenerator_distribution!(
+        arr, g.bit_generator, cuNumeric.BITGENDIST_EXPONENTIAL_32,
+        _EMPTY_INT64, SVector{1,Float32}(s), _EMPTY_FLOAT64,
+    )
+    return arr
+end
+
+function randexp!(g::Generator, arr::NDArray{Float64}; scale::Real=1)
+    s = Float64(scale)
+    s > 0 || throw(ArgumentError("scale must be positive, got $scale"))
+    _bitgenerator_distribution!(
+        arr, g.bit_generator, cuNumeric.BITGENDIST_EXPONENTIAL_64,
+        _EMPTY_INT64, _EMPTY_FLOAT32, SVector{1,Float64}(s),
+    )
+    return arr
+end
+
+function randexp!(g::Generator, arr::NDArray{T}; scale::Real=1) where {T}
+    return error("randexp! only supports Float32 and Float64 NDArray storage")
+end
+
+function randexp(
+    g::Generator, ::Type{T}, dims::Dims; scale::Real=1
+) where {T<:SUPPORTED_FLOAT_TYPES}
+    arr = zeros(T, dims)
+    randexp!(g, arr; scale=scale)
     return arr
 end
 

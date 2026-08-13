@@ -47,7 +47,7 @@ cuNumeric.rand
 ## rand!
 
 ```@docs
-Random.rand!(::NDArray{<:AbstractFloat})
+Random.rand!(::NDArray{<:cuNumeric.SUPPORTED_FLOAT_TYPES})
 ```
 
 ## randn
@@ -59,7 +59,19 @@ cuNumeric.randn
 ## randn!
 
 ```@docs
-Random.randn!(::NDArray{<:AbstractFloat})
+Random.randn!(::NDArray{<:cuNumeric.SUPPORTED_FLOAT_TYPES})
+```
+
+## randexp
+
+```@docs
+cuNumeric.randexp
+```
+
+## randexp!
+
+```@docs
+Random.randexp!(::NDArray{<:cuNumeric.SUPPORTED_FLOAT_TYPES})
 ```
 
 See [Random](./api_random.md) for BitGenerators (`XORWOW`, `MRG32k3a`,
