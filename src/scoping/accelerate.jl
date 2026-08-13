@@ -49,13 +49,13 @@ function _accelerate_rewrite(body, caller::Module, protected_roots::Set{Symbol})
 end
 
 # `begin`/expr form: 1:1 Julia scope (no `let`) — named bindings stay live.
-# Same-shape chains fuse into one multi-output launch; otherwise only anonymous
-# temporaries (slices) are freed.
+# On GPU, same-shape chains fuse into one multi-output launch; otherwise only
+# anonymous temporaries (slices) are freed.
 function _accelerate_block_soft(block, caller::Module)
     _reject_nonstraightline(block)
     nb = _normalize_return(_expand_dot_macros(block, caller))
     on_rewrite = BCAST_FUSION_DEBUG[] ? InterBroadcastFusion.log_rewrite : nothing
-    @static if FUSE_BROADCAST_EXPRS
+    @static if FUSE_BROADCAST_EXPRS && HAS_CUDA
         fused = _try_fuse_block_multi(nb)
         fused === nothing || return fused
     end
@@ -207,8 +207,9 @@ rejected. Three forms, by scope:
 
   * **function** (preferred): args are caller-owned; only the returned value stays
     materialized, so non-returned intermediates fuse away and are freed.
-  * **`begin`/expr**: 1:1 Julia scope — every named binding stays live; same-shape
-    chains fuse into one multi-output launch; anonymous temps (slices) are freed.
+  * **`begin`/expr**: 1:1 Julia scope — every named binding stays live; on GPU,
+    same-shape chains fuse into one multi-output launch; anonymous temps (slices)
+    are freed.
   * **`let`**: hard scope — combines single-use producers and frees every
     non-returned temporary; only the returned value(s) escape. Maximum reuse.
 
@@ -217,7 +218,7 @@ rejected. Three forms, by scope:
     c = u .* v
     return c .^ 2
 end
-a, b = @accelerate begin          # a and b both stay live, one launch
+a, b = @accelerate begin          # a and b both stay live, one GPU launch
     a = x .* y
     b = a .+ 1
     (a, b)

@@ -1,55 +1,12 @@
-# Develeper CI test. This will build the workflow using Jlls and building wrappers from SRC
-name: Develeper CI test
+# Developer wrapper tests build the wrappers from source instead of using JLLs.
+name: Developer Wrapper Tests
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to build instead'
-        required: false
-        default: ''
-      mark_as_latest:
-        description: 'Mark as latest'
-        type: boolean
-        required: false
-        default: false
-  push:
-    paths:
-      - 'src/**'
-      - 'scripts/**'
-      - 'deps/build.jl'
-      - 'Project.toml'
-      - 'lib/cunumeric_jl_wrapper/src/**'
-      - 'lib/cunumeric_jl_wrapper/include/**'
-      - 'lib/CNPreferences/src/**'
-      - '.github/workflows/developer.yml'
-    tags:
-      - 'v*'
-    branches:
-      - main
-  pull_request:
-    paths:
-      - 'src/**'
-      - 'scripts/**'
-      - 'deps/build.jl'
-      - 'Project.toml'
-      - 'lib/cunumeric_jl_wrapper/src/**'
-      - 'lib/cunumeric_jl_wrapper/include/**'
-      - 'lib/CNPreferences/src/**'
-      - '.github/workflows/developer.yml'
-jobs:
-  pkg_resolve:
-    uses: ./.github/workflows/pkg_resolve.yml
+  workflow_call:
 
-  docs:
-    name: Developer CI test - Julia ${{ matrix.julia }}
-    needs: pkg_resolve
-    permissions:
-      contents: read
-      packages: write
-      attestations: write
-      id-token: write
-      actions: write
+jobs:
+  test:
+    name: Julia ${{ matrix.julia }}
     strategy:
       fail-fast: false
       matrix:

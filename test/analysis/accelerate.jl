@@ -23,6 +23,8 @@
 #   @accelerate let ... end               -> hard scope, combine + free non-returned
 #   @accelerate expr                      -> materialized result, temps freed
 
+using InteractiveUtils: code_typed
+
 @testset "@accelerate — four forms" begin
     T = Float32
     N = 64
@@ -65,21 +67,18 @@
         @test approx(res, (ja .+ jb) .^ 2)
     end
 
-    # The multi-output launch used by the `begin` chain form is GPU-only.
-    if cuNumeric.HAS_CUDA
-        @testset "2. begin form (bindings stay alive)" begin
-            function _acc_begin(a, b)
-                q = @accelerate begin
-                    p = a .* b
-                    q = p .+ one(T)
-                    q
-                end
-                return p, q              # both must be defined in this scope
+    @testset "2. begin form (bindings stay alive)" begin
+        function _acc_begin(a, b)
+            q = @accelerate begin
+                p = a .* b
+                q = p .+ one(T)
+                q
             end
-            p, q = _acc_begin(_nd(ja), _nd(jb))
-            @test approx(p, ja .* jb)
-            @test approx(q, (ja .* jb) .+ one(T))
+            return p, q              # both must be defined in this scope
         end
+        p, q = _acc_begin(_nd(ja), _nd(jb))
+        @test approx(p, ja .* jb)
+        @test approx(q, (ja .* jb) .+ one(T))
     end
 
     @testset "expansion contracts (white-box)" begin
@@ -114,7 +113,7 @@
             end
         ))
 
-        if cuNumeric.FUSE_BROADCAST_EXPRS
+        if cuNumeric.FUSE_BROADCAST_EXPRS && cuNumeric.HAS_CUDA
             # A same-shape chain fuses into one multi-output launch and still
             # frees the hoisted slice temporaries.
             mo = string(expand(:(
@@ -126,6 +125,50 @@
             )))
             @test occursin("copyto_fused_multi_alloc!", mo)
             @test occursin("maybe_insert_delete", mo)
+        else
+            # Multi-output fusion is GPU-only; CPU expansion must use the
+            # ordinary broadcast path even when fusion is enabled in preferences.
+            cpu = string(expand(:(
+                begin
+                    p = a .* b
+                    q = p .+ 1
+                    q
+                end
+            )))
+            @test !occursin("copyto_fused_multi_alloc!", cpu)
         end
+    end
+
+    @testset "multi-output segment runner is fully unrolled" begin
+        # GPU compilation requires every chained segment call to be statically
+        # dispatched. This three-segment shape crossed Julia 1.10's recursive
+        # inference limit when `_run_segments` recursed over `Base.tail`.
+        segs = (
+            (+, (cuNumeric.RuntimeBroadcastArg{1}(), cuNumeric.RuntimeBroadcastArg{2}())),
+            (*, (cuNumeric.LocalBroadcastArg{1}(), cuNumeric.RuntimeBroadcastArg{1}())),
+            (^, (cuNumeric.LocalBroadcastArg{2}(), cuNumeric.RuntimeBroadcastArg{3}())),
+        )
+        outs = ntuple(_ -> zeros(T, 2, 2), 3)
+        runtime_args = (ones(T, 2, 2), ones(T, 2, 2), 2)
+
+        @test @inferred(
+            cuNumeric._run_segments(
+                segs, outs, runtime_args, (), (), CartesianIndex(1, 1)
+            )
+        ) === nothing
+        @test getindex.(outs, Ref(CartesianIndex(1, 1))) == (T(2), T(2), T(4))
+
+        argtypes = (
+            typeof(segs),
+            typeof(outs),
+            typeof(runtime_args),
+            Tuple{},
+            Tuple{},
+            CartesianIndex{2},
+        )
+        typed = only(code_typed(cuNumeric._run_segments, argtypes; optimize=true)).first
+        @test !occursin(
+            "_run_segments", sprint(show, MIME("text/plain"), typed)
+        )
     end
 end

@@ -795,17 +795,37 @@ Base.@propagate_inbounds @inline function _materialize_ml_args(plan::Tuple, rt, 
 end
 
 # Device-side: run each segment in order, store to its output, chain the local.
-Base.@propagate_inbounds @inline _run_segments(::Tuple{}, outs, rt, sa, locals, I) = nothing
-Base.@propagate_inbounds @inline function _run_segments(segs::Tuple, outs, rt, sa, locals, I)
-    seg = getfield(segs, 1)
-    f = getfield(seg, 1)
-    plan = getfield(seg, 2)
-    vals = _materialize_ml_args(plan, rt, sa, locals, I)
-    v = Base.Broadcast._broadcast_getindex_evalf(f, vals...)
-    @inbounds getfield(outs, 1)[I] = v
-    return @inbounds _run_segments(
-        Base.tail(segs), Base.tail(outs), rt, sa, (locals..., v), I
-    )
+# Generate straight-line code because recursive tuple traversal eventually hits
+# Julia's inference limit and leaves a dynamic call in GPU kernels on Julia 1.10.
+Base.@propagate_inbounds @inline @generated function _run_segments(
+    segs::S, outs, rt, sa, locals::L, I
+) where {S<:Tuple,L<:Tuple}
+    body = Expr(:block)
+    local_values = Any[:(getfield(locals, $k)) for k in 1:fieldcount(L)]
+
+    for k in 1:fieldcount(S)
+        seg = gensym(:seg)
+        vals = gensym(:vals)
+        value = gensym(:value)
+        local_tuple = Expr(:tuple, local_values...)
+        push!(
+            body.args,
+            quote
+                $seg = getfield(segs, $k)
+                $vals = _materialize_ml_args(
+                    getfield($seg, 2), rt, sa, $local_tuple, I
+                )
+                $value = Base.Broadcast._broadcast_getindex_evalf(
+                    getfield($seg, 1), $vals...
+                )
+                @inbounds getfield(outs, $k)[I] = $value
+            end,
+        )
+        push!(local_values, value)
+    end
+
+    push!(body.args, :(nothing))
+    return body
 end
 
 # Dimension-dispatched (mirrors the single-output linear/cartesian kernels).

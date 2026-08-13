@@ -12,7 +12,7 @@ on:
         required: false
         default: false
   workflow_run:
-    workflows: ['CI CPU']
+    workflows: ['CI']
     types: [completed]
     branches:
       - main
