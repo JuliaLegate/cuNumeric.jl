@@ -47,14 +47,19 @@ function test_unary_operation(func, julia_arr, cunumeric_arr, T)
     end
 end
 
-skip_on_integer = (Base.acosh, Base.atanh, Base.atan, Base.acos, Base.asin)
-skip_on_bool = (Base.:(-), skip_on_integer...)
+skip_on_integer = (
+    Base.acosh, Base.atanh, Base.atan, Base.acos, Base.asin,
+    Base.ceil, Base.floor, Base.trunc, Base.round, Base.signbit,
+)
+skip_on_bool = skip_on_integer
 skip_on_complex = (
     Base.tanh,
     Base.deg2rad, Base.rad2deg, Base.sign, Base.cbrt,
     Base.exp2, Base.expm1, Base.log10, Base.log1p, Base.log2,
     Base.acos, Base.asin, Base.atan, Base.acosh, Base.asinh, Base.atanh,
+    Base.ceil, Base.floor, Base.trunc, Base.signbit, Base.:(~),
 )
+skip_on_float = (Base.:(~),)
 
 function test_unary_function_set(func_dict, T, N)
     default_generator = (T == Bool) ? :uniform : :unit_interval
@@ -70,6 +75,10 @@ function test_unary_function_set(func_dict, T, N)
         end
 
         if func in skip_on_bool && (T == Bool)
+            continue
+        end
+
+        if func in skip_on_float && (T <: AbstractFloat)
             continue
         end
 
@@ -125,6 +134,14 @@ function run_unary_tests(types; include_bool_reductions::Bool=false)
 
             allowpromotion(T == Bool) do
                 return test_unary_function_set(cuNumeric.unary_op_map_no_args, T, N)
+            end
+
+            if T <: AbstractFloat
+                @testset "round is 1-arg only" begin
+                    a = cuNumeric.ones(T, 4)
+                    # Julia wraps kwargs in a closure; extra positional args are rejected.
+                    @test_throws Exception round.(a; digits=1)
+                end
             end
             # Special cases for unary ops that dont use . syntax
             @testset "- (Negation)" begin

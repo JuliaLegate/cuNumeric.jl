@@ -26,19 +26,24 @@ global const floaty_unary_ops_no_args = Dict{Function,UnaryOpCode}(
 
 global const unary_op_map_no_args = Dict{Function,UnaryOpCode}(
     Base.abs => cuNumeric.ABSOLUTE,
-    # Base.conj => cuNumeric.CONJ, #! NEED TO SUPPORT COMPLEX TYPES FIRST
+    # Base.conj => cuNumeric.CONJ, # handled as a special case below
     Base.:(-) => cuNumeric.NEGATIVE,
-    # Base.frexp => cuNumeric.FREXP, #* annoying returns tuple
-    # missing => cuNumeric.GETARG, #not in numpy?
-    # Base.imag => cuNumeric.IMAG, #! NEED TO SUPPORT COMPLEX TYPES FIRST
-    # missing => cuNumerit.INVERT, # no bitwise not in julia?
-    # Base.isfinite => cuNumeric.ISFINITE, #* dont feel like looking into Inf rn
-    # Base.isinf => cuNumeric.ISINF, #* dont feel like looking into Inf rn
-    # Base.isnan => cuNumeric.ISNAN, #* dont feel like looking into Inf rn
-    # Base.modf => cuNumeric.MODF, #* annoying returns tuple
-    #missing => cuNumeric.POSITIVE, #What is this even for
+    # Base.frexp => cuNumeric.FREXP, # returns a tuple
+    # missing => cuNumeric.GETARG,
+    # Base.imag => cuNumeric.IMAG, # handled as a special case below
+    Base.:(~) => cuNumeric.INVERT, # integers only; kernel rejects Bool
+    Base.isfinite => cuNumeric.ISFINITE,
+    Base.isinf => cuNumeric.ISINF,
+    Base.isnan => cuNumeric.ISNAN,
+    # Base.modf => cuNumeric.MODF, # returns a tuple
+    # missing => cuNumeric.POSITIVE,
     Base.sign => cuNumeric.SIGN,
-    # Base.signbit => cuNumeric.SIGNBIT, #! Doesnt support Bool, I do not feel like dealing with this right now...
+    Base.signbit => cuNumeric.SIGNBIT, # floats only; kernel rejects Bool/int
+    Base.ceil => cuNumeric.CEIL, # floats only
+    Base.floor => cuNumeric.FLOOR, # floats only
+    Base.trunc => cuNumeric.TRUNC, # floats only
+    # 1-arg `round.(A)` only (see __broadcast below). ROUND needs extra_args.
+    Base.round => cuNumeric.RINT,
 )
 
 ### SPECIAL CASES ###
@@ -105,6 +110,17 @@ function Base.:(-)(input::NDArray{Bool})
     return out
 end
 
+# Broadcast `.-` on Bool: Julia `-true === -1`, so promote then NEGATIVE.
+@inline function __broadcast(
+    ::typeof(Base.:(-)), out::NDArray{O}, input::NDArray{Bool}
+) where {O<:Integer}
+    assertpromotion(".-", Bool, O)
+    promoted = unchecked_promote_arr(input, O)
+    result = nda_unary_op!(out, cuNumeric.NEGATIVE, promoted)
+    destroy!(promoted)
+    return result
+end
+
 function Base.sqrt(input::NDArray{T,2}) where {T}
     return error("cuNumeric.jl does not support matrix square root.")
 end
@@ -169,6 +185,23 @@ for (julia_fn, op_code) in unary_op_map_no_args
     end
 end
 
+# INVERT rejects Bool; on Bool, Julia `~` is the same as `!`.
+@inline function __broadcast(::typeof(Base.:(~)), out::NDArray{Bool}, input::NDArray{Bool})
+    return nda_unary_op!(out, cuNumeric.LOGICAL_NOT, input)
+end
+
+# Only the 1-arg `round.(A)` method above is supported (IEEE rint / RoundNearest).
+# `round.(A; digits=n)` is rewritten by Julia to a closure and hits the generic
+# "user-defined functions" error. Extra positional args hit this method.
+@inline function __broadcast(::typeof(Base.round), ::NDArray, ::NDArray, extra...)
+    return throw(
+        ArgumentError(
+            "cuNumeric.jl only supports round.(A) (default RoundNearest / IEEE rint). " *
+            "digits, sigdigits, and RoundingMode are not supported.",
+        ),
+    )
+end
+
 # Some functions always return floats even when given integers
 # in the case where the output is determined to be float, but
 # the input is integer, we first promote the input to float.
@@ -192,29 +225,9 @@ for (julia_fn, op_code) in floaty_unary_ops_no_args
     end
 end
 
-# global const unary_op_map_with_args = Dict{Function, Int}(
-#     Base.angle => Int(cuNumeric.ANGLE),
-#     Base.ceil => Int(cuNumeric.CEIL), #* HAS EXTRA ARGS
-#     Base.clamp => Int(cuNumeric.CLIP), #* HAS EXTRA ARGS
-#     Base.floor => cuNumeric.FLOOR, #! Doesnt support Bool, I do not feel like dealing with this right now...
-#     Base.trunc => Int(cuNumeric.TRUNC)  #* HAS EXTRA ARGS
-#     missing => Int(cuNumeric.RINT), #figure out which version of round
-#     missing => Int(cuNumeric.ROUND), #figure out which version of round
-# )
-
-# for (base_func, op_code) in unary_op_map_with_args
-#     @eval begin
-#         @doc """
-#             $($(Symbol(base_func))) : A unary operation acting on an NDArray
-#         """
-#         function $(Symbol(base_func))(input::NDArray, args...)
-#             out = cuNumeric.zeros(eltype(input), size(input)) # not sure this is ok for performance
-#             extra_args = cuNumeric.StdVector{cuNumeric.LegateScalar}([LegateScalar(a) for a in args])
-#             unary_op(out, $(op_code), input, extra_args)
-#             return out
-#         end
-#     end
-# end
+# CLIP / clamp needs extra_args (lo, hi). nda_unary_op! currently ccall's
+# without extra scalars, so clamp is not wired. Do not revive the old
+# StdVector{LegateScalar} path unless that C API exists.
 
 @doc"""
 Supported Unary Reduction Operations
