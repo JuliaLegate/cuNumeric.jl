@@ -134,8 +134,6 @@ function __materialize(bc::Broadcasted{<:NDArrayStyle})
 end
 
 # The C API is binary, so evaluate flattened `+` and `*` chains pairwise.
-@inline _is_flattened_associative(f) = f === (+) || f === (*)
-
 function _unravel_flattened_associative(f, args::Tuple)
     acc = first(args)
     owns_acc = false

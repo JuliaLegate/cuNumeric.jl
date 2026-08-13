@@ -619,7 +619,11 @@ end
     bc::Base.Broadcast.Broadcasted{S,Ax,F,Args}
 ) where {S,Ax,F,Args}
     eltypes = _fused_checked_eltypes(bc.args)
-    T_OUT = __checked_promote_op(bc.f, eltypes)
+    T_OUT = if length(bc.args) > 2 && _is_flattened_associative(bc.f)
+        _checked_promote_associative(bc.f, eltypes.parameters...)
+    else
+        __checked_promote_op(bc.f, eltypes)
+    end
     __my_promote_type(eltypes.parameters...)
     return T_OUT
 end
@@ -1063,8 +1067,9 @@ end
 # writes `dest`. Producer buffers are allocated (returned so callers bind names).
 function copyto_fused_multi!(dest::NDArray, seg_bcs::Tuple)
     bufs = _alloc_segment_buffers(dest, seg_bcs[1:(end - 1)], size(dest))
-    _fused_multi_launch!((bufs..., dest), seg_bcs)
-    return tuple(bufs...), dest
+    outs = (bufs..., dest)
+    _fused_multi_launch!(outs, seg_bcs)
+    return outs
 end
 
 # Every segment gets a fresh buffer (all named results stay live). Returns the
@@ -1072,6 +1077,6 @@ end
 function copyto_fused_multi_alloc!(seg_bcs::Tuple)
     tmpl = _first_ndarray(seg_bcs)
     outs = _alloc_segment_buffers(tmpl, seg_bcs, size(tmpl))
-    _fused_multi_launch!(tuple(outs...), seg_bcs)
-    return tuple(outs...)
+    _fused_multi_launch!(outs, seg_bcs)
+    return outs
 end
