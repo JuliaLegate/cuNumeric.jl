@@ -136,8 +136,10 @@ function Base.:(+)(rhs1::NDArray{A,N}, rhs2::NDArray{B,N}) where {A,B,N}
     return _nda_binary_op_promoted!(out, cuNumeric.ADD, rhs1, rhs2)
 end
 
-Base.:(*)(val::V, arr::NDArray{A}) where {A,V} = _mul_scalar(__my_promote_type(A, V), val, arr)
-Base.:(*)(arr::NDArray{A}, val::V) where {A,V} = val * arr
+function Base.:(*)(val::V, arr::NDArray{A}) where {A,V<:Number}
+    return _mul_scalar(__my_promote_type(A, V), val, arr)
+end
+Base.:(*)(arr::NDArray{A}, val::V) where {A,V<:Number} = val * arr
 
 _mul_scalar(::Type{T}, val, arr::NDArray{T}) where {T} = nda_multiply_scalar(arr, T(val))
 function _mul_scalar(::Type{U}, val, arr::NDArray) where {U}
@@ -156,14 +158,14 @@ function Base.:(*)(rhs1::NDArray{A,2}, rhs2::NDArray{B,2}) where {A,B}
 end
 
 function Base.:(*)(rhs1::NDArray{Bool,2}, rhs2::NDArray{Bool,2})
-    throw(
+    return throw(
         ArgumentError("cuNumeric.jl does not support matrix multiplication of two Boolean arrays")
     )
 end
 
 function Base.:(*)(rhs1::NDArray{<:Integer,2}, rhs2::NDArray{<:Integer,2})
     #* this is a stupid.....
-    throw(
+    return throw(
         ArgumentError("cuNumeric.jl does not support matrix multiplication of two Integer arrays")
     )
 end
@@ -221,14 +223,14 @@ end
 
 function LinearAlgebra.mul!(out::NDArray, rhs1::NDArray{Bool,2}, rhs2::NDArray{Bool,2})
     #* Could just promote both inputs to Int32
-    throw(
+    return throw(
         ArgumentError("cuNumeric.jl does not support matrix multiplication of two Boolean arrays")
     )
 end
 
 function LinearAlgebra.mul!(out::NDArray, rhs1::NDArray{<:Integer,2}, rhs2::NDArray{<:Integer,2})
     #* this is a stupid.....
-    throw(
+    return throw(
         ArgumentError("cuNumeric.jl does not support matrix multiplication of two Integer arrays")
     )
 end

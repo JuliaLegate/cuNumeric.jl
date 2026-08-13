@@ -349,6 +349,17 @@ function Base.any(input::NDArray{Bool}; dims=Colon())
     return _bool_reduction_impl(cuNumeric.ANY, input, dims)
 end
 
+# Compare on-device against `zero(T)` / `_eye(T, n)` (identity filled with `one(T)`).
+# Returns a 0D `NDArray{Bool}` — not a Julia `Bool`.
+function Base.iszero(A::NDArray{T}) where {T}
+    return all(A .== zero(T))
+end
+function Base.isone(A::NDArray{T,2}) where {T}
+    m, n = size(A)
+    m != n && return NDArray(false) # LinearAlgebra.isone: only square matrices
+    return all(A .== _eye(T, m))
+end
+
 # Boolean multiplication is logical conjunction. cuPyNumeric's PROD reduction
 # uses a numeric fill identity, which Legate rejects for a Boolean target.
 function Base.prod(input::NDArray{Bool}; dims=Colon())

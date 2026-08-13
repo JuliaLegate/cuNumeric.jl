@@ -111,7 +111,7 @@ end
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
         n = 5
         ref = Matrix{T}(I, n, n)
-        out = cuNumeric.eye(T, n)
+        out = NDArray{T}(I, n, n)
         allowscalar() do
             @test safe_compare(ref, out, atol(T), rtol(T))
         end
@@ -126,7 +126,7 @@ end
         ref = sum(diag(A))  # widens ints like trace's accumulator
         out = cuNumeric.trace(nda)
         allowscalar() do
-            @test ref ≈ out[1] atol=atol(eltype(ref)) rtol=rtol(eltype(ref))
+            @test ref ≈ out[] atol=atol(eltype(ref)) rtol=rtol(eltype(ref))
         end
     end
 end
@@ -140,7 +140,7 @@ end
             ref = sum(diag(A, k))
             out = cuNumeric.trace(nda; offset=k)
             allowscalar() do
-                @test ref ≈ out[1] atol=atol(eltype(ref)) rtol=rtol(eltype(ref))
+                @test ref ≈ out[] atol=atol(eltype(ref)) rtol=rtol(eltype(ref))
             end
         end
     end
