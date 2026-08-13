@@ -5,7 +5,7 @@ Benchmarks are declared in `benchmarks.toml`. `run.jl` parses it.
 ## Running
 
 ```bash
-julia --project run.jl     # runs whatever benchmarks.toml configures
+julia --project=. run.jl   # runs whatever benchmarks.toml configures
 ```
 
 `run.jl` runs each (benchmark, backend) pair in its own process via
@@ -35,7 +35,7 @@ n_warmup = 5
 n_iter   = 1000
 n_trial  = 5
 
-[[gemm]]            # name registered in src/benchmarks.jl
+[[gemm]]            # name registered under src/benchmarks/
 T    = "Float32"     # element type
 gpus = 1
 cpus = 2
@@ -58,6 +58,9 @@ two axes:
 `fusion` toggles cuNumeric broadcast fusion (`true`/`false` or `"on"`/`"off"`,
 default `true`); it only affects cuNumeric, so comparison backends run once, not
 per variant.
+
+`grayscott_baseline` measures the step as written;
+`grayscott_accelerated` wraps the step in `@accelerate` and is cuNumeric-only.
 
 Each zipped field must be one of:
 

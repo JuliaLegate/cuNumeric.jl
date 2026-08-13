@@ -41,7 +41,7 @@ makedocs(;
         ],
         "Performance Tips" => [
             "Kernel Fusion" => "perf/kernel_fusion.md",
-            "Reduce Allocations" => "perf/reduce_allocations.md",
+            "The @accelerate Macro" => "perf/reduce_allocations.md",
             "Patterns to Avoid" => "perf/patterns_to_avoid.md",
         ],
         "Configuration" => [

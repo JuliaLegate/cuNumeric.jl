@@ -18,7 +18,7 @@ Base.@kwdef struct GrayScottBaseline{T} <: AbstractGrayScott{T}
     M::Int
 end
 
-Base.@kwdef struct GrayScottLifetimes{T} <: AbstractGrayScott{T}
+Base.@kwdef struct GrayScottAccelerated{T} <: AbstractGrayScott{T}
     N::Int
     M::Int
 end
@@ -92,9 +92,9 @@ function check_benchmark_correctness(
     return (u_ok && v_ok) ? "pass" : "fail"
 end
 
-# VARIANT DESCRIPTION
+# Variant description:
 # baseline: as written
-# lifetimes: step wrapped in @analyze_lifetimes
+# accelerated: step wrapped in @accelerate
 let body = quote
         # currently we don't have NDArray^x working yet. every operator is dotted
         # so each rhs fuses into a single broadcast kernel rather than shattering
@@ -150,8 +150,11 @@ let body = quote
         v_new[end, :] = v[2, :]
     end
     @eval _gs_step!(b::GrayScottBaseline, u, v, u_new, v_new, args::GSParams) = $body
-    @eval _gs_step!(b::GrayScottLifetimes, u, v, u_new, v_new, args::GSParams) =
-        @analyze_lifetimes $body
+    @eval @accelerate function _gs_step!(
+        b::GrayScottAccelerated, u, v, u_new, v_new, args::GSParams
+    )
+        $body
+    end
 end
 
 function run!(b::AbstractGrayScott, st::GrayScottState)
@@ -163,4 +166,4 @@ function run!(b::AbstractGrayScott, st::GrayScottState)
 end
 
 register_benchmark("grayscott_baseline", GrayScottBaseline)
-register_benchmark("grayscott_lifetimes", GrayScottLifetimes)
+register_benchmark("grayscott_accelerated", GrayScottAccelerated)

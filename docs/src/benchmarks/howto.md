@@ -47,7 +47,7 @@ n_correctness_iter = 5
 - `cupynumeric` / `cuda`: optional comparison backends
 - `check_correctness`: one CPU-reference check per config (not per timed iter), recorded in the CSV
 
-Each `[[name]]` block is a registered benchmark (`gemm`, `montecarlo`, `grayscott_baseline`, `grayscott_lifetimes`, …). Names must match what `src/benchmarks/*.jl` registers.
+Each `[[name]]` block is a registered benchmark (`gemm`, `montecarlo`, `grayscott_baseline`, `grayscott_accelerated`, …). Names must match what `src/benchmarks/*.jl` registers.
 
 ```toml
 [[gemm]]
@@ -76,7 +76,7 @@ M    = [150, 300, 600]
 
 That is 2 types × 3 sweep points = **6 runs**.
 
-`fusion` toggles cuNumeric broadcast fusion (`true`/`false` or `"on"`/`"off"`, default `true`). Comparison backends ignore fusion and run once (on the fused pass), not per variant. Names ending in `_lifetimes` are cuNumeric-only code-path variants.
+`fusion` toggles cuNumeric broadcast fusion (`true`/`false` or `"on"`/`"off"`, default `true`). Comparison backends ignore fusion and run once (on the fused pass), not per variant. `grayscott_accelerated` wraps the step in `@accelerate` and is cuNumeric-only.
 
 Gotcha: when `T = ["Float32", "Float64"]` and a length-2 `N`/`M` sweep you get all **4** combinations, not a paired `Float32 -> N[1]`. To pin a type to a size, use separate `[[name]]` blocks.
 

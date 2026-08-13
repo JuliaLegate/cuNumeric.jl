@@ -39,11 +39,11 @@ fusion = [true, false]
 N = [2000, 2832, 4000, 5656]
 M = [2000, 2832, 4000, 5656]
 
-[[grayscott_lifetimes]]
+[[grayscott_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 16
-fusion = false
+fusion = [true, false]
 N = [2000, 2832, 4000, 5656]
 M = [2000, 2832, 4000, 5656]
 

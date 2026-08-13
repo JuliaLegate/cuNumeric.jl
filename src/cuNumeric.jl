@@ -59,6 +59,10 @@ if !HAS_CUDA
     @warn "We couldn't find a CUDA-enabled GPU. If you have an NVIDIA GPU something might be wrong."
 end
 
+# `HAS_CUDA` describes the machine. A CPU-only Legate configuration on a GPU
+# machine must still avoid registering or launching GPU tasks.
+@inline _has_gpu_target() = HAS_CUDA && Int(Legate.num_gpus()) > 0
+
 const DEFAULT_FLOAT = Float32
 const DEFAULT_INT = Int32
 

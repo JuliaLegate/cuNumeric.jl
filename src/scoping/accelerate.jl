@@ -55,12 +55,23 @@ function _accelerate_block_soft(block, caller::Module)
     _reject_nonstraightline(block)
     nb = _normalize_return(_expand_dot_macros(block, caller))
     on_rewrite = BCAST_FUSION_DEBUG[] ? InterBroadcastFusion.log_rewrite : nothing
+    fallback = process_ndarray_scope(
+        nb; on_rewrite, protected_roots=_assigned_symbols(nb)
+    )
     @static if FUSE_BROADCAST_EXPRS && HAS_CUDA
         fused = _try_fuse_block_multi(nb)
-        fused === nothing || return fused
+        if !isnothing(fused)
+            return quote
+                if cuNumeric._has_gpu_target()
+                    $fused
+                else
+                    $fallback
+                end
+            end
+        end
     end
     # Protect named bindings; free only anonymous temps.
-    return process_ndarray_scope(nb; on_rewrite, protected_roots=_assigned_symbols(nb))
+    return fallback
 end
 
 # Flatten a `let` node's bindings + body into one statement block.
@@ -203,15 +214,17 @@ end
 
 Fuse straight-line array code into fewer kernel launches and free temporaries.
 The body must be straight-line — control flow and nested/anonymous functions are
-rejected. Three forms, by scope:
+rejected. Four forms, by scope:
 
   * **function** (preferred): args are caller-owned; only the returned value stays
     materialized, so non-returned intermediates fuse away and are freed.
-  * **`begin`/expr**: 1:1 Julia scope — every named binding stays live; on GPU,
-    same-shape chains fuse into one multi-output launch; anonymous temps (slices)
-    are freed.
+  * **`begin`**: 1:1 Julia scope — every named binding stays live; on GPU,
+    same-shape chains may fuse into one multi-output launch; anonymous temps
+    (slices) are freed.
   * **`let`**: hard scope — combines single-use producers and frees every
     non-returned temporary; only the returned value(s) escape. Maximum reuse.
+  * **expression**: materializes and returns one expression without introducing
+    a new scope.
 
 ```julia
 @accelerate function step(u, v)   # c freed; w returned
@@ -223,6 +236,7 @@ a, b = @accelerate begin          # a and b both stay live, one GPU launch
     b = a .+ 1
     (a, b)
 end
+result = @accelerate (x .+ y .* z)
 ```
 """
 macro accelerate(input)
