@@ -17,6 +17,30 @@
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 
+@accelerate function _type_stable_accelerate_function(a, b)
+    intermediate = @. a + b
+    return @. intermediate * 2.0f0
+end
+
+function _type_stable_accelerate_begin(a, b)
+    return @accelerate begin
+        intermediate = @. a + b
+        result = @. intermediate * 2.0f0
+        (intermediate, result)
+    end
+end
+
+function _type_stable_accelerate_let(a, b)
+    return @accelerate let
+        intermediate = @. a + b
+        @. intermediate * 2.0f0
+    end
+end
+
+function _type_stable_accelerate_expr(a, b)
+    return @accelerate (@. (a + b) * 2.0f0)
+end
+
 @testset verbose = true "core" begin
     a = cuNumeric.zeros(5)
     b = cuNumeric.zeros(Float64, 3, 4)
@@ -102,6 +126,23 @@ end
     @test @inferred(a .+ b) !== nothing
     @test @inferred(a ./ b) !== nothing
     @test @inferred(((a .* b) .+ a) .* 2.0f0) !== nothing
+end
+
+@testset verbose = true "@accelerate forms" begin
+    a = cuNumeric.ones(Float32, 3, 3)
+    b = cuNumeric.ones(Float32, 3, 3)
+
+    function_result = @inferred _type_stable_accelerate_function(a, b)
+    @test function_result isa NDArray{Float32,2}
+
+    begin_result = @inferred _type_stable_accelerate_begin(a, b)
+    @test begin_result isa Tuple{NDArray{Float32,2},NDArray{Float32,2}}
+
+    let_result = @inferred _type_stable_accelerate_let(a, b)
+    @test let_result isa NDArray{Float32,2}
+
+    expr_result = @inferred _type_stable_accelerate_expr(a, b)
+    @test expr_result isa NDArray{Float32,2}
 end
 
 @testset verbose = true "solve" begin

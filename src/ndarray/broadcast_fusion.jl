@@ -1046,15 +1046,17 @@ function _fused_multi_launch!(out_arrs::Tuple, seg_bcs::Tuple)
     return out_arrs
 end
 
-# Allocate a buffer per segment (dependency order) with that segment's inferred
-# eltype and the given shape.
-function _alloc_segment_buffers(template::NDArray, seg_bcs, dims)
-    bufs = NDArray[]
-    for seg_bc in seg_bcs
-        flat = Base.Broadcast.flatten(seg_bc)
-        push!(bufs, similar(template, _segment_eltype(flat, bufs), dims))
-    end
-    return bufs
+# Allocate a typed tuple so callers retain each segment's concrete NDArray type.
+function _alloc_segment_buffers(template::NDArray, seg_bcs::Tuple, dims)
+    return _alloc_segment_buffers(template, seg_bcs, dims, ())
+end
+
+@inline _alloc_segment_buffers(template, ::Tuple{}, dims, bufs::Tuple) = bufs
+
+@inline function _alloc_segment_buffers(template, seg_bcs::Tuple, dims, bufs::Tuple)
+    flat = Base.Broadcast.flatten(first(seg_bcs))
+    buf = similar(template, _segment_eltype(flat, bufs), dims)
+    return _alloc_segment_buffers(template, Base.tail(seg_bcs), dims, (bufs..., buf))
 end
 
 # `seg_bcs[1:end-1]` are materialized producers (dependency order); `seg_bcs[end]`
