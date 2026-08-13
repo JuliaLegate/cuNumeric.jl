@@ -38,7 +38,7 @@ using cunumeric_jl_wrapper_jll
 
 import Base: axes, convert, copy, copyto!, inv, isfinite, sqrt, -, +, *, ==, !=,
     isapprox, read, view, maximum, minimum, prod, sum, getindex, setindex!,
-    sum, prod
+    sum, prod, argmax, argmin
 
 using LinearAlgebra
 import LinearAlgebra: mul!
@@ -49,7 +49,7 @@ import Random: rand!, randn!, randexp!
 using StaticArrays: SVector
 
 using StatsBase
-import StatsBase: var, mean
+import StatsBase: var, mean, std
 
 include(joinpath(@__DIR__, "../deps/version.jl"))
 include("utilities/preference.jl")

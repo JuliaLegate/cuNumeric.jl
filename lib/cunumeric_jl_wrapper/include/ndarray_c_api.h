@@ -91,6 +91,9 @@ void nda_unary_op(CN_NDArray* out, CuPyNumericUnaryOpCode op_code,
                   CN_NDArray* input);
 void nda_unary_reduction(CN_NDArray* out, CuPyNumericUnaryRedCode op_code,
                          CN_NDArray* input);
+CN_NDArray* nda_unary_reduction_axes(CuPyNumericUnaryRedCode op_code,
+                                     CN_NDArray* input, const int32_t* axes,
+                                     int32_t num_axes, bool keepdims);
 CN_NDArray* nda_get_slice(CN_NDArray* arr, const CN_Slice* slices,
                           int32_t ndim);
 CN_NDArray* nda_attach_external(const void* ptr, size_t size, int dim,

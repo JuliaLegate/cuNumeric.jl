@@ -250,11 +250,18 @@ The following unary reduction operations are supported and can be applied direct
   • `minimum`
   • `prod`
   • `sum`
+  • `mean`
+  • `var` / `std` (sample / `corrected=true`; real types only)
+  • `argmax` / `argmin` (1-d only)
 
-These operations follow standard Julia semantics.
+Full reductions return a **0-d `NDArray`**, not a Julia scalar. Use `unwrap` or
+`A[]` (with `allowscalar`) when you need a host value.
 
 Reduction over specific dimensions is supported via the `dims` keyword argument,
-following the same semantics as Julia's base reduction functions.
+following the same keepdims semantics as Julia's base reduction functions.
+Multi-axis `dims=(1,2)` is implemented as sequential single-axis reductions
+(the C++ kernel accepts only one axis at a time). `argmax`/`argmin` are 1-d
+only (Base's N-d / `dims=` path returns `CartesianIndex`).
 
 Examples
 --------
@@ -264,6 +271,7 @@ A = cuNumeric.ones(5)
 
 maximum(A)
 sum(A)
+mean(A)
 
 # Reduce over a specific dimension
 B = cuNumeric.ones(3, 4)
@@ -275,10 +283,8 @@ sum(B, dims=(1,2))  # 1×1 result
 ```
 """
 global const unary_reduction_map = Dict{Function,UnaryRedCode}(
-    # Base.argmax => cuNumeric.ARGMAX, #* WILL BE OFF BY 1
-    # Base.argmin => cuNumeric.ARGMIN, #* WILL BE OFF BY 1
+    # ARGMAX/ARGMIN: 1-d Base.argmax/argmin below, not this map.
     #missing => cuNumeric.CONTAINS, # strings or also integral types
-    #missing => cuNumeric.COUNT_NONZERO, # Base.count(!Base.iszero, arr)
     Base.maximum => cuNumeric.MAX,
     Base.minimum => cuNumeric.MIN,
     #missing => cuNumeric.NANARGMAX,
@@ -288,12 +294,10 @@ global const unary_reduction_map = Dict{Function,UnaryRedCode}(
     #missing => cuNumeric.NANPROD,
     Base.prod => cuNumeric.PROD,
     Base.sum => cuNumeric.SUM,
-    #missing => cuNumeric.SUM_SQUARES,
-    # StatsBase.var => cuNumeric.VARIANCE #! dies horribly?? wth
+    # VARIANCE opcode is unused: compose sample var from mean / sum instead.
 )
 
-#! IT WOULD BE NICE IF THESE JUST RETURNED SCALARS WHEN APPROPRIATE
-# #*TODO HOW TO GET THESE ACTING ON CERTAIN DIMS
+# Full reductions return 0-d NDArrays (not Julia scalars). That is intentional.
 
 function _unary_reduction_apply(out, op_code, input::NDArray{T}, ::Type{T}) where {T}
     return nda_unary_reduction(out, op_code, input)
@@ -331,17 +335,21 @@ function _unary_reduction_impl(base_func, op_code, input::NDArray{T,N}, dims::In
     return _unary_reduction_axes_apply(op_code, input, T_OUT, axes)
 end
 
+# cupynumeric throws if axes.size() > 1. Compose keepdims single-axis reductions
+# so `sum(A; dims=(1,2))` matches Julia's 1×1 (etc.) shape.
 function _unary_reduction_impl(base_func, op_code, input::NDArray{T,N}, dims::Tuple) where {T,N}
-    if length(dims) > 1
-        error(
-            "$(base_func): reducing over multiple dimensions is not yet supported. Got dims=$dims"
-        )
+    n = length(dims)
+    n == 0 && return copy(input)
+    n == 1 && return _unary_reduction_impl(base_func, op_code, input, dims[1])
+    result = input
+    owned = false
+    for d in dims
+        next = _unary_reduction_impl(base_func, op_code, result, d)
+        owned && destroy!(result)
+        result = next
+        owned = true
     end
-    # single element tuple
-    T_OUT = Base.promote_op(base_func, Vector{T})
-    is_wider_type(T_OUT, T) && assertpromotion(base_func, T, T_OUT)
-    axes = Int32[dims[1] - 1]
-    return _unary_reduction_axes_apply(op_code, input, T_OUT, axes)
+    return result
 end
 
 # Generate code for all unary reductions.
@@ -358,9 +366,27 @@ function _bool_reduction_impl(op_code, input::NDArray{Bool}, ::Colon)
     return nda_unary_reduction(out, op_code, input)
 end
 
+function _bool_reduction_impl(op_code, input::NDArray{Bool}, dim::Integer)
+    return nda_unary_reduction_axes(op_code, input, Int32[dim - 1], true)
+end
+
+function _bool_reduction_impl(op_code, input::NDArray{Bool}, dims::Tuple)
+    n = length(dims)
+    n == 0 && return copy(input)
+    n == 1 && return _bool_reduction_impl(op_code, input, dims[1])
+    result = input
+    owned = false
+    for d in dims
+        next = _bool_reduction_impl(op_code, result, d)
+        owned && destroy!(result)
+        result = next
+        owned = true
+    end
+    return result
+end
+
 function _bool_reduction_impl(op_code, input::NDArray{Bool}, dims)
-    axes = collect(Int32, (d - 1 for d in (dims isa Integer ? (dims,) : dims)))
-    return nda_unary_reduction_axes(op_code, input, axes, true)
+    return _bool_reduction_impl(op_code, input, Tuple(dims))
 end
 
 function Base.all(input::NDArray{Bool}; dims=Colon())
@@ -377,10 +403,125 @@ function Base.prod(input::NDArray{Bool}; dims=Colon())
     return _unary_reduction_impl(Base.prod, cuNumeric.ALL, input, dims)
 end
 
-#! ONLY ADD ONCE REDUCTIONS RETURN A SCALAR
-# function StatsBase.mean(arr::NDArray{T}) where T
-#     return sum(arr) ./ prod(size(arr))
+# Number of elements a reduction with `dims` collapses. Used by mean/var/std.
+_reduction_nelem(arr::NDArray, ::Colon) = Int(prod(size(arr)))
+_reduction_nelem(arr::NDArray, dim::Integer) = Int(size(arr, dim))
+function _reduction_nelem(arr::NDArray, dims::Tuple)
+    n = 1
+    for d in dims
+        n *= Int(size(arr, d))
+    end
+    return n
+end
+
+# Divide an NDArray by a count without going through 0-d broadcast, which
+# unwraps to a Julia scalar in Broadcast.copy.
+function _div_nelem(arr::NDArray{T}, n::Integer) where {T}
+    FT = float(T)
+    return (FT(1) / FT(n)) * arr
+end
+
+"""
+    mean(A::NDArray; dims=:)
+
+Arithmetic mean of `A`. Full reduction returns a 0-d `NDArray`, not a Julia
+scalar. With `dims`, the reduced axes are kept as size 1, matching Base.
+"""
+function mean(arr::NDArray; dims=Colon())
+    s = sum(arr; dims=dims)
+    result = _div_nelem(s, _reduction_nelem(arr, dims))
+    destroy!(s)
+    return result
+end
+
+"""
+    var(A::NDArray; corrected=true, mean=nothing, dims=:)
+    std(A::NDArray; corrected=true, mean=nothing, dims=:)
+
+Sample variance and standard deviation (`corrected=true`, divisor `n-1`),
+matching Julia / StatsBase. Real types only. Returns a 0-d or reduced
+`NDArray`, not a Julia scalar.
+"""
+function var(arr::NDArray{T}; corrected::Bool=true, mean=nothing, dims=Colon()) where {T<:Real}
+    μ = isnothing(mean) ? cuNumeric.mean(arr; dims=dims) : mean
+    centered = arr .- μ
+    isnothing(mean) && μ isa NDArray && destroy!(μ)
+    sq = centered .^ 2
+    destroy!(centered)
+    s = sum(sq; dims=dims)
+    destroy!(sq)
+    n = _reduction_nelem(arr, dims)
+    denom = corrected ? n - 1 : n
+    result = _div_nelem(s, denom)
+    destroy!(s)
+    return result
+end
+
+function std(arr::NDArray{T}; corrected::Bool=true, mean=nothing, dims=Colon()) where {T<:Real}
+    return _sqrt_ndarray(var(arr; corrected=corrected, mean=mean, dims=dims))
+end
+
+# SQRT kernel rejects 0-d (shape [] vs [1]). Wrap the host sqrt back into a 0-d array.
+function _sqrt_ndarray(v::NDArray{T,0}) where {T}
+    s = T(sqrt(unwrap(v)))
+    destroy!(v)
+    return NDArray(s)
+end
+
+function _sqrt_ndarray(v::NDArray{T}) where {T}
+    out = similar(v)
+    nda_unary_op!(out, cuNumeric.SQRT, v)
+    destroy!(v)
+    return out
+end
+
+# function _count_nonzero(input::NDArray, dims)
+#     nz = input .!= zero(eltype(input))
+#     result = sum(nz; dims=dims)
+#     destroy!(nz)
+#     return result
 # end
+#
+# """
+#     count(A::NDArray{Bool}; dims=:)
+#     count(!iszero, A::NDArray; dims=:)
+#
+# Count `true` values in a `Bool` array, or nonzeros in a numeric array.
+# Returns a 0-d or reduced `NDArray` of integers, not a Julia `Int`.
+# """
+# function count(arr::NDArray{Bool}; dims=Colon())
+#     return _count_nonzero(arr, dims)
+# end
+#
+# function count(::ComposedFunction{typeof(!),typeof(iszero)}, arr::NDArray; dims=Colon())
+#     return _count_nonzero(arr, dims)
+# end
+
+# Kernel ARGMAX/ARGMIN are 0-based. Julia indices are 1-based.
+function _indices_to_one_based(raw::NDArray{Int64})
+    result = nda_add_scalar(raw, Int64(1))
+    destroy!(raw)
+    return result
+end
+
+"""
+    argmax(A::NDArray{<:Any,1})
+    argmin(A::NDArray{<:Any,1})
+
+1-based index of the first extremum, as a 0-d `NDArray{Int64}` (not a Julia
+`Int`). 1-d only. Complex arrays are not supported.
+"""
+function argmax(arr::NDArray{T,1}) where {T}
+    T <: Complex && throw(ArgumentError("argmax/argmin are not supported for complex arrays"))
+    raw = nda_unary_reduction_axes(cuNumeric.ARGMAX, arr, Int32[], false)
+    return _indices_to_one_based(raw)
+end
+
+function argmin(arr::NDArray{T,1}) where {T}
+    T <: Complex && throw(ArgumentError("argmax/argmin are not supported for complex arrays"))
+    raw = nda_unary_reduction_axes(cuNumeric.ARGMIN, arr, Int32[], false)
+    return _indices_to_one_based(raw)
+end
 
 # function Base.reduce(f::Function, arr::NDArray)
 #     return f(arr)
