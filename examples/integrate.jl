@@ -1,17 +1,18 @@
-using cuNumeric
+integrand = (x) -> exp(-x^2)
 
-integrand(x) = @. exp(-x^2)
+N = 1_000_000
 
-@accelerate function monte_carlo(N, x_max)
-    Ω = 2 * x_max
-    raw_samples = cuNumeric.rand(N)
-    samples = @. Ω * raw_samples - x_max
-    # Reductions return 0D NDArrays to avoid blocking the runtime.
-    return (Ω / N) * sum(integrand(samples))
+x_max = 10.0f0
+domain = [-x_max, x_max]
+Ω = domain[2] - domain[1]
+
+estimate = @accelerate begin
+    samples = @. Ω * cuNumeric.rand(N) - x_max
+
+    # Reductions return 0D NDArrays instead
+    # of a scalar to avoid blocking runtime
+    return (Ω / N) * sum(integrand.(samples))
 end
 
-if abspath(PROGRAM_FILE) == @__FILE__
-    estimate = monte_carlo(1_000_000, 10.0f0)
-    println("Monte-Carlo estimate: $(estimate)")
-    println("Analytical value: $(sqrt(pi))")
-end
+println("Monte-Carlo Estimate: $(estimate)")
+println("Analytical: $(sqrt(pi))")
