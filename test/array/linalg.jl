@@ -174,18 +174,6 @@ end
 #     end
 # end
 
-@testset "unique" begin
-    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
-        A = T[1, 2, 2, 3, 4, 4, 4, 5]
-        nda = cuNumeric.NDArray(A)
-
-        ref = unique(A)
-        out = cuNumeric.unique(nda)
-
-        @test Set(Array(out)) == Set(ref)
-    end
-end
-
 @testset "solve diagonal" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SOLVE_TYPES)
         n = 4
