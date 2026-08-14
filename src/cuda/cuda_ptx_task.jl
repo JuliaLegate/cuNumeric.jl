@@ -2,7 +2,11 @@ export @cuda_task, @launch, CUDATask
 
 struct CUDATask
     func::String
-    argtypes::NTuple{N,Type} where {N} #! THIS IS TYPE UNSTABLE
+    argtypes::Vector{DataType}
+
+    function CUDATask(func, argtypes)
+        return new(convert(String, func), collect(DataType, argtypes))
+    end
 end
 
 #! JUST PASS TYPES HERE INSTEAD OF CALLING typeof()
@@ -16,11 +20,13 @@ function to_stdvec(::Type{T}, vec) where {T}
     return stdvec
 end
 
-@inline _launch_shape(arr::NDArray) =
-    isnothing(arr.padding) ? size(arr) : arr.padding.shape
+@inline function _launch_shape(arr::NDArray)
+    padding = _padding(arr)
+    return isnothing(padding) ? size(arr) : padding.shape
+end
 
 function _ensure_launch_padding!(arr::NDArray{T,N}, target_shape; copy=false) where {T,N}
-    padding = arr.padding
+    padding = _padding(arr)
     !isnothing(padding) && padding.shape == target_shape && return arr
     isnothing(padding) && size(arr) == target_shape && return arr
     @assert all(target_shape .>= size(arr)) "cannot pad $(size(arr)) to $target_shape"
@@ -37,7 +43,7 @@ function _ensure_launch_padding!(arr::NDArray{T,N}, target_shape; copy=false) wh
     )
 
     if aliases_parent
-        old_padding = arr.padding
+        old_padding = _padding(arr)
         arr.padding = storage
         !isnothing(old_padding) && _destroy_padded_storage!(old_padding)
     else
@@ -52,7 +58,7 @@ function _ensure_launch_padding!(arr::NDArray{T,N}, target_shape; copy=false) wh
 end
 
 function _sync_to_launch_padding!(arr::NDArray)
-    padding = arr.padding
+    padding = _padding(arr)
     if !isnothing(padding) && !isnothing(padding.staging)
         copyto!(padding.staging, arr)
     end
@@ -60,7 +66,7 @@ function _sync_to_launch_padding!(arr::NDArray)
 end
 
 function _sync_from_launch_padding!(arr::NDArray)
-    padding = arr.padding
+    padding = _padding(arr)
     if !isnothing(padding) && !isnothing(padding.staging)
         copyto!(arr, padding.staging)
     end
@@ -73,7 +79,8 @@ end
 # stay elevated and framebuffer reclaim stalls (fusion 1-GPU OOM under load).
 # Finalize the temporary immediately after the copy into the task.
 function _add_task_array!(add_to, task, arr::NDArray; physical=false)
-    task_arr = physical && !isnothing(arr.padding) ? arr.padding.backing : arr
+    padding = _padding(arr)
+    task_arr = physical && !isnothing(padding) ? padding.backing : arr
     st = cuNumeric.get_store(task_arr)
     try
         return add_to(task, st)

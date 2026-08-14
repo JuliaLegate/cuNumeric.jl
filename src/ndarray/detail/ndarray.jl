@@ -42,24 +42,7 @@ end
 get_n_dim(ptr::NDArray_t) = Int(ccall((:nda_array_dim, libnda), Int32, (NDArray_t,), ptr))
 
 abstract type AbstractNDArray{T<:SUPPORTED_TYPES,N} <: AbstractArray{T,N} end
-
-struct PaddedStorage{T,N}
-    backing::AbstractNDArray{T,N}
-    staging::Union{Nothing,AbstractNDArray{T,N}}
-    shape::NTuple{N,Int}
-end
-
-function _finalize_padded_storage!(storage::PaddedStorage)
-    !isnothing(storage.staging) && finalize(storage.staging)
-    finalize(storage.backing)
-    return nothing
-end
-
-function _destroy_padded_storage!(storage::PaddedStorage)
-    !isnothing(storage.staging) && destroy!(storage.staging)
-    destroy!(storage.backing)
-    return nothing
-end
+abstract type AbstractPaddedStorage{T,N} end
 
 @doc"""
 The NDArray type represents a multi-dimensional array in cuNumeric.
@@ -69,7 +52,7 @@ Finalizer calls `nda_destroy_array` to clean up the underlying Legate array when
 mutable struct NDArray{T,N,P} <: AbstractNDArray{T,N}
     ptr::NDArray_t
     nbytes::Int64
-    padding::Union{Nothing,PaddedStorage{T,N}}
+    padding::Union{Nothing,AbstractPaddedStorage{T,N}}
     parent::P
 
     function NDArray(ptr::NDArray_t, ::Type{T}, ::Val{N}) where {T,N}
@@ -90,6 +73,29 @@ mutable struct NDArray{T,N,P} <: AbstractNDArray{T,N}
     end
 end
 
+struct PaddedStorage{T,N} <: AbstractPaddedStorage{T,N}
+    backing::NDArray{T,N,Nothing}
+    staging::Union{Nothing,NDArray{T,N,NDArray{T,N,Nothing}}}
+    shape::NTuple{N,Int}
+end
+
+@inline function _padding(arr::NDArray{T,N}) where {T,N}
+    padding = arr.padding
+    return isnothing(padding) ? nothing : padding::PaddedStorage{T,N}
+end
+
+function _finalize_padded_storage!(storage::PaddedStorage)
+    !isnothing(storage.staging) && finalize(storage.staging)
+    finalize(storage.backing)
+    return nothing
+end
+
+function _destroy_padded_storage!(storage::PaddedStorage)
+    !isnothing(storage.staging) && destroy!(storage.staging)
+    destroy!(storage.backing)
+    return nothing
+end
+
 # May run off the launch thread, so defer the Legate free to drain_pending_frees!.
 # Accounting is atomic and safe to do here immediately.
 function _finalize_ndarray!(arr::NDArray)
@@ -97,7 +103,7 @@ function _finalize_ndarray!(arr::NDArray)
     arr.ptr = Ptr{Cvoid}(0)
     nbytes = arr.nbytes
     arr.nbytes = 0
-    padding = arr.padding
+    padding = _padding(arr)
     arr.padding = nothing
 
     if ptr != C_NULL
@@ -108,7 +114,7 @@ function _finalize_ndarray!(arr::NDArray)
     return nothing
 end
 
-@inline _is_ndarray_slice(arr::NDArray) = arr.parent isa NDArray || !isnothing(arr.padding)
+@inline _is_ndarray_slice(arr::NDArray) = arr.parent isa NDArray || !isnothing(_padding(arr))
 
 """
     destroy!(arr::NDArray)
@@ -125,7 +131,7 @@ function destroy!(arr::NDArray)
         arr.nbytes = 0
         nbytes > 0 && register_free!(nbytes)
     end
-    padding = arr.padding
+    padding = _padding(arr)
     arr.padding = nothing
     !isnothing(padding) && _destroy_padded_storage!(padding)
     return arr
