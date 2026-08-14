@@ -44,7 +44,9 @@ using LinearAlgebra
 import LinearAlgebra: mul!
 
 using Random
-import Random: rand!
+import Random: rand!, randn!, randexp!
+
+using StaticArrays: SVector
 
 using StatsBase
 import StatsBase: var, mean
@@ -171,6 +173,9 @@ include("cuda/cuda_ptx_task.jl")
 include("ndarray/broadcast_fusion.jl")
 include("ndarray/broadcast.jl")
 include("ndarray/ndarray.jl")
+include("ndarray/random/bitgenerator.jl")
+include("ndarray/random/generator.jl")
+include("ndarray/random/random.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
 include("ndarray/linalg.jl")

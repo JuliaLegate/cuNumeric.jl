@@ -55,6 +55,11 @@ end
 
     @test @inferred(cuNumeric.rand(4, 3)) !== nothing
     @test @inferred(cuNumeric.rand(Float32, 5)) !== nothing
+    @test @inferred(cuNumeric.randn(Float64, 5)) !== nothing
+    @test @inferred(cuNumeric.randexp(Float32, 5)) !== nothing
+    @test @inferred(cuNumeric.rand(0:3, 3)) !== nothing
+    @test @inferred(cuNumeric.rand(ComplexF32, 5)) !== nothing
+    @test @inferred(cuNumeric.randn(ComplexF64, 5)) !== nothing
 
     # NDArray from Julia Array (Parent-stable attachment)
     @test @inferred(cuNumeric.NDArray(rand(10))) !== nothing

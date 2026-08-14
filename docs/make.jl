@@ -60,6 +60,7 @@ makedocs(;
         ],
         "Public API" => [
             "Initialization" => "api_initialization.md",
+            "Random" => "api_random.md",
             "Unary Operations" => "api_unary.md",
             "Binary Operations" => "api_binary.md",
             "Linear Algebra" => "linalg.md",
