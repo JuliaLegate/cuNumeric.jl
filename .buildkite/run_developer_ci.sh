@@ -20,7 +20,7 @@ sh "$CMAKE_INSTALLER" --skip-license --prefix="$CMAKE_ROOT"
 export PATH="$CMAKE_ROOT/bin:$PATH"
 cmake --version
 
-# Clean slate so cached state doesn't leak across Julia versions.
+# Clean slate so cached state doesn't leak across Julia versions. 
 rm -f Manifest.toml test/Manifest.toml dev/Manifest.toml \
       LocalPreferences.toml test/LocalPreferences.toml
 
