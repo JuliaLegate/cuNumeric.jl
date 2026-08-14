@@ -20,10 +20,12 @@ function to_stdvec(::Type{T}, vec) where {T}
     return stdvec
 end
 
-@inline function _launch_shape(arr::NDArray)
-    padding = _padding(arr)
-    return isnothing(padding) ? size(arr) : padding.shape
-end
+@inline _launch_shape(arr::NDArray) = _launch_shape(arr, _padding(arr))
+@inline _launch_shape(arr::NDArray, ::Nothing) = size(arr)
+@inline _launch_shape(::NDArray, padding::PaddedStorage) = padding.shape
+
+@inline _physical_array(arr::NDArray, ::Nothing) = arr
+@inline _physical_array(::NDArray, padding::PaddedStorage) = padding.backing
 
 function _ensure_launch_padding!(arr::NDArray{T,N}, target_shape; copy=false) where {T,N}
     padding = _padding(arr)
@@ -79,8 +81,7 @@ end
 # stay elevated and framebuffer reclaim stalls (fusion 1-GPU OOM under load).
 # Finalize the temporary immediately after the copy into the task.
 function _add_task_array!(add_to, task, arr::NDArray; physical=false)
-    padding = _padding(arr)
-    task_arr = physical && !isnothing(padding) ? padding.backing : arr
+    task_arr = physical ? _physical_array(arr, _padding(arr)) : arr
     st = cuNumeric.get_store(task_arr)
     try
         return add_to(task, st)

@@ -42,6 +42,8 @@ end
 get_n_dim(ptr::NDArray_t) = Int(ccall((:nda_array_dim, libnda), Int32, (NDArray_t,), ptr))
 
 abstract type AbstractNDArray{T<:SUPPORTED_TYPES,N} <: AbstractArray{T,N} end
+
+# Runtime padding uses an abstract field to break the recursive storage definition.
 abstract type AbstractPaddedStorage{T,N} end
 
 @doc"""
@@ -79,10 +81,9 @@ struct PaddedStorage{T,N} <: AbstractPaddedStorage{T,N}
     shape::NTuple{N,Int}
 end
 
-@inline function _padding(arr::NDArray{T,N}) where {T,N}
-    padding = arr.padding
-    return isnothing(padding) ? nothing : padding::PaddedStorage{T,N}
-end
+# Narrow the abstract field to its concrete storage type.
+@inline _padding(arr::NDArray{T,N}) where {T,N} =
+    arr.padding::Union{Nothing,PaddedStorage{T,N}}
 
 function _finalize_padded_storage!(storage::PaddedStorage)
     !isnothing(storage.staging) && finalize(storage.staging)
