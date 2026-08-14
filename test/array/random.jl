@@ -18,7 +18,8 @@
 =#
 
 #= Purpose of test: random
-    -- dtype / shape of rand, randn, and in-place fills
+    -- dtype / shape of rand, randn, randexp, and in-place fills
+    -- complex rand / randn (independent real/imag); randexp throws
     -- uniforms land in [0, 1) with mean 1/2 and variance 1/12
     -- normals match loc / scale moments (default and shifted)
     -- exponentials match scale moments (mean = var = scale)
@@ -66,6 +67,39 @@ end
 
     @test eltype(cuNumeric.randexp(8)) === Float32
     @test_throws MethodError cuNumeric.randexp(Int32, 4)
+    @test_throws MethodError cuNumeric.randexp(ComplexF32, 4)
+    @test_throws MethodError cuNumeric.randexp(ComplexF64, 4)
+    @test_throws MethodError cuNumeric.rand(Complex{Int64}, 4)
+    @test_throws MethodError cuNumeric.randn(Complex{Int64}, 4)
+    @test_throws MethodError cuNumeric.randexp(Complex{Int64}, 4)
+
+    for T in (ComplexF32, ComplexF64)
+        A = cuNumeric.rand(T, 8, 4)
+        @test eltype(A) === T
+        @test size(A) == (8, 4)
+        h = _host(A)
+        @test all(0 .<= real.(h) .< 1)
+        @test all(0 .<= imag.(h) .< 1)
+
+        B = cuNumeric.zeros(T, 5, 5)
+        cuNumeric.rand!(B)
+        hb = _host(B)
+        @test all(0 .<= real.(hb) .< 1)
+        @test all(0 .<= imag.(hb) .< 1)
+
+        N = cuNumeric.randn(T, 32)
+        @test eltype(N) === T
+        @test size(N) == (32,)
+
+        C = cuNumeric.zeros(T, 16)
+        Random.randn!(C)
+        @test eltype(C) === T
+
+        @test_throws ErrorException Random.randexp!(C)
+        g = cuNumeric.default_rng()
+        @test_throws ErrorException randexp!(g, C)
+        @test_throws MethodError cuNumeric.randexp(g, T, (4,))
+    end
 
     R = cuNumeric.rand(3, 2)
     @test eltype(R) === Float32
@@ -97,6 +131,15 @@ end
     μb, vb = _moments(cuNumeric.rand(Bool, 65_536))
     @test abs(μb - 0.5) < 0.03
     @test abs(vb - 0.25) < 0.02
+
+    n = 65_536
+    for T in (ComplexF32, ComplexF64)
+        Z = _host(cuNumeric.rand(T, n))
+        @test abs(mean(real.(Z)) - 0.5) < 0.03
+        @test abs(mean(imag.(Z)) - 0.5) < 0.03
+        @test abs(var(real.(Z)) - 1 / 12) < 0.01
+        @test abs(var(imag.(Z)) - 1 / 12) < 0.01
+    end
 end
 
 @testset verbose = true "normal moments" begin
@@ -108,10 +151,21 @@ end
 
         g = cuNumeric.default_rng()
         A = cuNumeric.zeros(T, n)
-        randn!(g, A; loc=T(3), scale=T(2))
+        cuNumeric._randn!(g, A; loc=T(3), scale=T(2))
         μs, vs = _moments(A)
         @test abs(μs - 3) < 0.1
         @test abs(vs - 4) < 0.3
+    end
+
+    # Julia randn(Complex): Var(re) = Var(im) = 1/2, E[|z|²] = 1.
+    n = 65_536
+    for T in (ComplexF32, ComplexF64)
+        Z = _host(cuNumeric.randn(T, n))
+        @test abs(mean(real.(Z))) < 0.05
+        @test abs(mean(imag.(Z))) < 0.05
+        @test abs(var(real.(Z)) - 0.5) < 0.08
+        @test abs(var(imag.(Z)) - 0.5) < 0.08
+        @test abs(mean(abs2.(Z)) - 1) < 0.08
     end
 end
 
@@ -203,6 +257,13 @@ end
     @test g2.bit_generator.seed == UInt64(1234)
     B = cuNumeric.randn(g2, Float64, (32,))
     @test eltype(B) === Float64
+
+    C = cuNumeric.random(g2, ComplexF32, (8, 8))
+    @test eltype(C) === ComplexF32
+    @test size(C) == (8, 8)
+    Ch = _host(C)
+    @test all(0 .<= real.(Ch) .< 1)
+    @test all(0 .<= imag.(Ch) .< 1)
 
     s1 = cuNumeric.get_static_generator()
     s2 = cuNumeric.get_static_generator()

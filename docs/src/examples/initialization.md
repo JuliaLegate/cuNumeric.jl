@@ -24,7 +24,8 @@ R = cuNumeric.rand(4, 4)
 R64 = cuNumeric.rand(Float64, 1000)
 cuNumeric.rand!(R64)                      # fill an existing Float64 array
 N = cuNumeric.randn(Float32, 8, 8)
-E = cuNumeric.randexp(Float64, 1000)      # exponential, scale 1
+C = cuNumeric.rand(ComplexF32, 8, 8)      # independent real/imag uniforms
+E = cuNumeric.randexp(Float64, 1000)      # exponential, scale 1 (real only)
 I = cuNumeric.rand(0:9, 4, 4)             # Int64 in 0:9 (inclusive)
 Coin = cuNumeric.rand(Bool, 8)            # fair coin flips
 

@@ -23,15 +23,22 @@
 
 @doc"""
     Random.rand!(arr::NDArray{<:SUPPORTED_FLOAT_TYPES})
+    Random.rand!(arr::NDArray{<:SUPPORTED_COMPLEX_TYPES})
     Random.rand!(arr::NDArray{<:Union{Int16,Int32,Int64}})
     Random.rand!(arr::NDArray{Bool})
 
 Fill `arr` in-place with uniform random values.
 
-Floating arrays are filled from `[0, 1)`. Integer arrays use the full range of
-the element type, matching Julia `rand(T)`. `Bool` arrays are fair coin flips.
+Floating arrays are filled from `[0, 1)`. Complex arrays draw independent
+real/imag uniforms in `[0, 1)` (the unit square). Integer arrays use the full
+range of the element type, matching Julia `rand(T)`. `Bool` arrays are fair
+coin flips.
 """
 function Random.rand!(arr::NDArray{<:SUPPORTED_FLOAT_TYPES})
+    return random!(get_static_generator(), arr)
+end
+
+function Random.rand!(arr::NDArray{<:SUPPORTED_COMPLEX_TYPES})
     return random!(get_static_generator(), arr)
 end
 
@@ -44,7 +51,9 @@ function Random.rand!(arr::NDArray{Bool})
 end
 
 function Random.rand!(arr::NDArray{T}) where {T}
-    return error("rand! supports Float32, Float64, Bool, Int16, Int32, and Int64 NDArray storage")
+    return error(
+        "rand! supports Float32, Float64, ComplexF32, ComplexF64, Bool, Int16, Int32, and Int64 NDArray storage"
+    )
 end
 
 @doc"""
@@ -55,6 +64,7 @@ end
 Create a new `NDArray` filled with uniform random values.
 
 Floating types (`Float32` / `Float64`) are drawn natively in `[0, 1)`.
+`ComplexF32` / `ComplexF64` draw independent real/imag uniforms (unit square).
 `Bool` is a fair coin flip. Integer types `Int16`, `Int32`, and `Int64` use the
 full range of `T`. A unit range (`1:10`) draws inclusive integers, matching
 Julia `rand(1:10, dims...)`.
@@ -75,13 +85,19 @@ function rand(::Type{T}, dims::Dims) where {T<:SUPPORTED_FLOAT_TYPES}
     return random(get_static_generator(), T, dims)
 end
 
+function rand(::Type{T}, dims::Dims) where {T<:SUPPORTED_COMPLEX_TYPES}
+    return random(get_static_generator(), T, dims)
+end
+
 function rand(::Type{T}, dims::Dims) where {T<:_RNG_INT_TYPES}
     return integers(get_static_generator(), T, dims; low=typemin(T), high=typemax(T))
 end
 
 rand(::Type{Bool}, dims::Dims) = random(get_static_generator(), Bool, dims)
 
-function rand(::Type{T}, dims::Int...) where {T<:Union{SUPPORTED_FLOAT_TYPES,_RNG_INT_TYPES,Bool}}
+function rand(
+    ::Type{T}, dims::Int...
+) where {T<:Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES,_RNG_INT_TYPES,Bool}}
     return cuNumeric.rand(T, dims)
 end
 rand(dims::Dims) = cuNumeric.rand(DEFAULT_FLOAT, dims)
@@ -110,25 +126,36 @@ rand(r::AbstractUnitRange{Bool}, dims::Int...) = cuNumeric.rand(r, dims)
 
 @doc"""
     Random.randn!(arr::NDArray{<:SUPPORTED_FLOAT_TYPES})
+    Random.randn!(arr::NDArray{<:SUPPORTED_COMPLEX_TYPES})
 
-Fill `arr` in-place with standard normal samples (mean 0, variance 1).
+Fill `arr` in-place with standard normal samples. Real arrays have mean 0 and
+variance 1. Complex arrays match Julia `randn(Complex{T})`: independent real
+and imag parts with variance `1/2`, so `E[|z|²] = 1`.
 """
 function Random.randn!(arr::NDArray{<:SUPPORTED_FLOAT_TYPES})
     return randn!(get_static_generator(), arr)
 end
 
+function Random.randn!(arr::NDArray{<:SUPPORTED_COMPLEX_TYPES})
+    return randn!(get_static_generator(), arr)
+end
+
 function Random.randn!(arr::NDArray{T}) where {T}
-    return error("randn! only supports Float32 and Float64 NDArray storage")
+    return error(
+        "randn! only supports Float32, Float64, ComplexF32, and ComplexF64 NDArray storage"
+    )
 end
 
 @doc"""
     cuNumeric.randn([T=Float32,] dims::Int...)
     cuNumeric.randn([T=Float32,] dims::Tuple)
 
-Create a new `NDArray` filled with standard normal samples.
+Create a new `NDArray` filled with standard normal samples. Complex types
+match Julia `randn(Complex{T})` (`E[|z|²] = 1`).
 
-Uses a process-global [`XORWOW`](@ref cuNumeric.XORWOW) generator. For a different engine, loc,
-or scale, use `randn!(generator, arr; loc, scale)`.
+Uses a process-global [`XORWOW`](@ref cuNumeric.XORWOW) generator. For a different
+engine, pass a [`Generator`](@ref cuNumeric.Generator) to `randn!`. Shift or scale
+in user code (`μ .+ σ .* Z`); `loc`/`scale` are not part of the public API.
 
 # Examples
 ```@repl
@@ -140,7 +167,15 @@ function randn(::Type{T}, dims::Dims) where {T<:SUPPORTED_FLOAT_TYPES}
     return randn(get_static_generator(), T, dims)
 end
 
-randn(::Type{T}, dims::Int...) where {T<:SUPPORTED_FLOAT_TYPES} = cuNumeric.randn(T, dims)
+function randn(::Type{T}, dims::Dims) where {T<:SUPPORTED_COMPLEX_TYPES}
+    return randn(get_static_generator(), T, dims)
+end
+
+function randn(
+    ::Type{T}, dims::Int...
+) where {T<:Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}}
+    return cuNumeric.randn(T, dims)
+end
 randn(dims::Dims) = cuNumeric.randn(DEFAULT_FLOAT, dims)
 randn(dims::Int...) = cuNumeric.randn(DEFAULT_FLOAT, dims)
 

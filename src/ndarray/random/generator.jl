@@ -102,11 +102,44 @@ function random!(g::Generator, arr::NDArray{Bool})
     return arr
 end
 
+# as_type first: `float .* Complex` is a widening promotion and is disallowed.
+# Does not take ownership of `re` / `imag_part`.
+function _pack_complex!(
+    out::NDArray{Complex{T}}, re::NDArray{T}, imag_part::NDArray{T}
+) where {T<:SUPPORTED_FLOAT_TYPES}
+    CT = Complex{T}
+    re_c = as_type(re, CT)
+    im_c = as_type(imag_part, CT)
+    out .= re_c .+ im_c .* CT(0, 1)
+    destroy!(re_c)
+    destroy!(im_c)
+    return out
+end
+
+# No native complex BitGenerator dist. Independent real/imag uniforms, like
+# Julia `rand(Complex{T})` (unit square, not the unit disk).
+function random!(g::Generator, arr::NDArray{Complex{T}}) where {T<:SUPPORTED_FLOAT_TYPES}
+    re = random(g, T, size(arr))
+    imag_part = random(g, T, size(arr))
+    _pack_complex!(arr, re, imag_part)
+    destroy!(re)
+    destroy!(imag_part)
+    return arr
+end
+
 function random!(g::Generator, arr::NDArray{T}) where {T}
-    return error("random! supports Float32, Float64, Bool, Int16, Int32, and Int64 NDArray storage")
+    return error(
+        "random! supports Float32, Float64, ComplexF32, ComplexF64, Bool, Int16, Int32, and Int64 NDArray storage"
+    )
 end
 
 function random(g::Generator, ::Type{T}, dims::Dims) where {T<:SUPPORTED_FLOAT_TYPES}
+    arr = zeros(T, dims)
+    random!(g, arr)
+    return arr
+end
+
+function random(g::Generator, ::Type{T}, dims::Dims) where {T<:SUPPORTED_COMPLEX_TYPES}
     arr = zeros(T, dims)
     random!(g, arr)
     return arr
@@ -116,7 +149,7 @@ function random(g::Generator, ::Type{Bool}, dims::Dims)
     return integers(g, Int16, dims; low=0, high=2) .!= Int16(0)
 end
 
-function randn!(g::Generator, arr::NDArray{Float32}; loc::Real=0, scale::Real=1)
+function _randn!(g::Generator, arr::NDArray{Float32}; loc::Real=0, scale::Real=1)
     _bitgenerator_distribution!(
         arr, g.bit_generator, cuNumeric.BITGENDIST_NORMAL_32,
         _EMPTY_INT64, SVector{2,Float32}(Float32(loc), Float32(scale)), _EMPTY_FLOAT64,
@@ -124,7 +157,7 @@ function randn!(g::Generator, arr::NDArray{Float32}; loc::Real=0, scale::Real=1)
     return arr
 end
 
-function randn!(g::Generator, arr::NDArray{Float64}; loc::Real=0, scale::Real=1)
+function _randn!(g::Generator, arr::NDArray{Float64}; loc::Real=0, scale::Real=1)
     _bitgenerator_distribution!(
         arr, g.bit_generator, cuNumeric.BITGENDIST_NORMAL_64,
         _EMPTY_INT64, _EMPTY_FLOAT32, SVector{2,Float64}(Float64(loc), Float64(scale)),
@@ -132,15 +165,43 @@ function randn!(g::Generator, arr::NDArray{Float64}; loc::Real=0, scale::Real=1)
     return arr
 end
 
-function randn!(g::Generator, arr::NDArray{T}; loc::Real=0, scale::Real=1) where {T}
-    return error("randn! only supports Float32 and Float64 NDArray storage")
+function randn!(g::Generator, arr::NDArray{Float32})
+    return _randn!(g, arr)
 end
 
-function randn(
-    g::Generator, ::Type{T}, dims::Dims; loc::Real=0, scale::Real=1
-) where {T<:SUPPORTED_FLOAT_TYPES}
+function randn!(g::Generator, arr::NDArray{Float64})
+    return _randn!(g, arr)
+end
+
+# Independent N(0, 1/2) real/imag so E[|z|²] = 1, matching Julia `randn(Complex{T})`.
+# No loc/scale kwargs: shift or scale in user code (`μ .+ σ .* Z`).
+function randn!(g::Generator, arr::NDArray{Complex{T}}) where {T<:SUPPORTED_FLOAT_TYPES}
+    s = 1 / sqrt(T(2))
+    re = zeros(T, size(arr))
+    imag_part = zeros(T, size(arr))
+    _randn!(g, re; scale=s)
+    _randn!(g, imag_part; scale=s)
+    _pack_complex!(arr, re, imag_part)
+    destroy!(re)
+    destroy!(imag_part)
+    return arr
+end
+
+function randn!(g::Generator, arr::NDArray{T}) where {T}
+    return error(
+        "randn! only supports Float32, Float64, ComplexF32, and ComplexF64 NDArray storage"
+    )
+end
+
+function randn(g::Generator, ::Type{T}, dims::Dims) where {T<:SUPPORTED_FLOAT_TYPES}
     arr = zeros(T, dims)
-    randn!(g, arr; loc=loc, scale=scale)
+    randn!(g, arr)
+    return arr
+end
+
+function randn(g::Generator, ::Type{T}, dims::Dims) where {T<:SUPPORTED_COMPLEX_TYPES}
+    arr = zeros(T, dims)
+    randn!(g, arr)
     return arr
 end
 
