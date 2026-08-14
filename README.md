@@ -99,4 +99,4 @@ More worked examples (initialization, Gray-Scott, …) are in the documentation 
 
 ### Known Limitations
 
-- There is no support for `Float16` or `ComplexF16`
+- There is no support for `Float16` or `ComplexF16` or `Complex{<:Integer}`
