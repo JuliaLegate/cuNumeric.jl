@@ -36,23 +36,14 @@ cp -al "$SHARED_DEPOT/." "$RUN_DEPOT/"
 export JULIA_DEPOT_PATH="$RUN_DEPOT"
 echo "Isolated build depot: $RUN_DEPOT (hardlink clone of $SHARED_DEPOT)"
 
-# Reset the cloned wrapper + libcxxwrap wiring so each rebuilds consistently in the clone.
+# Reset the cloned wrapper + libcxxwrap wiring so each rebuilds fresh in this depot. Both
+# wrapper CMakeLists and build_jlcxxwrap derive libcxxwrap's path from DEPOT_PATH[1] and bake
+# absolute paths into JlCxx's cmake config + rpath, so a libcxxwrap built in another run's
+# depot can't be reused here — it must be rebuilt in place. Dropping the dev override lets
+# `using Legate` fall back to the stock JLL until build_jlcxxwrap rebuilds the custom one.
 rm -rf "$RUN_DEPOT"/dev/libcxxwrap_julia_jll \
        "$RUN_DEPOT"/packages/*/*/override \
        "$RUN_DEPOT"/compiled/v*/{CxxWrap,Legate,cuNumeric,cunumeric_jl_wrapper_jll,legate_jl_wrapper_jll}
-
-# libcxxwrap is pinned and slow to compile: reuse it from a persistent per-Julia store
-# (ABI tracks the Julia version, not fusion). Seed the clone if warm, else build+warm below.
-# Bust the store (rm it) if Legate bumps the pinned libcxxwrap commit.
-JULIA_MM="$(julia --startup-file=no -e 'print("$(VERSION.major).$(VERSION.minor)")')"
-LIBCXXW_STORE="${HOME}/.cache/cunumeric-libcxxwrap/${JULIA_MM}/libcxxwrap_julia_jll"
-if [[ -f "$LIBCXXW_STORE/override/lib/libcxxwrap_julia.so" ]]; then
-    mkdir -p "$RUN_DEPOT/dev"
-    cp -al "$LIBCXXW_STORE" "$RUN_DEPOT/dev/libcxxwrap_julia_jll"
-    echo "Seeded libcxxwrap from persistent store: $LIBCXXW_STORE"
-else
-    echo "libcxxwrap store cold for Julia $JULIA_MM; this run will build and warm it."
-fi
 
 LEGATE_BRANCH_INPUT="${BUILDKITE_MESSAGE:-}"
 if [[ "${BUILDKITE_PULL_REQUEST:-false}" =~ ^[0-9]+$ ]]; then
@@ -101,19 +92,6 @@ julia --color=yes --project=. -e '
     CNPreferences.set_broadcast_fusion_min_ops!(1)
     Pkg.build("cuNumeric")
 '
-
-# Warm the persistent store from this run's fresh build. Only happens on the first cold run
-# per Julia version (until the pinned commit changes), so a rare concurrent double-build is
-# fine: stage then atomically rename, so the first to finish wins and the rest are no-ops.
-BUILT_LIBCXXW="$RUN_DEPOT/dev/libcxxwrap_julia_jll"
-if [[ ! -e "$LIBCXXW_STORE" && -f "$BUILT_LIBCXXW/override/lib/libcxxwrap_julia.so" ]]; then
-    mkdir -p "$(dirname "$LIBCXXW_STORE")"
-    staging="${LIBCXXW_STORE}.tmp.$$"
-    rm -rf "$staging"
-    cp -al "$BUILT_LIBCXXW" "$staging"
-    mv -T "$staging" "$LIBCXXW_STORE" 2>/dev/null || rm -rf "$staging"
-    echo "Warmed libcxxwrap store: $LIBCXXW_STORE"
-fi
 
 cp LocalPreferences.toml test/LocalPreferences.toml
 
