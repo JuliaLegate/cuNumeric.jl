@@ -190,16 +190,25 @@ end
     return nda_unary_op!(out, cuNumeric.LOGICAL_NOT, input)
 end
 
-# Only the 1-arg `round.(A)` method above is supported (IEEE rint / RoundNearest).
-# `round.(A; digits=n)` is rewritten by Julia to a closure and hits the generic
-# "user-defined functions" error. Extra positional args hit this method.
-@inline function __broadcast(::typeof(Base.round), ::NDArray, ::NDArray, extra...)
+@noinline function _unsupported_round_broadcast()
     return throw(
         ArgumentError(
             "cuNumeric.jl only supports round.(A) (default RoundNearest / IEEE rint). " *
             "digits, sigdigits, and RoundingMode are not supported.",
         ),
     )
+end
+
+# Reject keyword forms before fusion captures Julia's keyword wrapper as a GPU callable.
+@inline function Base.Broadcast.broadcasted_kwsyntax(
+    ::typeof(Base.round), ::NDArray; kwargs...
+)
+    return _unsupported_round_broadcast()
+end
+
+# Only the 1-arg `round.(A)` method above is supported (IEEE rint / RoundNearest).
+@inline function __broadcast(::typeof(Base.round), ::NDArray, ::NDArray, extra...)
+    return _unsupported_round_broadcast()
 end
 
 # Some functions always return floats even when given integers
