@@ -139,8 +139,7 @@ function run_unary_tests(types; include_bool_reductions::Bool=false)
             if T <: AbstractFloat
                 @testset "round is 1-arg only" begin
                     a = cuNumeric.ones(T, 4)
-                    # Julia wraps kwargs in a closure; extra positional args are rejected.
-                    @test_throws Exception round.(a; digits=1)
+                    @test_throws ArgumentError round.(a; digits=1)
                 end
             end
             # Special cases for unary ops that dont use . syntax
