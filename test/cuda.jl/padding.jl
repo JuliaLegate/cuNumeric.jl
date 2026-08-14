@@ -87,6 +87,50 @@ function cuda_padding_lifetime()
     @test cuNumeric.current_device_bytes[] == initial_bytes
 end
 
+function cuda_padding_api_interop()
+    N = 4096
+    M = N - 2
+    threads = 256
+    blocks = cld(M, threads)
+    initial_bytes = cuNumeric.current_device_bytes[]
+
+    a = cuNumeric.ones(Float32, N)
+    b = cuNumeric.ones(Float32, N)
+    c = cuNumeric.zeros(Float32, M)
+    library_result = nothing
+
+    try
+        task = cuNumeric.@cuda_task padding_add(a, b, c, UInt32(M))
+        cuNumeric.@launch task=task threads=threads blocks=blocks inputs=(a, b) outputs=c scalars=UInt32(
+            M
+        )
+
+        # The broadcast writes through c's logical view into its padded backing.
+        c .= c .* 2.0f0 .+ 0.0f0
+        @test all(Array(c) .== 4.0f0)
+
+        # Non-broadcasted operators also consume the logical shape.
+        library_result = c + c
+        @test size(library_result) == (M,)
+        @test all(Array(library_result) .== 8.0f0)
+
+        # A later custom launch sees the values written by the regular API.
+        task = cuNumeric.@cuda_task padding_mul(a, c, b, UInt32(M))
+        cuNumeric.@launch task=task threads=threads blocks=blocks inputs=(a, c) outputs=b scalars=UInt32(
+            M
+        )
+        result = Array(b)
+        @test all(result[1:M] .== 4.0f0)
+        @test all(result[(M + 1):N] .== 1.0f0)
+    finally
+        !isnothing(library_result) && cuNumeric.destroy!(library_result)
+        cuNumeric.destroy!(a)
+        cuNumeric.destroy!(b)
+        cuNumeric.destroy!(c)
+    end
+    @test cuNumeric.current_device_bytes[] == initial_bytes
+end
+
 function cuda_padding_slice_output()
     N = 4096
     M = N - 2
@@ -111,6 +155,12 @@ function cuda_padding_slice_output()
         @test @inferred(cuNumeric._launch_shape(output)) == (N,)
         @test @inferred(cuNumeric._sync_from_launch_padding!(output)) === nothing
 
+        # Mutate the logical parent view before reusing it as a custom-kernel input.
+        output .= output .* 1.0f0 .+ 1.0f0
+        library_result = output + output
+        @test all(Array(library_result) .== 6.0f0)
+        cuNumeric.destroy!(library_result)
+
         task = cuNumeric.@cuda_task padding_mul(a, output, b, UInt32(M))
         @test @inferred(
             cuNumeric.launch(
@@ -122,8 +172,8 @@ function cuda_padding_slice_output()
 
         @test padded_bytes > unpadded_bytes
         @test cuNumeric.current_device_bytes[] == padded_bytes
-        @test all(values[1:M] .== 2.0f0)
-        @test all(product[1:M] .== 2.0f0)
+        @test all(values[1:M] .== 3.0f0)
+        @test all(product[1:M] .== 3.0f0)
         @test values[end] == 0.0f0
     finally
         cuNumeric.destroy!(output)
@@ -165,6 +215,7 @@ end
 try
     @testset "Custom CUDA padding" begin
         cuda_padding_lifetime()
+        cuda_padding_api_interop()
         cuda_padding_slice_output()
         cuda_padding_finalizer()
     end
