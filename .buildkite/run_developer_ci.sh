@@ -24,12 +24,16 @@ cmake --version
 rm -f Manifest.toml test/Manifest.toml dev/Manifest.toml \
       LocalPreferences.toml test/LocalPreferences.toml
 
-# Dev mode rebuilds the wrapper .so each run, so drop stale overrides and the .ji that
-# bake @wrapmodule bindings (cuNumeric/Legate + wrapper JLLs) — a cached .ji would
-# mismatch the fresh .so and segfault. libcxxwrap override is kept.
-DEPOT="$(julia --startup-file=no -e 'print(DEPOT_PATH[1])')"
-rm -rf "$DEPOT"/packages/*/*/override \
-       "$DEPOT"/compiled/v*/{cuNumeric,Legate,cunumeric_jl_wrapper_jll,legate_jl_wrapper_jll}
+# Per-run writable depot layered over the shared cache (read-only). The cuda queue
+# shares ${HOME}/.cache/... across machines, so concurrent runs would otherwise clobber
+# each other's wrapper overrides and .ji caches (mismatched .ji vs. fresh .so segfaults).
+# Julia writes only to DEPOT_PATH[1], so the temp isolates build output while artifacts,
+# packages, and registries are read in place from the shared cache. Discarded next build.
+SHARED_DEPOT="${JULIA_DEPOT_PATH:-$(julia --startup-file=no -e 'print(DEPOT_PATH[1])')}"
+RUN_DEPOT="$(mktemp -d)"
+trap 'rm -rf "$RUN_DEPOT"' EXIT
+export JULIA_DEPOT_PATH="$RUN_DEPOT:$SHARED_DEPOT"
+echo "Isolated build depot: $RUN_DEPOT (shared cache read-only: $SHARED_DEPOT)"
 
 LEGATE_BRANCH_INPUT="${BUILDKITE_MESSAGE:-}"
 if [[ "${BUILDKITE_PULL_REQUEST:-false}" =~ ^[0-9]+$ ]]; then
