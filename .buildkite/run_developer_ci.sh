@@ -24,26 +24,27 @@ cmake --version
 rm -f Manifest.toml test/Manifest.toml dev/Manifest.toml \
       LocalPreferences.toml test/LocalPreferences.toml
 
-# Isolate each run in a disposable hardlink-clone of the plugin depot so concurrent PR
-# jobs on the shared cuda-queue cache can't clobber each other's wrapper overrides or .ji
-# (a .ji baked against a stale wrapper .so segfaults). Clone is near-free on one filesystem
-# and shares the read-only artifact store; all build writes stay private and are discarded.
-SHARED_DEPOT="${JULIA_DEPOT_PATH:-}"; SHARED_DEPOT="${SHARED_DEPOT%%:*}"
-[[ -n "$SHARED_DEPOT" ]] || SHARED_DEPOT="$(julia --startup-file=no -e 'print(DEPOT_PATH[1])')"
-RUN_DEPOT="$(mktemp -d "${HOME}/.cache/cn-ci-depot.XXXXXX")"
-trap 'rm -rf "$RUN_DEPOT"' EXIT
-cp -al "$SHARED_DEPOT/." "$RUN_DEPOT/"
-export JULIA_DEPOT_PATH="$RUN_DEPOT"
-echo "Isolated build depot: $RUN_DEPOT (hardlink clone of $SHARED_DEPOT)"
+# Isolate each run in a disposable hardlink-clone of the plugin cache (CACHE_DEPOT) so
+# concurrent PR jobs on the shared cuda-queue cache can't clobber each other's wrapper
+# overrides or .ji (a .ji baked against a stale wrapper .so segfaults). The clone (WORK_DEPOT)
+# is near-free on one filesystem and shares the read-only artifact store; every build write
+# lands in WORK_DEPOT and is discarded on exit, and CACHE_DEPOT is only ever read.
+CACHE_DEPOT="${JULIA_DEPOT_PATH:-}"; CACHE_DEPOT="${CACHE_DEPOT%%:*}"
+[[ -n "$CACHE_DEPOT" ]] || CACHE_DEPOT="$(julia --startup-file=no -e 'print(DEPOT_PATH[1])')"
+WORK_DEPOT="$(mktemp -d "${HOME}/.cache/cn-ci-depot.XXXXXX")"
+trap 'rm -rf "$WORK_DEPOT"' EXIT
+cp -al "$CACHE_DEPOT/." "$WORK_DEPOT/"
+export JULIA_DEPOT_PATH="$WORK_DEPOT"
+echo "Isolated build depot: $WORK_DEPOT (hardlink clone of $CACHE_DEPOT)"
 
 # Reset the cloned wrapper + libcxxwrap wiring so each rebuilds fresh in this depot. Both
 # wrapper CMakeLists and build_jlcxxwrap derive libcxxwrap's path from DEPOT_PATH[1] and bake
 # absolute paths into JlCxx's cmake config + rpath, so a libcxxwrap built in another run's
 # depot can't be reused here — it must be rebuilt in place. Dropping the dev override lets
 # `using Legate` fall back to the stock JLL until build_jlcxxwrap rebuilds the custom one.
-rm -rf "$RUN_DEPOT"/dev/libcxxwrap_julia_jll \
-       "$RUN_DEPOT"/packages/*/*/override \
-       "$RUN_DEPOT"/compiled/v*/{CxxWrap,Legate,cuNumeric,cunumeric_jl_wrapper_jll,legate_jl_wrapper_jll}
+rm -rf "$WORK_DEPOT"/dev/libcxxwrap_julia_jll \
+       "$WORK_DEPOT"/packages/*/*/override \
+       "$WORK_DEPOT"/compiled/v*/{CxxWrap,Legate,cuNumeric,cunumeric_jl_wrapper_jll,legate_jl_wrapper_jll}
 
 LEGATE_BRANCH_INPUT="${BUILDKITE_MESSAGE:-}"
 if [[ "${BUILDKITE_PULL_REQUEST:-false}" =~ ^[0-9]+$ ]]; then
