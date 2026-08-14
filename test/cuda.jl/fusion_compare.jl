@@ -68,7 +68,7 @@ function run_fused_cunumeric(N, u, v)
 
     cuNumeric.@launch task=task threads=threads2d blocks=blocks inputs=(u, v) outputs=(F_u, F_v) scalars=(
         Int32(N), f, k
-    ) validate_shapes=false
+    )
 
     return F_u, F_v
 end

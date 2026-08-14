@@ -752,7 +752,6 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
             threads=fkm.threads,
             taskid=cuNumeric.RUN_PTX_BROADCAST,
             ctx=fkm.ctx,
-            validate_shapes=false,
         )
     end
 
@@ -1045,7 +1044,6 @@ function _fused_multi_launch!(out_arrs::Tuple, seg_bcs::Tuple)
         task, tuple(input_ndarrays...), out_arrs,
         (Int32(length(argmap)), argmap..., actual_scalars...);
         blocks=1, threads=threads, taskid=cuNumeric.RUN_PTX_BROADCAST, ctx=ctx,
-        validate_shapes=false,
     )
     return out_arrs
 end

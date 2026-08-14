@@ -16,56 +16,55 @@ function to_stdvec(::Type{T}, vec) where {T}
     return stdvec
 end
 
-function add_padding(arr::NDArray, dims::Dims{N}; copy=false) where {N}
-    old_size = size(arr)
+@inline _launch_shape(arr::NDArray) =
+    isnothing(arr.padding) ? size(arr) : arr.padding.shape
 
-    @assert all(dims .>= old_size) "newdims must be ≥ current dims elementwise"
-    new = zeros(eltype(arr), dims)
+function _ensure_launch_padding!(arr::NDArray{T,N}, target_shape; copy=false) where {T,N}
+    padding = arr.padding
+    !isnothing(padding) && padding.shape == target_shape && return arr
+    isnothing(padding) && size(arr) == target_shape && return arr
+    @assert all(target_shape .>= size(arr)) "cannot pad $(size(arr)) to $target_shape"
 
-    if copy # due to being an input. we don't need to copy outputs
-        slices = ntuple(d -> (0, Int(old_size[d])), length(old_size))
-        s = nda_get_slice(new, slice_array(slices...))
-        copyto!(s, arr)
-        destroy!(s)
+    padded = zeros(T, target_shape)
+    slices = ntuple(d -> (0, size(arr, d)), N)
+    logical = nda_get_slice(padded, slice_array(slices...))
+    aliases_parent = !isnothing(arr.parent)
+    copy && !aliases_parent && copyto!(logical, arr)
+    storage = PaddedStorage{T,N}(
+        padded,
+        aliases_parent ? logical : nothing,
+        target_shape,
+    )
+
+    if aliases_parent
+        old_padding = arr.padding
+        arr.padding = storage
+        !isnothing(old_padding) && _destroy_padded_storage!(old_padding)
+    else
+        destroy!(arr)
+        arr.ptr = logical.ptr
+        arr.nbytes = logical.nbytes
+        arr.padding = storage
+        logical.ptr = Ptr{Cvoid}(0)
+        logical.nbytes = 0
     end
-
-    nda_destroy_array(arr.ptr)
-    register_free!(arr.nbytes)
-
-    # update pointer & update metadata
-    arr.ptr = new.ptr
-    arr.nbytes = new.nbytes
-    arr.padding = old_size # remember the prior (before the padding)
-
-    # julia GC will call finalizer, but we manually cleaned it
-    new.ptr = Ptr{Cvoid}(0)
-    new.nbytes = 0
-    return new.padding = nothing
+    return arr
 end
 
-function add_padding(arr::NDArray, i::Int64; copy=false)
-    return add_padding(arr, (i,); copy=copy)
+function _sync_to_launch_padding!(arr::NDArray)
+    padding = arr.padding
+    if !isnothing(padding) && !isnothing(padding.staging)
+        copyto!(padding.staging, arr)
+    end
+    return nothing
 end
 
-function check_sz!(arr, maxshape; copy=false)
-    sz = cuNumeric.size(arr)
-    if maxshape != nothing
-        # currently require all ndarray inputs to be equal
-        alligned_equal_size = sz == maxshape
-        if !alligned_equal_size
-            cuNumeric.add_padding(arr, maxshape; copy=copy)
-            @warn "[Padding Added] $sz output is now $maxshape"
-        end
+function _sync_from_launch_padding!(arr::NDArray)
+    padding = arr.padding
+    if !isnothing(padding) && !isnothing(padding.staging)
+        copyto!(arr, padding.staging)
     end
-end
-
-function check_sz(arr, maxshape)
-    sz = cuNumeric.size(arr)
-    if maxshape != nothing
-        # currently require all ndarray inputs to be equal
-        alligned_equal_size = sz == maxshape
-        @assert alligned_equal_size
-    end
+    return nothing
 end
 
 # `get_store` returns a Julia-owned `LogicalArrayImplAllocated` that shares the
@@ -73,42 +72,32 @@ end
 # array into the task; if we leave the temporary alive until GC, store refcounts
 # stay elevated and framebuffer reclaim stalls (fusion 1-GPU OOM under load).
 # Finalize the temporary immediately after the copy into the task.
-function _add_task_array!(add_to, task, arr::NDArray)
-    st = cuNumeric.get_store(arr)
-    var = add_to(task, st)
-    finalize(st)
-    return var
+function _add_task_array!(add_to, task, arr::NDArray; physical=false)
+    task_arr = physical && !isnothing(arr.padding) ? arr.padding.backing : arr
+    st = cuNumeric.get_store(task_arr)
+    try
+        return add_to(task, st)
+    finally
+        finalize(st)
+    end
 end
 
 function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
     outputs::Tuple{Vararg{NDArray}}, scalars::Tuple{Vararg{Any}};
-    blocks, threads, taskid=cuNumeric.RUN_PTX, ctx=nothing, validate_shapes=true)
-    max_shape = if validate_shapes
-        # Generic PTX tasks retain the existing padding/shape behavior.
-        ndarrays = vcat(inputs..., outputs...) # returns (nbytes, position)
-        mx = findmax(arr -> arr.nbytes, ndarrays) # first elem nbytes
-        shape = size(ndarrays[mx[2]]) # second elem max position
-        @assert !isnothing(shape)
-        shape
-    else
-        # Fused linear broadcast verifies shapes match
-        nothing
-    end
-
+    blocks, threads, taskid=cuNumeric.RUN_PTX, ctx=nothing)
     rt = Legate.get_runtime()
     lib = cuNumeric.get_lib()
     task = Legate.create_auto_task(rt, lib, taskid)
+    physical = taskid == cuNumeric.RUN_PTX
 
     input_vars = Vector{Legate.Variable}()
     for arr in inputs
-        validate_shapes && check_sz!(arr, max_shape; copy=true)
-        push!(input_vars, _add_task_array!(Legate.add_input, task, arr))
+        push!(input_vars, _add_task_array!(Legate.add_input, task, arr; physical))
     end
 
     output_vars = Vector{Legate.Variable}()
     for arr in outputs
-        validate_shapes && check_sz!(arr, max_shape; copy=false)
-        push!(output_vars, _add_task_array!(Legate.add_output, task, arr))
+        push!(output_vars, _add_task_array!(Legate.add_output, task, arr; physical))
     end
 
     # Reserved scalars: kernel_name (0), blocks (1,2,3), threads (4,5,6)
@@ -129,25 +118,40 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
         Legate.add_scalar(task, Legate.Scalar(s))
     end
 
-    # Alignment requires equal shapes. Custom kernels may intentionally map a
-    # larger input domain to smaller outputs.
-    ndarrays = (inputs..., outputs...)
-    if length(ndarrays) > 1 && all(arr -> size(arr) == size(first(ndarrays)), ndarrays)
-        Legate.default_alignment(task, input_vars, output_vars)
-    end
+    # all inputs are aligned with all outputs
+    Legate.default_alignment(task, input_vars, output_vars)
     return Legate.submit_auto_task(rt, task)
 end
 
 function launch(kernel::CUDATask, inputs, outputs, scalars;
-    blocks, threads, taskid=cuNumeric.RUN_PTX, ctx=nothing, validate_shapes=true)
-    return Launch(kernel,
-        isa(inputs, Tuple) ? inputs : (inputs,),
-        isa(outputs, Tuple) ? outputs : (outputs,),
+    blocks, threads, taskid=cuNumeric.RUN_PTX, ctx=nothing)
+    input_tuple = isa(inputs, Tuple) ? inputs : (inputs,)
+    output_tuple = isa(outputs, Tuple) ? outputs : (outputs,)
+
+    # Custom tasks require equal physical shapes. Keep the padded backing so
+    # repeated launches do not allocate or copy again.
+    if taskid == cuNumeric.RUN_PTX
+        arrays = (input_tuple..., output_tuple...)
+        if !isempty(arrays)
+            rank = ndims(first(arrays))
+            @assert all(ndims(arr) == rank for arr in arrays) "custom task arrays must have equal ranks"
+            max_shape = ntuple(d -> maximum(_launch_shape(arr)[d] for arr in arrays), rank)
+            foreach(arr -> _ensure_launch_padding!(arr, max_shape; copy=true), input_tuple)
+            foreach(arr -> _ensure_launch_padding!(arr, max_shape), output_tuple)
+            foreach(_sync_to_launch_padding!, input_tuple)
+        end
+    end
+
+    result = Launch(kernel,
+        input_tuple,
+        output_tuple,
         isa(scalars, Tuple) ? scalars : (scalars,);
         blocks=isa(blocks, Tuple) ? blocks : (blocks,),
         threads=isa(threads, Tuple) ? threads : (threads,),
-        taskid=taskid, ctx=ctx, validate_shapes=validate_shapes,
+        taskid=taskid, ctx=ctx,
     )
+    taskid == cuNumeric.RUN_PTX && foreach(_sync_from_launch_padding!, output_tuple)
+    return result
 end
 
 function ptx_task(ptx::String, kernel_name)
@@ -237,8 +241,7 @@ macro cuda_task(call_expr)
 end
 
 """
-    @launch(; task, blocks=(1,), threads=(256,), inputs=(), outputs=(), scalars=(),
-              validate_shapes=true)
+    @launch(; task, blocks=(1,), threads=(256,), inputs=(), outputs=(), scalars=())
 
 Launch a GPU kernel (previously registered via [`@cuda_task`](@ref))  through the Legate runtime.
 
@@ -249,7 +252,6 @@ Launch a GPU kernel (previously registered via [`@cuda_task`](@ref))  through th
 - `inputs`  — Tuple or single element of input NDArray objects.
 - `outputs` — Tuple or single element of output NDArray objects.
 - `scalars` — Tuple or single element of scalar values.
-- `validate_shapes` — Pad inputs and outputs to a common shape when `true`.
 
 # Description
 The `@launch` macro validates the provided keywords, ensuring only
@@ -278,7 +280,7 @@ mytask = @cuda_task my_kernel(A, B, C)
 macro launch(args...)
     cuNumeric.assert_experimental()
 
-    allowed_keys = Set([:task, :blocks, :threads, :inputs, :outputs, :scalars, :validate_shapes])
+    allowed_keys = Set([:task, :blocks, :threads, :inputs, :outputs, :scalars])
     kwargs = Dict{Symbol,Any}()
 
     for ex in args
@@ -304,13 +306,12 @@ macro launch(args...)
     inputs = get(kwargs, :inputs, :(()))
     outputs = get(kwargs, :outputs, :(()))
     scalars = get(kwargs, :scalars, :(()))
-    validate_shapes = get(kwargs, :validate_shapes, true)
 
     return esc(
         quote
             cuNumeric.launch(
                 $task, $inputs, $outputs, $scalars;
-                blocks=($blocks), threads=($threads), validate_shapes=($validate_shapes),
+                blocks=($blocks), threads=($threads),
             )
         end,
     )
