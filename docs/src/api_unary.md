@@ -6,11 +6,14 @@
 
 The following unary operations are supported and can be broadcast over `NDArray`:
 
-- `-`, `!`, `abs`, `acos`, `acosh`, `asin`, `asinh`, `atan`, `atanh`, `cbrt`, `conj`, `cos`, `cosh`, `deg2rad`, `exp`, `exp2`, `expm1`, `floor`, `imag`, `isfinite`, `log`, `log10`, `log1p`, `log2`, `rad2deg`, `real`, `sign`, `signbit`, `sin`, `sinh`, `sqrt`, `tan`, `tanh`, `^2`, `^-1` or `inv`
+- `-`, `!`, `~`, `abs`, `acos`, `acosh`, `asin`, `asinh`, `atan`, `atanh`, `cbrt`, `ceil`, `conj`, `cos`, `cosh`, `deg2rad`, `exp`, `exp2`, `expm1`, `floor`, `imag`, `isfinite`, `isinf`, `isnan`, `log`, `log10`, `log1p`, `log2`, `rad2deg`, `real`, `round`, `sign`, `signbit`, `sin`, `sinh`, `sqrt`, `tan`, `tanh`, `trunc`, `^2`, `^-1` or `inv`
 
 ## Differences from Base Julia
 
 - The `acosh` function in Julia will error on inputs outside of the domain (`x >= 1`), but cuNumeric.jl will return `NaN`.
+- `round.(A)` uses IEEE round-to-nearest-even (the `RINT` kernel), matching Julia `round(x)` / `RoundNearest`. Only that 1-arg path is wired. `digits`, `sigdigits`, and `RoundingMode` are not supported (`round.(A; digits=n)` errors).
+- `floor`, `ceil`, `trunc`, and `signbit` are float-only kernels. `round` also supports complex values. Bool and integer inputs are not accepted (Julia's `floor`/`ceil`/`trunc`/`round` on integers are identity).
+- `~` is bitwise not on integers. On `Bool` it matches `!` (the invert kernel rejects `Bool`, so we use logical not).
 
 ```@autodocs
 Modules = [cuNumeric]
