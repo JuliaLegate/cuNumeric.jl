@@ -14,6 +14,9 @@ The following unary operations are supported and can be broadcast over `NDArray`
 - `round.(A)` uses IEEE round-to-nearest-even (the `RINT` kernel), matching Julia `round(x)` / `RoundNearest`. Only that 1-arg path is wired. `digits`, `sigdigits`, and `RoundingMode` are not supported (`round.(A; digits=n)` errors).
 - `floor`, `ceil`, `trunc`, and `signbit` are float-only kernels. `round` also supports complex values. Bool and integer inputs are not accepted (Julia's `floor`/`ceil`/`trunc`/`round` on integers are identity).
 - `~` is bitwise not on integers. On `Bool` it matches `!` (the invert kernel rejects `Bool`, so we use logical not).
+- Full reductions (`sum`, `mean`, `var`, `std`, `argmax`, …) return a 0-d `NDArray`, not a Julia scalar. Use `unwrap` or `A[]` (with `allowscalar`) to read a host value.
+- `var` / `std` match Julia / StatsBase sample statistics (`corrected=true`, divisor `n-1`). Complex is not supported.
+- `argmax` / `argmin` are 1-d only (matching Base's `Int` return, not `CartesianIndex`). The result is a 0-d `NDArray{Int64}` of the 1-based index. Complex is not supported.
 
 ```@autodocs
 Modules = [cuNumeric]

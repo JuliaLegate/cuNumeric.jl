@@ -30,8 +30,11 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <optional>
+#include <stdexcept>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 #include "ndarray_c_api.h"
@@ -237,18 +240,157 @@ void nda_unary_reduction(CN_NDArray* out, CuPyNumericUnaryRedCode op_code,
   out->obj.unary_reduction(op_code, input->obj);
 }
 
+// COUNT_NONZERO's result is an integer count, not the input dtype.
+// Passing res_dtype (not dtype) keeps the source type. dtype=int64 would
+// cast the input before counting.
+static std::optional<legate::Type> unary_red_res_dtype(
+    CuPyNumericUnaryRedCode op_code) {
+  switch (op_code) {
+    case CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_COUNT_NONZERO:
+      return legate::int64();
+    default:
+      return std::nullopt;
+  }
+}
+
+static bool is_arg_reduction(CuPyNumericUnaryRedCode op_code) {
+  switch (op_code) {
+    case CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_ARGMAX:
+    case CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_ARGMIN:
+    case CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_NANARGMAX:
+    case CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_NANARGMIN:
+      return true;
+    default:
+      return false;
+  }
+}
+
+}  // extern "C"
+
+// Matches cupynumeric Argval<T> { int64_t arg; T arg_value; }.
+// Templates cannot live in the extern "C" block.
+template <typename T>
+struct ArgvalCompat {
+  int64_t arg;
+  T arg_value;
+};
+
+template <typename T>
+static void fill_arg_identity(NDArray& acc, const legate::Type& argred_type,
+                              bool is_argmax) {
+  ArgvalCompat<T> id;
+  id.arg = std::numeric_limits<int64_t>::min();
+  id.arg_value = is_argmax ? std::numeric_limits<T>::lowest()
+                           : std::numeric_limits<T>::max();
+  if (argred_type.size() != sizeof(id)) {
+    throw std::runtime_error("argred identity layout mismatch");
+  }
+  acc.fill(Scalar(argred_type, &id, true));
+}
+
+static void fill_arg_identity(NDArray& acc, const legate::Type& src_type,
+                              const legate::Type& argred_type, bool is_argmax) {
+  switch (src_type.code()) {
+    case legate::Type::Code::BOOL:
+      fill_arg_identity<bool>(acc, argred_type, is_argmax);
+      break;
+    case legate::Type::Code::INT8:
+      fill_arg_identity<int8_t>(acc, argred_type, is_argmax);
+      break;
+    case legate::Type::Code::INT16:
+      fill_arg_identity<int16_t>(acc, argred_type, is_argmax);
+      break;
+    case legate::Type::Code::INT32:
+      fill_arg_identity<int32_t>(acc, argred_type, is_argmax);
+      break;
+    case legate::Type::Code::INT64:
+      fill_arg_identity<int64_t>(acc, argred_type, is_argmax);
+      break;
+    case legate::Type::Code::UINT8:
+      fill_arg_identity<uint8_t>(acc, argred_type, is_argmax);
+      break;
+    case legate::Type::Code::UINT16:
+      fill_arg_identity<uint16_t>(acc, argred_type, is_argmax);
+      break;
+    case legate::Type::Code::UINT32:
+      fill_arg_identity<uint32_t>(acc, argred_type, is_argmax);
+      break;
+    case legate::Type::Code::UINT64:
+      fill_arg_identity<uint64_t>(acc, argred_type, is_argmax);
+      break;
+    case legate::Type::Code::FLOAT32:
+      fill_arg_identity<float>(acc, argred_type, is_argmax);
+      break;
+    case legate::Type::Code::FLOAT64:
+      fill_arg_identity<double>(acc, argred_type, is_argmax);
+      break;
+    default:
+      throw std::runtime_error(
+          "argmax/argmin are not supported for this element type");
+  }
+}
+
+// Public unary_reduction fills identity via type_dispatch on the *output*
+// type. For ARGMAX that output is a struct, which Legate rejects. Fill from
+// the source dtype (like Python), then launch SCALAR_UNARY_RED and GETARG.
+static CN_NDArray* nda_arg_reduction(CuPyNumericUnaryRedCode op_code,
+                                     CN_NDArray* input) {
+  const bool is_argmax =
+      op_code == CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_ARGMAX ||
+      op_code == CuPyNumericUnaryRedCode::CUPYNUMERIC_RED_NANARGMAX;
+  auto* runtime = cupynumeric::CuPyNumericRuntime::get_runtime();
+  const std::vector<uint64_t> scalar_shape{};
+  auto argred_type = runtime->get_argred_type(input->obj.type());
+  // C++ get_argred_type does not attach redops; Python does this on first
+  // use. record_reduction_operator throws if called twice for the same type.
+  static std::unordered_set<legate::Type::Code> registered_argred;
+  if (registered_argred.insert(input->obj.type().code()).second) {
+    auto ids = cupynumeric_register_reduction_ops(
+        static_cast<int>(input->obj.type().code()));
+    argred_type.record_reduction_operator(
+        legate::ReductionOpKind::MAX,
+        legate::GlobalRedopID{ids.argmax_redop_id});
+    argred_type.record_reduction_operator(
+        legate::ReductionOpKind::MIN,
+        legate::GlobalRedopID{ids.argmin_redop_id});
+  }
+  NDArray acc = runtime->create_array(scalar_shape, argred_type);
+  fill_arg_identity(acc, input->obj.type(), argred_type, is_argmax);
+
+  auto task =
+      runtime->create_task(CuPyNumericOpCode::CUPYNUMERIC_SCALAR_UNARY_RED);
+  task.add_reduction(acc.get_store(), is_argmax ? legate::ReductionOpKind::MAX
+                                                : legate::ReductionOpKind::MIN);
+  task.add_input(input->obj.get_store());
+  task.add_scalar_arg(Scalar(static_cast<int32_t>(op_code)));
+  task.add_scalar_arg(Scalar(input->obj.shape()));
+  task.add_scalar_arg(Scalar(false));
+  runtime->submit(std::move(task));
+
+  NDArray idx = runtime->create_array(scalar_shape, legate::int64());
+  idx.unary_op(
+      static_cast<int32_t>(CuPyNumericUnaryOpCode::CUPYNUMERIC_UOP_GETARG),
+      acc);
+  return new CN_NDArray{NDArray(std::move(idx))};
+}
+
+extern "C" {
+
 CN_NDArray* nda_unary_reduction_axes(CuPyNumericUnaryRedCode op_code,
                                      CN_NDArray* input, const int32_t* axes,
                                      int32_t num_axes, bool keepdims) {
+  if (is_arg_reduction(op_code)) {
+    return nda_arg_reduction(op_code, input);
+  }
   std::vector<int32_t> axis_vec(axes, axes + num_axes);
   NDArray result = input->obj._perform_unary_reduction(
       static_cast<int32_t>(op_code), input->obj, axis_vec,
-      std::nullopt,  // dtype
-      std::nullopt,  // res_dtype
-      std::nullopt,  // out
-      keepdims, {},  // args
-      std::nullopt,  // initial
-      std::nullopt   // where
+      std::nullopt,                  // dtype
+      unary_red_res_dtype(op_code),  // res_dtype
+      std::nullopt,                  // out
+      keepdims, {},                  // args
+      std::nullopt,                  // initial
+      std::nullopt                   // where
   );
   return new CN_NDArray{NDArray(std::move(result))};
 }

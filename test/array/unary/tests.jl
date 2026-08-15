@@ -115,10 +115,132 @@ function test_unary_reduction_dims(
             end
         end
 
-        # we are testing a multi axis reduction. This will throw a runtime error.
-        # https://github.com/nv-legate/cupynumeric/blob/main/src/cupynumeric/ndarray.cc#L1132
+        # Multi-axis is sequential single-axis keepdims reductions (C++ allows one axis).
+        # Integer `prod` of 10×10 random values overflows Int64; association then
+        # disagrees with Julia, so skip that case (1D/single-axis prod is still tested).
+        if N >= 2 && !(func === Base.prod && T <: Base.BitInteger)
+            julia_res = func(julia_arr; dims=(1, 2))
+            cunumeric_res = func(cunumeric_arr; dims=(1, 2))
+            n = size(julia_arr, 1) * size(julia_arr, 2)
+            scale = maximum(abs, julia_arr)
+            allowscalar() do
+                @test safe_compare(
+                    julia_res,
+                    cunumeric_res,
+                    reduction_atol(T, n, scale),
+                    reduction_rtol(T, n),
+                )
+            end
+        end
+    end
+end
+
+function test_mean_var_std(
+    julia_arr::AbstractArray{T,N}, cunumeric_arr::NDArray{T,N}
+) where {T,N}
+    n = length(julia_arr)
+    scale = maximum(abs, julia_arr)
+    atolv = reduction_atol(T, n, scale)
+    rtolv = reduction_rtol(T, n)
+    allowpromotion(true) do
+        allowscalar() do
+            @test isapprox(mean(julia_arr), unwrap(mean(cunumeric_arr)); atol=atolv, rtol=rtolv)
+            if T <: Real
+                @test isapprox(var(julia_arr), unwrap(var(cunumeric_arr)); atol=atolv, rtol=rtolv)
+                @test isapprox(std(julia_arr), unwrap(std(cunumeric_arr)); atol=atolv, rtol=rtolv)
+            end
+        end
+        for d in 1:N
+            nd = size(julia_arr, d)
+            atol_d = reduction_atol(T, nd, scale)
+            rtol_d = reduction_rtol(T, nd)
+            allowscalar() do
+                @test safe_compare(
+                    mean(julia_arr; dims=d), mean(cunumeric_arr; dims=d), atol_d, rtol_d
+                )
+                if T <: Real
+                    @test safe_compare(
+                        var(julia_arr; dims=d), var(cunumeric_arr; dims=d), atol_d, rtol_d
+                    )
+                    @test safe_compare(
+                        std(julia_arr; dims=d), std(cunumeric_arr; dims=d), atol_d, rtol_d
+                    )
+                end
+            end
+        end
         if N >= 2
-            @test_throws Exception func(cunumeric_arr, dims=(1, 2))
+            allowscalar() do
+                @test safe_compare(
+                    mean(julia_arr; dims=(1, 2)),
+                    mean(cunumeric_arr; dims=(1, 2)),
+                    atolv,
+                    rtolv,
+                )
+                if T <: Real
+                    @test safe_compare(
+                        var(julia_arr; dims=(1, 2)),
+                        var(cunumeric_arr; dims=(1, 2)),
+                        atolv,
+                        rtolv,
+                    )
+                    @test safe_compare(
+                        std(julia_arr; dims=(1, 2)),
+                        std(cunumeric_arr; dims=(1, 2)),
+                        atolv,
+                        rtolv,
+                    )
+                end
+            end
+        end
+    end
+end
+
+# count API is commented out for now (see src/ndarray/unary.jl).
+# function test_count(julia_arr::AbstractArray{T,N}, cunumeric_arr::NDArray{T,N}) where {T,N}
+#     allowpromotion(true) do
+#         allowscalar() do
+#             @test count(!iszero, julia_arr) == unwrap(count(!iszero, cunumeric_arr))
+#             if T == Bool
+#                 @test count(julia_arr) == unwrap(count(cunumeric_arr))
+#             end
+#         end
+#         for d in 1:N
+#             allowscalar() do
+#                 @test safe_compare(
+#                     count(!iszero, julia_arr; dims=d),
+#                     count(!iszero, cunumeric_arr; dims=d),
+#                     0,
+#                     0,
+#                 )
+#             end
+#         end
+#         if N >= 2
+#             allowscalar() do
+#                 @test safe_compare(
+#                     count(!iszero, julia_arr; dims=(1, 2)),
+#                     count(!iszero, cunumeric_arr; dims=(1, 2)),
+#                     0,
+#                     0,
+#                 )
+#             end
+#         end
+#     end
+# end
+
+function test_argmax_argmin()
+    # 1-d only. Fixtures, not random: ties must pick the first extremum.
+    v = Int32[1, 5, 3, 5, 2]
+    allowpromotion(true) do
+        allowscalar() do
+            vn = NDArray(v)
+            @test unwrap(argmax(vn)) == 2
+            @test unwrap(argmin(vn)) == 1
+            @test unwrap(argmax(vn)) == argmax(v)
+            @test unwrap(argmin(vn)) == argmin(v)
+
+            c = NDArray(ComplexF32[1, 2])
+            @test_throws ArgumentError argmax(c)
+            @test_throws ArgumentError argmin(c)
         end
     end
 end
@@ -214,10 +336,16 @@ function run_unary_tests(types; include_bool_reductions::Bool=false)
         if include_bool_reductions
             # Test things that only work on Booleans
             julia_bools = rand(Bool, N)
+            julia_bools_2D = rand(Bool, isqrt(N), isqrt(N))
             allowscalar() do
                 cunumeric_bools = NDArray(julia_bools)
                 @test any(julia_bools) == any(cunumeric_bools)[]
                 @test all(julia_bools) == all(cunumeric_bools)[]
+            end
+            allowpromotion(true) do
+                cn2 = @allowscalar NDArray(julia_bools_2D)
+                test_unary_reduction_dims(any, julia_bools_2D, cn2)
+                test_unary_reduction_dims(all, julia_bools_2D, cn2)
             end
         end
     end
@@ -250,6 +378,15 @@ function run_unary_tests(types; include_bool_reductions::Bool=false)
                 test_unary_reduction_dims(func, julia_arr_1D, cunumeric_arr_1D)
                 test_unary_reduction_dims(func, julia_arr_2D, cunumeric_arr_2D)
             end
+
+            @testset "mean/var/std" begin
+                test_mean_var_std(julia_arr_1D, cunumeric_arr_1D)
+                test_mean_var_std(julia_arr_2D, cunumeric_arr_2D)
+            end
+        end
+
+        @testset "argmax/argmin" begin
+            test_argmax_argmin()
         end
     end
 end
