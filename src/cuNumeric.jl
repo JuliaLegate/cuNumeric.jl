@@ -179,6 +179,7 @@ include("ndarray/random/random.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
 include("ndarray/linalg.jl")
+include("ndarray/sort.jl")
 include("scoping/scoping.jl")
 
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147
