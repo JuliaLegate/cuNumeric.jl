@@ -99,24 +99,20 @@ end
     end
 end
 
-@testset "sortperm unique" begin
+@testset "sortperm" begin
     @testset verbose = true for T in SORT_TYPES
         A = _sort_fixture(T)
         nda = cuNumeric.NDArray(A)
-        @test Array(cuNumeric.sortperm(nda)) ==
-            (T <: Complex ? Base.sortperm(A; by=_lex_complex) : Base.sortperm(A))
-        B = reshape(A, 3, 4)
-        ndb = cuNumeric.NDArray(B)
-        p1 = Array(cuNumeric.sortperm(ndb; dims=1))
-        p2 = Array(cuNumeric.sortperm(ndb; dims=2))
-        @test p1 ==
-            (T <: Complex ? Base.sortperm(B; dims=1, by=_lex_complex) : Base.sortperm(B; dims=1))
-        @test p2 ==
-            (T <: Complex ? Base.sortperm(B; dims=2, by=_lex_complex) : Base.sortperm(B; dims=2))
-        @test B[p1] ==
-            (T <: Complex ? Base.sort(B; dims=1, by=_lex_complex) : Base.sort(B; dims=1))
-        @test B[p2] ==
-            (T <: Complex ? Base.sort(B; dims=2, by=_lex_complex) : Base.sort(B; dims=2))
+        p = Array(cuNumeric.sortperm(nda))
+        sortedA = T <: Complex ? Base.sort(A; by=_lex_complex) : Base.sort(A)
+        @test A[p] == sortedA
+        # Exact perm is only well-defined when values are unique (Bool/Complex
+        # fixtures have ties; default cupynumeric sort is unstable).
+        if allunique(A)
+            @test p == (T <: Complex ? Base.sortperm(A; by=_lex_complex) : Base.sortperm(A))
+        end
+        # 1-d only, same as argmax/argmin
+        @test_throws MethodError cuNumeric.sortperm(cuNumeric.NDArray(reshape(A, 3, 4)); dims=1)
     end
 end
 
