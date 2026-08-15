@@ -10,7 +10,7 @@ function map_cuda_type(::Type{cuNumeric.NDArrayStyle{N}}) where {N}
 end # Also can be HostMemory or UnifiedMemory
 
 function _nd_forbid_mix()
-    throw(
+    return throw(
         ArgumentError(
             "Broadcast between NDArray and other array types is not supported. " *
             "Convert explicitly to a single array type before broadcasting.",
@@ -26,6 +26,20 @@ Base.BroadcastStyle(::DefaultArrayStyle{0}, a::NDArrayStyle) = a
 Base.BroadcastStyle(::NDArrayStyle, ::DefaultArrayStyle) = _nd_forbid_mix()
 Base.BroadcastStyle(::DefaultArrayStyle, ::NDArrayStyle) = _nd_forbid_mix()
 
+# Like Base Diagonal vs Array: structured Diagonal style wins over dense NDArray
+# so D.+A uses StructuredMatrixStyle{Diagonal} (densify to NDArray in diagonal.jl)
+# instead of ArrayConflict → host Matrix + scalar indexing.
+function Base.BroadcastStyle(
+    ::LinearAlgebra.StructuredMatrixStyle{<:Diagonal}, ::NDArrayStyle
+)
+    return LinearAlgebra.StructuredMatrixStyle{Diagonal}()
+end
+function Base.BroadcastStyle(
+    ::NDArrayStyle, ::LinearAlgebra.StructuredMatrixStyle{<:Diagonal}
+)
+    return LinearAlgebra.StructuredMatrixStyle{Diagonal}()
+end
+
 Base.broadcastable(A::NDArray) = A
 
 #* IS THERE A BETTER WAY TO ALLOCATE THE NEW ARRAY???
@@ -37,6 +51,16 @@ Base.similar(arr::NDArray{T}, dims::Base.DimOrInd...) where {T} = similar(arr, T
 Base.similar(arr::NDArray, ::Type{T}) where {T} = similar(arr, T, size(arr))
 
 #* IS THERE A BETTER WAY TO ALLOCATE THE NEW ARRAY???
+# Prefer Dims over the axes catch-all: with StaticArrays loaded (GPU CI via CUDA),
+# `similar(::Type{<:AbstractArray}, ::Tuple{})` is otherwise ambiguous between
+# Base, StaticArrays, and our catch-all (0-d broadcast uses axes `()`).
+Base.similar(::Type{NDArray{T}}, dims::Dims{N}) where {T,N} = cuNumeric.zeros(T, dims)
+function Base.similar(
+    ::Type{NDArray{T}},
+    shape::Tuple{Union{Integer,Base.OneTo},Vararg{Union{Integer,Base.OneTo}}},
+) where {T}
+    return cuNumeric.zeros(T, map(Int, Base.to_shape.(shape)))
+end
 Base.similar(::Type{NDArray{T}}, axes) where {T} = cuNumeric.zeros(T, Base.to_shape.(axes))
 function Base.similar(bc::Broadcasted{NDArrayStyle{N}}, ::Type{ElType}) where {N,ElType}
     return similar(NDArray{ElType}, axes(bc))
@@ -55,7 +79,7 @@ end
 
 # Get depth of Broadcast tree recursively
 # Need to call instantiate first
-bcast_depth(bc::Base.Broadcast.Broadcasted) = maximum(bcast_depth, bc.args, init=0) + 1;
+bcast_depth(bc::Base.Broadcast.Broadcasted) = maximum(bcast_depth, bc.args; init=0) + 1;
 bcast_depth(::Any) = 0
 
 struct BrokenBroadcast{T} end
@@ -63,18 +87,22 @@ Base.convert(::Type{BrokenBroadcast{T}}, x) where {T} = BrokenBroadcast{T}()
 Base.convert(::Type{BrokenBroadcast{T}}, x::BrokenBroadcast{T}) where {T} = x
 Base.eltype(::Type{BrokenBroadcast{T}}) where {T} = T
 
+# Use cuNumeric promotion (`__recip_type` for inv, etc.), not Base.combine_eltypes
+# — e.g. inv.(Int32) must allocate Float32, not Float64.
+@inline function _broadcast_copy_eltype(bc::Broadcasted)
+    return __checked_promote_op(bc.f, Base.Broadcast.eltypes(bc.args))
+end
+
 function Broadcast.copy(bc::Broadcasted{<:NDArrayStyle{0}})
-    ElType = Broadcast.combine_eltypes(bc.f, bc.args)
+    ElType = _broadcast_copy_eltype(bc)
     if ElType == Union{}
         ElType = Nothing
     end
-    dest = copyto!(similar(bc, ElType), bc)
-    #! CHECK THIS DOESNT CAUSE ISSUES DUE TO BLOCKING NATURE
-    return @allowscalar dest[CartesianIndex()]
+    return copyto!(similar(bc, ElType), bc)
 end
 
 @inline function Broadcast.copy(bc::Broadcasted{<:NDArrayStyle})
-    ElType = Broadcast.combine_eltypes(bc.f, bc.args)
+    ElType = _broadcast_copy_eltype(bc)
     if ElType == Union{} || !Base.allocatedinline(ElType)
         ElType = BrokenBroadcast{ElType}
     end
@@ -162,7 +190,9 @@ end
 end
 
 @inline _copyto_unfused!(dest::NDArray{T}, temp_result::NDArray{T}) where {T} =
-    _store_broadcast_result!(dest, temp_result)
+    _store_broadcast_result!(
+        dest, temp_result
+    )
 
 @inline function _copyto_unfused!(dest::NDArray{T}, temp_result::NDArray) where {T}
     promoted = checked_promote_arr(temp_result, T)

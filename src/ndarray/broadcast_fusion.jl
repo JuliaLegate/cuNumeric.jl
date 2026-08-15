@@ -270,8 +270,22 @@ Also refuses 0-d destinations: `RunPTXBroadcastTask` only supports dims in
 end
 
 # Same-shaped operands do not need Broadcast's dynamic index projection.
+#
+# Size-1 dimensions are special: Broadcast marks them `keeps=false` even when the
+# leaf shape matches `dest` (e.g. length-1 vectors). Linear `I` is still valid in
+# that case because the dimension only has index 1.
+@inline function _extruded_ok_for_fusion(x::Base.Broadcast.Extruded)
+    keeps = x.keeps
+    for i in eachindex(keeps)
+        if !keeps[i] && size(x.x, i) != 1
+            return false
+        end
+    end
+    return true
+end
+
 @inline function _unwrap_fusion_arg(x::Base.Broadcast.Extruded)
-    if all(x.keeps)
+    if _extruded_ok_for_fusion(x)
         return x.x
     end
     throw(
