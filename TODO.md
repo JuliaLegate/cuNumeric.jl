@@ -4,8 +4,6 @@
 - Replace `as_type` with `Base.convert`
 - Support Ints on methods that takes floats
 - Programatic manipulation of Legate hardware config (not currently possible)
-- Float32 random number generation (not possible in current C++ API)
-- Normal random numbers (not possible in current C++ API)
 - Add Aqua.jl to CI to ensure we didn't pirate any types
 
 ## Base

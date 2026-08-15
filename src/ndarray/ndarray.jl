@@ -724,47 +724,6 @@ function ones()
     return ones(DEFAULT_FLOAT)
 end
 
-@doc"""
-    cuNumeric.rand!(arr::NDArray{Float64})
-
-Fill `arr` in-place with uniform random `Float64` values.
-"""
-Random.rand!(arr::NDArray{Float64}) = cuNumeric.nda_random(arr, 0)
-function Random.rand!(arr::NDArray{T}) where {T}
-    return error("rand! only supports NDArray{Float64} for now. Cast with cuNumeric.as_type.")
-end
-
-# Backend only generates Float64. Same-type path needs no cast; other floats
-# convert then eagerly drop the Float64 source so it cannot leak until GC.
-@doc"""
-    cuNumeric.rand([T=Float32,] dims::Int...)
-    cuNumeric.rand([T=Float32,] dims::Tuple)
-
-Create a new `NDArray` filled with uniform random values.
-
-The backend currently supports only `Float64` draws. Other floating types are
-converted automatically.
-
-# Examples
-```@repl
-cuNumeric.rand(2, 2)
-cuNumeric.rand((4, 1))
-A = cuNumeric.zeros(Float64, 2, 2); cuNumeric.rand!(A)
-```
-"""
-rand(::Type{Float64}, dims::Dims) = cuNumeric.nda_random_array(dims)
-
-function rand(::Type{T}, dims::Dims) where {T<:AbstractFloat}
-    arrfp64 = cuNumeric.nda_random_array(dims)
-    arr = cuNumeric.as_type(arrfp64, T)
-    destroy!(arrfp64)
-    return arr
-end
-
-rand(::Type{T}, dims::Int...) where {T<:AbstractFloat} = cuNumeric.rand(T, dims)
-rand(dims::Dims) = cuNumeric.rand(DEFAULT_FLOAT, dims)
-rand(dims::Int...) = cuNumeric.rand(DEFAULT_FLOAT, dims)
-
 #### OPERATIONS ####
 @doc"""
     reshape(arr::NDArray, dims::Dims{N}; copy::Val{C}=Val(false)) where {N,C}

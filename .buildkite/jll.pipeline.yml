@@ -11,9 +11,9 @@ steps:
         plugins:
           - JuliaCI/julia#v1:
               version: "{{matrix.julia}}"
-              # Developer builds install local wrapper overrides into the depot.
-              # Keep JLL tests in a separate cache so those overrides cannot leak here.
-              cache_dir: "${HOME}/.cache/julia-buildkite-plugin-jll"
+              # Isolate Julia versions and compile-time fusion preferences, and keep
+              # JLL tests separate from developer wrapper overrides.
+              cache_dir: "${HOME}/.cache/julia-buildkite-plugin-jll-{{matrix.julia}}-{{matrix.fusion}}"
           - jquick/pre-hook#v1.2.0:
               command: |
                 if [ "{{matrix.fusion}}" = "on" ]; then

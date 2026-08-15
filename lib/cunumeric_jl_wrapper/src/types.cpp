@@ -176,3 +176,43 @@ void wrap_linalg_ops(jlcxx::Module& mod) {
   mod.set_const("GEEV",
                 legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_GEEV});
 }
+
+void wrap_bitgenerator_ops(jlcxx::Module& mod) {
+  mod.set_const(
+      "BITGENERATOR",
+      legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_BITGENERATOR});
+
+  mod.set_const("BITGENOP_CREATE", int32_t(CUPYNUMERIC_BITGENOP_CREATE));
+  mod.set_const("BITGENOP_DESTROY", int32_t(CUPYNUMERIC_BITGENOP_DESTROY));
+  mod.set_const("BITGENOP_RAND_RAW", int32_t(CUPYNUMERIC_BITGENOP_RAND_RAW));
+  mod.set_const("BITGENOP_DISTRIBUTION",
+                int32_t(CUPYNUMERIC_BITGENOP_DISTRIBUTION));
+
+  mod.set_const("BITGENTYPE_DEFAULT", uint32_t(CUPYNUMERIC_BITGENTYPE_DEFAULT));
+  mod.set_const("BITGENTYPE_XORWOW", uint32_t(CUPYNUMERIC_BITGENTYPE_XORWOW));
+  mod.set_const("BITGENTYPE_MRG32K3A",
+                uint32_t(CUPYNUMERIC_BITGENTYPE_MRG32K3A));
+  mod.set_const("BITGENTYPE_MTGP32", uint32_t(CUPYNUMERIC_BITGENTYPE_MTGP32));
+  mod.set_const("BITGENTYPE_MT19937", uint32_t(CUPYNUMERIC_BITGENTYPE_MT19937));
+  mod.set_const("BITGENTYPE_PHILOX4_32_10",
+                uint32_t(CUPYNUMERIC_BITGENTYPE_PHILOX4_32_10));
+
+  mod.set_const("BITGENDIST_INTEGERS_16",
+                uint32_t(CUPYNUMERIC_BITGENDIST_INTEGERS_16));
+  mod.set_const("BITGENDIST_INTEGERS_32",
+                uint32_t(CUPYNUMERIC_BITGENDIST_INTEGERS_32));
+  mod.set_const("BITGENDIST_INTEGERS_64",
+                uint32_t(CUPYNUMERIC_BITGENDIST_INTEGERS_64));
+  mod.set_const("BITGENDIST_UNIFORM_32",
+                uint32_t(CUPYNUMERIC_BITGENDIST_UNIFORM_32));
+  mod.set_const("BITGENDIST_UNIFORM_64",
+                uint32_t(CUPYNUMERIC_BITGENDIST_UNIFORM_64));
+  mod.set_const("BITGENDIST_NORMAL_32",
+                uint32_t(CUPYNUMERIC_BITGENDIST_NORMAL_32));
+  mod.set_const("BITGENDIST_NORMAL_64",
+                uint32_t(CUPYNUMERIC_BITGENDIST_NORMAL_64));
+  mod.set_const("BITGENDIST_EXPONENTIAL_32",
+                uint32_t(CUPYNUMERIC_BITGENDIST_EXPONENTIAL_32));
+  mod.set_const("BITGENDIST_EXPONENTIAL_64",
+                uint32_t(CUPYNUMERIC_BITGENDIST_EXPONENTIAL_64));
+}

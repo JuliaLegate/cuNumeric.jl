@@ -155,22 +155,79 @@ function nda_full_array(dims::Dims{N}, value::T) where {T,N}
     return NDArray(ptr, T, Val(N))
 end
 
-function nda_random(arr::NDArray, gen_code)
-    @task_scope "rand!" begin
-        ccall((:nda_random, libnda),
-            Cvoid, (NDArray_t, Int32),
-            arr.ptr, Int32(gen_code))
+# Legacy Float64-only CUPYNUMERIC_RAND wrappers; unused after BitGenerator.
+# function nda_random(arr::NDArray, gen_code)
+#     @task_scope "rand!" begin
+#         ccall((:nda_random, libnda),
+#             Cvoid, (NDArray_t, Int32),
+#             arr.ptr, Int32(gen_code))
+#     end
+# end
+#
+# function nda_random_array(dims::Dims{N}) where {N}
+#     shape = collect(UInt64, dims)
+#     ptr = @task_scope "rand" begin
+#         ccall((:nda_random_array, libnda),
+#             NDArray_t, (Int32, Ptr{UInt64}),
+#             Int32(N), shape)
+#     end
+#     return NDArray(ptr, Float64, Val(N)) #* T is always Float64 cause of cupynumeric
+# end
+
+# Pack an SVector as a Legate fixed-array scalar. Empty vectors pass a null ptr.
+function _add_vector_scalar!(add!, task, ::SVector{0,T}) where {T}
+    add!(task, Ptr{T}(C_NULL), Int32(0))
+    return nothing
+end
+function _add_vector_scalar!(add!, task, v::SVector{N,T}) where {N,T}
+    ref = Ref(v)
+    GC.@preserve ref begin
+        add!(task, Ptr{T}(Base.unsafe_convert(Ptr{SVector{N,T}}, ref)), Int32(N))
     end
+    return nothing
 end
 
-function nda_random_array(dims::Dims{N}) where {N}
-    shape = collect(UInt64, dims)
-    ptr = @task_scope "rand" begin
-        ccall((:nda_random_array, libnda),
-            NDArray_t, (Int32, Ptr{UInt64}),
-            Int32(N), shape)
+# Match cupynumeric/_thunk/deferred.py::bitgenerator_distribution via Julia
+# Legate tasking. Vector scalars still go through tiny C++ helpers because
+# Legate.jl Scalar has no std::vector constructors.
+function nda_bitgenerator_distribution!(
+    arr::NDArray,
+    handle::Int32,
+    generator_type::UInt32,
+    seed::UInt64,
+    flags::UInt32,
+    distribution::UInt32,
+    strides::SVector{N,Int64},
+    intparams::SVector{NI,Int64},
+    floatparams::SVector{NF,Float32},
+    doubleparams::SVector{ND,Float64},
+) where {N,NI,NF,ND}
+    isempty(arr) && return arr
+
+    @task_scope "bitgenerator" begin
+        rt = Legate.get_runtime()
+        lib = cuNumeric.get_lib()
+        task = Legate.create_auto_task(rt, lib, cuNumeric.BITGENERATOR)
+
+        st = cuNumeric.get_store(arr)
+        Legate.add_output(task, st)
+        finalize(st)
+
+        Legate.add_scalar(task, Legate.Scalar(Int32(cuNumeric.BITGENOP_DISTRIBUTION)))
+        Legate.add_scalar(task, Legate.Scalar(handle))
+        Legate.add_scalar(task, Legate.Scalar(generator_type))
+        Legate.add_scalar(task, Legate.Scalar(seed))
+        Legate.add_scalar(task, Legate.Scalar(flags))
+        Legate.add_scalar(task, Legate.Scalar(distribution))
+
+        _add_vector_scalar!(cuNumeric.add_vector_scalar_i64, task, strides)
+        _add_vector_scalar!(cuNumeric.add_vector_scalar_i64, task, intparams)
+        _add_vector_scalar!(cuNumeric.add_vector_scalar_f32, task, floatparams)
+        _add_vector_scalar!(cuNumeric.add_vector_scalar_f64, task, doubleparams)
+
+        Legate.submit_auto_task(rt, task)
     end
-    return NDArray(ptr, Float64, Val(N)) #* T is always Float64 cause of cupynumeric
+    return arr
 end
 
 function nda_get_slice(arr::NDArray{T,N}, slices::Vector{Slice}) where {T,N}
