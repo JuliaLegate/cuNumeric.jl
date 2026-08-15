@@ -70,7 +70,7 @@ function _source_indices(expr, replacement_sources)
         append!(indices, get(replacement_sources, symbol, Int[]))
     end
     unique!(indices)
-    sort!(indices)
+    Base.sort!(indices)
     return indices
 end
 

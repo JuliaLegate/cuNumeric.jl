@@ -20,15 +20,9 @@
 
 const SORT_TYPES = (Bool, Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)...)
 
-# Julia has no isless(::Complex, ::Complex). cupynumeric orders complex
-# lexicographically by (real, imag), matching NumPy.
+# Julia has no isless(::Complex, ::Complex). Use this only as Base.sort's `by`
+# so the reference matches cupynumeric's (real, imag) order.
 _lex_complex(x) = (real(x), imag(x))
-function _base_sort(A; kwargs...)
-    return eltype(A) <: Complex ? sort(A; by=_lex_complex, kwargs...) : sort(A; kwargs...)
-end
-function _base_sortperm(A; kwargs...)
-    return eltype(A) <: Complex ? sortperm(A; by=_lex_complex, kwargs...) : sortperm(A; kwargs...)
-end
 
 function _sort_fixture(::Type{T}) where {T}
     T <: Bool && return Bool[1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1]
@@ -76,8 +70,9 @@ end
     @testset verbose = true for T in SORT_TYPES
         A = _sort_fixture(T)
         nda = cuNumeric.NDArray(A)
-        @test Array(cuNumeric.sort(nda)) == _base_sort(A)
-        @test Array(nda) == A  # not in-place
+        @test Array(cuNumeric.sort(nda)) ==
+            (T <: Complex ? Base.sort(A; by=_lex_complex) : Base.sort(A))
+        @test Array(nda) == A  # cuNumeric.sort is not in-place
     end
 end
 
@@ -86,7 +81,7 @@ end
         A = _sort_fixture(T)
         nda = cuNumeric.NDArray(copy(A))
         cuNumeric.sort!(nda)
-        @test Array(nda) == _base_sort(A)
+        @test Array(nda) == (T <: Complex ? Base.sort(A; by=_lex_complex) : Base.sort(A))
     end
 end
 
@@ -94,8 +89,10 @@ end
     @testset verbose = true for T in SORT_TYPES
         A = reshape(_sort_fixture(T), 3, 4)
         nda = cuNumeric.NDArray(A)
-        @test Array(cuNumeric.sort(nda; dims=1)) == _base_sort(A; dims=1)
-        @test Array(cuNumeric.sort(nda; dims=2)) == _base_sort(A; dims=2)
+        @test Array(cuNumeric.sort(nda; dims=1)) ==
+            (T <: Complex ? Base.sort(A; dims=1, by=_lex_complex) : Base.sort(A; dims=1))
+        @test Array(cuNumeric.sort(nda; dims=2)) ==
+            (T <: Complex ? Base.sort(A; dims=2, by=_lex_complex) : Base.sort(A; dims=2))
         @test_throws "invalid for a" cuNumeric.sort(nda; dims=3)
         @test_throws "invalid for a" cuNumeric.sort(nda; dims=0)
         @test_throws UndefKeywordError cuNumeric.sort(nda)  # dims required for N>1
@@ -106,15 +103,20 @@ end
     @testset verbose = true for T in SORT_TYPES
         A = _sort_fixture(T)
         nda = cuNumeric.NDArray(A)
-        @test Array(cuNumeric.sortperm(nda)) == _base_sortperm(A)
+        @test Array(cuNumeric.sortperm(nda)) ==
+            (T <: Complex ? Base.sortperm(A; by=_lex_complex) : Base.sortperm(A))
         B = reshape(A, 3, 4)
         ndb = cuNumeric.NDArray(B)
         p1 = Array(cuNumeric.sortperm(ndb; dims=1))
         p2 = Array(cuNumeric.sortperm(ndb; dims=2))
-        @test p1 == _base_sortperm(B; dims=1)
-        @test p2 == _base_sortperm(B; dims=2)
-        @test B[p1] == _base_sort(B; dims=1)
-        @test B[p2] == _base_sort(B; dims=2)
+        @test p1 ==
+            (T <: Complex ? Base.sortperm(B; dims=1, by=_lex_complex) : Base.sortperm(B; dims=1))
+        @test p2 ==
+            (T <: Complex ? Base.sortperm(B; dims=2, by=_lex_complex) : Base.sortperm(B; dims=2))
+        @test B[p1] ==
+            (T <: Complex ? Base.sort(B; dims=1, by=_lex_complex) : Base.sort(B; dims=1))
+        @test B[p2] ==
+            (T <: Complex ? Base.sort(B; dims=2, by=_lex_complex) : Base.sort(B; dims=2))
     end
 end
 
@@ -122,17 +124,29 @@ end
     @testset verbose = true for T in SORT_TYPES
         A = _dup_fixture(T)
         nda = cuNumeric.NDArray(A)
-        @test Array(cuNumeric.sortperm(nda; stable=true)) ==
-            _base_sortperm(A; alg=MergeSort)
-        @test Array(cuNumeric.sort(nda; stable=true)) == _base_sort(A)
+        @test Array(cuNumeric.sortperm(nda; stable=true)) == (
+            if T <: Complex
+                Base.sortperm(A; alg=Base.MergeSort, by=_lex_complex)
+            else
+                Base.sortperm(A; alg=Base.MergeSort)
+            end
+        )
+        @test Array(cuNumeric.sort(nda; stable=true)) ==
+            (T <: Complex ? Base.sort(A; by=_lex_complex) : Base.sort(A))
     end
 end
 
-@testset "unsupported kwargs" begin
+@testset "unsupported kwargs and not Base.sort" begin
     v = cuNumeric.NDArray(Int32[3, 1, 2])
-    @test_throws MethodError cuNumeric.sort(v; alg=QuickSort)
+    @test_throws MethodError cuNumeric.sort(v; alg=Base.QuickSort)
     @test_throws MethodError cuNumeric.sort(v; rev=true)
     @test_throws MethodError cuNumeric.sort(v; lt=(!))
+    # cuNumeric.sort is not Base.sort: Julia arrays are a MethodError
+    @test_throws MethodError cuNumeric.sort([3, 1, 2])
+    @test_throws MethodError cuNumeric.sort!([3, 1, 2])
+    @test_throws MethodError cuNumeric.sortperm([3, 1, 2])
+    @test_throws MethodError cuNumeric.searchsortedfirst([1, 2, 3], 2)
+    @test_throws MethodError cuNumeric.unique([1, 1, 2])
 end
 
 @testset "searchsorted" begin
@@ -146,15 +160,17 @@ end
             continue
         end
         for x in _search_needles(T)
-            @test unwrap(cuNumeric.searchsortedfirst(nda, x)) == searchsortedfirst(A, x)
-            @test unwrap(cuNumeric.searchsortedlast(nda, x)) == searchsortedlast(A, x)
-            @test cuNumeric.searchsorted(nda, x) == searchsorted(A, x)
+            @test cuNumeric.unwrap(cuNumeric.searchsortedfirst(nda, x)) ==
+                Base.searchsortedfirst(A, x)
+            @test cuNumeric.unwrap(cuNumeric.searchsortedlast(nda, x)) ==
+                Base.searchsortedlast(A, x)
+            @test cuNumeric.searchsorted(nda, x) == Base.searchsorted(A, x)
         end
         needles = _search_needles(T)
         firsts = Array(cuNumeric.searchsortedfirst(nda, cuNumeric.NDArray(needles)))
         lasts = Array(cuNumeric.searchsortedlast(nda, cuNumeric.NDArray(needles)))
-        @test firsts == searchsortedfirst.(Ref(A), needles)
-        @test lasts == searchsortedlast.(Ref(A), needles)
+        @test firsts == Base.searchsortedfirst.(Ref(A), needles)
+        @test lasts == Base.searchsortedlast.(Ref(A), needles)
         M = cuNumeric.NDArray(reshape(A, 2, :))
         @test_throws MethodError cuNumeric.searchsortedfirst(M, zero(T))
     end
@@ -164,12 +180,12 @@ end
     @testset verbose = true for T in SORT_TYPES
         A = _unique_fixture(T)
         out = Array(cuNumeric.unique(cuNumeric.NDArray(A)))
-        @test Set(out) == Set(unique(A))
+        @test Set(out) == Set(Base.unique(A))
         if !(T <: Complex)
-            @test issorted(out)
+            @test Base.issorted(out)
         end
         B = reshape(_sort_fixture(T), 3, 4)
-        @test Set(Array(cuNumeric.unique(cuNumeric.NDArray(B)))) == Set(unique(vec(B)))
+        @test Set(Array(cuNumeric.unique(cuNumeric.NDArray(B)))) == Set(Base.unique(vec(B)))
     end
     @test_throws MethodError cuNumeric.unique(cuNumeric.NDArray(Int32[1, 1]); dims=1)
 end
