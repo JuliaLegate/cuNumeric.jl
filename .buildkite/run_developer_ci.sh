@@ -20,13 +20,13 @@ sh "$CMAKE_INSTALLER" --skip-license --prefix="$CMAKE_ROOT"
 export PATH="$CMAKE_ROOT/bin:$PATH"
 cmake --version
 
-# Clean slate so cached state doesn't leak across Julia versions. 
+# Clean slate so cached state doesn't leak across Julia versions.
 rm -f Manifest.toml test/Manifest.toml dev/Manifest.toml \
       LocalPreferences.toml test/LocalPreferences.toml
 
 # Build directly in the plugin's persistent cache so artifacts, precompile, and libcxxwrap all
-# stay warm across runs. Safe because the pipeline serializes same-cell jobs (concurrency_group
-# in developer.pipeline.yml) — only one job per (Julia, fusion) cell writes this depot at a time.
+# stay warm across runs. Developer builds are serialized across PRs, while each matrix job in a
+# build uses a separate (Julia, fusion) cache.
 # Dev mode rebuilds the wrapper .so each run, so drop stale overrides and the .ji that bake
 # @wrapmodule bindings (cuNumeric/Legate + wrapper JLLs) — a cached .ji would mismatch the fresh
 # .so and segfault. libcxxwrap's dev build is kept and reused.

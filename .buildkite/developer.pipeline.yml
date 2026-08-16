@@ -1,4 +1,13 @@
 steps:
+  - label: ":lock: Enter developer CI"
+    command: "true"
+    concurrency: 1
+    concurrency_group: "cunumeric/developer"
+    agents:
+      queue: "cuda"
+
+  - wait: ~
+
   - group: ":hammer: Developer"
     key: "developer"
     steps:
@@ -10,11 +19,6 @@ steps:
               # concurrent jobs contend on Pkg locks. Separate from the JLL cache.
               cache_dir: "${HOME}/.cache/julia-buildkite-plugin-developer-{{matrix.julia}}-{{matrix.fusion}}"
         command: ".buildkite/run_developer_ci.sh"
-        # Serialize jobs of the same (Julia, fusion) cell cluster-wide so concurrent PRs can't
-        # clobber that cell's shared developer depot (wrapper overrides + .ji). Different cells
-        # use different caches and still run in parallel.
-        concurrency: 1
-        concurrency_group: "cunumeric/developer/{{matrix.julia}}/{{matrix.fusion}}"
         artifact_paths:
           - "deps/build.log"
           - "deps/*.log"
@@ -40,3 +44,13 @@ steps:
             fusion:
               - "on"
               - "off"
+
+  - wait: ~
+    continue_on_failure: true
+
+  - label: ":unlock: Leave developer CI"
+    command: "true"
+    concurrency: 1
+    concurrency_group: "cunumeric/developer"
+    agents:
+      queue: "cuda"
