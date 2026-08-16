@@ -14,17 +14,18 @@ Solve a stack of linear systems `A * X = B`.
 same shape as `B`.
 
 Accepted element types are `Float32`, `Float64`, `ComplexF32`, and `ComplexF64`.
-Integer or `Bool` inputs promote to `Float64` only when promotion is allowed.
+Integer and `Bool` inputs are converted to `Float64`. As everywhere else in
+the package, that conversion needs `@allowpromotion` only when it widens the
+element type, so `Int64` and `UInt64` pass through silently.
 
 For a single system use [`cuNumeric.solve`](@ref).
 """
-function batched_solve(a::NDArray{<:_SOLVE_ACCEPTED}, b::NDArray{<:_SOLVE_ACCEPTED})
-    A, B = eltype(a), eltype(b)
+function batched_solve(
+    a::NDArray{A}, b::NDArray{B}
+) where {A<:_SOLVE_ACCEPTED,B<:_SOLVE_ACCEPTED}
     O = promote_type(_solve_eltype(A), _solve_eltype(B))
-    A <: _SOLVE_PROMOTABLE && assertpromotion(batched_solve, A, O)
-    B <: _SOLVE_PROMOTABLE && assertpromotion(batched_solve, B, O)
     return _solve_check_a_dims_batched(
-        unchecked_promote_arr(a, O), unchecked_promote_arr(b, O)
+        checked_promote_arr(batched_solve, a, O), checked_promote_arr(batched_solve, b, O)
     )
 end
 
@@ -44,14 +45,13 @@ triangular `L` with `A[i, :, :] ≈ L * L'`; the upper triangle is zeroed.
 triangle is read and Hermitian-ness is not checked.
 
 Accepted element types are `Float32`, `Float64`, `ComplexF32`, and `ComplexF64`.
-Integer or `Bool` inputs promote to `Float64` only when promotion is allowed.
+Integer and `Bool` inputs are converted to `Float64`. As everywhere else in
+the package, that conversion needs `@allowpromotion` only when it widens the
+element type, so `Int64` and `UInt64` pass through silently.
 """
-function batched_cholesky(a::NDArray{<:_CHOLESKY_ACCEPTED,N}) where {N}
+function batched_cholesky(a::NDArray{T,N}) where {T<:_CHOLESKY_ACCEPTED,N}
     _assert_batched_dims(:batched_cholesky, N)
-    A = eltype(a)
-    O = _cholesky_eltype(A)
-    A <: _CHOLESKY_PROMOTABLE && assertpromotion(batched_cholesky, A, O)
-    return _cholesky(unchecked_promote_arr(a, O))
+    return _cholesky(checked_promote_arr(batched_cholesky, a, _cholesky_eltype(T)))
 end
 
 function batched_cholesky(a::NDArray)
@@ -68,9 +68,9 @@ the shape of `A`, with `vectors[i, :, j]` the eigenvector for `values[i, j]`.
 
 Both results are always complex, even for real input. See `LinearAlgebra.eigen`.
 """
-function batched_eigen(a::NDArray{<:_EIG_ACCEPTED,N}) where {N}
+function batched_eigen(a::NDArray{T,N}) where {T<:_EIG_ACCEPTED,N}
     _assert_batched_dims(:batched_eigen, N)
-    return _eig(_promote_for_eig(a))
+    return _eig(checked_promote_arr(batched_eigen, a, _eig_eltype(T)))
 end
 
 function batched_eigen(a::NDArray)
@@ -83,9 +83,9 @@ end
 Eigenvalues of every matrix in the stack `A`, as a complex array of shape
 `(b, m)`. See [`cuNumeric.batched_eigen`](@ref).
 """
-function batched_eigvals(a::NDArray{<:_EIG_ACCEPTED,N}) where {N}
+function batched_eigvals(a::NDArray{T,N}) where {T<:_EIG_ACCEPTED,N}
     _assert_batched_dims(:batched_eigvals, N)
-    return _eigvals(_promote_for_eig(a))
+    return _eigvals(checked_promote_arr(batched_eigvals, a, _eig_eltype(T)))
 end
 
 function batched_eigvals(a::NDArray)

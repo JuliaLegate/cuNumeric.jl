@@ -5,7 +5,15 @@ is_wider_type(::Type{A}, ::Type{B}) where {A,B} = sizeof(A) > sizeof(B)
 checked_promote_arr(arr::NDArray{T}, ::Type{T}) where {T} = arr
 
 function checked_promote_arr(arr::NDArray{T}, ::Type{S}) where {T,S}
-    is_wider_type(S, T) && assertpromotion(promote_type, T, S)
+    return checked_promote_arr(promote_type, arr, S)
+end
+
+# `op` only names the caller in the error message, so that e.g. cholesky reports
+# itself rather than `promote_type`.
+checked_promote_arr(op, arr::NDArray{T}, ::Type{T}) where {T} = arr
+
+function checked_promote_arr(op, arr::NDArray{T}, ::Type{S}) where {T,S}
+    is_wider_type(S, T) && assertpromotion(op, T, S)
     return as_type(arr, S)
 end
 

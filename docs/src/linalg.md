@@ -4,8 +4,10 @@ cuNumeric.jl provides matrix multiplication, solves, Cholesky, eigen, SVD, QR,
 and related helpers for `NDArray`.
 
 All of the decompositions accept `Float32`, `Float64`, `ComplexF32`, and
-`ComplexF64`. Integer and `Bool` inputs require `@allowpromotion` or
-`allowpromotion` and produce `Float64` outputs.
+`ComplexF64`. Integer and `Bool` inputs are converted to `Float64`. As
+everywhere else in the package, that conversion needs `@allowpromotion` (or
+`allowpromotion`) only when it widens the element type, so `Int64` and `UInt64`
+pass through silently while `Int32`, smaller integers, and `Bool` do not.
 
 ## Which entry point to use
 

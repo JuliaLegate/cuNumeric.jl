@@ -247,8 +247,12 @@ end
         A = cuNumeric.NDArray(T[1 0; 0 1])
         b = cuNumeric.NDArray(reshape(T[1, 1], 2, 1))
 
-        # int/bool requires promotion to float. Will throw without allowpromtion()
-        @test_throws "Implicit promotion" cuNumeric.solve(A, b)
+        # int/bool converts to float; only a widening conversion needs allowpromotion()
+        if promotion_is_gated(T, Float64)
+            @test_throws "Implicit promotion" cuNumeric.solve(A, b)
+        else
+            @test cuNumeric.solve(A, b) isa NDArray{Float64}
+        end
 
         # ...allowed under @allowpromotion, result is Float64
         allowpromotion() do
@@ -392,7 +396,11 @@ end
     @testset verbose=true for T in (Int32, Int64, Bool)
         vals = T == Bool ? T[1 0; 0 1] : reshape(T.(collect(1:4)), 2, 2)
         A = cuNumeric.NDArray(vals)
-        @test_throws "Implicit promotion" LinearAlgebra.svd(A)
+        if promotion_is_gated(T, Float64)
+            @test_throws "Implicit promotion" LinearAlgebra.svd(A)
+        else
+            @test LinearAlgebra.svd(A) isa LinearAlgebra.SVD
+        end
         allowpromotion() do
             F = LinearAlgebra.svd(A)
             @test eltype(Array(F.U)) == Float64
@@ -433,7 +441,11 @@ end
     @testset verbose=true for T in (Int32, Int64, Bool)
         vals = T == Bool ? T[1 0; 0 1] : reshape(T.(collect(1:4)), 2, 2)
         A = cuNumeric.NDArray(vals)
-        @test_throws "Implicit promotion" LinearAlgebra.qr(A)
+        if promotion_is_gated(T, Float64)
+            @test_throws "Implicit promotion" LinearAlgebra.qr(A)
+        else
+            @test LinearAlgebra.qr(A) isa cuNumeric.NDArrayQR
+        end
         allowpromotion() do
             q, r = LinearAlgebra.qr(A)
             allowscalar() do
@@ -543,7 +555,11 @@ end
     @testset verbose=true for T in (Int32, Int64, Bool)
         vals = T == Bool ? T[1 0; 0 1] : T[2 0; 0 2]
         A = cuNumeric.NDArray(vals)
-        @test_throws "Implicit promotion" LinearAlgebra.cholesky(A)
+        if promotion_is_gated(T, Float64)
+            @test_throws "Implicit promotion" LinearAlgebra.cholesky(A)
+        else
+            @test LinearAlgebra.cholesky(A) isa LinearAlgebra.Cholesky
+        end
         allowpromotion() do
             F = LinearAlgebra.cholesky(A)
             allowscalar() do
@@ -645,7 +661,11 @@ end
     @testset verbose=true for T in (Int32, Int64, Bool)
         vals = T == Bool ? T[1 0; 0 1] : T[2 0; 0 3]
         A = cuNumeric.NDArray(vals)
-        @test_throws "Implicit promotion" LinearAlgebra.eigen(A)
+        if promotion_is_gated(T, Float64)
+            @test_throws "Implicit promotion" LinearAlgebra.eigen(A)
+        else
+            @test LinearAlgebra.eigen(A) isa LinearAlgebra.Eigen
+        end
         allowpromotion() do
             F = LinearAlgebra.eigen(A)
             allowscalar() do

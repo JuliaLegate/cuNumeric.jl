@@ -61,7 +61,11 @@ end
         A = cuNumeric.NDArray(reshape(T[1, 0, 0, 1], 1, 2, 2))
         b = cuNumeric.NDArray(reshape(T[1, 1], 1, 2, 1))
 
-        @test_throws "Implicit promotion" cuNumeric.batched_solve(A, b)
+        if promotion_is_gated(T, Float64)
+            @test_throws "Implicit promotion" cuNumeric.batched_solve(A, b)
+        else
+            @test cuNumeric.batched_solve(A, b) isa NDArray{Float64}
+        end
 
         allowpromotion() do
             x = cuNumeric.batched_solve(A, b)
@@ -102,7 +106,11 @@ end
     @testset verbose=true for T in (Int32, Int64, Bool)
         vals = reshape(T[1, 0, 0, 1], 1, 2, 2)
         A = cuNumeric.NDArray(vals)
-        @test_throws "Implicit promotion" cuNumeric.batched_cholesky(A)
+        if promotion_is_gated(T, Float64)
+            @test_throws "Implicit promotion" cuNumeric.batched_cholesky(A)
+        else
+            @test cuNumeric.batched_cholesky(A) isa NDArray{Float64}
+        end
         allowpromotion() do
             out = cuNumeric.batched_cholesky(A)
             allowscalar() do

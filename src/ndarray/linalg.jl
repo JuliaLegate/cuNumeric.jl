@@ -10,20 +10,20 @@ Solve the linear system `A * x = b`.
 The result has the same shape as `b`.
 
 Accepted element types are `Float32`, `Float64`, `ComplexF32`, and `ComplexF64`.
-Integer or `Bool` inputs promote to `Float64` only when promotion is allowed.
+Integer and `Bool` inputs are converted to `Float64`. As everywhere else in
+the package, that conversion needs `@allowpromotion` only when it widens the
+element type, so `Int64` and `UInt64` pass through silently.
 
 For a stack of systems of shape `(b, m, m)` use
 [`cuNumeric.batched_solve`](@ref).
 
 See also `\\`.
 """
-function solve(a::NDArray{<:_SOLVE_ACCEPTED}, b::NDArray{<:_SOLVE_ACCEPTED})
-    A, B = eltype(a), eltype(b)
+function solve(a::NDArray{A}, b::NDArray{B}) where {A<:_SOLVE_ACCEPTED,B<:_SOLVE_ACCEPTED}
     O = promote_type(_solve_eltype(A), _solve_eltype(B))
-    # int/bool -> float is an implicit promotion, disallowed unless `allowpromotion`
-    A <: _SOLVE_PROMOTABLE && assertpromotion(solve, A, O)
-    B <: _SOLVE_PROMOTABLE && assertpromotion(solve, B, O)
-    return _solve_check_a_dims_2d(unchecked_promote_arr(a, O), unchecked_promote_arr(b, O))
+    return _solve_check_a_dims_2d(
+        checked_promote_arr(solve, a, O), checked_promote_arr(solve, b, O)
+    )
 end
 
 function solve(a::NDArray, b::NDArray)
@@ -52,24 +52,20 @@ the task rather than `LinearAlgebra.PosDefException`, so the `check` keyword is
 not supported.
 
 Accepted element types are `Float32`, `Float64`, `ComplexF32`, and `ComplexF64`.
-Integer or `Bool` inputs promote to `Float64` only when promotion is allowed.
+Integer and `Bool` inputs are converted to `Float64`. As everywhere else in
+the package, that conversion needs `@allowpromotion` only when it widens the
+element type, so `Int64` and `UInt64` pass through silently.
 
 For a stack of matrices of shape `(b, m, m)` use
 [`cuNumeric.batched_cholesky`](@ref).
 """
-function LinearAlgebra.cholesky(a::NDArray{<:_CHOLESKY_ACCEPTED,2})
-    return LinearAlgebra.Cholesky(_promoted_cholesky(a), 'L', 0)
+function LinearAlgebra.cholesky(a::NDArray{T,2}) where {T<:_CHOLESKY_ACCEPTED}
+    factors = _cholesky(checked_promote_arr(cholesky, a, _cholesky_eltype(T)))
+    return LinearAlgebra.Cholesky(factors, 'L', 0)
 end
 
 function LinearAlgebra.cholesky(a::NDArray{<:Any,2})
     return throw(ArgumentError("array type $(eltype(a)) is unsupported in cholesky"))
-end
-
-function _promoted_cholesky(a::NDArray)
-    A = eltype(a)
-    O = _cholesky_eltype(A)
-    A <: _CHOLESKY_PROMOTABLE && assertpromotion(cholesky, A, O)
-    return _cholesky(unchecked_promote_arr(a, O))
 end
 
 """
@@ -84,13 +80,15 @@ eigenvalues. This follows the underlying LAPACK `geev` path and differs from
 Base, which returns real factors for such input.
 
 Accepted element types are `Float32`, `Float64`, `ComplexF32`, and `ComplexF64`.
-Integer or `Bool` inputs promote to `Float64` only when promotion is allowed.
+Integer and `Bool` inputs are converted to `Float64`. As everywhere else in
+the package, that conversion needs `@allowpromotion` only when it widens the
+element type, so `Int64` and `UInt64` pass through silently.
 
 For a stack of matrices of shape `(b, m, m)` use
 [`cuNumeric.batched_eigen`](@ref).
 """
-function LinearAlgebra.eigen(a::NDArray{<:_EIG_ACCEPTED,2})
-    return LinearAlgebra.Eigen(_eig(_promote_for_eig(a))...)
+function LinearAlgebra.eigen(a::NDArray{T,2}) where {T<:_EIG_ACCEPTED}
+    return LinearAlgebra.Eigen(_eig(checked_promote_arr(eigen, a, _eig_eltype(T)))...)
 end
 
 function LinearAlgebra.eigen(a::NDArray{<:Any,2})
@@ -104,7 +102,9 @@ Eigenvalues of the square matrix `A` as a complex `NDArray`. See
 `LinearAlgebra.eigen` for the supported element types and for why the
 result is always complex.
 """
-LinearAlgebra.eigvals(a::NDArray{<:_EIG_ACCEPTED,2}) = _eigvals(_promote_for_eig(a))
+function LinearAlgebra.eigvals(a::NDArray{T,2}) where {T<:_EIG_ACCEPTED}
+    return _eigvals(checked_promote_arr(eigvals, a, _eig_eltype(T)))
+end
 
 function LinearAlgebra.eigvals(a::NDArray{<:Any,2})
     return throw(ArgumentError("array type $(eltype(a)) is unsupported in eigvals"))
@@ -117,13 +117,6 @@ Right eigenvectors of the square matrix `A`, as columns of a complex `NDArray`.
 See `LinearAlgebra.eigen` for the supported element types.
 """
 LinearAlgebra.eigvecs(a::NDArray{<:Any,2}) = LinearAlgebra.eigen(a).vectors
-
-function _promote_for_eig(a::NDArray)
-    A = eltype(a)
-    O = _eig_eltype(A)
-    A <: _EIG_PROMOTABLE && assertpromotion(eigen, A, O)
-    return unchecked_promote_arr(a, O)
-end
 
 """
     LinearAlgebra.svd(A::NDArray{T,2}; full=false) -> SVD
@@ -140,13 +133,12 @@ itself. `F.V` is a lazy `Adjoint` wrapper, so operating on it falls back to
 scalar indexing until `adjoint(::NDArray)` is implemented; prefer `F.Vt`.
 
 Accepted element types are `Float32`, `Float64`, `ComplexF32`, and `ComplexF64`.
-Integer or `Bool` inputs promote to `Float64` only when promotion is allowed.
+Integer and `Bool` inputs are converted to `Float64`. As everywhere else in
+the package, that conversion needs `@allowpromotion` only when it widens the
+element type, so `Int64` and `UInt64` pass through silently.
 """
-function LinearAlgebra.svd(a::NDArray{<:_SVD_ACCEPTED,2}; full::Bool=false)
-    A = eltype(a)
-    O = _svd_eltype(A)
-    A <: _SVD_PROMOTABLE && assertpromotion(svd, A, O)
-    return LinearAlgebra.SVD(_svd(unchecked_promote_arr(a, O), full)...)
+function LinearAlgebra.svd(a::NDArray{T,2}; full::Bool=false) where {T<:_SVD_ACCEPTED}
+    return LinearAlgebra.SVD(_svd(checked_promote_arr(svd, a, _svd_eltype(T)), full)...)
 end
 
 function LinearAlgebra.svd(a::NDArray{<:Any,2}; full::Bool=false)
@@ -191,13 +183,12 @@ Reduced QR factorization of `A`, with `A ≈ F.Q * F.R`. For an `m × n` input a
 See [`NDArrayQR`](@ref) for why this is not a `LinearAlgebra.QRCompactWY`.
 
 Accepted element types are `Float32`, `Float64`, `ComplexF32`, and `ComplexF64`.
-Integer or `Bool` inputs promote to `Float64` only when promotion is allowed.
+Integer and `Bool` inputs are converted to `Float64`. As everywhere else in
+the package, that conversion needs `@allowpromotion` only when it widens the
+element type, so `Int64` and `UInt64` pass through silently.
 """
-function LinearAlgebra.qr(a::NDArray{<:_QR_ACCEPTED,2})
-    A = eltype(a)
-    O = _qr_eltype(A)
-    A <: _QR_PROMOTABLE && assertpromotion(qr, A, O)
-    return NDArrayQR(_qr(unchecked_promote_arr(a, O))...)
+function LinearAlgebra.qr(a::NDArray{T,2}) where {T<:_QR_ACCEPTED}
+    return NDArrayQR(_qr(checked_promote_arr(qr, a, _qr_eltype(T)))...)
 end
 
 function LinearAlgebra.qr(a::NDArray{<:Any,2})
