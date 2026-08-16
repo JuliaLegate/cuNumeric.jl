@@ -17,6 +17,7 @@ The following unary operations are supported and can be broadcast over `NDArray`
 - Full reductions (`sum`, `mean`, `var`, `std`, `argmax`, …) return a 0-d `NDArray`, not a Julia scalar. Use `unwrap` or `A[]` (with `allowscalar`) to read a host value.
 - `var` / `std` match Julia / StatsBase sample statistics (`corrected=true`, divisor `n-1`). Complex is not supported.
 - `argmax` / `argmin` are 1-d only (matching Base's `Int` return, not `CartesianIndex`). The result is a 0-d `NDArray{Int64}` of the 1-based index. Complex is not supported.
+- `findall` takes a 1-d `NDArray{Bool}` and returns the 1-based indices of its true entries as a 1-d `NDArray{Int64}`, so they stay on device instead of coming back as a `Vector`. Higher-rank input throws, because the backend reports positions in row-major order rather than the column-major order `Base.findall` uses. To build the mask, see [elementwise select](./api_binary.md#Elementwise-select).
 
 ```@autodocs
 Modules = [cuNumeric]

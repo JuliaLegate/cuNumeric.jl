@@ -14,6 +14,28 @@ The following binary operations are supported and can be applied elementwise to 
 - `&`, `|`, `⊻` are integer and `Bool` bitwise ops. `<<` and `>>` are integers excluding `Bool`.
 - `copysign` is float-only.
 
+## Elementwise select
+
+`cuNumeric.where(cond, x, y)` takes `x` where the `NDArray{Bool}` `cond` is true
+and `y` everywhere else. `ifelse(cond, x, y)` is the same call. Either branch may
+be a scalar, and all three operands broadcast against each other.
+
+```julia
+mask = arr .> 0.0f0
+clipped = cuNumeric.where(mask, arr, 0.0f0)
+same = ifelse(mask, arr, 0.0f0)
+```
+
+The branches are promoted to a common element type under the usual rules, so
+widening one of them needs `@allowpromotion`.
+
+Only the whole-array call is supported. `ifelse.(cond, x, y)` is not, because
+broadcast promotes every operand to a single element type, which would strip
+`Bool` off the condition.
+
+To find the positions the mask selected rather than the values, use `findall`
+(see [Unary Operations](./api_unary.md)).
+
 ```@autodocs
 Modules = [cuNumeric]
 Pages = ["ndarray/binary.jl"]

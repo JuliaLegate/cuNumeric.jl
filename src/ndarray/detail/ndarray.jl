@@ -406,6 +406,32 @@ function nda_ravel(arr::NDArray)
     return NDArray(ptr)
 end
 
+# The three operands broadcast against each other, so the result takes the
+# largest rank. Branches must already share an element type.
+function nda_where(
+    cond::NDArray{Bool,NC}, x::NDArray{T,NX}, y::NDArray{T,NY}
+) where {NC,NX,NY,T}
+    ptr = @task_scope "where" begin
+        ccall((:nda_where, libnda),
+            NDArray_t, (NDArray_t, NDArray_t, NDArray_t),
+            cond.ptr, x.ptr, y.ptr)
+    end
+    return NDArray(ptr, T, Val(max(NC, NX, NY)))
+end
+
+# Positions of the true entries, 0-based like NumPy. 1D input keeps this to the
+# single index array `findall` needs; see `nda_nonzero` in the C wrapper for the
+# general shape.
+function nda_nonzero(arr::NDArray{Bool,1})
+    out = Ref{NDArray_t}()
+    @task_scope "nonzero" begin
+        ccall((:nda_nonzero, libnda),
+            Cvoid, (NDArray_t, Ptr{NDArray_t}),
+            arr.ptr, out)
+    end
+    return NDArray(out[], Int64, Val(1))
+end
+
 function nda_add(rhs1::NDArray, rhs2::NDArray, out::NDArray)
     @task_scope "add" begin
         ccall((:nda_add, libnda),

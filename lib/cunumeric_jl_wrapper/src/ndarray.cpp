@@ -133,6 +133,20 @@ CN_NDArray* nda_ravel(CN_NDArray* arr) {
   return new CN_NDArray{NDArray(std::move(result))};
 }
 
+CN_NDArray* nda_where(CN_NDArray* cond, CN_NDArray* x, CN_NDArray* y) {
+  NDArray result = cupynumeric::where(cond->obj, x->obj, y->obj);
+  return new CN_NDArray{NDArray(std::move(result))};
+}
+
+// One index array per dimension, so `out` needs room for nda_array_dim(arr) of
+// them. Each is an unbound int64 store with no shape until the task runs.
+void nda_nonzero(CN_NDArray* arr, CN_NDArray** out) {
+  std::vector<NDArray> result = cupynumeric::nonzero(arr->obj);
+  for (size_t i = 0; i < result.size(); ++i) {
+    out[i] = new CN_NDArray{NDArray(std::move(result[i]))};
+  }
+}
+
 CN_NDArray* nda_trace(CN_NDArray* arr, int32_t offset, int32_t a1, int32_t a2,
                       CN_Type type) {
   NDArray result = cupynumeric::trace(arr->obj, offset, a1, a2, type.obj);

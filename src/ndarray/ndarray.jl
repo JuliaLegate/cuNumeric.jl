@@ -50,6 +50,72 @@ function unique(arr::NDArray)
 end
 
 @doc"""
+    cuNumeric.where(cond::NDArray{Bool}, x, y)
+
+Select elementwise between `x` and `y`, taking `x` where `cond` is `true`. `x`
+and `y` may be `NDArray`s or scalars and all three operands broadcast against
+each other. `ifelse(cond, x, y)` calls this.
+
+`x` and `y` are promoted to a common element type under the usual rules, so
+widening one of them needs `@allowpromotion`.
+
+```julia
+mask = arr .> 0.0f0
+clipped = cuNumeric.where(mask, arr, 0.0f0)
+```
+
+Only the whole-array form is supported; `ifelse.(cond, x, y)` is not, because
+broadcast promotes every operand to a single element type, which would strip
+`Bool` off the condition.
+"""
+function where(cond::NDArray{Bool}, x::NDArray, y::NDArray)
+    O = promote_type(eltype(x), eltype(y))
+    return nda_where(
+        cond, checked_promote_arr(where, x, O), checked_promote_arr(where, y, O)
+    )
+end
+
+where(cond::NDArray{Bool}, x::NDArray, y::Number) = where(cond, x, NDArray(y))
+where(cond::NDArray{Bool}, x::Number, y::NDArray) = where(cond, NDArray(x), y)
+where(cond::NDArray{Bool}, x::Number, y::Number) = where(cond, NDArray(x), NDArray(y))
+
+@doc"""
+    ifelse(cond::NDArray{Bool}, x, y)
+
+Elementwise select, see [`cuNumeric.where`](@ref).
+"""
+function Base.ifelse(
+    cond::NDArray{Bool}, x::Union{NDArray,Number}, y::Union{NDArray,Number}
+)
+    return where(cond, x, y)
+end
+
+@doc"""
+    findall(cond::NDArray{Bool,1})
+
+Indices of the `true` entries of `cond`. Unlike `Base.findall`, which returns a
+`Vector`, the indices stay on device as a 1D `NDArray{Int64}`.
+
+Only 1D input is supported. The backend reports one index array per dimension in
+row-major order, which is not the order `Base.findall` uses for higher-rank
+arrays.
+"""
+function Base.findall(cond::NDArray{Bool,1})
+    idx = nda_nonzero(cond)
+    idx .+= 1 # the backend counts from 0
+    return idx
+end
+
+function Base.findall(cond::NDArray{Bool})
+    return throw(
+        ArgumentError(
+            "findall is only supported for 1D NDArrays, got $(ndims(cond))D. " *
+            "Reshape to 1D first, keeping in mind that NDArrays are row-major.",
+        ),
+    )
+end
+
+@doc"""
     Base.copy(arr::NDArray)
 
 Create and return a deep copy of the given `NDArray`.
