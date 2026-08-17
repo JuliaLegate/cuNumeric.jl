@@ -47,9 +47,11 @@ n_correctness_iter = 5
 - `cupynumeric` / `cuda`: optional comparison backends
 - `check_correctness`: one CPU-reference check per config (not per timed iter), recorded in the CSV
 
-Each `[[name]]` block is a registered benchmark (`gemm`, `montecarlo`, `dmd_baseline`, `dmd_lifetimes`, `grayscott_baseline`, `grayscott_lifetimes`, …). Names must match what `src/benchmarks/*.jl` registers.
+Each `[[name]]` block is a registered benchmark (`gemm`, `montecarlo`, `dmd_baseline`, `dmd_lifetimes`, `grayscott_baseline`, `grayscott_lifetimes`, `poisson_fft`, …). Names must match what `src/benchmarks/*.jl` registers.
 
 DMD's `N` is the number of spatial degrees of freedom (rows of the snapshot matrix), not a grid side length. The SVD is of the tall-skinny `N × (M-1)` matrix `X1`. Thin SVD plus the rank-`r` lift is `Θ(N)` when `M` and `r` are fixed, so weak scaling is `N ∝ P` (same idea as Monte Carlo, not GEMM's `N ∝ P^{1/3}`). The flop count is in `src/benchmarks/dmd.jl`.
+
+`poisson_fft` solves ``M`` independent periodic Poisson problems on an ``N \times N`` grid (FFT, divide by ``-|k|^2``, inverse FFT). The transform is over the last two axes, so the leading batch axis can split across GPUs. Weak scaling is ``M \propto P`` with ``N`` fixed. A single all-axes 2-d `fft` of one grid is single-GPU and would not scale that way.
 
 ```toml
 [[gemm]]

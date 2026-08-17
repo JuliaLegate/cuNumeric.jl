@@ -69,5 +69,8 @@ void wrap_binary_ops(jlcxx::Module&);
 // Linear algebra op codes
 void wrap_linalg_ops(jlcxx::Module& mod);
 
+// FFT task id and type/direction enums (mirror cupynumeric_c.h)
+void wrap_fft_ops(jlcxx::Module& mod);
+
 // BitGenerator op codes / enums (mirror cupynumeric_c.h)
 void wrap_bitgenerator_ops(jlcxx::Module& mod);

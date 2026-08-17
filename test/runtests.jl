@@ -27,6 +27,7 @@ const init_code = quote
     using LinearAlgebra
     using Random
     using StatsBase
+    using FFTW
     import Random: rand
 
     ENV["LEGATE_SKIP_RUNTIME"] = "false"

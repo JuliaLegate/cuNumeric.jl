@@ -3,6 +3,7 @@ uuid = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
 version = "0.2.0"
 
 [deps]
+AbstractFFTs = "621f4979-c628-5d54-868e-fcf4e3e8185c"
 CNPreferences = "3e078157-ea10-49d5-bf32-908f777cd46f"
 CUDACore = "bd0ed864-bdfe-4181-a5ed-ce625a5fdea2"
 CUDATools = "9ec180c6-1c07-47c7-9e6e-ebefa4d1f6d0"
@@ -26,6 +27,7 @@ cupynumeric_jll = "2862d674-414d-5b0b-a494-b21f8deca547"
 libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
 
 [compat]
+AbstractFFTs = "1.5"
 CNPreferences = "0.1.3"
 CUDACore = "6.2"
 CUDATools = "6.2"

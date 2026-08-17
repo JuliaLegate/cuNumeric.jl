@@ -81,6 +81,24 @@ N = [50000, 100000, 200000, 400000]
 M = 512
 
 #################################
+#     Spectral Poisson (FFT)    #
+# M independent N×N Poisson     #
+# solves (∇²u = f, periodic).   #
+# Transform is the last 2 axes; #
+# batch axis M may split GPUs.  #
+# Work ~ M N² log N.            #
+# Weak scaling: M / P constant. #
+# M = 8 * P, N = 1024.          #
+#################################
+
+[[poisson_fft]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+N = 1024
+M = [8, 16, 32, 64]
+
+#################################
 #   Monte-Carlo Integration     #
 #  Work ~ N. Scale N linearly   #
 #################################
