@@ -1,6 +1,10 @@
 # The `@accelerate` Macro
 
-`@accelerate` optimizes straight-line array code by coordinating three related jobs:
+`@accelerate` optimizes *straight-line* array code: a fixed sequence of statements
+with no branches, loops, jumps, `try`, or nested functions. Ordinary calls are
+opaque boundaries; general control flow is not rewritten.
+
+Within that restricted body, it performs:
 
 <ol>
 <li><strong>Fusion within a broadcast expression.</strong> On CUDA, an eligible dotted expression such as <code>@. A + B * C</code> can run as one kernel. CPU execution uses the normal unfused path.</li>
