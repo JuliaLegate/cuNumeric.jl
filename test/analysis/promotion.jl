@@ -19,3 +19,8 @@
         @test safe_compare(r1, r2, atol(Float64), rtol(Float64))
     end
 end
+
+@testset "Flattened associative broadcast promotion" begin
+    @test @inferred(cuNumeric.__checked_promote_op(+, NTuple{5,Float64})) === Float64
+    @test @inferred(cuNumeric.__checked_promote_op(*, NTuple{4,Int32})) === Int32
+end

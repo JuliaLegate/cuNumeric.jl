@@ -35,6 +35,14 @@ unchecked_promote_arr(::Base.RefValue{Val{V}}, ::Type{T}) where {T,V} = Val{V}
 __checked_promote_op(op, ::Type{Tuple{A}}) where {A} = __checked_promote_op(op, A)
 __checked_promote_op(op, ::Type{Tuple{A,B}}) where {A,B} = __checked_promote_op(op, A, B)
 
+# Julia flattens dotted `+` and `*` chains into n-ary Broadcasted nodes. Fold
+# their input types pairwise, matching both the binary C API and fused path.
+@inline function __checked_promote_op(
+    op::Union{typeof(+),typeof(*)}, ::Type{Args}
+) where {Args<:Tuple{Any,Any,Any,Vararg{Any}}}
+    return _checked_promote_associative(op, Args.parameters...)
+end
+
 # Path for literal powers
 @inline function __checked_promote_op(
     f::typeof(Base.literal_pow), a::Type{Tuple{_,ARR_TYPE,Val{POWER}}}
