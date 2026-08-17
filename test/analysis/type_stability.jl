@@ -41,6 +41,8 @@ function _type_stable_accelerate_expr(a, b)
     return @accelerate (@. (a + b) * 2.0f0)
 end
 
+_type_stable_cuda_argtypes(task::cuNumeric.CUDATask) = task.argtypes
+
 @testset verbose = true "core" begin
     a = cuNumeric.zeros(5)
     b = cuNumeric.zeros(Float64, 3, 4)
@@ -88,6 +90,18 @@ end
     # NDArray from Julia Array (Parent-stable attachment)
     @test @inferred(cuNumeric.NDArray(rand(10))) !== nothing
     @test @inferred(cuNumeric.NDArray(rand(Float32, 3, 3))) !== nothing
+end
+
+@testset verbose = true "custom CUDA metadata" begin
+    task = cuNumeric.CUDATask("kernel", (Float32, Int32))
+    @test isconcretetype(typeof(task))
+    @test all(isconcretetype, fieldtypes(typeof(task)))
+    @test @inferred(_type_stable_cuda_argtypes(task)) == DataType[Float32, Int32]
+
+    storage_type = cuNumeric.PaddedStorage{Float32,1}
+    @test all(isconcretetype, Base.uniontypes(fieldtype(storage_type, :backing)))
+    @test all(isconcretetype, Base.uniontypes(fieldtype(storage_type, :staging)))
+    @test all(isconcretetype, Base.uniontypes(fieldtype(storage_type, :shape)))
 end
 
 @testset verbose = true "conversion" begin

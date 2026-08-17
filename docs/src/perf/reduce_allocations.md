@@ -1,40 +1,16 @@
 # The `@accelerate` Macro
 
-`@accelerate` optimizes straight-line array code at macro-expansion time:
+`@accelerate` optimizes straight-line array code by coordinating three related jobs:
 
-- On CPU and GPU, static last-use analysis releases non-returned temporary `NDArray`s as soon as they become dead.
-- With CUDA broadcast fusion enabled, eligible dotted expressions can be combined into fewer GPU kernels.
+1. **Fusion within a broadcast expression.** On CUDA, an eligible dotted expression such as `@. A + B * C` can run as one kernel. CPU execution uses the normal unfused path.
+2. **Fusion across broadcast statements.** A single-use broadcast result can be substituted into its consumer, producing fewer GPU kernel launches.
+3. **Temporary lifetime analysis.** After rewriting the code, the macro releases materialized, non-returned `NDArray`s after their final use on CPU or GPU.
 
-Arguments are never freed, mutations remain visible, and returned values remain materialized. The macro has four forms:
+These jobs must happen together: an intermediate that fuses into its consumer is never allocated, while an intermediate that cannot fuse is materialized and then released after its last use.
 
-```julia
-@accelerate function f(args...)
-    # reusable straight-line kernel
-end
+## Use the function form by default
 
-@accelerate begin
-    # soft scope
-end
-
-@accelerate let
-    # hard scope
-end
-
-result = @accelerate expr
-```
-
-## Choose a form
-
-| Form | Use it when | What remains available afterward |
-|---|---|---|
-| `@accelerate function ... end` | Defining a reusable update or compute kernel. This is the recommended default. | Caller-owned arguments, their mutations, and returned values. |
-| `@accelerate begin ... end` | Named results must remain in the surrounding scope. | Every named binding created by the block. |
-| `@accelerate let ... end` | Writing a one-off multi-statement calculation whose intermediates should not escape. | Only the block result. |
-| `@accelerate expr` | Accelerating one expression without introducing a new scope. | The materialized expression result. |
-
-## 1. Function form
-
-Use this form by default. Function arguments belong to the caller and are never freed. Non-returned locals may be fused into consumers or released after their final use.
+Annotate a reusable straight-line function:
 
 ```julia
 @accelerate function update!(C, A, B)
@@ -44,9 +20,20 @@ Use this form by default. Function arguments belong to the caller and are never 
 end
 ```
 
-## 2. `begin` form
+On an eligible GPU path, `combined` can be folded into the second broadcast so the chain runs as one kernel. On CPU, or when fusion is ineligible, `combined` is materialized and released after the update. Function arguments belong to the caller and are never released by `@accelerate`; returned values also remain valid.
 
-`begin` preserves normal Julia scope. Named bindings remain available after the block, so the macro cannot discard them. Eligible same-shape CUDA chains may still run as one multi-output kernel.
+## Choose a form
+
+The forms differ in which values must remain available, which determines how aggressively the macro may fuse or release intermediates.
+
+| Form | Use it when | Fusion and lifetime behavior |
+|---|---|---|
+| `@accelerate function ... end` | Defining reusable array code. This is the recommended default. | Arguments and returned values are protected. Non-returned locals may fuse into consumers or be released after their last use. |
+| `@accelerate begin ... end` | Named results must remain in the current scope. | `begin` creates no new Julia scope, so every named binding is protected. An eligible same-shape CUDA chain may still use one multi-output kernel, but each named result is materialized. |
+| `@accelerate let ... end` | Writing a one-off multi-statement calculation when only its result is needed. | `let` creates a local scope. Only the result escapes; other locals may fuse away or be released after their last use. |
+| `@accelerate expr` | Evaluating one expression without named intermediates. | The result is materialized and returned. Eligible operations fuse within the expression, and transient temporaries are released. |
+
+For example, choose `begin` when both names are needed afterward:
 
 ```julia
 @accelerate begin
@@ -54,47 +41,31 @@ end
     shifted = @. product + 1
 end
 
-# Both names are still defined here.
 consume(product, shifted)
 ```
 
-## 3. `let` form
-
-`let` creates a hard scope. Only its result escapes, giving `@accelerate` freedom to fuse or release every non-returned intermediate.
+Choose `let` when only the final result should escape:
 
 ```julia
 result = @accelerate let
     product = @. A * B
     @. product + 1
 end
-
-# `product` is not defined here.
 ```
 
-## 4. Expression form
-
-Use the expression form when there are no named intermediates:
+For a single unnamed expression, use:
 
 ```julia
 result = @accelerate (@. A + B * C)
 ```
 
-The result is materialized before it is returned.
+## Writing an accelerated body
 
-## Writing the body
-
-Apply `@.` to each elementwise right-hand side. Do not wrap the entire `@accelerate` body in `@.`: block-wide dotting changes `x = ...` into `x .= ...` and changes an ordinary call such as `bc!(...)` into `bc!.(...)`.
-
-Prefer ordinary assignment for a single-use intermediate:
-
-```julia
-temporary = @. A * B
-C .= @. temporary + 1
-```
-
-An explicit in-place `.=` mutation is observable and therefore forms a fusion boundary. Ordinary function calls run in program order and also form boundaries; `@accelerate` does not rewrite inside a called function unless that function is separately annotated.
-
-The body must be straight-line. Control flow (`if`, loops, `try`, short-circuit operators) and nested functions are rejected. Put control flow outside the accelerated region:
+- Apply `@.` to each elementwise right-hand side. Applying it to the entire body would change `x = ...` into `x .= ...` and `f(...)` into `f.(...)`.
+- Use ordinary `=` for a disposable intermediate. This allows a single-use producer to fuse into its consumer.
+- Use `.=` when the mutation must be visible. The destination write is preserved, although an eligible producer may fuse into it.
+- Keep control flow outside the accelerated body. Loops, conditionals, `try`, short-circuit operators, and nested functions are rejected.
+- Ordinary function calls run in program order and form rewrite boundaries. Annotate the called function separately if its body should also be accelerated.
 
 ```julia
 for _ in 1:nsteps
@@ -102,4 +73,4 @@ for _ in 1:nsteps
 end
 ```
 
-See [Kernel Fusion](./kernel_fusion.md) for fusion requirements and [`@show_lifetimes`](../debugging.md#inspect-lifetime-rewrites-with-show_lifetimes) to inspect the exact rewrite without executing it.
+See [Kernel Fusion](./kernel_fusion.md) for CUDA fusion requirements and [`@show_lifetimes`](../debugging.md#inspect-lifetime-rewrites-with-show_lifetimes) to inspect the exact rewrite without executing it.

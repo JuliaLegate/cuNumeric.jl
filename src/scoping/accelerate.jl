@@ -212,22 +212,22 @@ end
     @accelerate let ... end
     @accelerate expr
 
-Fuse straight-line array code into fewer kernel launches and free temporaries.
-The body must be straight-line — control flow and nested/anonymous functions are
-rejected. Four forms, by scope:
+Optimize straight-line array code by coordinating CUDA broadcast fusion within
+expressions, fusion across broadcast statements, and scope-aware cleanup of
+materialized temporaries. Control flow and nested/anonymous functions are
+rejected. Four forms determine which values must remain valid:
 
-  * **function** (preferred): args are caller-owned; only the returned value stays
-    materialized, so non-returned intermediates fuse away and are freed.
-  * **`begin`**: 1:1 Julia scope — every named binding stays live; on GPU,
-    same-shape chains may fuse into one multi-output launch; anonymous temps
-    (slices) are freed.
-  * **`let`**: hard scope — combines single-use producers and frees every
-    non-returned temporary; only the returned value(s) escape. Maximum reuse.
-  * **expression**: materializes and returns one expression without introducing
-    a new scope.
+  * **function** (preferred): arguments and returned values are protected;
+    non-returned locals may fuse into consumers or be freed after their last use.
+  * **`begin`**: creates no new Julia scope, so every named binding stays live;
+    eligible GPU chains may use one multi-output kernel that materializes them.
+  * **`let`**: creates a local scope; only the result escapes, so other locals may
+    fuse away or be freed after their last use.
+  * **expression**: materializes and returns one expression; eligible operations
+    fuse within it and transient temporaries are released.
 
 ```julia
-@accelerate function step(u, v)   # c freed; w returned
+@accelerate function step(u, v)   # c may fuse away; the result is returned
     c = u .* v
     return c .^ 2
 end
