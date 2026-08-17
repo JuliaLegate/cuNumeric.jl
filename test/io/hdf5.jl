@@ -53,4 +53,38 @@ end
             test_hdf5_roundtrip(T, shape)
         end
     end
+
+    @testset "host-side path checks" begin
+        mktempdir() do dir
+            arr = cuNumeric.ones(Float32, 4, 3)
+            path = joinpath(dir, "values.h5")
+
+            @test_throws ArgumentError cuNumeric.h5read(joinpath(dir, "missing.h5"), "values")
+            @test_throws ArgumentError cuNumeric.h5read(dir, "values")
+            @test_throws ArgumentError cuNumeric.h5write(dir, "values", arr)
+            @test_throws ArgumentError cuNumeric.h5write(path, "", arr)
+            @test_throws ArgumentError cuNumeric.h5read(path, "")
+
+            stub = joinpath(dir, "stub.h5")
+            write(stub, "not hdf5")
+            @test_throws ArgumentError cuNumeric.h5read(stub, "values")
+
+            # A leftover empty file is what aborted HDF5CombineVDS.
+            leftover = joinpath(dir, "leftover.h5")
+            write(leftover, UInt8[])
+            cuNumeric.h5write(leftover, "values", arr)
+            cuNumeric.Legate.runtime_sync()
+            @test cuNumeric._is_hdf5_file(leftover)
+            @test size(cuNumeric.h5read(leftover, "values")) == size(arr)
+            cuNumeric.Legate.runtime_sync()
+
+            # A second write to the same path must replace, not abort.
+            arr2 = cuNumeric.zeros(Float32, 4, 3)
+            cuNumeric.h5write(leftover, "values", arr2)
+            cuNumeric.Legate.runtime_sync()
+            @allowscalar @test safe_compare(
+                zeros(Float32, 4, 3), cuNumeric.h5read(leftover, "values"), 0, 0
+            )
+        end
+    end
 end

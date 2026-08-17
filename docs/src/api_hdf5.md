@@ -22,6 +22,13 @@ restored = cuNumeric.h5read("checkpoint.h5", "field"; layout=:row)
 Synchronize before accessing the file outside the runtime, moving or deleting it, or
 exiting immediately after the write.
 
+`h5write` removes a leftover empty or truncated `.h5` before launching the
+write, which is what otherwise aborts `HDF5CombineVDS`. A valid HDF5 file is
+left for Legate to overwrite. The `*_legate_vds` sidecar is left alone: after
+a Legate write that directory is the data, and the `.h5` is only an index.
+`h5read` rejects a missing path, a directory, or a file that does not start
+with the HDF5 signature, instead of opening it in a Legate task.
+
 ## Dataset layout
 
 ```julia

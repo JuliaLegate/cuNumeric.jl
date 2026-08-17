@@ -874,10 +874,55 @@ function Base.isapprox(arr::NDArray{T}, arr2::NDArray{T}; atol=0, rtol=0) where 
     return compare(arr, arr2, atol, rtol)
 end
 
+# HDF5 signature. A leftover empty/truncated file from a crashed write has no
+# header, and opening it in a Legate HDF5 task aborts the runtime.
+const _HDF5_MAGIC = UInt8[0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]
+
+function _hdf5_check_dataset(dataset::AbstractString)
+    return isempty(dataset) && throw(ArgumentError("HDF5 dataset name must be non-empty"))
+end
+
+function _is_hdf5_file(path::AbstractString)
+    isfile(path) || return false
+    filesize(path) < length(_HDF5_MAGIC) && return false
+    return open(path, "r") do io
+        return read(io, length(_HDF5_MAGIC)) == _HDF5_MAGIC
+    end
+end
+
+# A truncated leftover `.h5` is not a valid file and makes HDF5CombineVDS abort.
+# Leave a real HDF5 file in place so Legate can truncate it. Do not touch
+# `*_legate_vds`: that directory holds the payload of a VDS write, and we
+# cannot tell a stale sidecar from one a later read still needs.
+function _prepare_h5write(path::AbstractString, dataset::AbstractString)
+    _hdf5_check_dataset(dataset)
+    isdir(path) && throw(ArgumentError("h5write path must be a file, got directory $path"))
+    parent = dirname(path)
+    if !isempty(parent) && parent != "." && !isdir(parent)
+        throw(ArgumentError("h5write parent directory does not exist: $parent"))
+    end
+    if ispath(path) && !_is_hdf5_file(path)
+        rm(path; force=true)
+    end
+    return nothing
+end
+
+function _prepare_h5read(path::AbstractString, dataset::AbstractString)
+    _hdf5_check_dataset(dataset)
+    isdir(path) && throw(ArgumentError("h5read path must be a file, got directory $path"))
+    isfile(path) || throw(ArgumentError("HDF5 file does not exist: $path"))
+    _is_hdf5_file(path) || throw(ArgumentError("not an HDF5 file: $path"))
+    return nothing
+end
+
 """
     h5write(path::String, dataset::String, arr::NDArray)
 
 Write an `NDArray` directly to an HDF5 dataset without a host copy or dimension flip.
+
+A leftover empty or truncated `.h5` from a crashed write is removed first.
+A valid HDF5 file is left in place so Legate can overwrite it. The
+`*_legate_vds` sidecar is not touched: it holds the payload of a VDS write.
 
 # Arguments
 - `path`: Path to the HDF5 file.
@@ -885,6 +930,7 @@ Write an `NDArray` directly to an HDF5 dataset without a host copy or dimension 
 - `arr`: The array to write.
 """
 function h5write(path::String, dataset::String, arr::NDArray{T,N}) where {T,N}
+    _prepare_h5write(path, dataset)
     st_handle = get_store(arr)
     # NDArrays are row-major, so this writes straight through (no dim flip, no warning).
     la = Legate.LogicalArray{T,N}(st_handle, size(arr))
@@ -904,6 +950,7 @@ Read a dataset from an HDF5 file into an `NDArray`.
 - `layout`: On-disk memory order, either `:row` (default) or `:col`.
 """
 function h5read(path::String, dataset::String; kwargs...)
+    _prepare_h5read(path, dataset)
     la = Legate.h5read(path, dataset; kwargs...)
     T = eltype(la)
     N = Int(Legate.dim(la))

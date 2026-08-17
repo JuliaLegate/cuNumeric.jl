@@ -38,6 +38,7 @@ makedocs(;
             "Initialization" => "examples/initialization.md",
             "Monte-Carlo" => "examples/montecarlo.md",
             "Gray-Scott" => "examples/grayscott.md",
+            "Dynamic Mode Decomposition" => "examples/dmd.md",
         ],
         "Performance Tips" => [
             "Kernel Fusion" => "perf/kernel_fusion.md",
