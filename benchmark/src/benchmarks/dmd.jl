@@ -112,9 +112,9 @@ function check_benchmark_correctness(
     Xh = rand(T, b.N, b.M)
     X = NDArray(Xh)
     r = _dmd_rank(b)
-    # Values, not lifetimes: compare against the baseline body on host and device.
+    # Values, not lifetimes: compare the selected device path against the host baseline.
     ref = DMDBaseline{T}(; N=b.N, M=b.M)
-    λ, _ = _dmd_compute!(ref, X, r)
+    λ, _ = _dmd_compute!(b, X, r)
     λh, _ = _dmd_compute!(ref, Xh, r)
 
     mag = sort(abs.(Array(λ)); rev=true)
