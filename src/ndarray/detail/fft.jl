@@ -173,15 +173,23 @@ function _ifft_scale(::Type{T}, sz::NTuple{N,Int}, dims::NTuple{R,Int}) where {T
     return T(inv(n))
 end
 
+_fft_scope_name(direction::Int32) =
+    direction == Int32(cuNumeric.FFT_INVERSE) ? "ifft" : "fft"
+
 """
-    fft_task!(out, inp, dims, direction)
+    fft_task!(out, inp, dims, direction; scale=false)
 
 Launch cupynumeric's `CUPYNUMERIC_FFT` auto task. `dims` are 1-based Julia
 dimensions. `out` and `inp` must have the same shape and complex eltype; they
-may be the same array (in-place C2C).
+may be the same array (in-place C2C). When `scale` is true the inverse is
+normalized in this same task scope (`out .*= 1/N`).
 """
 function fft_task!(
-    out::NDArray{T,N}, inp::NDArray{T,N}, dims::NTuple{R,Int}, direction::Int32
+    out::NDArray{T,N},
+    inp::NDArray{T,N},
+    dims::NTuple{R,Int},
+    direction::Int32;
+    scale::Bool=false,
 ) where {T<:SUPPORTED_COMPLEX_TYPES,N,R}
     _assert_fft_gpu()
     size(out) == size(inp) ||
@@ -195,7 +203,7 @@ function fft_task!(
     _bluestein_mask(axes0, size(inp), size(out))
     kind = _fft_kind(T)
 
-    @task_scope "fft" begin
+    @task_scope _fft_scope_name(direction) begin
         rt = Legate.get_runtime()
         lib = cuNumeric.get_lib()
         task = Legate.create_auto_task(rt, lib, cuNumeric.FFT)
@@ -223,6 +231,9 @@ function fft_task!(
         end
 
         Legate.submit_auto_task(rt, task)
+        if scale
+            out .*= _ifft_scale(T, size(out), dims)
+        end
     end
     return out
 end

@@ -37,9 +37,10 @@ function _fft_out_of_place(
 ) where {R}
     inp = _fft_complex(A)
     out = cuNumeric.zeros(eltype(inp), size(inp))
-    fft_task!(out, inp, dims, direction)
-    scale || return out
-    return out * _ifft_scale(eltype(out), size(out), dims)
+    fft_task!(out, inp, dims, direction; scale)
+    # Promotion allocated a new complex buffer; the task already holds the store.
+    inp !== A && destroy!(inp)
+    return out
 end
 
 """
@@ -123,9 +124,7 @@ function ifft!(A::NDArray{T,N}) where {T<:SUPPORTED_COMPLEX_TYPES,N}
 end
 function ifft!(A::NDArray{T,N}, dims) where {T<:SUPPORTED_COMPLEX_TYPES,N}
     region = _fft_dims(A, dims)
-    fft_task!(A, A, region, Int32(cuNumeric.FFT_INVERSE))
-    A .*= _ifft_scale(T, size(A), region)
-    return A
+    return fft_task!(A, A, region, Int32(cuNumeric.FFT_INVERSE); scale=true)
 end
 
 function ifft!(A::NDArray)
