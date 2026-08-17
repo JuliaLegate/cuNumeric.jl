@@ -47,7 +47,10 @@ n_correctness_iter = 5
 - `cupynumeric` / `cuda`: optional comparison backends
 - `check_correctness`: one CPU-reference check per config (not per timed iter), recorded in the CSV
 
-Each `[[name]]` block is a registered benchmark (`gemm`, `montecarlo`, `dmd_baseline`, `dmd_lifetimes`, `grayscott_baseline`, `grayscott_lifetimes`, …). Names must match what `src/benchmarks/*.jl` registers.
+Each `[[name]]` block is a registered benchmark (`gemm`, `montecarlo`,
+`dmd_baseline`, `dmd_accelerated`, `grayscott_baseline`,
+`grayscott_function_accelerated`, …). Names must match what
+`src/benchmarks/*.jl` registers.
 
 DMD's `N` is the number of spatial degrees of freedom (rows of the snapshot matrix), not a grid side length. The SVD is of the tall-skinny `N × (M-1)` matrix `X1`. Thin SVD plus the rank-`r` lift is `Θ(N)` when `M` and `r` are fixed, so weak scaling is `N ∝ P` (same idea as Monte Carlo, not GEMM's `N ∝ P^{1/3}`). The flop count is in `src/benchmarks/dmd.jl`.
 
@@ -78,7 +81,12 @@ M    = [150, 300, 600]
 
 That is 2 types × 3 sweep points = **6 runs**.
 
-`fusion` toggles cuNumeric broadcast fusion (`true`/`false` or `"on"`/`"off"`, default `true`). Comparison backends ignore fusion and run once (on the fused pass), not per variant. `grayscott_accelerated` wraps the step in `@accelerate` and is cuNumeric-only.
+`fusion` toggles cuNumeric broadcast fusion (`true`/`false` or `"on"`/`"off"`,
+default `true`). Comparison backends ignore fusion and run once (on the fused
+pass), not per variant. Entries ending in `_accelerated` are cuNumeric-only.
+The Gray-Scott function, `begin`, `let`, and expression entries compare the
+four `@accelerate` scope contracts on the same step; `dmd_accelerated` applies
+the recommended function form to the DMD projection.
 
 Gotcha: when `T = ["Float32", "Float64"]` and a length-2 `N`/`M` sweep you get all **4** combinations, not a paired `Float32 -> N[1]`. To pin a type to a size, use separate `[[name]]` blocks.
 

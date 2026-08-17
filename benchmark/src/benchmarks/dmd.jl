@@ -13,13 +13,13 @@ Base.@kwdef struct DMDBaseline{T} <: AbstractDMD{T}
     M::Int
 end
 
-Base.@kwdef struct DMDLifetimes{T} <: AbstractDMD{T}
+Base.@kwdef struct DMDAccelerated{T} <: AbstractDMD{T}
     N::Int
     M::Int
 end
 
 name(::DMDBaseline) = "dmd_baseline"
-name(::DMDLifetimes) = "dmd_lifetimes"
+name(::DMDAccelerated) = "dmd_accelerated"
 dims(b::AbstractDMD) = (b.N, b.M)
 data(b::AbstractDMD{T}) where {T} = "DMD with T=$(T), N=$(b.N), M=$(b.M)"
 allowed_types(::Type{<:AbstractDMD}) = cuNumeric.SUPPORTED_FLOAT_TYPES
@@ -65,8 +65,8 @@ _dmd_row(v) = v isa NDArray ? cuNumeric.reshape(v, (1, length(v))) : reshape(v, 
 # svd / eigen return factorizations whose stores the lifetime rewriter cannot
 # see, so those stay outside the macro. The GEMM lift is wrapped.
 #
-# Do not form Diagonal(1 ./ S) inside @analyze_lifetimes: the rewriter treats
-# `1 ./ S` as a last-used temp and destroy!s it, while Diagonal still holds
+# Do not form Diagonal(1 ./ S) inside @accelerate: the rewriter treats
+# `1 ./ S` as a last-used temporary and frees it while Diagonal still holds
 # that same vector. Scale columns with a broadcast instead (same math).
 function _dmd_factors(X, r)
     n = size(X, 2)
@@ -84,7 +84,11 @@ let body = quote
         (B, Ã)
     end
     @eval _dmd_project(::DMDBaseline, X, X2, U, Vt, S) = $body
-    @eval _dmd_project(::DMDLifetimes, X, X2, U, Vt, S) = @analyze_lifetimes $body
+    @eval @accelerate function _dmd_project(
+        ::DMDAccelerated, X, X2, U, Vt, S
+    )
+        $body
+    end
 end
 
 function _dmd_compute!(b::AbstractDMD, X, r)
@@ -119,4 +123,4 @@ function check_benchmark_correctness(
 end
 
 register_benchmark("dmd_baseline", DMDBaseline)
-register_benchmark("dmd_lifetimes", DMDLifetimes)
+register_benchmark("dmd_accelerated", DMDAccelerated)

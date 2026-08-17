@@ -96,11 +96,11 @@ fusion = [true, false]
 N = [50000, 100000, 200000, 400000]
 M = 512
 
-[[dmd_lifetimes]]
+[[dmd_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 16
-fusion = false
+fusion = [true, false]
 N = [50000, 100000, 200000, 400000]
 M = 512
 
