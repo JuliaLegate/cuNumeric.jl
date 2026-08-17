@@ -17,6 +17,14 @@ logging/*
 debug
 debug/*
 
+# example outputs (examples/data and the docs copy of gray-scott.gif are tracked)
+examples/*.h5
+examples/*.gif
+/gray-scott.h5
+/dmd-mode.h5
+# h5write emits a virtual dataset backed by this sidecar directory
+*_legate_vds/
+
 # benchmark outputs
 benchmark/results**
 benchmark/results/*
