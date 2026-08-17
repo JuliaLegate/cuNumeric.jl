@@ -92,63 +92,64 @@ function check_benchmark_correctness(
     return (u_ok && v_ok) ? "pass" : "fail"
 end
 
-# Variant description:
-# baseline: as written
-# accelerated: step wrapped in @accelerate
-let body = quote
-        # currently we don't have NDArray^x working yet. every operator is dotted
-        # so each rhs fuses into a single broadcast kernel rather than shattering
-        # into bare +/-/* binary tasks.
-        F_u = (
-            (
-                .-u[2:(end - 1), 2:(end - 1)] .*
-                (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
-            ) .+ args.f .* (1.0f0 .- u[2:(end - 1), 2:(end - 1)])
-        )
-        F_v = (
-            (
-                u[2:(end - 1), 2:(end - 1)] .*
-                (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
-            ) .- (args.f + args.k) .* v[2:(end - 1), 2:(end - 1)]
-        )
-        # 2-D Laplacian via slicing, excluding boundaries
-        u_lap = (
-            (
-                u[3:end, 2:(end - 1)] .- 2 .* u[2:(end - 1), 2:(end - 1)] .+
-                u[1:(end - 2), 2:(end - 1)]
-            ) ./ args.dx^2 .+
-            (
-                u[2:(end - 1), 3:end] .- 2 .* u[2:(end - 1), 2:(end - 1)] .+
-                u[2:(end - 1), 1:(end - 2)]
-            ) ./ args.dx^2
-        )
-        v_lap = (
-            (
-                v[3:end, 2:(end - 1)] .- 2 .* v[2:(end - 1), 2:(end - 1)] .+
-                v[1:(end - 2), 2:(end - 1)]
-            ) ./ args.dx^2 .+
-            (
-                v[2:(end - 1), 3:end] .- 2 .* v[2:(end - 1), 2:(end - 1)] .+
-                v[2:(end - 1), 1:(end - 2)]
-            ) ./ args.dx^2
-        )
+# Shared syntax tree keeps every Gray-Scott variant on the exact same workload.
+const GRAYSCOTT_STEP_BODY = quote
+    # currently we don't have NDArray^x working yet. every operator is dotted
+    # so each rhs fuses into a single broadcast kernel rather than shattering
+    # into bare +/-/* binary tasks.
+    F_u = (
+        (
+            .-u[2:(end - 1), 2:(end - 1)] .*
+            (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
+        ) .+ args.f .* (1.0f0 .- u[2:(end - 1), 2:(end - 1)])
+    )
+    F_v = (
+        (
+            u[2:(end - 1), 2:(end - 1)] .*
+            (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
+        ) .- (args.f + args.k) .* v[2:(end - 1), 2:(end - 1)]
+    )
+    # 2-D Laplacian via slicing, excluding boundaries
+    u_lap = (
+        (
+            u[3:end, 2:(end - 1)] .- 2 .* u[2:(end - 1), 2:(end - 1)] .+
+            u[1:(end - 2), 2:(end - 1)]
+        ) ./ args.dx^2 .+
+        (
+            u[2:(end - 1), 3:end] .- 2 .* u[2:(end - 1), 2:(end - 1)] .+
+            u[2:(end - 1), 1:(end - 2)]
+        ) ./ args.dx^2
+    )
+    v_lap = (
+        (
+            v[3:end, 2:(end - 1)] .- 2 .* v[2:(end - 1), 2:(end - 1)] .+
+            v[1:(end - 2), 2:(end - 1)]
+        ) ./ args.dx^2 .+
+        (
+            v[2:(end - 1), 3:end] .- 2 .* v[2:(end - 1), 2:(end - 1)] .+
+            v[2:(end - 1), 1:(end - 2)]
+        ) ./ args.dx^2
+    )
 
-        # Forward-Euler step for all interior points
-        u_new[2:(end - 1), 2:(end - 1)] =
-            ((args.c_u .* u_lap) .+ F_u) .* args.dt .+ u[2:(end - 1), 2:(end - 1)]
-        v_new[2:(end - 1), 2:(end - 1)] =
-            ((args.c_v .* v_lap) .+ F_v) .* args.dt .+ v[2:(end - 1), 2:(end - 1)]
+    # Forward-Euler step for all interior points
+    u_new[2:(end - 1), 2:(end - 1)] =
+        ((args.c_u .* u_lap) .+ F_u) .* args.dt .+ u[2:(end - 1), 2:(end - 1)]
+    v_new[2:(end - 1), 2:(end - 1)] =
+        ((args.c_v .* v_lap) .+ F_v) .* args.dt .+ v[2:(end - 1), 2:(end - 1)]
 
-        # Periodic boundary conditions
-        u_new[:, 1] = u[:, end - 1]
-        u_new[:, end] = u[:, 2]
-        u_new[1, :] = u[end - 1, :]
-        u_new[end, :] = u[2, :]
-        v_new[:, 1] = v[:, end - 1]
-        v_new[:, end] = v[:, 2]
-        v_new[1, :] = v[end - 1, :]
-        v_new[end, :] = v[2, :]
-    end
+    # Periodic boundary conditions
+    u_new[:, 1] = u[:, end - 1]
+    u_new[:, end] = u[:, 2]
+    u_new[1, :] = u[end - 1, :]
+    u_new[end, :] = u[2, :]
+    v_new[:, 1] = v[:, end - 1]
+    v_new[:, end] = v[:, 2]
+    v_new[1, :] = v[end - 1, :]
+    v_new[end, :] = v[2, :]
+end
+
+# Original baseline and recommended function-form benchmark.
+let body = deepcopy(GRAYSCOTT_STEP_BODY)
     @eval _gs_step!(b::GrayScottBaseline, u, v, u_new, v_new, args::GSParams) = $body
     @eval @accelerate function _gs_step!(
         b::GrayScottAccelerated, u, v, u_new, v_new, args::GSParams
