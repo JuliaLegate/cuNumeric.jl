@@ -79,6 +79,21 @@ using InteractiveUtils: code_typed
         p, q = _acc_begin(_nd(ja), _nd(jb))
         @test approx(p, ja .* jb)
         @test approx(q, (ja .* jb) .+ one(T))
+
+        # A nested `let` keeps its intermediate private while the outer block
+        # can consume and return the value it produces.
+        a = _nd(ja)
+        b = _nd(jb)
+        shifted, x = @accelerate begin
+            shifted = let
+                product = @. a * b
+                @. product + one(T)
+            end
+            x = @. shifted * 2
+            (shifted, x)
+        end
+        @test approx(shifted, (ja .* jb) .+ one(T))
+        @test approx(x, ((ja .* jb) .+ one(T)) .* 2)
     end
 
     @testset "expansion contracts (white-box)" begin

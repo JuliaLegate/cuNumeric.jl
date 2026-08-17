@@ -39,15 +39,19 @@ The forms differ in which values must remain available, which determines how agg
 | `@accelerate let ... end` | Writing a one-off multi-statement calculation when only its result is needed. | `let` creates a local scope. Only the result escapes; other locals may fuse away or be released after their last use. |
 | `@accelerate expr` | Evaluating one expression without named intermediates. | The result is materialized and returned. Eligible operations fuse within the expression, and transient temporaries are released. |
 
-For example, choose `begin` when both names are needed afterward:
+For example, nested scope lets a private intermediate feed a value that is also
+used by the outer block:
 
 ```julia
 @accelerate begin
-    product = @. A * B
-    shifted = @. product + 1
+    shifted = let
+        product = @. A * B
+        @. product + 1
+    end
+    x = @. shifted * C
 end
 
-consume(product, shifted)
+consume(shifted, x)
 ```
 
 Choose `let` when only the final result should escape:
