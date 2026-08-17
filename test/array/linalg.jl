@@ -325,6 +325,11 @@ end
     end
 end
 
+@testset "svd wide matrix (m < n) throws" begin
+    A = cuNumeric.NDArray(my_rand(Float32, 3, 5))
+    @test_throws "m >= n" LinearAlgebra.svd(A)
+end
+
 @testset "svd thin output shapes (full=false)" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         m, n = 6, 4
