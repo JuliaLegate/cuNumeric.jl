@@ -27,6 +27,10 @@ const DOMAIN_GENERATORS = Dict{Symbol,Function}(
     :positive => (T, N) -> (x=rand(T, N); T <: Signed ? abs.(max.(x, -typemax(T))) : x),
 )
 
+# The package only gates promotion when the target type is wider in bytes, so
+# Int64/UInt64 -> Float64 needs no `@allowpromotion` while Int32/Bool do.
+promotion_is_gated(::Type{FROM}, ::Type{TO}) where {FROM,TO} = sizeof(TO) > sizeof(FROM)
+
 rtol(::Type{Float16}) = 1e-2
 rtol(::Type{Float32}) = 1e-5
 rtol(::Type{Float64}) = 1e-12

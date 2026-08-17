@@ -127,14 +127,14 @@ end
 @testset verbose = true "svd" begin
     @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         A = cuNumeric.NDArray(T[1 0; 0 1])
-        @test @inferred(cuNumeric.svd(A)) !== nothing
-        @test @inferred(cuNumeric.svd(A, false)) !== nothing
+        @test @inferred(LinearAlgebra.svd(A)) !== nothing
+        @test @inferred(LinearAlgebra.svd(A; full=true)) !== nothing
     end
 
     @testset "promote $(T)" for T in (Int32, Int64, Bool)
         A = cuNumeric.NDArray(T[1 0; 0 1])
         allowpromotion() do
-            @test @inferred(cuNumeric.svd(A)) !== nothing
+            @test @inferred(LinearAlgebra.svd(A)) !== nothing
         end
     end
 end
@@ -142,14 +142,56 @@ end
 @testset verbose = true "qr" begin
     @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_QR_TYPES)
         A = cuNumeric.NDArray(T[1 0; 0 1])
-        @test @inferred(cuNumeric.qr(A)) !== nothing
+        @test @inferred(LinearAlgebra.qr(A)) !== nothing
     end
 
     @testset "promote $(T)" for T in (Int32, Int64, Bool)
         A = cuNumeric.NDArray(T[1 0; 0 1])
         allowpromotion() do
-            @test @inferred(cuNumeric.qr(A)) !== nothing
+            @test @inferred(LinearAlgebra.qr(A)) !== nothing
         end
+    end
+end
+
+@testset verbose = true "cholesky" begin
+    @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_CHOLESKY_TYPES)
+        A = cuNumeric.NDArray(Matrix{T}(I, 2, 2))
+        @test @inferred(LinearAlgebra.cholesky(A)) !== nothing
+        B = cuNumeric.NDArray(reshape(Matrix{T}(I, 2, 2), 1, 2, 2))
+        @test @inferred(cuNumeric.batched_cholesky(B)) !== nothing
+    end
+
+    @testset "promote $(T)" for T in (Int32, Int64, Bool)
+        A = cuNumeric.NDArray(T[1 0; 0 1])
+        allowpromotion() do
+            @test @inferred(LinearAlgebra.cholesky(A)) !== nothing
+        end
+    end
+end
+
+@testset verbose = true "eigen" begin
+    @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_EIG_TYPES)
+        A = cuNumeric.NDArray(Matrix{T}(I, 2, 2))
+        @test @inferred(LinearAlgebra.eigen(A)) !== nothing
+        @test @inferred(LinearAlgebra.eigvals(A)) !== nothing
+        B = cuNumeric.NDArray(reshape(Matrix{T}(I, 2, 2), 1, 2, 2))
+        @test @inferred(cuNumeric.batched_eigen(B)) !== nothing
+        @test @inferred(cuNumeric.batched_eigvals(B)) !== nothing
+    end
+
+    @testset "promote $(T)" for T in (Int32, Int64, Bool)
+        A = cuNumeric.NDArray(T[1 0; 0 1])
+        allowpromotion() do
+            @test @inferred(LinearAlgebra.eigen(A)) !== nothing
+        end
+    end
+end
+
+@testset verbose = true "batched_solve" begin
+    @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_SOLVE_TYPES)
+        A = cuNumeric.NDArray(reshape(T[2 1; 5 7], 1, 2, 2))
+        b = cuNumeric.NDArray(reshape(T[11, 13], 1, 2, 1))
+        @test @inferred(cuNumeric.batched_solve(A, b)) !== nothing
     end
 end
 
