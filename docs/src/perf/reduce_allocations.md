@@ -2,9 +2,11 @@
 
 `@accelerate` optimizes straight-line array code by coordinating three related jobs:
 
-1. **Fusion within a broadcast expression.** On CUDA, an eligible dotted expression such as `@. A + B * C` can run as one kernel. CPU execution uses the normal unfused path.
-2. **Fusion across broadcast statements.** A single-use broadcast result can be substituted into its consumer, producing fewer GPU kernel launches.
-3. **Temporary lifetime analysis.** After rewriting the code, the macro releases materialized, non-returned `NDArray`s after their final use on CPU or GPU.
+<ol>
+<li><strong>Fusion within a broadcast expression.</strong> On CUDA, an eligible dotted expression such as <code>@. A + B * C</code> can run as one kernel. CPU execution uses the normal unfused path.</li>
+<li><strong>Fusion across broadcast statements.</strong> A single-use broadcast result can be substituted into its consumer, producing fewer GPU kernel launches.</li>
+<li><strong>Temporary lifetime analysis.</strong> After rewriting the code, the macro releases materialized, non-returned <code>NDArray</code>s after their final use on CPU or GPU.</li>
+</ol>
 
 These jobs must happen together: an intermediate that fuses into its consumer is never allocated, while an intermediate that cannot fuse is materialized and then released after its last use.
 
@@ -27,7 +29,7 @@ On an eligible GPU path, `combined` can be folded into the second broadcast so t
 The forms differ in which values must remain available, which determines how aggressively the macro may fuse or release intermediates.
 
 | Form | Use it when | Fusion and lifetime behavior |
-|---|---|---|
+| :--- | :--- | :--- |
 | `@accelerate function ... end` | Defining reusable array code. This is the recommended default. | Arguments and returned values are protected. Non-returned locals may fuse into consumers or be released after their last use. |
 | `@accelerate begin ... end` | Named results must remain in the current scope. | `begin` creates no new Julia scope, so every named binding is protected. An eligible same-shape CUDA chain may still use one multi-output kernel, but each named result is materialized. |
 | `@accelerate let ... end` | Writing a one-off multi-statement calculation when only its result is needed. | `let` creates a local scope. Only the result escapes; other locals may fuse away or be released after their last use. |
