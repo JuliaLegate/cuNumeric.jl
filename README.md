@@ -61,7 +61,7 @@ See [Kernel Fusion](https://julialegate.github.io/cuNumeric.jl/dev/perf/kernel_f
 
 ### The `@accelerate` macro
 
-`@accelerate` optimizes straight-line array code by fusing eligible CUDA broadcasts and releasing dead temporary `NDArray`s. See [The `@accelerate` Macro](https://julialegate.github.io/cuNumeric.jl/dev/perf/reduce_allocations) for usage guidance.
+`@accelerate` fuses eligible GPU broadcasts within and across statements, then releases materialized temporary `NDArray`s after their last use on CPU or GPU. See [The `@accelerate` Macro](https://julialegate.github.io/cuNumeric.jl/dev/perf/reduce_allocations) for usage guidance.
 
 ### Benchmarks
 
