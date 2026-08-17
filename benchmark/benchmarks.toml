@@ -72,6 +72,39 @@ N = [24000, 33944, 48000, 67888]
 M = [24000, 33944, 48000, 67888]
 
 #################################
+#              DMD              #
+# Snapshot matrix N × M         #
+# (space × time), r=min(20,M-1).#
+# FLOPs (m=N, n=M-1):           #
+#   2mn² + 11n³   thin SVD      #
+#   2mnr + mr     B = X2 V Σ⁻¹  #
+#   2mr²          Ã = U' B      #
+#   25r³          eigen(Ã)      #
+#   2mr²          Φ = B W       #
+# M fixed ⇒ n,r fixed ⇒ W ~ N.  #
+# Weak scaling: N / P constant. #
+# N = 50000 * P.                #
+# M is the intensity knob: AI   #
+# ~ n²/M ~ M, independent of P. #
+#################################
+
+[[dmd_baseline]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+fusion = [true, false]
+N = [50000, 100000, 200000, 400000]
+M = 512
+
+[[dmd_lifetimes]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+fusion = false
+N = [50000, 100000, 200000, 400000]
+M = 512
+
+#################################
 #   Monte-Carlo Integration     #
 #  Work ~ N. Scale N linearly   #
 #################################

@@ -1,6 +1,9 @@
 using cuNumeric
 using Plots
 
+# Flattened u snapshots land here for examples/dmd.jl to analyze.
+const SNAPSHOT_FILE = "gray-scott.h5"
+
 struct Params{T}
     dx::T
     dt::T
@@ -59,7 +62,7 @@ end
         ((args.c_v * v_lap) + F_v) * args.dt + v[2:(end - 1), 2:(end - 1)]
 
     # Apply periodic boundary conditions
-    bc!(u_new, v_new, u, v)
+    return bc!(u_new, v_new, u, v)
 end
 
 function gray_scott()
@@ -72,11 +75,15 @@ function gray_scott()
 
     n_steps = 2000 # number of steps to take
     frame_interval = 200 # steps to take between making plots
+    snapshot_interval = 20 # steps to take between saved snapshots
 
     u = cuNumeric.ones(dims)
     v = cuNumeric.zeros(dims)
     u_new = cuNumeric.zeros(dims)
     v_new = cuNumeric.zeros(dims)
+
+    # One flattened frame per column, the layout DMD wants.
+    snapshots = cuNumeric.zeros(Float32, N * N, n_steps ÷ snapshot_interval)
 
     u[1:15, 1:15] = cuNumeric.rand(Float32, 15, 15)
     v[1:15, 1:15] = cuNumeric.rand(Float32, 15, 15)
@@ -88,12 +95,22 @@ function gray_scott()
         u, u_new = u_new, u
         v, v_new = v_new, v
 
+        if n%snapshot_interval == 0
+            snapshots[:, n ÷ snapshot_interval] = cuNumeric.reshape(u, (N * N, 1))
+        end
+
         if n%frame_interval == 0
             heatmap(Array(u); clims=(0, 1))
             frame(anim)
         end
     end
     gif(anim, "gray-scott.gif"; fps=10)
+
+    cuNumeric.h5write(SNAPSHOT_FILE, "u", snapshots)
+    # h5write is asynchronous, so flush before another process opens the file.
+    cuNumeric.Legate.runtime_sync()
+    println("wrote $(size(snapshots, 2)) snapshots to $SNAPSHOT_FILE")
+
     return u, v
 end
 

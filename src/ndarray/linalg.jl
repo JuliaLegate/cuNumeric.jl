@@ -132,6 +132,9 @@ Destructuring an `SVD` yields `(U, S, V)` — the adjoint of `F.Vt`, not `F.Vt`
 itself. `F.V` is a lazy `Adjoint` wrapper, so operating on it falls back to
 scalar indexing until `adjoint(::NDArray)` is implemented; prefer `F.Vt`.
 
+The backend only factors tall or square matrices (`m >= n`). A wide input
+throws `ArgumentError` rather than hitting the C++ `m >= n` assert.
+
 Accepted element types are `Float32`, `Float64`, `ComplexF32`, and `ComplexF64`.
 Integer and `Bool` inputs are converted to `Float64`. As everywhere else in
 the package, that conversion needs `@allowpromotion` only when it widens the

@@ -253,6 +253,14 @@ end
 
 function _svd(a::NDArray{T,2}, full_matrices::Bool) where {T}
     m, n = size(a)
+    # cupynumeric's SVD task is tall-skinny only (`assert(m >= n)` in the
+    # kernel). Catch it here so a wide matrix is a Julia error, not a
+    # process-killing C++ assert / abort.
+    m >= n || throw(
+        ArgumentError(
+            "svd only supports m >= n (got $(m)×$(n)); the backend does not factor wide matrices"
+        ),
+    )
     k = min(m, n)
     S = real(T)
     # cuSolver requires full square buffers regardless of full_matrices

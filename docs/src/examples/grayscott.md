@@ -23,8 +23,58 @@ The runnable example in `examples/gray-scott.jl` evolves two chemical fields wit
     bc!(u_new, v_new, u, v)
     return nothing
 end
-```
 
-Run it from the repository root with `julia --project=examples examples/gray-scott.jl`. The script converts only animation frames to host arrays.
+function gray_scott()
+    #anim = Animation()
+
+    N = 100
+    dims = (N, N)
+
+    args = Params()
+
+    n_steps = 2000 # number of steps to take
+    frame_interval = 200 # steps to take between making plots
+    snapshot_interval = 20 # steps to take between saved snapshots
+
+    u = cuNumeric.ones(dims)
+    v = cuNumeric.zeros(dims)
+    u_new = cuNumeric.zeros(dims)
+    v_new = cuNumeric.zeros(dims)
+
+    # One flattened frame per column, the layout DMD wants.
+    snapshots = cuNumeric.zeros(Float32, N * N, n_steps ÷ snapshot_interval)
+
+    u[1:15,1:15] = cuNumeric.rand(15,15)
+    v[1:15,1:15] = cuNumeric.rand(15,15)
+
+    for n in 1:n_steps
+        step!(u, v, u_new, v_new, args)
+        # update u and v
+        # this doesn't copy, this switching references
+        u, u_new = u_new, u
+        v, v_new = v_new, v
+
+        if n%snapshot_interval == 0
+            snapshots[:, n ÷ snapshot_interval] = cuNumeric.reshape(u, (N * N, 1))
+        end
+
+        if n%frame_interval == 0
+            u_cpu = u[:, :]
+            heatmap(u_cpu, clims=(0, 1))
+            frame(anim)
+        end
+    end
+    gif(anim, "gray-scott.gif", fps=10)
+
+    cuNumeric.h5write(SNAPSHOT_FILE, "u", snapshots)
+    # h5write is asynchronous, so flush before another process opens the file.
+    cuNumeric.Legate.runtime_sync()
+
+    return u, v
+ end
+ ```
 
 ![Simulation Output](../gray-scott.gif)
+
+The snapshots written to `gray-scott.h5` are the input to
+[Dynamic Mode Decomposition](./dmd.md).
