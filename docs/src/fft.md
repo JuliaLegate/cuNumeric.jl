@@ -52,13 +52,7 @@ Awkward lengths whose prime factors exceed 131 make cuFFT take the Bluestein
 path; a warning is emitted. Padding to a nearby highly composite size avoids
 that.
 
-```@docs
-fft
-ifft
-fft!
-ifft!
-batched_fft
-batched_ifft
-batched_fft!
-batched_ifft!
+```@autodocs
+Modules = [cuNumeric]
+Pages = ["ndarray/fft.jl"]
 ```
