@@ -59,8 +59,9 @@ two axes:
 default `true`); it only affects cuNumeric, so comparison backends run once, not
 per variant.
 
-`grayscott_baseline` measures the step as written;
-`grayscott_accelerated` wraps the step in `@accelerate` and is cuNumeric-only.
+Benchmark names are defined by the registered benchmark implementations. A
+benchmark may expose baseline, optimized, backend-specific, or other variants;
+the harness treats each name uniformly and records each result independently.
 
 Each zipped field must be one of:
 
@@ -85,3 +86,14 @@ M    = [150, 300, 600]          #
 When `T = ["Float32", "Float64"]` and a length-2 `N`/`M` sweep you get all **4**
 combinations, not a paired `Float32 -> N[1], Float64 -> N[2]`. To pin a type
 to a specific size, use separate `[[name]]` blocks.
+
+## Plotting
+
+```bash
+julia --project=benchmark benchmark/plot_results.jl
+```
+
+The plotter reads the result files in the selected results directory and writes
+one weak-scaling figure per benchmark, plus aggregate fusion and no-fusion
+figures when those result groups are present. Outputs are grouped under a
+subdirectory named for the shared benchmark prefix.

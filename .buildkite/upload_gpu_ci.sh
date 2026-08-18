@@ -15,13 +15,24 @@ message="${BUILDKITE_MESSAGE:-}"
 run_jll=true
 run_developer=true
 
+if [[ "$message" =~ \[skip[[:space:]]ci\] ]]; then
+    echo "Skipping all GPU CI because the build message requests it."
+    exit 0
+fi
+
+if [[ "$message" =~ \[skip[[:space:]]jll\] ]]; then
+    echo "Skipping JLL GPU CI because the build message contains [skip jll]."
+    run_jll=false
+fi
+if [[ "$message" =~ \[skip[[:space:]]dev\] ]]; then
+    echo "Skipping developer GPU CI because the build message contains [skip dev]."
+    run_developer=false
+fi
+
 # Keep both suites for main and PRs into main. For non-main PRs and post-merge
 # develop builds, select the suite whose wrapper matches the code under test.
 if [[ "$branch" != "main" && "$base_branch" != "main" ]]; then
-    if [[ "$message" =~ \[skip[[:space:]]jll\] ]]; then
-        echo "Skipping JLL GPU CI because the build message contains [skip jll]."
-        run_jll=false
-    elif [[ ("$pull_request" != "false" && -n "$base_branch") || "$branch" == "develop" ]]; then
+    if [[ ("$pull_request" != "false" && -n "$base_branch") || "$branch" == "develop" ]]; then
         base_ref="refs/remotes/origin/$WRAPPER_BASE_BRANCH"
         # The published wrapper JLL tracks main, so compare against main even
         # when the pull request targets develop.

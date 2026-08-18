@@ -39,10 +39,12 @@ on:
 jobs:
   resolve:
     name: Package resolution
+    if: ${{ !contains(toJSON(github.event), '[skip ci]') }}
     uses: ./.github/workflows/pkg_resolve.yml
 
   wrapper_changes:
     name: Wrapper change detection
+    if: ${{ !contains(toJSON(github.event), '[skip ci]') }}
     runs-on: ubuntu-latest
     outputs:
       wrapper_changed: ${{ steps.wrapper-changes.outputs.changed }}
@@ -70,7 +72,7 @@ jobs:
   developer_tests:
     name: Developer wrapper tests
     needs: [resolve, wrapper_changes]
-    if: ${{ github.event_name != 'pull_request' || github.base_ref == 'main' || needs.wrapper_changes.outputs.wrapper_changed == 'true' }}
+    if: ${{ !contains(toJSON(github.event), '[skip ci]') && !contains(toJSON(github.event), '[skip dev]') && (github.event_name != 'pull_request' || github.base_ref == 'main' || needs.wrapper_changes.outputs.wrapper_changed == 'true') }}
     permissions:
       contents: read
       packages: write
@@ -82,7 +84,7 @@ jobs:
   jll_tests:
     name: JLL wrapper tests - Julia ${{ matrix.julia }} - ${{ matrix.os }}
     needs: [resolve, wrapper_changes]
-    if: ${{ github.base_ref == 'main' || needs.wrapper_changes.outputs.wrapper_changed != 'true' }}
+    if: ${{ !contains(toJSON(github.event), '[skip ci]') && !contains(toJSON(github.event), '[skip jll]') && (github.base_ref == 'main' || needs.wrapper_changes.outputs.wrapper_changed != 'true') }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
