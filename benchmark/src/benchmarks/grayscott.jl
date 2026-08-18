@@ -151,11 +151,10 @@ end
 # Original baseline and recommended function-form benchmark.
 let body = deepcopy(GRAYSCOTT_STEP_BODY)
     @eval _gs_step!(b::GrayScottBaseline, u, v, u_new, v_new, args::GSParams) = $body
-    @eval @accelerate function _gs_step!(
-        b::GrayScottAccelerated, u, v, u_new, v_new, args::GSParams
+    definition = _define_accelerated_definition(
+        :(_gs_step!(b::GrayScottAccelerated, u, v, u_new, v_new, args::GSParams)), body
     )
-        $body
-    end
+    @eval $definition
 end
 
 function run!(b::AbstractGrayScott, st::GrayScottState)
