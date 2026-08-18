@@ -15,15 +15,31 @@ const baseTemp = {
 }
 
 const navTemp = {
+  // DocumenterVitepress still fills this token; we intentionally omit page links
+  // from the top bar (sidebar has the TOC). Keep only the version picker.
   nav: 'REPLACE_ME_DOCUMENTER_VITEPRESS',
 }
 
+const sidebarTemp = {
+  sidebar: 'REPLACE_ME_DOCUMENTER_VITEPRESS',
+}
+
 const nav = [
-  ...navTemp.nav,
   {
     component: 'VersionPicker'
   }
 ]
+
+// VitePress packs root-level leaves into anonymous groups (muted level-1 text).
+// Attach an empty `items` array so Home stays a bold, clickable level-0 title.
+function keepRootLeavesAsGroups<T extends { link?: string; items?: unknown[] }>(items: T[]): T[] {
+  return items.map((item) => {
+    if (item.link && !item.items) {
+      return { ...item, items: [] }
+    }
+    return item
+  })
+}
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
@@ -39,7 +55,7 @@ export default defineConfig({
     // ['script', {src: '/versions.js'], for custom domains, I guess if deploy_url is available.
     ['script', {src: `${baseTemp.base}siteinfo.js`}]
   ],
-  
+
   vite: {
     define: {
       __DEPLOY_ABSPATH__: JSON.stringify('REPLACE_ME_DOCUMENTER_VITEPRESS_DEPLOY_ABSPATH'),
@@ -50,18 +66,18 @@ export default defineConfig({
       }
     },
     optimizeDeps: {
-      exclude: [ 
+      exclude: [
         '@nolebase/vitepress-plugin-enhanced-readabilities/client',
         'vitepress',
         '@nolebase/ui',
-      ], 
-    }, 
-    ssr: { 
-      noExternal: [ 
+      ],
+    },
+    ssr: {
+      noExternal: [
         // If there are other packages that need to be processed by Vite, you can add them here.
         '@nolebase/vitepress-plugin-enhanced-readabilities',
         '@nolebase/ui',
-      ], 
+      ],
     },
   },
   markdown: {
@@ -77,7 +93,9 @@ export default defineConfig({
   },
   themeConfig: {
     outline: 'deep',
-    logo: 'REPLACE_ME_DOCUMENTER_VITEPRESS',
+    // Keep logo.png in assets/ for the README/home page, but do not show it
+    // in the VitePress navbar (DocumenterVitepress would inject /logo.png here).
+    logo: false,
     search: {
       provider: 'local',
       options: {
@@ -85,7 +103,7 @@ export default defineConfig({
       }
     },
     nav,
-    sidebar: 'REPLACE_ME_DOCUMENTER_VITEPRESS',
+    sidebar: keepRootLeavesAsGroups(sidebarTemp.sidebar),
     editLink: 'REPLACE_ME_DOCUMENTER_VITEPRESS',
     socialLinks: [
       { icon: 'github', link: 'REPLACE_ME_DOCUMENTER_VITEPRESS' }

@@ -1,38 +1,9 @@
+# NDArray Reference
 
-# Public API
-
-User facing functions supported by cuNumeric.jl
-
-```@contents
-Pages = ["api.md"]
-Depth = 2:2
-```
+Indexing, reshaping, reductions, comparisons, memory helpers, acceleration macros, and related utilities. For constructors (`zeros`, `ones`, `rand`, …) see [Initialization](./api_initialization.md). For RNG engines and `default_rng`, see [Random](./api_random.md).
 
 ```@autodocs
 Modules = [cuNumeric]
-Pages = ["cuNumeric.jl", "memory.jl", "scoping.jl", "warnings.jl", "util.jl", "ndarray/ndarray.jl", "ndarray/unary.jl", "ndarray/binary.jl"]
-```
-
-# CUDA.jl Tasking
-This section will detail how to use custom CUDA.jl kernels with the Legate runtime.
-
-```@autodocs
-Modules = [cuNumeric]
-Pages = ["cuda.jl"]
-```
-
-# CNPreferences
-
-This section details how to set custom build configuration options. To see more details visit our install guide [here](./install.md).
-
-```@autodocs
-Modules = [CNPreferences]
-Pages = ["CNPreferences.jl"]
-```
-
-# Internal API
-
-```@autodocs
-Modules = [cuNumeric]
-Pages = ["ndarray/detail/ndarray.jl"]
+Pages = ["ndarray/ndarray.jl", "ndarray/linalg.jl", "ndarray/batched_linalg.jl", "cuNumeric.jl", "warnings.jl", "util.jl", "memory.jl", "scoping/scoping.jl", "scoping/accelerate.jl"]
+Filter = t -> !(t isa Function && nameof(t) in (:zeros, :ones, :fill, :trues, :falses, :eye, :rand, :rand!, :randn, :randn!, :randexp, :randexp!, :default_rng, :random, :random!))
 ```

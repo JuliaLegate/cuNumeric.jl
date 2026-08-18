@@ -1,4 +1,4 @@
-/* Copyright 2025 Northwestern University,
+/* Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,6 +15,7 @@
  *
  * Author(s): David Krasowska <krasow@u.northwestern.edu>
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
+ *            Nader Rahhal <naderrahhal2026@u.northwestern.edu>
  */
 
 #pragma once
@@ -41,19 +42,19 @@ DEFINE_CODE_TO_CXX(UINT8, uint8_t)
 DEFINE_CODE_TO_CXX(UINT16, uint16_t)
 DEFINE_CODE_TO_CXX(UINT32, uint32_t)
 DEFINE_CODE_TO_CXX(UINT64, uint64_t)
-#ifdef HAVE_CUDA
+#if LEGATE_DEFINED(LEGATE_USE_CUDA)
 DEFINE_CODE_TO_CXX(FLOAT16, __half)
 #else
-// Dummy type for FLOAT16 when CUDA is not available
-// This allows compilation but we throw an error if actually used
-struct __half_dummy {};
-DEFINE_CODE_TO_CXX(FLOAT16, __half_dummy)
+struct __dummy {};
+DEFINE_CODE_TO_CXX(FLOAT16, __dummy)
 #endif
 DEFINE_CODE_TO_CXX(FLOAT32, float)
 DEFINE_CODE_TO_CXX(FLOAT64, double)
 DEFINE_CODE_TO_CXX(COMPLEX64, std::complex<float>)
 DEFINE_CODE_TO_CXX(COMPLEX128, std::complex<double>)
-#undef DEFINE_CODE_TO_CXX
+
+using HalfType = typename code_to_cxx<legate::Type::Code::FLOAT16>::type;
+
 }  // namespace legate_util
 
 // Unary op codes
@@ -64,3 +65,9 @@ void wrap_unary_reds(jlcxx::Module&);
 
 // Binary op codes
 void wrap_binary_ops(jlcxx::Module&);
+
+// Linear algebra op codes
+void wrap_linalg_ops(jlcxx::Module& mod);
+
+// BitGenerator op codes / enums (mirror cupynumeric_c.h)
+void wrap_bitgenerator_ops(jlcxx::Module& mod);

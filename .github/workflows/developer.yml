@@ -1,51 +1,19 @@
-# Develeper CI test. This will build the workflow using Jlls and building wrappers from SRC
-name: Develeper CI test
+# Developer wrapper tests build the wrappers from source instead of using JLLs.
+name: Developer Wrapper Tests
 
 on:
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to build instead'
-        required: false
-        default: ''
-      mark_as_latest:
-        description: 'Mark as latest'
-        type: boolean
-        required: false
-        default: false
-  push:
-    paths:
-      - 'src/**'
-      - 'scripts/**'
-      - 'deps/build.jl'
-      - 'Project.toml'
-      - 'lib/cunumeric_jl_wrapper/src/**'
-      - 'lib/cunumeric_jl_wrapper/include/**'
-      - 'lib/CNPreferences/src/**'
-      - '.github/workflows/developer.yml'
-    tags:
-      - 'v*'
-    branches:
-      - main
-  pull_request:
-    paths:
-      - 'src/**'
-      - 'scripts/**'
-      - 'deps/build.jl'
-      - 'Project.toml'
-      - 'lib/cunumeric_jl_wrapper/src/**'
-      - 'lib/cunumeric_jl_wrapper/include/**'
-      - 'lib/CNPreferences/src/**'
-      - '.github/workflows/developer.yml'
+  workflow_call:
+
 jobs:
-  docs:
-    name : Developer CI test
-    permissions:
-      contents: read
-      packages: write
-      attestations: write
-      id-token: write
-      actions: write
+  test:
+    name: Julia ${{ matrix.julia }}
+    strategy:
+      fail-fast: false
+      matrix:
+        julia:
+          - '1.10'
+          - '1.11'
+          - '1.12'
     # runs-on: [self-hosted, linux, x64]
     runs-on: ubuntu-latest
     container:
@@ -55,7 +23,7 @@ jobs:
         shell: bash
     env:
         LEGATE_AUTO_CONFIG: 0
-        NO_CUDA: ON
+        LEGATE_WRAPPER_ENABLE_CUDA: OFF
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
@@ -71,7 +39,7 @@ jobs:
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
         with:
-          version: '1.11'
+          version: ${{ matrix.julia }}
 
       - name: Install CMake 3.30.7
         run: |
@@ -80,35 +48,70 @@ jobs:
           wget https://github.com/Kitware/CMake/releases/download/v3.30.7/cmake-3.30.7-linux-x86_64.sh --no-check-certificate
           sh cmake-3.30.7-linux-x86_64.sh --skip-license --prefix=$HOME/.local
           echo "$HOME/.local/bin" >> $GITHUB_PATH
-      
+
       - name: Load Julia packages from cache
         id: julia-cache
         uses: julia-actions/cache@v2
         with:
-            cache-name: julia-developer-ci
-      - name: Cleanup old cuNumeric and Legate
-        run: | 
-          julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")' || true # ensure clean env
-          julia --color=yes -e 'using Pkg; Pkg.rm("Legate")' || true # ensure clean env
-          
+            # per-version: dev wrappers are ABI-specific
+            cache-name: julia-developer-ci-${{ matrix.julia }}
 
-      - name: Setup cuNumeric.jl and Legate.jl with build from src wrappers
+      # Parse commit message or PR body for [legate-branch: <branch>].
+      # Example: include "[legate-branch: my-feature]" anywhere in the message.
+      - name: Detect Legate branch override
+        id: legate-branch
         run: |
-          julia --color=yes -e '
-              using Pkg;
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main", subdir = "lib/LegatePreferences"))
-              using LegatePreferences; LegatePreferences.use_developer_mode();
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main"))
-          '
+          MSG=$(printf '%s\n%s' \
+            "${{ github.event.head_commit.message }}" \
+            "${{ github.event.pull_request.body }}")
+          BRANCH=$(echo "$MSG" | grep -oiP 'legate[-_]branch:\s*\K\S+' | head -1 | tr -d '[]' || true)
+          echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
+          if [[ -n "$BRANCH" ]]; then
+            echo "Using Legate.jl branch override: $BRANCH"
+          else
+            echo "No Legate.jl branch override — using JLL"
+          fi
 
-          julia --color=yes -e '
-              using Pkg;
+      - name: Clone Legate.jl branch override
+        if: steps.legate-branch.outputs.branch != ''
+        run: |
+          git clone --depth 1 --branch ${{ steps.legate-branch.outputs.branch }} \
+            ${{ github.server_url }}/${{ github.repository_owner }}/Legate.jl.git \
+            /tmp/Legate.jl
+
+      # Develop into the workspace root so its members (incl. dev/) resolve to the override.
+      - name: Build and test cuNumeric (developer mode)
+        env:
+          LEGATE_CHECKOUT: /tmp/Legate.jl
+          LEGATE_SKIP_RUNTIME: "true"
+        run: |
+          rm -f Manifest.toml test/Manifest.toml dev/Manifest.toml \
+                LocalPreferences.toml test/LocalPreferences.toml
+
+          # Dev mode rebuilds the wrapper .so each run, so drop stale overrides and the
+          # .ji that bake @wrapmodule bindings (cuNumeric/Legate + wrapper JLLs) — a cached
+          # .ji would mismatch the fresh .so and segfault. libcxxwrap override is kept.
+          DEPOT="$(julia --startup-file=no -e 'print(DEPOT_PATH[1])')"
+          rm -rf "$DEPOT"/packages/*/*/override \
+                 "$DEPOT"/compiled/v*/{cuNumeric,Legate,cunumeric_jl_wrapper_jll,legate_jl_wrapper_jll}
+
+          if [[ -n "${{ steps.legate-branch.outputs.branch }}" ]]; then
+            julia --color=yes --project=. -e '
+                using Pkg
+                Pkg.develop(PackageSpec(path = joinpath(ENV["LEGATE_CHECKOUT"], "lib/LegatePreferences")))
+                Pkg.develop(PackageSpec(path = ENV["LEGATE_CHECKOUT"]))
+                using LegatePreferences; LegatePreferences.use_developer_mode()
+                Pkg.build("Legate")
+            '
+          fi
+
+          julia --color=yes --project=. -e '
+              using Pkg
               Pkg.develop(PackageSpec(path = "lib/CNPreferences"))
-              using CNPreferences; CNPreferences.use_developer_mode();
-              Pkg.develop(PackageSpec(path = "."))
+              using CNPreferences; CNPreferences.use_developer_mode()
+              Pkg.build("cuNumeric")
           '
-          julia --color=yes -e 'using Pkg; Pkg.build("cuNumeric")'
 
-      - name: Perform Test
-        run: |
-          GPUTESTS=0 julia --color=yes -e 'using Pkg; Pkg.test("cuNumeric")'
+          cp LocalPreferences.toml test/LocalPreferences.toml
+
+          julia --color=yes --project=. -e 'using Pkg; Pkg.test("cuNumeric"; test_args=["--jobs=2", "--verbose"])'

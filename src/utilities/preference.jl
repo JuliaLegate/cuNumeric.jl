@@ -1,4 +1,4 @@
-#= Copyright 2026 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -67,7 +67,7 @@ function find_paths(
         CNPreferences.to_mode(mode), cupynumeric_jll_module, cupynumeric_jll_wrapper_module
     )
     set_preferences!(CNPreferences, "CUPYNUMERIC_LIBDIR" => libcupynumeric_path; force=true)
-    set_preferences!(
+    return set_preferences!(
         CNPreferences, "CUPYNUMERIC_WRAPPER_LIBDIR" => libcupynumeric_wrapper_path; force=true
     )
 end
@@ -140,5 +140,10 @@ function find_dependency_paths(::Type{CNPreferences.JLL})
     return results
 end
 
-find_dependency_paths(::Type{CNPreferences.Developer}) = Dict{String,String}()
+function find_dependency_paths(::Type{CNPreferences.Developer})
+    isdefined(@__MODULE__, :cupynumeric_jll) || return Dict{String,String}()
+    paths = getfield(@__MODULE__, :cupynumeric_jll).LIBPATH_list
+    return Dict(name => dirname(Libdl.find_library(lib, paths)) for (name, lib) in DEPS_MAP)
+end
+
 find_dependency_paths(::Type{CNPreferences.Conda}) = Dict{String,String}()

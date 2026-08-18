@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2025 Northwestern University, 
+# Copyright 2025 Northwestern University,
 #                   Carnegie Mellon University University
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -69,7 +69,7 @@ JULIA_CXXWRAP=$JULIA_CXXWRAP_DEV/override
 cd $CUNUMERIC_ROOT_DIR
 [ -f Manifest.toml ] && rm Manifest.toml
 rm -rf $JULIA_CXXWRAP_DEV
-julia -e 'using Pkg; Pkg.activate("."); Pkg.add(url="https://github.com/JuliaLegate/Legate.jl")'
+julia -e 'using Pkg; Pkg.activate("."); Pkg.add("Legate")'
 julia -e 'using Pkg; Pkg.activate("."); Pkg.precompile(["CxxWrap"])'
 
 # https://github.com/JuliaInterop/libcxxwrap-julia/tree/v0.13.3?tab=readme-ov-file#preparing-the-install-location
@@ -79,7 +79,7 @@ julia -e 'using Pkg; Pkg.activate("."); Pkg.develop(PackageSpec(name="libcxxwrap
 
 # JULIA_CXXWRAP_OVERRIDE=$JULIA_CXXWRAP/override/
 # Delete the default JLL installation of cxxwrap_julia
-rm -rf $JULIA_CXXWRAP 
+rm -rf $JULIA_CXXWRAP
 mkdir $JULIA_CXXWRAP
 
 cmake -S $JULIA_CXXWRAP_SRC -B $JULIA_CXXWRAP -DJulia_EXECUTABLE=$JULIA_PATH -DCMAKE_BUILD_TYPE=Release

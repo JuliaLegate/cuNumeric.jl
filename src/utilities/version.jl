@@ -1,16 +1,3 @@
-function update_project(version::String)
-    Pkg.compat("cupynumeric_jll", version)
-    Pkg.compat("Legate", version)
-
-    path = "Project.toml"
-    project = TOML.parsefile(path)
-    project["version"] = version
-
-    open(path, "w") do io
-        TOML.print(io, project)
-    end
-end
-
 function get_cxx_version(libpath::AbstractString)
     try
         cmd = `readelf -p .comment $libpath`
@@ -28,20 +15,26 @@ function get_cxx_version(libpath::AbstractString)
 end
 
 function read_githash()
-    githash_path = joinpath(@__DIR__, "../", "../", ".githash")
-    return isfile(githash_path) ? readchomp(githash_path) : "unknown"
+    try
+        pkg_root = joinpath(@__DIR__, "..", "..")
+        hash = readchomp(`git -C $pkg_root rev-parse HEAD`)
+        isempty(hash) || return hash
+    catch
+    end
+    return "unknown"
 end
 
-function version_config_setup()
-    project_file = joinpath(@__DIR__, "../", "../", "Project.toml")
-    project = TOML.parsefile(project_file)
+@doc"""
+    versioninfo()
 
-    name = get(project, "name", "unknown")
-    version = get(project, "version", "unknown")
-    uuid = get(project, "uuid", "unknown")
+Prints the cuNumeric build configuration summary, including package
+metadata, Julia and compiler version, and paths to core dependencies.
+"""
+function versioninfo(io::IO=stdout)
+    name = string(Base.nameof(@__MODULE__))
+    version = string(Base.pkgversion(cuNumeric))
     compiler = get_cxx_version(CUPYNUMERIC_LIB_PATH)
 
-    julia_ver = VERSION
     hostname = gethostname()
     git_hash = read_githash()
 
@@ -55,17 +48,28 @@ function version_config_setup()
     dirs2 = Legate.find_dependency_paths(typeof(legate_mode))
     other_dirs = merge(dirs1, dirs2)
 
+    hardware_str = HAS_CUDA ? "CPU + GPU" : "CPU Only"
+
+    legate_auto_config = get(ENV, "LEGATE_AUTO_CONFIG", "1")
+    is_auto_config = legate_auto_config != "0" ? true : false
+    legate_config = is_auto_config ? "auto" : get(ENV, "LEGATE_CONFIG", "not set")
+
     str = """
     ───────────────────────────────────────────────
     cuNumeric Build Configuration
     ───────────────────────────────────────────────
-    Package Name:     $name
-    Version:          $version
-    UUID:             $uuid
-    Git Commit:       $git_hash
+    Package Name:       $name
+    Version:            $version
+    Git Commit:         $git_hash
+    Hardware Support:   $hardware_str
+    Legate Auto Config: $is_auto_config
+    Legate Config:      $legate_config
+
+    Brodcast Fusion:   $(FUSE_BROADCAST_EXPRS)
+    Brodcast Min Ops:  $(FUSE_BROADCAST_MIN_OPS)
 
     Hostname:         $hostname
-    Julia Version:    $julia_ver
+    Julia Version:    $(VERSION)
     C++ Compiler:     $compiler
     CUDA Driver:      $(get(other_dirs,"CUDA_DRIVER","unknown"))
     CUDA Runtime:     $(get(other_dirs,"CUDA_RUNTIME","unknown"))
@@ -83,11 +87,11 @@ function version_config_setup()
     Wrappers:
       cuNumeric       $(CUPYNUMERIC_WRAPPER_LIBDIR)
       Legate          $liblegatewrapper
-    
+
     Modes:
       cuNumeric:      $(CNPreferences.MODE)
       Legate:         $(LegatePreferences.MODE)
     ───────────────────────────────────────────────
     """
-    return str
+    return println(io, str)
 end

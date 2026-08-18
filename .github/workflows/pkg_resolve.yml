@@ -1,0 +1,22 @@
+name: Package Resolution
+
+on:
+  workflow_call:
+
+jobs:
+  resolve:
+    name: Resolve dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.10'
+
+      - uses: julia-actions/cache@v2
+
+      - name: Pkg.resolve
+        run: |
+          rm -f Manifest.toml
+          julia --project -e 'using Pkg; Pkg.Registry.add("General"); Pkg.resolve()'

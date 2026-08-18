@@ -1,14 +1,14 @@
 ## Scripts
 
-After initializing the git submodules, we need to install them. 
-- `install_cxxwrap.sh` WARNING: This will overwrite `/home/user/.julia/dev/libcxxwrap_julia_jll/override`. 
+After initializing the git submodules, we need to install them.
+- `install_cxxwrap.sh` WARNING: This will overwrite `/home/user/.julia/dev/libcxxwrap_julia_jll/override`.
 
 
 
 
 
 We struggled compiling the wrapper package with g++ `(Ubuntu 12.3.0-1ubuntu1~22.04) 12.3.0` and CUDA `cuda_12.3.r12.3/compiler.33567101_0`.
-The error is shown below. This seems to have mismatch with the atomic ref C++ versioning; however, we weren't able to pinpoint the exact issue. We have patched legion with `legion_redop.inl`. This is a temporary "hack" solution.  
+The error is shown below. This seems to have mismatch with the atomic ref C++ versioning; however, we weren't able to pinpoint the exact issue. We have patched legion with `legion_redop.inl`. This is a temporary "hack" solution.
 
 ```
 In file included from /usr/include/c++/11/bits/shared_ptr_atomic.h:33,
@@ -31,7 +31,7 @@ gmake: *** [Makefile:136: all] Error 2
 ```
 
 
-This error was shown for each reduction operator in `legion_redop.inl` for complex types. The unmodified code of the Sum reduction is below. We would enter `#if defined(__cpp_lib_atomic_ref) && (__cpp_lib_atomic_ref >= 201806L)`; however, the compiler failed the static assert when `std::atomic_ref<LHS> atomic(lhs);` was used. We have added a patch `patch_legion.sh` for the various default reductions where it does the TypePunning case. This will copy our patched file into the conda installed path of cupynumeric/legion. 
+This error was shown for each reduction operator in `legion_redop.inl` for complex types. The unmodified code of the Sum reduction is below. We would enter `#if defined(__cpp_lib_atomic_ref) && (__cpp_lib_atomic_ref >= 201806L)`; however, the compiler failed the static assert when `std::atomic_ref<LHS> atomic(lhs);` was used. We have added a patch `patch_legion.sh` for the various default reductions where it does the TypePunning case. This will copy our patched file into the conda installed path of cupynumeric/legion.
 
 ```
 #ifdef LEGION_REDOP_COMPLEX
@@ -75,7 +75,3 @@ This error was shown for each reduction operator in `legion_redop.inl` for compl
 #endif
 #endif
 ```
-
-
-
-

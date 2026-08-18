@@ -28,3 +28,5 @@ jobs:
       - uses: JuliaRegistries/TagBot@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          # SSH deploy key so the tag push can trigger Docs (GITHUB_TOKEN pushes cannot).
+          ssh: ${{ secrets.DOCUMENTER_KEY }}

@@ -1,16 +1,18 @@
-# found in examples/integrate.jl
-using cuNumeric
-
-integrand = (x) -> exp(-square(x))
+integrand = (x) -> exp(-x^2)
 
 N = 1_000_000
 
-x_max = 5.0
+x_max = 10.0f0
 domain = [-x_max, x_max]
 Ω = domain[2] - domain[1]
 
-samples = Ω*cuNumeric.rand(NDArray, N) - x_max
-estimate = (Ω/N) * sum(integrand(samples))
+estimate = @accelerate begin
+    samples = @. Ω * cuNumeric.rand(N) - x_max
 
-println("Monte-Carlo Estimate: $(estimate[1])")
+    # Reductions return 0D NDArrays instead
+    # of a scalar to avoid blocking runtime
+    return (Ω / N) * sum(integrand.(samples))
+end
+
+println("Monte-Carlo Estimate: $(estimate)")
 println("Analytical: $(sqrt(pi))")

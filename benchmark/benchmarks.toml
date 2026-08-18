@@ -1,0 +1,116 @@
+[Global]
+n_warmup = 5
+n_iter = 1000
+n_trial = 5
+cupynumeric = true # (needs install_cupynumeric.sh)
+cuda = false # compare against CUDA.jl (single-GPU configs only)
+# One CPU-reference check per config (not per timed iter). Written to CSV.
+check_correctness = true
+n_correctness_iter = 5
+
+####################################
+#             GEMM                 #
+# Weak scaling, restricted to NxN. #
+# Work ~ 2*N^2*M = 2*N^3.          #
+# N^3 / P --> constant.            #
+# N = baseline * P^(1/3).          #
+####################################
+
+[[gemm]]
+T = ["Float32"]
+gpus = [1, 2, 4, 8]
+cpus = 16
+N = [20000, 25200, 31752, 40000]
+M = [20000, 25200, 31752, 40000]
+
+#################################
+#         Gray-Scott            #
+# Weak scaling, square NxN grid.#
+# Work ~ N*M = N^2.             #
+# N^2 / P --> constant.         #
+# N = baseline * P^(1/2).       #
+#################################
+
+[[grayscott_baseline]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+fusion = [true, false]
+N = [24000, 33944, 48000, 67888]
+M = [24000, 33944, 48000, 67888]
+
+[[grayscott_function_accelerated]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+fusion = [true, false]
+N = [24000, 33944, 48000, 67888]
+M = [24000, 33944, 48000, 67888]
+
+[[grayscott_begin_accelerated]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+fusion = [true, false]
+N = [24000, 33944, 48000, 67888]
+M = [24000, 33944, 48000, 67888]
+
+[[grayscott_let_accelerated]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+fusion = [true, false]
+N = [24000, 33944, 48000, 67888]
+M = [24000, 33944, 48000, 67888]
+
+[[grayscott_expression_accelerated]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+fusion = [true, false]
+N = [24000, 33944, 48000, 67888]
+M = [24000, 33944, 48000, 67888]
+
+#################################
+#              DMD              #
+# Snapshot matrix N × M         #
+# (space × time), r=min(20,M-1).#
+# FLOPs (m=N, n=M-1):           #
+#   2mn² + 11n³   thin SVD      #
+#   2mnr + mr     B = X2 V Σ⁻¹  #
+#   2mr²          Ã = U' B      #
+#   25r³          eigen(Ã)      #
+#   2mr²          Φ = B W       #
+# M fixed ⇒ n,r fixed ⇒ W ~ N.  #
+# Weak scaling: N / P constant. #
+# N = 50000 * P.                #
+# M is the intensity knob: AI   #
+# ~ n²/M ~ M, independent of P. #
+#################################
+
+[[dmd_baseline]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+fusion = [true, false]
+N = [50000, 100000, 200000, 400000]
+M = 512
+
+[[dmd_accelerated]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+fusion = [true, false]
+N = [50000, 100000, 200000, 400000]
+M = 512
+
+#################################
+#   Monte-Carlo Integration     #
+#  Work ~ N. Scale N linearly   #
+#################################
+
+[[montecarlo]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+N = [1_000_000, 2_000_000, 4_000_000, 8_000_000]

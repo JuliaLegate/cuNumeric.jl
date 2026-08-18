@@ -1,0 +1,26 @@
+name: Version Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  version-check:
+    name: Version Check
+    if: ${{ !contains(toJSON(github.event), '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch main branch
+        run: git fetch origin main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run version checks
+        run: python .github/scripts/check_versions.py

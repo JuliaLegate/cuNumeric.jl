@@ -1,28 +1,22 @@
 name: Docs
 on:
   push:
-    paths:
-      - '.github/workflows/docs.yml'
-      - 'src/**'
-      - 'docs/src/**'
-      - 'docs/make.jl'
-      - 'docs/Project.toml'
-      - 'README.md'
-    tags:
-      - 'v*'
+    # After merge: deploy live docs. Feature branches only run via pull_request.
     branches:
       - main
   pull_request:
     paths:
-    - '.github/workflows/docs.yml'
-    - 'src/**'
-    - 'docs/src/**'
-    - 'docs/make.jl'
-    - 'docs/Project.toml'
-    - 'README.md'
+      - '.github/workflows/docs.yml'
+      - '.github/workflows/docs-tags.yml'
+      - 'src/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'lib/CNPreferences/**'
+  workflow_dispatch:
 jobs:
   docs:
-    name : Documentation
+    name: Documentation
+    if: ${{ !contains(toJSON(github.event), '[skip ci]') }}
     permissions:
       actions: write
       contents: write
@@ -37,16 +31,11 @@ jobs:
         with:
           version: '1.11'
       - uses: julia-actions/cache@v2
-      - name: Cleanup old cuNumeric and Legate
-        run: |
-          julia --color=yes -e 'using Pkg; Pkg.rm("cuNumeric")' || true # ensure clean env
-          julia --color=yes -e 'using Pkg; Pkg.rm("Legate")' || true # ensure clean env
 
-      - name: Setup cuNumeric.jl and Legate.jl
+      - name: Setup cuNumeric.jl
         run: |
           julia --color=yes --project=docs -e '
               using Pkg
-              Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main"))
               Pkg.develop(PackageSpec(path = "lib/CNPreferences"))
               Pkg.develop(PackageSpec(path = "."))
           '

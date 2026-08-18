@@ -12,6 +12,6 @@ endif()
 
 find_package(cupynumeric REQUIRED)
 
-add_executable(matmulfp32_test main.cpp) 
+add_executable(matmulfp32_test main.cpp)
 target_link_libraries(matmulfp32_test PRIVATE cupynumeric::cupynumeric)
 install(TARGETS matmulfp32_test DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/cmake-install")

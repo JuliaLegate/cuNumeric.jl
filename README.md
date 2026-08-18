@@ -1,69 +1,94 @@
-# cuNumeric.jl
+<h1>
+  <img src="docs/src/assets/logo.png" alt="cuNumeric.jl" width="50">
+  <a href="https://julialegate.github.io/cuNumeric.jl/dev">cuNumeric.jl</a>
+</h1>
 
-[![Documentation dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://julialegate.github.io/cuNumeric.jl/dev/)
-[![codecov](https://codecov.io/github/julialegate/cuNumeric.jl/branch/main/graph/badge.svg)](https://app.codecov.io/github/JuliaLegate/cuNumeric.jl)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Documentation dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://julialegate.github.io/cuNumeric.jl/dev) [![codecov](https://codecov.io/github/julialegate/cuNumeric.jl/branch/main/graph/badge.svg)](https://app.codecov.io/github/JuliaLegate/cuNumeric.jl) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
-> [!WARNING]  
-> Leagte.jl and cuNumeric.jl are under active development at the moment. This is a pre-release API and is subject to change. Stability is not guaranteed until the first official release. We are actively working to improve the build experience to be more seamless and Julia-friendly. In parallel, we're developing a comprehensive testing framework to ensure reliability and robustness. Our public beta launch is targeted for Fall 2025.
+cuNumeric.jl wraps and extends the [cuPyNumeric](https://github.com/nv-legate/cupynumeric) library from NVIDIA to bring distributed array computing on GPUs and CPUs to Julia. The central type is `NDArray`, which behaves like Julia's `Array` or the `CuArray` from [CUDA.jl](https://github.com/juliagpu/cuda.jl), but executes across multiple GPUs/CPUs. We implement array-level operations on `NDArray` which can be composed into larger programs without the need for explicit MPI calls or writing CUDA kernels.
 
-The cuNumeric.jl package wraps the [cuPyNumeric](https://github.com/nv-legate/cupynumeric) C++ API from NVIDIA to bring simple distributed computing on GPUs and CPUs to Julia! We provide a simple array abstraction, the `NDArray`, which supports most of the operations you would expect from a normal Julia array.
+cuNumeric.jl requires x86 Linux, an NVIDIA GPU, and Julia >= 1.10. If ARM support is of interest open an issue.
 
-This project is in alpha and we do not commit to anything necessarily working as you would expect. The current build process requires several external dependencies which are not registered on BinaryBuilder.jl yet. The build instructions and minimum pre-requesites are as follows:
+### Quick Start
 
-### Minimum prereqs
-- Ubuntu 20.04 or RHEL 8
-- Julia 1.11
+cuNumeric.jl can be installed with the Julia package manager. Activate your preferred environment and then from the Julia REPL run:
 
-### 1. Install Julia through [JuliaUp](https://github.com/JuliaLang/juliaup)
-```
-curl -fsSL https://install.julialang.org | sh -s -- --default-channel 1.11
-```
-
-This will install version 1.11 by default since that is what we have tested against. To verify 1.11 is the default run either of the following (you may need to source bashrc):
-```bash
-juliaup status
-julia --version
-```
-
-If 1.11 is not your default, please set it to be the default. Other versions of Julia are untested.
-```bash
-juliaup default 1.11
-```
-
-### 2. Download cuNumeric.jl (quick setup)
-cuNumeric.jl is not on the general registry yet. To add cuNumeric.jl to your environment run:
 ```julia
-using Pkg; Pkg.develop(url = "https://github.com/JuliaLegate/cuNumeric.jl")
-```
-By default, this will use [legate_jll](https://github.com/JuliaBinaryWrappers/legate_jll.jl/) and [cupynumeric_jll](https://github.com/JuliaBinaryWrappers/cupynumeric_jll.jl/). 
-
-For more build configurations and options, please visit our [installation guide](https://julialegate.github.io/cuNumeric.jl/dev/install).
-
-#### 2b. Contributing to cuNumeric.jl
-To contribute to cuNumeric.jl, we recommend cloning the repository and adding it to one of your existing environments with `Pkg.develop`.
-```bash
-git clone https://github.com/JuliaLegate/cuNumeric.jl.git 
-julia --project=. -e 'using Pkg; Pkg.develop(path = "cuNumeric.jl/lib/CNPreferences")'
-julia --project=. -e 'using Pkg; Pkg.develop(path = "cuNumeric.jl")'
-julia --project=. -e 'using CNPreferences; CNPreferences.use_developer_mode()'
-julia --project=. -e 'using Pkg; Pkg.build()'
+using Pkg
+Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "main")
 ```
 
-To learn more about contributing to Legate.jl, check out the [Legate.jl README.md](https://github.com/JuliaLegate/Legate.jl?tab=readme-ov-file#2-download-legatejl)
+The first installation can take a while because it includes several large dependencies, such as the CUDA SDK. To use a local cupynumeric build, see [Build Modes](https://julialegate.github.io/cuNumeric.jl/dev/install).
 
-### 3. Test the Julia Package
-Run this command in the Julia environment where cuNumeric.jl is installed.
 ```julia
-using Pkg; Pkg.test("cuNumeric")
+using cuNumeric
+cuNumeric.versioninfo()
 ```
-With everything working, its the perfect time to checkout some of our [examples](https://julialegate.github.io/cuNumeric.jl/dev/examples)!
 
+> [!WARNING]
+> Starting more than one instance of cuNumeric.jl can lead to a hard-crash. The default hardware configuration reserves all available resources.
 
-## Contact
-For technical questions, please either contact 
-`krasow(at)u.northwestern.edu` OR
-`emeitz(at)andrew.cmu.edu`
+For more details, see [Hardware](https://julialegate.github.io/cuNumeric.jl/dev/configuration/hardware).
 
-If the issue is building the package, please include the `build.log` and `.err` files found in `cuNumeric.jl/deps/` 
+### How `NDArray`s work
 
+The semantics of `NDArray` closely mirror Julia's `Array`, and in most cases it is a drop-in replacement. You can use the same constructors (i.e., `zeros`, `ones`, `rand`), broadcasting, slicing, and linear algebra. Under the hood a few details differ from Base, and knowing them can help you write fast code.
+
+**Data may live across many devices.** An `NDArray` is a logical array whose physical buffers can be partitioned over GPUs and CPUs by the Legate runtime. You write ordinary array code and Legate decides where the data lives and how/when it is communicated between devices. As a result, elementwise indexing (i.e. `arr[1]`) is slow (and is prevented by default). Scalar indexing like this forces synchronization and blocks other tasks from executing.
+
+**Slices are views.** Indexing an `NDArray` with ranges returns a view onto the same store, not a copy. That differs from Base Julia, where `A[1:n]` allocates a new `Array`. Mutations through an `NDArray` slice are visible through other aliases of the same data.
+
+**Reductions return arrays, not Julia scalars.** Reductions such as `sum(A)` produce a **0D or 1D** `NDArray` (axis reductions produce a lower-rank `NDArray`), rather than a bare `Float64` / `Float32`. That keeps the Legate task graph asynchronous instead of forcing synchronization to communicate with the Julia runtime. When you need a plain Julia number, call `unwrap`:
+
+```julia
+s = sum(A)          # NDArray{T,0}
+x = unwrap(s)       # T, e.g. Float32
+```
+
+**The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into Legate's task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them (for example `println`, `unwrap`, or converting with `Array(A)`). Hiding latency enables performant code.
+
+For API details see [Initialization](https://julialegate.github.io/cuNumeric.jl/dev/api_initialization) and [NDArray Reference](https://julialegate.github.io/cuNumeric.jl/dev/api). For common performance pitfalls, see [Patterns to Avoid](https://julialegate.github.io/cuNumeric.jl/dev/perf/patterns_to_avoid).
+
+### Kernel Fusion
+
+Nested broadcast expressions fuse into a single kernel by default when on GPU. Prefer `@.` for multi-op elementwise code so every operator is dotted and the expression stays completely fused. Even just forgetting the `.` on unary negation (i.e., `y .= -a .+ b .* c`) will result in unfused code. Use the following pattern instead.
+
+```julia
+y .= @. -a + b * c
+```
+
+See [Kernel Fusion](https://julialegate.github.io/cuNumeric.jl/dev/perf/kernel_fusion) and [Debugging](https://julialegate.github.io/cuNumeric.jl/dev/debugging) for controls and diagnostics.
+
+### The `@accelerate` macro
+
+`@accelerate` fuses eligible GPU broadcasts within and across statements, then releases materialized temporary `NDArray`s after their last use on CPU or GPU. See [The `@accelerate` Macro](https://julialegate.github.io/cuNumeric.jl/dev/perf/reduce_allocations) for usage guidance.
+
+### Benchmarks
+
+Results and reproduction instructions live under [Benchmark Results](https://julialegate.github.io/cuNumeric.jl/dev/benchmarks/results) and [How to Benchmark](https://julialegate.github.io/cuNumeric.jl/dev/benchmarks/howto).
+
+### Try an example
+
+```julia
+using cuNumeric
+
+integrand(x) = @. exp(-x^2)
+
+@accelerate function monte_carlo(N, x_max)
+    Ω = 2 * x_max
+    raw_samples = cuNumeric.rand(N)
+    samples = @. Ω * raw_samples - x_max
+    return (Ω / N) * sum(integrand(samples))
+end
+
+N = 1_000_000
+x_max = 10.0f0
+estimate = monte_carlo(N, x_max)
+
+println("Monte-Carlo Estimate: $(estimate)")
+```
+More worked examples (initialization, Gray-Scott, …) are in the documentation sidebar under **Examples**.
+
+### Known Limitations
+
+- There is no support for `Float16` or `ComplexF16`

@@ -1,4 +1,4 @@
-#= Copyright 2025 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,9 +15,12 @@
  *
  * Author(s): David Krasowska <krasow@u.northwestern.edu>
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
+ *            Nader Rahhal <naderrahhal2026@u.northwestern.edu>
 =#
 
 export unwrap
+
+# See TODO.md (Base / LinearAlgebra sections) for AbstractArray and LA gaps.
 
 @doc"""
     cuNumeric.transpose(arr::NDArray)
@@ -26,33 +29,6 @@ Return a new `NDArray` that is the transpose of the input `arr`.
 """
 function transpose(arr::NDArray)
     return nda_transpose(arr)
-end
-
-@doc"""
-    cuNumeric.eye(rows::Int; T=Float32)
-
-Create a 2D identity `NDArray` of size `rows x rows` with element type `T`.
-"""
-function eye(rows::Int; T::Type{S}=Float64) where {S}
-    return nda_eye(Int32(rows), S)
-end
-
-@doc"""
-    cuNumeric.trace(arr::NDArray; offset=0, a1=0, a2=1, T=Float32)
-
-Compute the trace of the `NDArray` along the specified axes.
-"""
-function trace(arr::NDArray; offset::Int=0, a1::Int=0, a2::Int=1, T::Type{S}=Float32) where {S}
-    return nda_trace(arr, Int32(offset), Int32(a1), Int32(a2), S)
-end
-
-@doc"""
-    cuNumeric.diag(arr::NDArray; k=0)
-
-Extract the k-th diagonal from a 2D `NDArray`.
-"""
-function diag(arr::NDArray; k::Int=0)
-    return nda_diag(arr, Int32(k))
 end
 
 @doc"""
@@ -93,7 +69,7 @@ Base.copy(arr::NDArray) = nda_copy(arr)
 
 Assign the contents of `other` to `arr` element-wise.
 
-This function overwrites the data in `arr` with the values from `other`.  
+This function overwrites the data in `arr` with the values from `other`.
 Both arrays must have the same shape.
 
 # Examples
@@ -104,7 +80,10 @@ copyto!(a, b);
 a[1,1]
 ```
 """
-Base.copyto!(arr::NDArray{T,N}, other::NDArray{T,N}) where {T,N} = nda_assign(arr, other)
+@inline function Base.copyto!(arr::NDArray{T,N}, other::NDArray{T,N}) where {T,N}
+    nda_assign(arr, other)
+    return arr
+end
 
 @doc"""
     as_type(arr::NDArray, t::Type{T}) where {T}
@@ -135,33 +114,77 @@ end
 # conversion from NDArray to Base Julia array
 # get_ptr is a blocking call that grabs the physical store
 # we have not tested across multiple processes or devices yet
-function (::Type{<:Array{A}})(arr::NDArray{B}) where {A,B}
-    dims = Base.size(arr)
-    ptr = Ptr{A}(get_ptr(arr))
-    return make_array(A, ptr, dims)
+
+# NDArray-specific overrides of Core's AbstractArray constructors (NDArray <:
+# AbstractArray): exact `Array{T}` / `Array{T,N}` / `Array` signatures so we win
+# over `Array{T,N}(::AbstractArray)` (which would scalar-index). Bulk path uses
+# `_copy_to_julia_array`; 1-d dispatches same-type (zero-copy) vs convert.
+function (::Type{Array{T}})(arr::NDArray{S,0}) where {T,S}
+    out = Array{T,0}(undef)
+    allowscalar() do
+        return out[] = convert(T, arr[])
+    end
+    return out
 end
 
-function (::Type{<:Array})(arr::NDArray{B}) where {B}
-    dims = Base.size(arr)
-    ptr = Ptr{B}(get_ptr(arr))
-    return make_array(B, ptr, dims)
+function (::Type{Array{T}})(arr::NDArray{T,1}) where {T}
+    return make_array(T, Ptr{T}(get_ptr(arr)), size(arr))
 end
+
+function (::Type{Array{T}})(arr::NDArray{S,1}) where {T,S}
+    return T.(make_array(S, Ptr{S}(get_ptr(arr)), size(arr)))
+end
+
+# Copy logically into Julia's column-major storage.
+# Legate may map an NDArray in C or Fortran order.
+function _copy_to_julia_array(arr::NDArray{T,N}) where {T,N}
+    out = Array{T}(undef, size(arr))
+    store = Legate.attach_external_col_major(out)
+    ptr = cuNumeric.nda_store_to_ndarray(store.handle)
+    finalize(store.handle)
+    attached = NDArray(ptr, T, Val(N), out)
+    copyto!(attached, arr)
+    get_ptr(attached) # Block until the copy into `out` completes.
+    return out
+end
+
+function (::Type{Array{T}})(arr::NDArray{S,N}) where {T,S,N}
+    out = _copy_to_julia_array(arr)
+    return T === S ? out : copyto!(Array{T}(undef, size(arr)), out)
+end
+
+(::Type{Array{T,N}})(arr::NDArray{S,N}) where {T,S,N} = Array{T}(arr)
+
+(::Type{Array})(arr::NDArray{T,N}) where {T,N} = Array{T}(arr)
 
 # conversion from Base Julia array to NDArray
-function (::Type{<:NDArray{A}})(arr::Array{B}) where {A,B}
-    dims = Base.size(arr)
-    out = cuNumeric.zeros(A, dims)
-    attached = cuNumeric.nda_attach_external(arr)
-    copyto!(out, attached) # copy elems of attached to resulting out
-    return out
+# Julia Arrays are column-major; Legate stores are row-major. For N>=2 we
+# materialize a C-ordered buffer via permutedims, attach it with the original
+# shape, and keep that buffer as `parent` for lifetime.
+function _nda_from_julia_array(arr::Array{T,0}) where {T}
+    return cuNumeric.nda_attach_external(arr)
 end
 
-function (::Type{<:NDArray})(arr::Array{B}) where {B}
-    dims = Base.size(arr)
-    out = cuNumeric.zeros(B, dims)
-    attached = cuNumeric.nda_attach_external(arr)
-    copyto!(out, attached)
-    return out
+function _nda_from_julia_array(arr::Array{T,1}) where {T}
+    return cuNumeric.nda_attach_external(arr)
+end
+
+function _nda_from_julia_array(arr::Array{T,N}) where {T,N}
+    tmp = collect(permutedims(arr, reverse(ntuple(identity, Val(N)))))
+    return cuNumeric.nda_attach_external(tmp; shape=size(arr))
+end
+
+function (::Type{<:NDArray{T}})(arr::Array{T,N}) where {T,N}
+    return _nda_from_julia_array(arr)
+end
+
+function (::Type{<:NDArray{A}})(arr::Array{B,N}) where {A,B,N}
+    # If types differ, cast in Julia first (creating a temp) then attach
+    return _nda_from_julia_array(convert(Array{A}, arr))
+end
+
+function (::Type{<:NDArray})(arr::Array{T,N}) where {T,N}
+    return _nda_from_julia_array(arr)
 end
 
 # Base.convert(::Type{<:NDArray{T}}, a::A) where {T, A} = NDArray(T(a))::NDArray{T}
@@ -188,9 +211,6 @@ Base.eltype(arr::NDArray{T}) where {T} = T
 
 Return the number of dimensions of the `NDArray`.
 
-Both functions query the underlying cuNumeric API to get
-the dimensionality of the array.
-
 # Examples
 ```@repl
 arr = cuNumeric.rand(2, 3, 4);
@@ -203,15 +223,12 @@ dim(::NDArray{T,N}) where {T,N} = N::Int
 Base.ndims(::NDArray{T,N}) where {T,N} = N::Int
 @doc"""
     Base.size(arr::NDArray)
-    Base.size(arr::NDArray, dim::Int)
+    Base.size(arr::NDArray, dim::Integer)
 
 Return the size of the given `NDArray`.
 
 - `Base.size(arr)` returns a tuple of dimensions of the array.
 - `Base.size(arr, dim)` returns the size of the array along the specified dimension `dim`.
-
-These override Base's size methods for the `NDArray` type,
-using the underlying cuNumeric API to query array shape.
 
 # Examples
 ```@repl
@@ -220,19 +237,17 @@ size(arr)
 size(arr, 2)
 ```
 """
-Base.size(arr::NDArray) = cuNumeric.shape(arr)
-Base.size(arr::NDArray, dim::Int) = Base.size(arr)[dim]
+Base.size(arr::NDArray{<:Any,N}) where {N} = cuNumeric.shape(arr)
+Base.size(arr::NDArray, dim::Integer) = dim <= ndims(arr) ? size(arr)[dim] : 1
+Base.isempty(arr::NDArray) = any(==(0), size(arr))
+Base.length(arr::NDArray) = prod(size(arr))
 
 @doc"""
-    Base.firstindex(arr::NDArray, dim::Int)
-    Base.lastindex(arr::NDArray, dim::Int)
+    Base.firstindex(arr::NDArray, dim::Integer)
+    Base.lastindex(arr::NDArray, dim::Integer)
     Base.lastindex(arr::NDArray)
 
 Provide the first and last valid indices along a given dimension `dim` for `NDArray`.
-
-- `firstindex` always returns 1, since Julia arrays are 1-indexed.
-- `lastindex` returns the size of the array along the specified dimension.
-- `lastindex(arr)` returns the size along the first dimension.
 
 # Examples
 ```@repl
@@ -242,41 +257,33 @@ lastindex(arr, 2)
 lastindex(arr)
 ```
 """
-Base.firstindex(arr::NDArray, dim::Int) = 1
-Base.lastindex(arr::NDArray, dim::Int) = Base.size(arr, dim)
-Base.lastindex(arr::NDArray) = Base.size(arr, 1)
+Base.firstindex(arr::NDArray, dim::Integer) = 1
+Base.lastindex(arr::NDArray, dim::Integer) = size(arr, dim)
+Base.lastindex(arr::NDArray) = length(arr)
+Base.IndexStyle(::Type{<:NDArray}) = IndexCartesian()
 
 Base.axes(arr::NDArray) = Base.OneTo.(size(arr))
 Base.view(arr::NDArray, inds...) = arr[inds...] # NDArray slices are views by default.
 
-Base.IndexStyle(::NDArray) = IndexCartesian()
-
 function Base.show(io::IO, arr::NDArray{T,0}) where {T}
-    println(io, "0-dimensional NDArray{$(T),0}")
-    print(io, arr[]) #! should I assert scalar??
+    print(io, summary(arr), "(")
+    @allowscalar show(io, arr[])
+    return print(io, ")")
 end
 
-function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T,0}) where {T}
-    println(io, "0-dimensional NDArray{$(T),0}")
-    print(io, arr[]) #! should I assert scalar??
+# Used by print(arr), println(arr), and nested displays
+function Base.show(io::IO, arr::NDArray)
+    return show(io, Array(arr))
 end
 
-function Base.show(io::IO, arr::NDArray{T,D}) where {T,D}
-    println(io, "NDArray{$(T),$(D)}")
-    Base.print_matrix(io, Array(arr))
-end
+# Used for full REPL display
+function Base.show(io::IO, ::MIME"text/plain", arr::NDArray)
+    summary(io, arr)
 
-function Base.show(io::IO, ::MIME"text/plain", arr::NDArray{T}) where {T}
-    Base.show(io, arr)
-end
+    isempty(arr) && return nothing
 
-function Base.print(arr::NDArray{T}) where {T}
-    Base.show(stdout, arr)
-end
-
-function Base.println(arr::NDArray{T}) where {T}
-    Base.show(stdout, arr)
-    print("\n")
+    println(io, ":")
+    return Base.print_array(io, Array(arr))
 end
 #### ARRAY INDEXING AND SLICES ####
 
@@ -295,7 +302,7 @@ end
 
 Overloads `Base.getindex` and `Base.setindex!` to support multidimensional indexing and slicing on `cuNumeric.NDArray`s.
 
-Slicing supports combinations of `Int`, `UnitRange`, and `Colon()` for selecting ranges of rows and columns. 
+Slicing supports combinations of `Integer`, `UnitRange`, and `Colon()` for selecting ranges of rows and columns.
 The use of all colons (`arr[:]`, `arr[:, :]`, etc.) returns a new Julia `Array` containing a copy of the data.
 
 Assignment also supports:
@@ -304,7 +311,7 @@ Assignment also supports:
 
 # Examples
 ```@repl
-A = cuNumeric.full((3, 3), 1.0);
+A = cuNumeric.fill(1.0, (3, 3));
 A[1, 2]
 A[1:2, 2:3] = cuNumeric.ones(2, 2);
 A[:, 1] = 5.0;
@@ -312,10 +319,13 @@ Array(A)
 ```
  """
 ##### REGULAR ARRAY INDEXING ####
-function Base.getindex(arr::NDArray{T,N}, idxs::Vararg{Int,N}) where {T<:SUPPORTED_NUMERIC_TYPES,N}
+@inline function Base.getindex(
+    arr::NDArray{T,N}, idxs::Vararg{Integer,N}
+) where {T<:SUPPORTED_NUMERIC_TYPES,N}
+    @boundscheck checkbounds(arr, idxs...)
     assertscalar("getindex")
     acc = NDArrayAccessor{T,N}()
-    return read(acc, arr.ptr, to_cpp_index(idxs))
+    return read(acc, arr.ptr, to_cpp_index(Int.(idxs)))
 end
 
 function Base.getindex(arr::NDArray{T,0}) where {T<:SUPPORTED_NUMERIC_TYPES}
@@ -325,10 +335,11 @@ function Base.getindex(arr::NDArray{T,0}) where {T<:SUPPORTED_NUMERIC_TYPES}
     return read(acc, arr.ptr, zero_index)
 end
 
-function Base.getindex(arr::NDArray{Bool,N}, idxs::Vararg{Int,N}) where {N}
+@inline function Base.getindex(arr::NDArray{Bool,N}, idxs::Vararg{Integer,N}) where {N}
+    @boundscheck checkbounds(arr, idxs...)
     assertscalar("getindex")
     acc = NDArrayAccessor{CxxWrap.CxxBool,N}()
-    return read(acc, arr.ptr, to_cpp_index(idxs))
+    return read(acc, arr.ptr, to_cpp_index(Int.(idxs)))
 end
 
 function Base.getindex(arr::NDArray{Bool,0})
@@ -339,147 +350,266 @@ function Base.getindex(arr::NDArray{Bool,0})
 end
 
 #! TODO SUPPORT CONVERSION OF VALUES
-function Base.setindex!(arr::NDArray{T,N}, value::T, idxs::Vararg{Int,N}) where {T,N}
+@inline function Base.setindex!(
+    arr::NDArray{T,N}, value::T, idxs::Vararg{Integer,N}
+) where {T,N}
+    @boundscheck checkbounds(arr, idxs...)
     assertscalar("setindex!")
-    _setindex!(Val{N}(), arr, value, idxs...)
+    return _setindex!(Val{N}(), arr, value, idxs...)
+end
+
+@inline function Base.setindex!(
+    arr::NDArray{Complex{T},N}, value::T, idxs::Vararg{Integer,N}
+) where {T,N}
+    @boundscheck checkbounds(arr, idxs...)
+    assertscalar("setindex!")
+    return _setindex!(Val{N}(), arr, Complex{T}(value), idxs...)
+end
+
+@inline function Base.setindex!(
+    arr::NDArray{T,N}, value, idxs::Vararg{Integer,N}
+) where {T,N}
+    @boundscheck checkbounds(arr, idxs...)
+    assertscalar("setindex!")
+    return _setindex!(Val{N}(), arr, convert(T, value), idxs...)
 end
 
 function _setindex!(::Val{0}, arr::NDArray{T,0}, value::T) where {T<:SUPPORTED_NUMERIC_TYPES}
     acc = NDArrayAccessor{T,1}()
-    write(acc, arr.ptr, StdVector(UInt64[0]), value)
+    return write(acc, arr.ptr, StdVector(UInt64[0]), value)
 end
 
 function _setindex!(::Val{0}, arr::NDArray{Bool,0}, value::Bool)
     acc = NDArrayAccessor{CxxWrap.CxxBool,1}()
-    write(acc, arr.ptr, StdVector(UInt64[0]), value)
+    return write(acc, arr.ptr, StdVector(UInt64[0]), value)
 end
 
 function _setindex!(
-    ::Val{N}, arr::NDArray{T,N}, value::T, idxs::Vararg{Int,N}
+    ::Val{N}, arr::NDArray{T,N}, value::T, idxs::Vararg{Integer,N}
 ) where {T<:SUPPORTED_NUMERIC_TYPES,N}
     acc = NDArrayAccessor{T,N}()
-    write(acc, arr.ptr, to_cpp_index(idxs), value)
+    return write(acc, arr.ptr, to_cpp_index(Int.(idxs)), value)
 end
 
-function _setindex!(::Val{N}, arr::NDArray{Bool,N}, value::Bool, idxs::Vararg{Int,N}) where {N}
+function _setindex!(
+    ::Val{N}, arr::NDArray{Bool,N}, value::Bool, idxs::Vararg{Integer,N}
+) where {N}
     acc = NDArrayAccessor{CxxWrap.CxxBool,N}()
-    write(acc, arr.ptr, to_cpp_index(idxs), value)
+    return write(acc, arr.ptr, to_cpp_index(Int.(idxs)), value)
 end
 
 #### START OF SLICING ####
-function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::Int64)
-    s = nda_get_slice(lhs, slice_array((0, Base.size(lhs, 1)), (j-1, j)))
-    copyto!(s, rhs);
-end
-
-function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Int64, j::Colon)
-    s = nda_get_slice(lhs, slice_array((i-1, i)))
-    copyto!(s, rhs);
-end
-
-function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::Colon)
-    s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (0, Base.size(lhs, 2))))
+# LHS slices from `nda_get_slice` are invisible to `@accelerate`; destroy
+# the view handle after submitting the assign so they cannot pile up under Julia
+# GC (which sees each NDArray as ~pointer-sized).
+function _setindex_slice!(lhs::NDArray, rhs::NDArray, slices)
+    s = nda_get_slice(lhs, slices)
     copyto!(s, rhs)
+    destroy!(s)
+    return nothing
 end
 
-function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Colon, j::UnitRange)
-    s = nda_get_slice(lhs, slice_array((0, Base.size(lhs, 1)), (first(j) - 1, last(j))))
-    copyto!(s, rhs)
-end
+@inline _zero_based_index(i::Integer) = (Int(i) - 1, Int(i))
+@inline _zero_based_range(i::AbstractUnitRange{<:Integer}) = (Int(first(i)) - 1, Int(last(i)))
 
-function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::Int64)
-    s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (j-1, j)))
-    copyto!(s, rhs)
-end
-
-function Base.setindex!(lhs::NDArray, rhs::NDArray, i::Int64, j::UnitRange)
-    s = nda_get_slice(lhs, slice_array((i-1, i), (first(j) - 1, last(j))))
-    copyto!(s, rhs)
-end
-
-function Base.setindex!(lhs::NDArray, rhs::NDArray, i::UnitRange, j::UnitRange)
-    s = nda_get_slice(lhs, slice_array((first(i) - 1, last(i)), (first(j) - 1, last(j))))
-    copyto!(s, rhs)
-end
-
-function Base.getindex(arr::NDArray, i::Colon, j::Int64)
-    return nda_get_slice(arr, slice_array((0, Base.size(arr, 1)), (j-1, j)))
-end
-
-function Base.getindex(arr::NDArray, i::Int64, j::Colon)
-    return nda_get_slice(arr, slice_array((i-1, i)))
-end
-
-function Base.getindex(arr::NDArray, i::UnitRange, j::Colon)
-    return nda_get_slice(
-        arr, slice_array((first(i) - 1, last(i)), (0, Base.size(arr, 2)))
+@inline function Base.setindex!(
+    lhs::NDArray{T,2}, rhs::NDArray, ::Colon, j::Integer
+) where {T}
+    @boundscheck checkbounds(lhs, :, j)
+    return _setindex_slice!(
+        lhs, rhs, slice_array((0, size(lhs, 1)), _zero_based_index(j))
     )
 end
 
-function Base.getindex(arr::NDArray, i::Colon, j::UnitRange)
-    return nda_get_slice(
-        arr, slice_array((0, Base.size(arr, 1)), (first(j) - 1, last(j)))
+@inline function Base.setindex!(
+    lhs::NDArray{T,2}, rhs::NDArray, i::Integer, ::Colon
+) where {T}
+    @boundscheck checkbounds(lhs, i, :)
+    return _setindex_slice!(lhs, rhs, slice_array(_zero_based_index(i)))
+end
+
+@inline function Base.setindex!(
+    lhs::NDArray{T,2}, rhs::NDArray, i::AbstractUnitRange{<:Integer}, ::Colon
+) where {T}
+    @boundscheck checkbounds(lhs, i, :)
+    return _setindex_slice!(
+        lhs, rhs, slice_array(_zero_based_range(i), (0, size(lhs, 2)))
     )
 end
 
-function Base.getindex(arr::NDArray, i::UnitRange, j::Int64)
-    return nda_get_slice(arr, slice_array((first(i) - 1, last(i)), (j-1, j)))
-end
-
-function Base.getindex(arr::NDArray, i::Int64, j::UnitRange)
-    return nda_get_slice(arr, slice_array((i-1, i), (first(j) - 1, last(j))))
-end
-
-function Base.getindex(arr::NDArray, i::UnitRange, j::UnitRange)
-    return nda_get_slice(
-        arr, slice_array((first(i) - 1, last(i)), (first(j) - 1, last(j)))
+@inline function Base.setindex!(
+    lhs::NDArray{T,2}, rhs::NDArray, ::Colon, j::AbstractUnitRange{<:Integer}
+) where {T}
+    @boundscheck checkbounds(lhs, :, j)
+    return _setindex_slice!(
+        lhs, rhs, slice_array((0, size(lhs, 1)), _zero_based_range(j))
     )
 end
 
-function Base.getindex(arr::NDArray, i::UnitRange)
-    return nda_get_slice(
-        arr, slice_array((first(i) - 1, last(i)))
+@inline function Base.setindex!(
+    lhs::NDArray{T,2},
+    rhs::NDArray,
+    i::AbstractUnitRange{<:Integer},
+    j::Integer,
+) where {T}
+    @boundscheck checkbounds(lhs, i, j)
+    return _setindex_slice!(
+        lhs, rhs, slice_array(_zero_based_range(i), _zero_based_index(j))
     )
 end
 
-Base.getindex(arr::NDArray{T}, c::Vararg{Colon,N}) where {T,N} = Base.copy(arr)
-function Base.setindex!(arr::NDArray{T}, rhs::NDArray{T}, c::Vararg{Colon,N}) where {T,N}
-    Base.copyto!(arr, rhs)
+@inline function Base.setindex!(
+    lhs::NDArray{T,2},
+    rhs::NDArray,
+    i::Integer,
+    j::AbstractUnitRange{<:Integer},
+) where {T}
+    @boundscheck checkbounds(lhs, i, j)
+    return _setindex_slice!(
+        lhs, rhs, slice_array(_zero_based_index(i), _zero_based_range(j))
+    )
 end
 
-function Base.setindex!(arr::NDArray{T,2}, val::T, i::Colon, j::Int64) where {T}
-    s = nda_get_slice(arr, to_cpp_init_slice(slice(0, Base.size(arr, 1)), slice(j-1, j)))
+@inline function Base.setindex!(
+    lhs::NDArray{T,2},
+    rhs::NDArray,
+    i::AbstractUnitRange{<:Integer},
+    j::AbstractUnitRange{<:Integer},
+) where {T}
+    @boundscheck checkbounds(lhs, i, j)
+    return _setindex_slice!(
+        lhs, rhs, slice_array(_zero_based_range(i), _zero_based_range(j))
+    )
+end
+
+@inline function Base.getindex(arr::NDArray{T,2}, ::Colon, j::Integer) where {T}
+    @boundscheck checkbounds(arr, :, j)
+    return nda_get_slice(
+        arr, slice_array((0, size(arr, 1)), _zero_based_index(j))
+    )
+end
+
+@inline function Base.getindex(arr::NDArray{T,2}, i::Integer, ::Colon) where {T}
+    @boundscheck checkbounds(arr, i, :)
+    return nda_get_slice(arr, slice_array(_zero_based_index(i)))
+end
+
+@inline function Base.getindex(
+    arr::NDArray{T,2}, i::AbstractUnitRange{<:Integer}, ::Colon
+) where {T}
+    @boundscheck checkbounds(arr, i, :)
+    return nda_get_slice(
+        arr, slice_array(_zero_based_range(i), (0, size(arr, 2)))
+    )
+end
+
+@inline function Base.getindex(
+    arr::NDArray{T,2}, ::Colon, j::AbstractUnitRange{<:Integer}
+) where {T}
+    @boundscheck checkbounds(arr, :, j)
+    return nda_get_slice(
+        arr, slice_array((0, size(arr, 1)), _zero_based_range(j))
+    )
+end
+
+@inline function Base.getindex(
+    arr::NDArray{T,2}, i::AbstractUnitRange{<:Integer}, j::Integer
+) where {T}
+    @boundscheck checkbounds(arr, i, j)
+    return nda_get_slice(
+        arr, slice_array(_zero_based_range(i), _zero_based_index(j))
+    )
+end
+
+@inline function Base.getindex(
+    arr::NDArray{T,2}, i::Integer, j::AbstractUnitRange{<:Integer}
+) where {T}
+    @boundscheck checkbounds(arr, i, j)
+    return nda_get_slice(
+        arr, slice_array(_zero_based_index(i), _zero_based_range(j))
+    )
+end
+
+@inline function Base.getindex(
+    arr::NDArray{T,2},
+    i::AbstractUnitRange{<:Integer},
+    j::AbstractUnitRange{<:Integer},
+) where {T}
+    @boundscheck checkbounds(arr, i, j)
+    return nda_get_slice(
+        arr, slice_array(_zero_based_range(i), _zero_based_range(j))
+    )
+end
+
+@inline function Base.getindex(
+    arr::NDArray, i::AbstractUnitRange{<:Integer}
+)
+    @boundscheck checkbounds(arr, i)
+    return nda_get_slice(arr, slice_array(_zero_based_range(i)))
+end
+
+@inline function Base.getindex(
+    arr::NDArray{T}, c::Vararg{Colon,N}
+) where {T,N}
+    @boundscheck checkbounds(arr, c...)
+    return Base.copy(arr)
+end
+
+@inline function Base.setindex!(
+    arr::NDArray{T}, rhs::NDArray{T}, c::Vararg{Colon,N}
+) where {T,N}
+    @boundscheck checkbounds(arr, c...)
+    return Base.copyto!(arr, rhs)
+end
+
+@inline function Base.setindex!(
+    arr::NDArray{T,2}, val::T, ::Colon, j::Integer
+) where {T}
+    @boundscheck checkbounds(arr, :, j)
+    s = nda_get_slice(
+        arr, slice_array((0, size(arr, 1)), _zero_based_index(j))
+    )
     nda_fill_array(s, val)
+    return destroy!(s)
 end
 
-function Base.setindex!(arr::NDArray{T,2}, val::T, i::Int64, j::Colon) where {T}
-    s = nda_get_slice(arr, to_cpp_init_slice(slice(i-1, i)))
+@inline function Base.setindex!(
+    arr::NDArray{T,2}, val::T, i::Integer, ::Colon
+) where {T}
+    @boundscheck checkbounds(arr, i, :)
+    s = nda_get_slice(arr, slice_array(_zero_based_index(i)))
     nda_fill_array(s, val)
+    return destroy!(s)
 end
 
-Base.fill!(arr::NDArray{T}, val::T) where {T} = nda_fill_array(arr, val)
+@inline function Base.fill!(arr::NDArray{T}, val::T) where {T}
+    nda_fill_array(arr, val)
+    return arr
+end
 
 #### INITIALIZATION OF NDARRAYS ####
 @doc"""
-    cuNumeric.full(dims::Tuple, val)
-    cuNumeric.full(dim::Int, val)
+    cuNumeric.fill(val::T, dims::Dims)
+    cuNumeric.fill(val::T, dims::Int...)
 
 Create an `NDArray` filled with the scalar value `val`, with the shape specified by `dims`.
 
 # Examples
 ```@repl
-cuNumeric.full((2, 3), 7.5)
-cuNumeric.full(4, 0)
+cuNumeric.fill(7.5, (2, 3))
+cuNumeric.fill(0, 4)
 ```
 """
-function full(dims::Dims, val::T) where {T<:SUPPORTED_TYPES}
-    shape = collect(UInt64, dims)
-    return nda_full_array(shape, val)
+function fill(val::T, dims::Dims) where {T<:SUPPORTED_TYPES}
+    return nda_full_array(dims, val)
 end
 
-function full(dim::Int, val::T) where {T<:SUPPORTED_TYPES}
-    shape = UInt64[dim]
-    return nda_full_array(shape, val)
+function fill(val::T, dims::Int...) where {T<:SUPPORTED_TYPES}
+    return fill(val, dims)
+end
+
+function fill(val::T, dim::Int) where {T<:SUPPORTED_TYPES}
+    return fill(val, (dim,))
 end
 
 @doc"""
@@ -494,9 +624,9 @@ Create an `NDArray` filled with the true, with the shape specified by `dims`.
 cuNumeric.trues(2, 3)
 ```
 """
-trues(dim::Int) = cuNumeric.full(dim, true)
-trues(dims::Dims) = cuNumeric.full(dims, true)
-trues(dims::Int...) = cuNumeric.full(dims, true)
+trues(dim::Int) = cuNumeric.fill(true, dim)
+trues(dims::Dims) = cuNumeric.fill(true, dims)
+trues(dims::Int...) = cuNumeric.fill(true, dims)
 
 @doc"""
     cuNumeric.falses(dims::Tuple, val)
@@ -510,16 +640,16 @@ Create an `NDArray` filled with the false, with the shape specified by `dims`.
 cuNumeric.falses(2, 3)
 ```
 """
-falses(dim::Int) = cuNumeric.full(dim, false)
-falses(dims::Dims) = cuNumeric.full(dims, false)
-falses(dims::Int...) = cuNumeric.full(dims, false)
+falses(dims::Dims) = cuNumeric.fill(false, dims)
+falses(dims::Int...) = cuNumeric.fill(false, dims)
+falses(dim::Int) = cuNumeric.fill(false, dim)
 
 @doc"""
     cuNumeric.zeros([T=Float32,] dims::Int...)
     cuNumeric.zeros([T=Float32,] dims::Tuple)
 
 Create an NDArray with element type `T`, of all zeros with size specified by `dims`.
-This function mirrors the signature of `Base.zeros`, and defaults to `Float32` when the type is omitted.
+The default type is Float32 if not specified.
 
 # Examples
 ```@repl
@@ -528,9 +658,8 @@ cuNumeric.zeros(Float64, 3)
 cuNumeric.zeros(Int32, (2,3))
 ```
 """
-function zeros(::Type{T}, dims::Dims) where {T<:SUPPORTED_TYPES}
-    shape = collect(UInt64, dims)
-    return nda_zeros_array(shape, T)
+function zeros(::Type{T}, dims::Dims{N}) where {T<:SUPPORTED_TYPES,N}
+    return nda_zeros_array(dims, T)
 end
 
 function zeros(::Type{T}, dims::Int...) where {T<:SUPPORTED_TYPES}
@@ -546,15 +675,15 @@ function zeros(dims::Int...)
 end
 
 function zeros(::Type{T}) where {T}
-    return nda_zeros_array(UInt64[], T)
+    return nda_zeros_array((), T)
 end
 
 function zeros()
     return zeros(DEFAULT_FLOAT)
 end
 
-function zeros_like(arr::NDArray)
-    return zeros(eltype(arr), Base.size(arr))
+function zeros_like(arr::NDArray{T,N}) where {T,N}
+    return zeros(T, Base.size(arr))
 end
 
 @doc"""
@@ -562,7 +691,7 @@ end
     cuNumeric.ones([T=Float32,] dims::Tuple)
 
 Create an NDArray with element type `T`, of all zeros with size specified by `dims`.
-This function has the same signature as `Base.ones`, so be sure to call it as `cuNuermic.ones`.
+The default type is Float32 if not specified.
 
 # Examples
 ```@repl
@@ -572,7 +701,7 @@ cuNumeric.ones(Int32, (2, 3))
 ```
 """
 function ones(::Type{T}, dims::Dims) where {T}
-    return full(dims, T(1))
+    return nda_full_array(dims, T(1))
 end
 
 function ones(::Type{T}, dims::Int...) where {T}
@@ -588,76 +717,61 @@ function ones(dims::Int...)
 end
 
 function ones(::Type{T}) where {T}
-    return full((), T(1))
+    return cuNumeric.fill(T(1), ())
 end
 
 function ones()
-    return zeros(DEFAULT_FLOAT)
+    return ones(DEFAULT_FLOAT)
 end
-
-@doc"""
-    cuNumeric.rand!(arr::NDArray)
-
-Fills `arr` with AbstractFloats uniformly at random.
-
-    cuNumeric.rand(NDArray, dims::Int...)
-    cuNumeric.rand(NDArray, dims::Tuple)
-
-Create a new `NDArray` of element type Float64, filled with uniform random values.
-
-This function uses the same signature as `Base.rand` with a custom backend,
-and currently supports only `Float64` with uniform distribution (`code = 0`).
-In order to support other Floats, we type convert for the user automatically.
-
-# Examples
-```@repl
-cuNumeric.rand(NDArray, 2, 2)
-cuNumeric.rand(NDArray, (4, 1))
-A = cuNumeric.zeros(2, 2); cuNumeric.rand!(A)
-```
-"""
-Random.rand!(arr::NDArray{Float64}) = cuNumeric.nda_random(arr, 0)
-rand(::Type{NDArray}, dims::Dims) = cuNumeric.nda_random_array(UInt64.(collect(dims)))
-rand(::Type{NDArray}, dims::Int...) = cuNumeric.rand(NDArray, dims)
-rand(dims::Dims) = cuNumeric.rand(NDArray, dims)
-rand(dims::Int...) = cuNumeric.rand(NDArray, dims)
-
-function rand(::Type{T}, dims::Dims) where {T<:AbstractFloat}
-    arrfp64 = cuNumeric.nda_random_array(UInt64.(collect(dims)))
-    # if T == Float64, as_type should do minimial work # TODO check this.
-    return cuNumeric.as_type(arrfp64, T)
-end
-
-rand(::Type{T}, dims::Int...) where {T<:AbstractFloat} = cuNumeric.rand(T, dims)
 
 #### OPERATIONS ####
 @doc"""
-    reshape(arr::NDArray, dims::Dims{N}; copy::Bool = false) where {N}
-    reshape(arr::NDArray, dim::Int64; copy::Bool = false)
+    reshape(arr::NDArray, dims::Dims{N}; copy::Val{C}=Val(false)) where {N,C}
+    reshape(arr::NDArray, dims::Int...; copy::Val{C}=Val(false)) where {C}
 
 Return a new `NDArray` reshaped to the specified dimensions.
+
+By default (`copy=Val(false)`) the result shares data with `arr`.
+Pass `copy=Val(true)` to allocate a deep copy; the intermediate reshape
+view is then destroyed eagerly. Use `Val` (not a runtime `Bool`) so the
+return type stays concrete — a `Bool` branch widens inference.
 
 # Examples
 ```@repl
 arr = cuNumeric.ones(4, 3)
 reshape(arr, (3, 4))
 reshape(arr, 12)
+reshape(arr, (3, 4); copy=Val(true))
 ```
 """
 
-function reshape(arr::NDArray, i::Dims{N}; copy::Bool=false) where {N}
-    reshaped = nda_reshape_array(arr, UInt64.(collect(i)))
-    return copy ? copy(reshaped) : reshaped
+# `copy` is a type parameter via Val{C}, so the default path constant-folds
+# and stays type-stable (needed by solve's 1D-rhs reshape).
+function reshape(arr::NDArray, i::Dims{N}; copy::Val{C}=Val(false)) where {N,C}
+    reshaped = nda_reshape_array(arr, i)
+    if C
+        copied = Base.copy(reshaped)
+        destroy!(reshaped)
+        return copied
+    end
+    return reshaped
 end
 
-function reshape(arr::NDArray, i::Int64; copy::Bool=false)
-    reshaped = nda_reshape_array(arr, UInt64.([i]))
-    return copy ? copy(reshaped) : reshaped
+function reshape(arr::NDArray, i::Int...; copy::Val{C}=Val(false)) where {C}
+    return reshape(arr, i; copy=Val{C}())
 end
 
 # Ignore the scalar indexing here...
-unwrap(x::NDArray{<:Any,0}) = @allowscalar x[]
-unwrap(x::NDArray{<:Any,1}) = @allowscalar x[][1] # assumes 1 element
+Base.only(x::NDArray{T,0}) where {T} = @allowscalar x[]
+
+function Base.only(x::NDArray{T,N}) where {T,N}
+    length(x) == 1 ||
+        throw(ArgumentError("collection must contain exactly 1 element"))
+
+    return @allowscalar x[firstindex(x)]
+end
+
+unwrap(x::NDArray) = only(x)
 
 @doc"""
     ==(arr1::NDArray, arr2::NDArray)
@@ -670,7 +784,6 @@ Currently supports arrays up to 3 dimensions. For higher dimensions, returns `fa
 !!! warning
 
     This function uses scalar indexing and should not be used in production code. This is meant for testing.
-
 
 
 # Examples
@@ -702,7 +815,6 @@ Returns `false` otherwise (including if sizes differ, with a warning).
 !!! warning
 
     This function uses scalar indexing and should not be used in production code. This is meant for testing.
-
 
 
 # Examples
@@ -739,7 +851,6 @@ a common comparison function.
     This function uses scalar indexing and should not be used in production code. This is meant for testing.
 
 
-
 # Examples
 ```@repl
 arr1 = cuNumeric.ones(2, 2)
@@ -761,4 +872,90 @@ end
 
 function Base.isapprox(arr::NDArray{T}, arr2::NDArray{T}; atol=0, rtol=0) where {T}
     return compare(arr, arr2, atol, rtol)
+end
+
+# HDF5 signature. A leftover empty/truncated file from a crashed write has no
+# header, and opening it in a Legate HDF5 task aborts the runtime.
+const _HDF5_MAGIC = UInt8[0x89, 0x48, 0x44, 0x46, 0x0d, 0x0a, 0x1a, 0x0a]
+
+function _hdf5_check_dataset(dataset::AbstractString)
+    return isempty(dataset) && throw(ArgumentError("HDF5 dataset name must be non-empty"))
+end
+
+function _is_hdf5_file(path::AbstractString)
+    isfile(path) || return false
+    filesize(path) < length(_HDF5_MAGIC) && return false
+    return open(path, "r") do io
+        return read(io, length(_HDF5_MAGIC)) == _HDF5_MAGIC
+    end
+end
+
+# A truncated leftover `.h5` is not a valid file and makes HDF5CombineVDS abort.
+# Leave a real HDF5 file in place so Legate can truncate it. Do not touch
+# `*_legate_vds`: that directory holds the payload of a VDS write, and we
+# cannot tell a stale sidecar from one a later read still needs.
+function _prepare_h5write(path::AbstractString, dataset::AbstractString)
+    _hdf5_check_dataset(dataset)
+    isdir(path) && throw(ArgumentError("h5write path must be a file, got directory $path"))
+    parent = dirname(path)
+    if !isempty(parent) && parent != "." && !isdir(parent)
+        throw(ArgumentError("h5write parent directory does not exist: $parent"))
+    end
+    if ispath(path) && !_is_hdf5_file(path)
+        rm(path; force=true)
+    end
+    return nothing
+end
+
+function _prepare_h5read(path::AbstractString, dataset::AbstractString)
+    _hdf5_check_dataset(dataset)
+    isdir(path) && throw(ArgumentError("h5read path must be a file, got directory $path"))
+    isfile(path) || throw(ArgumentError("HDF5 file does not exist: $path"))
+    _is_hdf5_file(path) || throw(ArgumentError("not an HDF5 file: $path"))
+    return nothing
+end
+
+"""
+    h5write(path::String, dataset::String, arr::NDArray)
+
+Write an `NDArray` directly to an HDF5 dataset without a host copy or dimension flip.
+
+A leftover empty or truncated `.h5` from a crashed write is removed first.
+A valid HDF5 file is left in place so Legate can overwrite it. The
+`*_legate_vds` sidecar is not touched: it holds the payload of a VDS write.
+
+# Arguments
+- `path`: Path to the HDF5 file.
+- `dataset`: Name of the dataset to write.
+- `arr`: The array to write.
+"""
+function h5write(path::String, dataset::String, arr::NDArray{T,N}) where {T,N}
+    _prepare_h5write(path, dataset)
+    st_handle = get_store(arr)
+    # NDArrays are row-major, so this writes straight through (no dim flip, no warning).
+    la = Legate.LogicalArray{T,N}(st_handle, size(arr))
+    return Legate.h5write(path, dataset, la)
+end
+
+"""
+    h5read(path::String, dataset::String; layout::Symbol=:row) -> NDArray
+
+Read a dataset from an HDF5 file into an `NDArray`.
+
+# Arguments
+- `path`: Path to the HDF5 file.
+- `dataset`: Name of the dataset to read.
+
+# Keywords
+- `layout`: On-disk memory order, either `:row` (default) or `:col`.
+"""
+function h5read(path::String, dataset::String; kwargs...)
+    _prepare_h5read(path, dataset)
+    la = Legate.h5read(path, dataset; kwargs...)
+    T = eltype(la)
+    N = Int(Legate.dim(la))
+    st = Legate.data(la.handle)  # call data on the raw impl
+    ptr = nda_store_to_ndarray(st)  # pass directly
+    arr = NDArray(ptr, T, Val(N), nothing)
+    return la.order === :col && N > 1 ? transpose(arr) : arr
 end

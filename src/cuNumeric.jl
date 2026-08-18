@@ -1,4 +1,4 @@
-#= Copyright 2025 Northwestern University, 
+#= Copyright 2026 Northwestern University,
  *                   Carnegie Mellon University University
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,27 +15,73 @@
  *
  * Author(s): David Krasowska <krasow@u.northwestern.edu>
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
+ *            Nader Rahhal <naderrahhal2026@u.northwestern.edu>
 =#
 
 module cuNumeric
 
+using Preferences
+using CNPreferences
+using LegatePreferences: LegatePreferences
+using Legate
+using Libdl
+using CxxWrap
+
+using CUDATools: CUDATools
+using CUDACore: CUDACore
+import CUDACore: CuArray
+import KernelAbstractions: @kernel, @index
+import KernelAbstractions as KA
+
+using cupynumeric_jll
+using cunumeric_jl_wrapper_jll
+
+import Base: axes, convert, copy, copyto!, inv, isfinite, sqrt, -, +, *, ==, !=,
+    isapprox, read, view, maximum, minimum, prod, sum, getindex, setindex!,
+    sum, prod, argmax, argmin
+
+using LinearAlgebra
+import LinearAlgebra: mul!
+
+using Random
+import Random: rand!, randn!, randexp!
+
+using StaticArrays: SVector
+
+using StatsBase
+import StatsBase: var, mean, std
+
 include(joinpath(@__DIR__, "../deps/version.jl"))
-include("utilities/depends.jl")
 include("utilities/preference.jl")
 
 const HAS_CUDA = LegatePreferences.has_cuda_gpu()
-
 if !HAS_CUDA
-    @warn "cuPyNumeric JLL does not have CUDA. If you have an NVIDIA GPU something might be wrong."
+    @warn "We couldn't find a CUDA-enabled GPU. If you have an NVIDIA GPU something might be wrong."
 end
+
+# `HAS_CUDA` describes the machine. A CPU-only Legate configuration on a GPU
+# machine must still avoid registering or launching GPU tasks.
+@inline _has_gpu_target() = HAS_CUDA && Int(Legate.num_gpus()) > 0
 
 const DEFAULT_FLOAT = Float32
 const DEFAULT_INT = Int32
 
-const SUPPORTED_INT_TYPES = Union{Int32,Int64}
-const SUPPORTED_FLOAT_TYPES = Union{Float32,Float64}
-const SUPPORTED_NUMERIC_TYPES = Union{SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES}
-const SUPPORTED_TYPES = Union{SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES,Bool} #* TODO Test UInt, Complex
+const SUPPORTED_INT_TYPES = Union{Int8,Int16,Int32,Int64,UInt8,UInt16,UInt32,UInt64}
+const SUPPORTED_FLOAT_TYPES = Union{Float32,Float64} # Float16 disabled for now. Issues need to be resolved.
+const SUPPORTED_COMPLEX_TYPES = Union{ComplexF32,ComplexF64}
+
+const SUPPORTED_NUMERIC_TYPES = Union{
+    SUPPORTED_INT_TYPES,SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES
+}
+
+# solve has no integer backend kernel
+const SUPPORTED_SOLVE_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
+const SUPPORTED_SVD_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
+const SUPPORTED_QR_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
+const SUPPORTED_CHOLESKY_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
+const SUPPORTED_EIG_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
+const SUPPORTED_ARRAY_TYPES = Union{Bool,SUPPORTED_NUMERIC_TYPES}
+const SUPPORTED_TYPES = Union{SUPPORTED_ARRAY_TYPES,String}
 
 # const MAX_DIM = 6 # idk what we compiled?
 
@@ -108,23 +154,40 @@ include("memory.jl")
 # allowscalar and allowpromotion
 include("warnings.jl")
 
+# Compile-time so task scope instrumentation is fully elided when disabled.
+const TASK_SCOPE_NAMES = CNPreferences.TASK_SCOPE_NAMES
+
 # NDArray internal
 include("ndarray/detail/ndarray.jl")
+include("ndarray/detail/linalg.jl")
 
-# NDArray interface
+# Utilities
+include("cuda/strided_device_array.jl")
+include("cuda/cuda_util.jl")
+include("utilities/version.jl")
+include("util.jl")
+
+# Compile-time so the fusion branch is elided; flip via CNPreferences before loading.
+const FUSE_BROADCAST_EXPRS = CNPreferences.FUSE_BROADCAST
+# Fuse when broadcast tree length is at least this (see `_broadcast_tree_length`).
+# Default 2 skips single-op exprs like `y .= cos.(x)`. Use 1 to fuse everything.
+const FUSE_BROADCAST_MIN_OPS = CNPreferences.FUSE_BROADCAST_MIN_OPS
+
+# Functionality
+include("ndarray/diagonal.jl")
 include("ndarray/promotion.jl")
+include("cuda/cuda_ptx_task.jl")
+include("ndarray/broadcast_fusion.jl")
 include("ndarray/broadcast.jl")
 include("ndarray/ndarray.jl")
+include("ndarray/random/bitgenerator.jl")
+include("ndarray/random/generator.jl")
+include("ndarray/random/random.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
-
-# scoping macro
-include("scoping.jl")
-
-# Utilities 
-include("utilities/version.jl")
-include("utilities/cuda_stubs.jl")
-include("util.jl")
+include("ndarray/linalg.jl")
+include("ndarray/batched_linalg.jl")
+include("scoping/scoping.jl")
 
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147
 mutable struct ArgcArgv
@@ -141,20 +204,10 @@ end
 getargv(a::ArgcArgv) = Base.unsafe_convert(CxxPtr{CxxPtr{CxxChar}}, a.argv)
 
 function my_on_exit()
-    # @info "Cleaning Up cuNumeric"
+    return drain_pending_frees!()   # flush before Legate tears down
 end
 
 global cuNumeric_config_str::String = ""
-
-@doc"""
-    versioninfo()
-
-Prints the cuNumeric build configuration summary, including package
-metadata, Julia and compiler version, and paths to core dependencies.
-"""
-function versioninfo()
-    println(cuNumeric_config_str)
-end
 
 ### These functions guard against a user trying
 ### to start multiple runtimes and also to allow
@@ -175,7 +228,9 @@ function _start_runtime()
     # AA = ArgcArgv([Base.julia_cmd()[1]])
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
 
-    # setup /src/memory.jl 
+    _init_deferred_free!()   # record launch thread for deferred frees (memory.jl)
+
+    # setup /src/memory.jl
     cuNumeric.init_gc!()
 
     Base.atexit(my_on_exit)
@@ -206,22 +261,24 @@ _is_precompiling() = ccall(:jl_generating_output, Cint, ()) != 0
 
 # Runtime initilization
 function __init__()
-    # @info "cuNumeric __init__" pid=getpid() tid=Threads.threadid() precomp=_is_precompiling()
-
     CNPreferences.check_unchanged()
 
     @initcxx
 
-    global cuNumeric_config_str = version_config_setup()
-
     _is_precompiling() && return nothing
 
-    ensure_runtime!()
-end
+    # Cannot set LEGATE_CONFIG on CI machines used
+    # to register packages. So we will just skip starting
+    # legate/cunumeric when using registry CI machines.
+    get(ENV, "JULIA_REGISTRYCI_AUTOMERGE", false) == "true" && return nothing
+    # skip runtime here as well
+    get(ENV, "LEGATE_SKIP_RUNTIME", false) == "true" && return nothing
 
-# Placeholder for Distributed extension
-function init_workers(; kwargs...)
-    error("init_workers requires the Distributed package. Please run: using Distributed")
+    # Start runtime, but only if not pre-compiling
+    ensure_runtime!()
+
+    # Requries runtime to be started
+    return _setup_cuda_tasking()
 end
 
 end #module cuNumeric
