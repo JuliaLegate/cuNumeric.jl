@@ -190,6 +190,7 @@ include("ndarray/unary.jl")
 include("ndarray/binary.jl")
 include("ndarray/linalg.jl")
 include("ndarray/batched_linalg.jl")
+include("ndarray/contract.jl")
 include("ndarray/fft.jl")
 include("scoping/scoping.jl")
 
