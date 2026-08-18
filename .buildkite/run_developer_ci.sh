@@ -24,9 +24,12 @@ cmake --version
 rm -f Manifest.toml test/Manifest.toml dev/Manifest.toml \
       LocalPreferences.toml test/LocalPreferences.toml
 
-# Dev mode rebuilds the wrapper .so each run, so drop stale overrides and the .ji that
-# bake @wrapmodule bindings (cuNumeric/Legate + wrapper JLLs) — a cached .ji would
-# mismatch the fresh .so and segfault. libcxxwrap override is kept.
+# Build directly in the plugin's persistent cache so artifacts, precompile, and libcxxwrap all
+# stay warm across runs. Developer builds are serialized across PRs, while each matrix job in a
+# build uses a separate (Julia, fusion) cache.
+# Dev mode rebuilds the wrapper .so each run, so drop stale overrides and the .ji that bake
+# @wrapmodule bindings (cuNumeric/Legate + wrapper JLLs) — a cached .ji would mismatch the fresh
+# .so and segfault. libcxxwrap's dev build is kept and reused.
 DEPOT="$(julia --startup-file=no -e 'print(DEPOT_PATH[1])')"
 rm -rf "$DEPOT"/packages/*/*/override \
        "$DEPOT"/compiled/v*/{cuNumeric,Legate,cunumeric_jl_wrapper_jll,legate_jl_wrapper_jll}
@@ -83,5 +86,5 @@ cp LocalPreferences.toml test/LocalPreferences.toml
 
 julia --color=yes --project=. -e '
     using Pkg
-    Pkg.test("cuNumeric"; test_args = ["--quickfail", "--jobs=8", "--verbose"])
+    Pkg.test("cuNumeric"; test_args = ["--jobs=8", "--verbose"])
 '

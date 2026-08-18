@@ -69,4 +69,4 @@ Restart Julia. You do not need `Pkg.build` for pure JLL mode (the build script e
 - [Build Modes](./install.md): JLL, developer, and conda providers
 - [CNPreferences](./api_preferences.md): preference defaults and function reference
 - [Debugging](./debugging.md): fusion and lifetime printers while developing
-- [Internals](./internals.md): how fusion and `@analyze_lifetimes` work
+- [Internals](./internals.md): how fusion and `@accelerate` work

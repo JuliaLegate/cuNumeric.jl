@@ -38,16 +38,20 @@ using cunumeric_jl_wrapper_jll
 
 import Base: axes, convert, copy, copyto!, inv, isfinite, sqrt, -, +, *, ==, !=,
     isapprox, read, view, maximum, minimum, prod, sum, getindex, setindex!,
-    sum, prod
+    sum, prod, argmax, argmin
 
 using LinearAlgebra
 import LinearAlgebra: mul!
 
+import AbstractFFTs: fft, ifft, fft!, ifft!
+
 using Random
-import Random: rand!
+import Random: rand!, randn!, randexp!
+
+using StaticArrays: SVector
 
 using StatsBase
-import StatsBase: var, mean
+import StatsBase: var, mean, std
 
 include(joinpath(@__DIR__, "../deps/version.jl"))
 include("utilities/preference.jl")
@@ -56,6 +60,10 @@ const HAS_CUDA = LegatePreferences.has_cuda_gpu()
 if !HAS_CUDA
     @warn "We couldn't find a CUDA-enabled GPU. If you have an NVIDIA GPU something might be wrong."
 end
+
+# `HAS_CUDA` describes the machine. A CPU-only Legate configuration on a GPU
+# machine must still avoid registering or launching GPU tasks.
+@inline _has_gpu_target() = HAS_CUDA && Int(Legate.num_gpus()) > 0
 
 const DEFAULT_FLOAT = Float32
 const DEFAULT_INT = Int32
@@ -72,6 +80,8 @@ const SUPPORTED_NUMERIC_TYPES = Union{
 const SUPPORTED_SOLVE_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
 const SUPPORTED_SVD_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
 const SUPPORTED_QR_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
+const SUPPORTED_CHOLESKY_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
+const SUPPORTED_EIG_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
 const SUPPORTED_ARRAY_TYPES = Union{Bool,SUPPORTED_NUMERIC_TYPES}
 const SUPPORTED_TYPES = Union{SUPPORTED_ARRAY_TYPES,String}
 
@@ -152,6 +162,7 @@ const TASK_SCOPE_NAMES = CNPreferences.TASK_SCOPE_NAMES
 # NDArray internal
 include("ndarray/detail/ndarray.jl")
 include("ndarray/detail/linalg.jl")
+include("ndarray/detail/fft.jl")
 
 # Utilities
 include("cuda/strided_device_array.jl")
@@ -166,14 +177,20 @@ const FUSE_BROADCAST_EXPRS = CNPreferences.FUSE_BROADCAST
 const FUSE_BROADCAST_MIN_OPS = CNPreferences.FUSE_BROADCAST_MIN_OPS
 
 # Functionality
+include("ndarray/diagonal.jl")
 include("ndarray/promotion.jl")
 include("cuda/cuda_ptx_task.jl")
 include("ndarray/broadcast_fusion.jl")
 include("ndarray/broadcast.jl")
 include("ndarray/ndarray.jl")
+include("ndarray/random/bitgenerator.jl")
+include("ndarray/random/generator.jl")
+include("ndarray/random/random.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
 include("ndarray/linalg.jl")
+include("ndarray/batched_linalg.jl")
+include("ndarray/fft.jl")
 include("scoping/scoping.jl")
 
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147
@@ -253,8 +270,6 @@ function __init__()
     @initcxx
 
     _is_precompiling() && return nothing
-
-    _register_scoping_error_hint!()
 
     # Cannot set LEGATE_CONFIG on CI machines used
     # to register packages. So we will just skip starting

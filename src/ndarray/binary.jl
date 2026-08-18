@@ -1,11 +1,11 @@
 # Still missing:
-#     # Base.copysign => cuNumeric.COPYSIGN, #* ANNOYING TO TEST
-#     #missing => cuNumeric.fmod, #same as mod in Julia?
-#     # Base.isapprox => cuNumeric.ISCLOSE, #* HANDLE rtol, atol kwargs!!!
-#     # Base.ldexp => cuNumeric.LDEXP, #* LHS FLOATS, RHS INTS
-#     #missing => cuNumeric.LOGADDEXP,
-#     #missing => cuNumeric.LOGADDEXP2,
-#     #missing => cuNumeric.NEXTAFTER,
+#     # Base.isapprox => cuNumeric.ISCLOSE, # rtol, atol kwargs
+#     # Base.ldexp => cuNumeric.LDEXP, # LHS floats, RHS ints
+#     # missing => cuNumeric.LOGADDEXP,
+#     # missing => cuNumeric.LOGADDEXP2,
+#     # missing => cuNumeric.NEXTAFTER,
+#     # Base.div / ÷  — FLOOR_DIVIDE matches Julia `fld` (toward -Inf), not
+#     # truncated `div`. Do not ship as `div`: `-7 ÷ 2` is -3 in Julia, -4 for fld.
 
 # Binary ops which are equivalent to Julia's broadcast syntax
 global const binary_op_map = Dict{Function,BinaryOpCode}(
@@ -24,14 +24,18 @@ global const binary_op_map = Dict{Function,BinaryOpCode}(
     Base.:(==) => cuNumeric.EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION),
     Base.lcm => cuNumeric.LCM,
     Base.gcd => cuNumeric.GCD,
-    # Base.xor => cuNumeric.LOGICAL_XOR, #! DO LATER
-    # Base.:⊻ => cuNumeric.LOGICAL_XOR, #! DO LATER
-    # Base.div => cuNumeric.FLOOR_DIVIDE, #! THESE ARE IN-EXACT FOR INTS?
-    # Base.:(÷) => cuNumeric.FLOOR_DIVIDE, #! THESE ARE IN-EXACT FOR INTS?
-    # Base.:(>>) => cuNumeric.RIGHT_SHIFT, #! DO LATER
-    # Base.:(<<) => cuNumeric.LEFT_SHIFT, #! DO LATER
-    # Base.:(&&) => (cuNumeric.LOGICAL_AND, Bool, :same_as_input), #! CANNOT OVERLOAD WTF? (see Base.andand)
-    # Base.:(||) => (cuNumeric.LOGICAL_OR, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
+    Base.:(&) => cuNumeric.BITWISE_AND, # integers and Bool
+    Base.:(|) => cuNumeric.BITWISE_OR,
+    Base.:(⊻) => cuNumeric.BITWISE_XOR,
+    Base.:(<<) => cuNumeric.LEFT_SHIFT, # integers, not Bool
+    Base.:(>>) => cuNumeric.RIGHT_SHIFT, # integers, not Bool
+    Base.fld => cuNumeric.FLOOR_DIVIDE, # matches Julia fld, not div/÷
+    Base.mod => cuNumeric.MOD,
+    Base.rem => cuNumeric.FMOD,
+    Base.:(%) => cuNumeric.FMOD, # Julia `%` is rem
+    Base.copysign => cuNumeric.COPYSIGN, # floats only
+    # Base.:(&&) => (cuNumeric.LOGICAL_AND, Bool, :same_as_input), # cannot overload (see Base.andand)
+    # Base.:(||) => (cuNumeric.LOGICAL_OR, Bool, :same_as_input), # cannot overload
 )
 
 global const floaty_binary_op_map = Dict{Function,BinaryOpCode}(
@@ -136,8 +140,10 @@ function Base.:(+)(rhs1::NDArray{A,N}, rhs2::NDArray{B,N}) where {A,B,N}
     return _nda_binary_op_promoted!(out, cuNumeric.ADD, rhs1, rhs2)
 end
 
-Base.:(*)(val::V, arr::NDArray{A}) where {A,V} = _mul_scalar(__my_promote_type(A, V), val, arr)
-Base.:(*)(arr::NDArray{A}, val::V) where {A,V} = val * arr
+function Base.:(*)(val::V, arr::NDArray{A}) where {A,V<:Number}
+    return _mul_scalar(__my_promote_type(A, V), val, arr)
+end
+Base.:(*)(arr::NDArray{A}, val::V) where {A,V<:Number} = val * arr
 
 _mul_scalar(::Type{T}, val, arr::NDArray{T}) where {T} = nda_multiply_scalar(arr, T(val))
 function _mul_scalar(::Type{U}, val, arr::NDArray) where {U}
@@ -156,14 +162,14 @@ function Base.:(*)(rhs1::NDArray{A,2}, rhs2::NDArray{B,2}) where {A,B}
 end
 
 function Base.:(*)(rhs1::NDArray{Bool,2}, rhs2::NDArray{Bool,2})
-    throw(
+    return throw(
         ArgumentError("cuNumeric.jl does not support matrix multiplication of two Boolean arrays")
     )
 end
 
 function Base.:(*)(rhs1::NDArray{<:Integer,2}, rhs2::NDArray{<:Integer,2})
     #* this is a stupid.....
-    throw(
+    return throw(
         ArgumentError("cuNumeric.jl does not support matrix multiplication of two Integer arrays")
     )
 end
@@ -221,14 +227,14 @@ end
 
 function LinearAlgebra.mul!(out::NDArray, rhs1::NDArray{Bool,2}, rhs2::NDArray{Bool,2})
     #* Could just promote both inputs to Int32
-    throw(
+    return throw(
         ArgumentError("cuNumeric.jl does not support matrix multiplication of two Boolean arrays")
     )
 end
 
 function LinearAlgebra.mul!(out::NDArray, rhs1::NDArray{<:Integer,2}, rhs2::NDArray{<:Integer,2})
     #* this is a stupid.....
-    throw(
+    return throw(
         ArgumentError("cuNumeric.jl does not support matrix multiplication of two Integer arrays")
     )
 end
