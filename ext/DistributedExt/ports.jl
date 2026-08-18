@@ -1,69 +1,41 @@
-using Sockets
-
-#
-# Helper: find (IP:PORT) for a given PID by inspecting Linux sockets
-#
-function _ports_for_pid(pid)
-    pidstr = string(pid)
-
-    # 1. Get all lines from `ss -ltnp` that match this pid
-    raw = read(`ss -ltnp`, String)
-    lines = filter(l -> occursin("pid=$pidstr", l), split(raw, '\n'))
-
-    addrs = String[]
-
-    for ln in lines
-        parts = split(ln)
-        if length(parts) >= 4
-            # 2. Extract the port from the Local Address:Port field
-            locale = parts[4]          # e.g., "127.0.0.1:34567"
-            port = split(locale, ":")[end]  # get only the port
-
-            # 3. Use the host's real IP
-            ip_int = Sockets.getaddrinfo(gethostname()).host
-            ipstr = string(Sockets.IPv4(ip_int))
-
-            # 4. Combine IP and port
-            push!(addrs, "$ipstr:$port")
-        end
-    end
-
-    return addrs
-end
-
-#
-# Return "IP:PORT" for each worker in Distributed.jl
-#
-function legate_peers()
-    w = workers()
-    if isempty(w)
+"""Return a Realm P2P address for each Distributed.jl worker."""
+function legate_peers(worker_ids=Distributed.workers())
+    if isempty(worker_ids)
         error("No Julia workers found! Call addprocs(...) first.")
     end
 
-    # Fetch PID of each worker from that worker
-    pidmap = Dict(wi => remotecall_fetch(() -> getpid(), wi) for wi in w)
+    worker_address_expr = quote
+        using Sockets
 
-    peers = String[]
+        let local_process = Distributed.LPROC
+            # Distributed.start_worker stores the address of its listening socket here.
+            # Querying the worker directly avoids OS-specific socket/process inspection.
+            port = local_process.bind_port
+            if iszero(port)
+                error("Julia worker ", Distributed.myid(), " has no listening port")
+            end
 
-    for wi in w
-        pid = pidmap[wi]
-        ports = _ports_for_pid(pid)
-        if isempty(ports)
-            push!(peers, "UNKNOWN:0")
-        else
-            push!(peers, ports[1])
+            # Realm needs a different interface because Julia already owns bind_addr:port.
+            hostname_ip = Sockets.getaddrinfo(Sockets.gethostname()).host
+            string(Sockets.IPv4(hostname_ip), ':', port)
         end
+    end
+
+    peers = Dict{Int,String}()
+    for worker_id in worker_ids
+        peers[worker_id] = Distributed.remotecall_fetch(
+            Core.eval, worker_id, Main, worker_address_expr
+        )
     end
 
     return peers
 end
 
-function setup_legate_env()
-    all_addrs = legate_peers()
-    self_addr = all_addrs[1]
+function setup_legate_env(worker_addrs)
+    self_addr = worker_addrs[Distributed.myid()]
 
-    # Exclude self and join remaining peers
-    peer_addrs = join(sort(all_addrs[1:end]), " ")
+    # Realm expects the complete peer set, including this worker.
+    peer_addrs = join(sort!(collect(values(worker_addrs))), " ")
 
     # Set environment variables
     ENV["WORKER_SELF_INFO"] = "$self_addr"
@@ -76,4 +48,5 @@ function setup_legate_env()
     println("Peers: ", ENV["WORKER_PEERS_INFO"])
     println("Bootstrap plugin: ", ENV["REALM_UCP_BOOTSTRAP_PLUGIN"])
     println("Bootstrapping mode: ", ENV["REALM_UCP_BOOTSTRAP_MODE"])
+    return nothing
 end
