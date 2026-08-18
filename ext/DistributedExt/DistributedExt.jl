@@ -20,6 +20,10 @@ function __init__()
             assert_experimental()
             return $DistributedExt.addprocs_impl(n; kwargs...)
         end
+        function addprocs(manager::$(Distributed.ClusterManager); kwargs...)
+            assert_experimental()
+            return $DistributedExt.addprocs_impl(manager; kwargs...)
+        end
     end
 end
 

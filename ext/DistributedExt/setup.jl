@@ -22,9 +22,9 @@ end
 
 All keyword arguments are passed through to `Distributed.addprocs()`.
 """
-function addprocs_impl(n::Integer; kwargs...)
-    # Start workers
-    pids = Distributed.addprocs(n; kwargs...)
+function addprocs_impl(spec; kwargs...)
+    # Start workers (spec is a worker count or a ClusterManager, e.g. SlurmManager)
+    pids = Distributed.addprocs(spec; kwargs...)
 
     # Configure them for cuNumeric
     init_workers_impl()
