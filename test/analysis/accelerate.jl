@@ -84,10 +84,11 @@ using InteractiveUtils: code_typed
         # can consume and return the value it produces.
         a = _nd(ja)
         b = _nd(jb)
+        one_t = one(T)
         shifted, x = @accelerate begin
             shifted = let
                 product = @. a * b
-                @. product + one(T)
+                @. product + one_t
             end
             x = @. shifted * 2
             (shifted, x)

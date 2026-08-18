@@ -6,11 +6,13 @@ opaque boundaries; general control flow is not rewritten.
 
 Within that restricted body, it performs:
 
+```@raw html
 <ol>
 <li><strong>Fusion within a broadcast expression.</strong> On CUDA, an eligible dotted expression such as <code>@. A + B * C</code> can run as one kernel. CPU execution uses the normal unfused path.</li>
 <li><strong>Fusion across broadcast statements.</strong> A single-use broadcast result can be substituted into its consumer, producing fewer GPU kernel launches.</li>
 <li><strong>Temporary lifetime analysis.</strong> After rewriting the code, the macro releases materialized, non-returned <code>NDArray</code>s after their final use on CPU or GPU.</li>
 </ol>
+```
 
 These jobs must happen together: an intermediate that fuses into its consumer is never allocated, while an intermediate that cannot fuse is materialized and then released after its last use.
 

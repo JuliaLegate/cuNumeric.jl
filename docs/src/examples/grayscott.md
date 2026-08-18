@@ -72,7 +72,7 @@ function gray_scott()
 
     return u, v
  end
- ```
+```
 
 ![Simulation Output](../gray-scott.gif)
 
