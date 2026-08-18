@@ -3,7 +3,16 @@ ENV["LEGATE_CONFIG"] = "--cpus=2 --show-config --logging legate=debug,level=2 --
 using Distributed
 using cuNumeric
 
-cuNumeric.addprocs(4)
+cuNumeric.Experimental(false)
+try
+    cuNumeric.addprocs(1)
+    error("cuNumeric.addprocs should require Experimental mode")
+catch err
+    err isa ArgumentError || rethrow()
+end
+
+cuNumeric.Experimental(true)
+cuNumeric.addprocs(1)
 
 # Test on workers - cuNumeric will load with p2p networking
 @everywhere workers() begin

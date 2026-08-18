@@ -12,8 +12,14 @@ function __init__()
     cuNumeric = Base.loaded_modules[cunumeric_pkgid]
     # Register functions at runtime
     Base.@eval cuNumeric begin
-        init_workers(; kwargs...) = $DistributedExt.init_workers_impl(; kwargs...)
-        addprocs(n::Integer; kwargs...) = $DistributedExt.addprocs_impl(n; kwargs...)
+        function init_workers(; kwargs...)
+            assert_experimental()
+            return $DistributedExt.init_workers_impl(; kwargs...)
+        end
+        function addprocs(n::Integer; kwargs...)
+            assert_experimental()
+            return $DistributedExt.addprocs_impl(n; kwargs...)
+        end
     end
 end
 

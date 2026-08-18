@@ -9,6 +9,8 @@ Starts workers and automatically configures them for distributed cuNumeric with 
 using Distributed
 using cuNumeric
 
+cuNumeric.Experimental(true)
+
 # Start and configure workers in one call
 cuNumeric.addprocs(4)
 
@@ -49,7 +51,8 @@ function init_workers_impl(; auto_setup::Bool=true)
     cunumeric_path = dirname(dirname(Base.locate_package(cunumeric_pkgid)))
     port_path = joinpath(cunumeric_path, "ext", "DistributedExt", "ports.jl")
 
-    # Use @everywhere with myid() check (not @everywhere workers() - that doesn't work!)
+    # Configure all workers together so the P2P runtime sees the complete peer
+    # set before cuNumeric initializes.
     Base.eval(Main, :(@everywhere begin
         if myid() != 1
             include($port_path)
