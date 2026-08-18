@@ -488,6 +488,62 @@ function nda_transpose(arr::NDArray{T,N}) where {T,N}
     return NDArray(ptr, T, Val(N))
 end
 
+# Arbitrary axis permutation; rank is preserved. `axes` are 0-based.
+function nda_transpose_axes(arr::NDArray{T,N}, axes::Vector{Int32}) where {T,N}
+    axes_c = collect(Int32, axes)
+    ptr = @task_scope "permutedims" begin
+        ccall((:nda_transpose_axes, libnda),
+            NDArray_t, (NDArray_t, Ptr{Int32}, Int32),
+            arr.ptr, axes_c, Int32(length(axes_c)))
+    end
+    return NDArray(ptr, T, Val(N))
+end
+
+# Rank-changing: drop size-1 axes. Empty `axes` drops every size-1 axis.
+function nda_squeeze(arr::NDArray, axes::Vector{Int32})
+    axes_c = collect(Int32, axes)
+    ptr = @task_scope "squeeze" begin
+        ccall((:nda_squeeze, libnda),
+            NDArray_t, (NDArray_t, Ptr{Int32}, Int32),
+            arr.ptr, axes_c, Int32(length(axes_c)))
+    end
+    return NDArray(ptr)
+end
+
+function nda_diagonal(arr::NDArray, offset::Int32, axis1::Int32, axis2::Int32)
+    ptr = @task_scope "diagonal" begin
+        ccall((:nda_diagonal, libnda),
+            NDArray_t, (NDArray_t, Int32, Int32, Int32),
+            arr.ptr, offset, axis1, axis2)
+    end
+    return NDArray(ptr)
+end
+
+function nda_contract(
+    out::NDArray,
+    lhs_modes::Vector{UInt8},
+    rhs1::NDArray,
+    rhs1_modes::Vector{UInt8},
+    rhs2::NDArray,
+    rhs2_modes::Vector{UInt8},
+    extent_keys::Vector{UInt8},
+    extents::Vector{Int32},
+)
+    @task_scope "contract" begin
+        ccall((:nda_contract, libnda),
+            Cvoid,
+            (
+                NDArray_t, Ptr{UInt8}, Int32, NDArray_t, Ptr{UInt8}, Int32,
+                NDArray_t, Ptr{UInt8}, Int32, Ptr{UInt8}, Ptr{Int32}, Int32,
+            ),
+            out.ptr, lhs_modes, Int32(length(lhs_modes)),
+            rhs1.ptr, rhs1_modes, Int32(length(rhs1_modes)),
+            rhs2.ptr, rhs2_modes, Int32(length(rhs2_modes)),
+            extent_keys, extents, Int32(length(extents)))
+    end
+    return out
+end
+
 function nda_attach_external(arr::Array{T,N}; shape::Dims{N}=size(arr)) where {T,N}
     st = Legate.attach_external_row_major(arr; shape)
     # Use the CxxWrap method for type-safe interaction

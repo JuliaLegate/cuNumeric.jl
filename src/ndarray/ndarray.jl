@@ -18,7 +18,7 @@
  *            Nader Rahhal <naderrahhal2026@u.northwestern.edu>
 =#
 
-export unwrap
+export unwrap, squeeze
 
 # See TODO.md (Base / LinearAlgebra sections) for AbstractArray and LA gaps.
 
@@ -30,6 +30,79 @@ Return a new `NDArray` that is the transpose of the input `arr`.
 function transpose(arr::NDArray)
     return nda_transpose(arr)
 end
+
+"""
+    Base.permutedims(arr::NDArray, perm)
+
+Permute the dimensions of `arr` according to `perm`, a 1-based permutation of
+`1:ndims(arr)`. Rank is preserved. See also [`transpose`](@ref).
+"""
+function Base.permutedims(arr::NDArray{T,N}, perm) where {T,N}
+    length(perm) == N || throw(
+        ArgumentError("permutation length $(length(perm)) does not match ndims = $N")
+    )
+    p = ntuple(i -> Int(perm[i]), Val(N))
+    used = Base.falses(N)
+    axes = Vector{Int32}(undef, N)
+    for i in 1:N
+        d = p[i]
+        (1 <= d <= N) || throw(ArgumentError("permutation index $d is out of range for ndims = $N"))
+        used[d] && throw(ArgumentError("permutation $perm is not a permutation of 1:$N"))
+        used[d] = true
+        axes[i] = Int32(d - 1)
+    end
+    return nda_transpose_axes(arr, axes)
+end
+
+Base.permutedims(arr::NDArray{<:Any,2}) = permutedims(arr, (2, 1))
+
+"""
+    squeeze(arr::NDArray)
+    squeeze(arr::NDArray, dims)
+
+Drop size-1 dimensions of `arr`. With no `dims`, every size-1 axis is removed.
+With `dims` (a 1-based integer or collection), only those axes are removed and
+each must have size 1.
+
+See also `Base.dropdims`.
+"""
+function squeeze(arr::NDArray)
+    any(==(1), size(arr)) || return arr
+    return nda_squeeze(arr, Int32[])
+end
+
+function squeeze(arr::NDArray, dims)
+    axes = _squeeze_axes(arr, dims)
+    isempty(axes) && return arr
+    return nda_squeeze(arr, axes)
+end
+
+function Base.dropdims(arr::NDArray; dims)
+    return squeeze(arr, dims)
+end
+
+function _squeeze_axes(arr::NDArray, dims)
+    nd = ndims(arr)
+    axes = Int32[]
+    seen = Set{Int}()
+    for d in _as_dims(dims)
+        ax = Int(d)
+        (1 <= ax <= nd) ||
+            throw(ArgumentError("dimension $ax is out of range for $(nd)-d array"))
+        ax in seen && throw(ArgumentError("duplicate dimension $ax"))
+        push!(seen, ax)
+        size(arr, ax) == 1 || throw(
+            DimensionMismatch(
+                "cannot drop dimension $ax of size $(size(arr, ax)); expected size 1"
+            ),
+        )
+        push!(axes, Int32(ax - 1))
+    end
+    return axes
+end
+
+_as_dims(d::Integer) = (Int(d),)
+_as_dims(dims) = Tuple(Int(d) for d in dims)
 
 @doc"""
     cuNumeric.ravel(arr::NDArray)
