@@ -179,6 +179,18 @@ void wrap_linalg_ops(jlcxx::Module& mod) {
                 legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_GEEV});
 }
 
+void wrap_fft_ops(jlcxx::Module& mod) {
+  mod.set_const("FFT", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_FFT});
+  mod.set_const("FFT_R2C", int32_t(CUPYNUMERIC_FFT_R2C));
+  mod.set_const("FFT_C2R", int32_t(CUPYNUMERIC_FFT_C2R));
+  mod.set_const("FFT_C2C", int32_t(CUPYNUMERIC_FFT_C2C));
+  mod.set_const("FFT_D2Z", int32_t(CUPYNUMERIC_FFT_D2Z));
+  mod.set_const("FFT_Z2D", int32_t(CUPYNUMERIC_FFT_Z2D));
+  mod.set_const("FFT_Z2Z", int32_t(CUPYNUMERIC_FFT_Z2Z));
+  mod.set_const("FFT_FORWARD", int32_t(CUPYNUMERIC_FFT_FORWARD));
+  mod.set_const("FFT_INVERSE", int32_t(CUPYNUMERIC_FFT_INVERSE));
+}
+
 void wrap_bitgenerator_ops(jlcxx::Module& mod) {
   mod.set_const(
       "BITGENERATOR",

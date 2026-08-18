@@ -1,6 +1,5 @@
-using CUDA: CUDA, @cuda
-using CUDACore: blockDim, blockIdx, threadIdx
-import CUDACore: i32
+using CUDA: CUDA, @cuda, blockDim, blockIdx, threadIdx
+import CUDA: i32
 
 cuNumeric.Experimental(true)
 

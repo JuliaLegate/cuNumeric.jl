@@ -1,6 +1,6 @@
 # NDArray Reference
 
-Indexing, reshaping, reductions, comparisons, memory helpers, acceleration macros, and related utilities. For constructors (`zeros`, `ones`, `rand`, …) see [Initialization](./api_initialization.md). For RNG engines and `default_rng`, see [Random](./api_random.md).
+Indexing, reshaping, reductions, comparisons, memory helpers, lifetime macros, and related utilities. For constructors (`zeros`, `ones`, `rand`, …) see [Initialization](./api_initialization.md). For RNG engines and `default_rng`, see [Random](./api_random.md). For `fft` / `ifft` / `fft!` / `ifft!` and `batched_fft`, see [FFT](./fft.md). There is no `plan_fft`: cupynumeric does not expose a cuFFT handle.
 
 ```@autodocs
 Modules = [cuNumeric]

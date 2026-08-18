@@ -21,8 +21,8 @@
     -- Validate custom-kernel padding, synchronization, and lifetime management
 =#
 
-using CUDACore: blockDim, blockIdx, threadIdx
-import CUDACore: i32
+using CUDA: blockDim, blockIdx, threadIdx
+import CUDA: i32
 
 cuNumeric.Experimental(true)
 

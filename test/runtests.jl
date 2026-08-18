@@ -1,10 +1,10 @@
 using cuNumeric
-using CUDACore: CUDACore
+using CUDA: CUDA
 using ParallelTestRunner
 using Pkg
 using InteractiveUtils: versioninfo
 
-run_gpu_tests = CUDACore.functional()
+run_gpu_tests = CUDA.functional()
 
 @info "Julia information:\n" * sprint(io -> versioninfo(io))
 @info "cuNumeric information:\n" * sprint(io -> cuNumeric.versioninfo(io))
@@ -17,6 +17,7 @@ const init_code = quote
     using LinearAlgebra
     using Random
     using StatsBase
+    using FFTW
     import Random: rand
 
     ENV["LEGATE_SKIP_RUNTIME"] = "false"
