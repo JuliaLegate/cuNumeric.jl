@@ -48,6 +48,13 @@ global const unary_op_map_no_args = Dict{Function,UnaryOpCode}(
 
 ### SPECIAL CASES ###
 
+# `dest .= src` lowers to `identity.(src)`. Treat identity like the native
+# unary operation it is so ordinary Julia broadcast assignment works for
+# NDArrays, including writable slices.
+@inline function __broadcast(::typeof(identity), out::NDArray, input::NDArray)
+    return nda_unary_op!(out, cuNumeric.COPY, input)
+end
+
 # Needed to support !=
 Base.:(!)(input::NDArray{Bool,0}) = nda_unary_op!(similar(input), cuNumeric.LOGICAL_NOT, input)
 Base.:(!)(input::NDArray{Bool,1}) = nda_unary_op!(similar(input), cuNumeric.LOGICAL_NOT, input)
@@ -92,7 +99,7 @@ end
 # Fallbacks for Real types
 @inline function __broadcast(f::typeof(Base.real), out::NDArray, input::NDArray{<:Real})
     # real(real_array) is just the array
-    return nda_unary_op!(out, cuNumeric.IDENTITY, input)
+    return nda_unary_op!(out, cuNumeric.COPY, input)
 end
 @inline function __broadcast(f::typeof(Base.imag), out::NDArray, input::NDArray{<:Real})
     # imag(real_array) is all zeros
@@ -100,7 +107,7 @@ end
 end
 @inline function __broadcast(f::typeof(Base.conj), out::NDArray, input::NDArray{<:Real})
     # conj(real_array) is just the array
-    return nda_unary_op!(out, cuNumeric.IDENTITY, input)
+    return nda_unary_op!(out, cuNumeric.COPY, input)
 end
 
 function Base.:(-)(input::NDArray{Bool})

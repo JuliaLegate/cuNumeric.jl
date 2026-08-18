@@ -6,7 +6,7 @@ Debug the layer that matches the problem:
 |---|---|
 | Which operations did Legate submit, and when did they run? | [Legate logs and profiles](#trace-legate-runtime-work) |
 | How were broadcasts fused? | [`BCAST_FUSION_DEBUG`](#inspect-fused-broadcasts-with-bcast_fusion_debug) |
-| Where does `@analyze_lifetimes` free temporaries? | [`@show_lifetimes`](#inspect-lifetime-rewrites-with-show_lifetimes) |
+| How does `@accelerate` rewrite code and free temporaries? | [`@show_lifetimes`](#inspect-lifetime-rewrites-with-show_lifetimes) |
 
 ## Trace Legate runtime work
 
@@ -78,7 +78,7 @@ cuNumeric already supplies names for individual operations when task-scope namin
 When broadcast fusion is on, set `cuNumeric.BCAST_FUSION_DEBUG[] = true` to
 print inter-statement rewrites and each fused kernel's expression tree,
 arguments, and launch geometry. Inter-statement rewrites are reported when
-`@analyze_lifetimes` expands, so enable the flag before defining or evaluating
+`@accelerate` expands, so enable the flag before defining or evaluating
 the expression you want to inspect. Kernel details are reported at runtime.
 
 ```julia
@@ -91,15 +91,16 @@ A = cuNumeric.ones(Float32, N, N)
 B = cuNumeric.ones(Float32, N, N)
 C = cuNumeric.zeros(Float32, N, N)
 
-@analyze_lifetimes begin
+@accelerate function combine!(C, A, B)
     product = A[2:end-1, 2:end-1] .* B[2:end-1, 2:end-1]
     C[2:end-1, 2:end-1] = product .+ 2.0f0
+    return C
 end
 
 cuNumeric.BCAST_FUSION_DEBUG[] = false
 ```
 
-For example, a single-use producer inside `@analyze_lifetimes` is reported as:
+For example, a single-use producer inside `@accelerate` is reported as:
 
 ```text
 ======================================== inter-broadcast fusion rewrite
@@ -147,38 +148,23 @@ See [Kernel Fusion](./perf/kernel_fusion.md) for `@.` / fusion usage, and [Inter
 
 ## Inspect lifetime rewrites with `@show_lifetimes`
 
-`@analyze_lifetimes` rewrites a block so temps are freed after their last use. `@show_lifetimes` prints the re-written code (without execution). It is pure AST work, so it works even without a GPU.
+`@accelerate` rewrites straight-line code so eligible broadcasts combine and non-returned temporaries are freed after their final use. `@show_lifetimes` prints the exact expansion without executing it, so it works without a GPU.
 
 ```julia
 using cuNumeric
 
-@show_lifetimes begin
+@show_lifetimes function update!(C, A, B)
     result = A[1:end, :] .+ B[1:end, :]
     C .= result .* 2.0
+    return C
 end
-```
-
-Example output when broadcast fusion is enabled (fusion-aware analysis):
-
-```text
-@analyze_lifetimes expansion (fusion-aware analysis)
-------------------------------------------------------------
-   1  tmp1 = A[1:end, :]
-   2  tmp2 = B[1:end, :]
-   3  tmp3 = tmp1 .+ tmp2
-    ✗ free tmp1
-    ✗ free tmp2
-   4  result = tmp3
-   5  res3 = (C .= result .* 2.0)
-    ✗ free tmp3
-   6  res3
-------------------------------------------------------------
 ```
 
 How to read it:
 
-- Numbered lines are the rewritten statements.
+- The header identifies the exact function, `let`, block, or expression form expanded.
+- Numbered lines are rewritten statements.
 - Red `✗ free tmpN` lines are the inserted `maybe_insert_delete` calls.
-- With fusion enabled, dotted intermediates stay as broadcast expressions instead of being treated as many separate allocations. With fusion disabled, the header says `plain analysis` and more call sites are hoisted.
+- With fusion enabled, dotted intermediates stay as broadcast expressions instead of being treated as separate allocations. With fusion disabled, the header says `plain` and more call sites are hoisted.
 
 Use this when a hot loop still looks allocation-heavy, or when you want to confirm that a value is freed before it escapes the block.

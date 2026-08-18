@@ -203,7 +203,7 @@ _broadcast_fusion_user_add(x, y) = x + y
         @testset "z .= scalar * f.(A, B)" begin
             expected = T(2.0) .* (julia_a .+ julia_b)
             z = cuNumeric.zeros(T, (N,))
-            @analyze_lifetimes begin
+            @accelerate begin
                 z .= T(2.0) .* _broadcast_fusion_user_add.(a, b)
             end
             @allowscalar @test safe_compare(expected, z, atol, rtol)
@@ -566,7 +566,7 @@ end
         ja = reshape(T.(1:(N * N)), N, N)
         a = @allowscalar NDArray(ja)
         out = cuNumeric.zeros(T, (N + 2, N + 2))
-        @analyze_lifetimes begin
+        @accelerate begin
             producer = a .* s1
             out[2:(end - 1), 2:(end - 1)] = producer .+ s2
         end

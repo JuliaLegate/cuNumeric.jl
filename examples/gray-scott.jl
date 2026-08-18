@@ -28,7 +28,7 @@ function bc!(u_new, v_new, u, v)
     return v_new[end, :] = v[2, :]
 end
 
-function step!(u, v, u_new, v_new, args::Params)
+@accelerate function step!(u, v, u_new, v_new, args::Params)
     # calculate F_u and F_v functions
     F_u = (
         (-u[2:(end - 1), 2:(end - 1)] .* (v[2:(end - 1), 2:(end - 1)] .^ 2)) .+

@@ -30,8 +30,18 @@ unchecked_promote_scalar(x, ::Type) = x
 unchecked_promote_arr(::Base.RefValue{typeof(^)}, ::Type{T}) where {T} = typeof(Base.:(^))
 unchecked_promote_arr(::Base.RefValue{Val{V}}, ::Type{T}) where {T,V} = Val{V}
 
+@inline _is_flattened_associative(f) = f === (+) || f === (*)
+
 __checked_promote_op(op, ::Type{Tuple{A}}) where {A} = __checked_promote_op(op, A)
 __checked_promote_op(op, ::Type{Tuple{A,B}}) where {A,B} = __checked_promote_op(op, A, B)
+
+# Julia flattens dotted `+` and `*` chains into n-ary Broadcasted nodes. Fold
+# their input types pairwise, matching both the binary C API and fused path.
+@inline function __checked_promote_op(
+    op::Union{typeof(+),typeof(*)}, ::Type{Args}
+) where {Args<:Tuple{Any,Any,Any,Vararg{Any}}}
+    return _checked_promote_associative(op, Args.parameters...)
+end
 
 # Path for literal powers
 @inline function __checked_promote_op(
@@ -75,6 +85,16 @@ end
     S = smaller_type(A, B)
     is_wider_type(T, S) && assertpromotion(op, S, T)
     return T
+end
+
+@inline _checked_promote_associative(op, ::Type{A}, ::Type{B}) where {A,B} =
+    __checked_promote_op(op, A, B)
+
+@inline function _checked_promote_associative(
+    op, ::Type{A}, ::Type{B}, ::Type{C}, rest::Type...
+) where {A,B,C}
+    T = __checked_promote_op(op, A, B)
+    return _checked_promote_associative(op, T, C, rest...)
 end
 
 # For literal powers which are often Int64, do not check for promotion to double

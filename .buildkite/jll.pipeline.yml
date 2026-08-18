@@ -23,7 +23,7 @@ steps:
                 fi
                 julia --project -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
           - JuliaCI/julia-test#v1:
-              test_args: "--quickfail --jobs=8 --verbose"
+              test_args: "--jobs=8 --verbose"
           - JuliaCI/julia-coverage#v1:
               dirs:
                 - src

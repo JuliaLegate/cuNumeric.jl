@@ -1,7 +1,7 @@
 # Unary Operations
 
 >[!NOTE]
-> Prefer `@.` for multi-op elementwise expressions so every operator is dotted (especially unary negation). This ensures broadcast operations are fused. See [Kernel Fusion](./perf/kernel_fusion.md).
+> Prefer `@.` for multi-op elementwise expressions so every operator is dotted (especially unary negation). This makes eligible CUDA broadcasts fusion-friendly. See [Kernel Fusion](./perf/kernel_fusion.md).
 
 
 The following unary operations are supported and can be broadcast over `NDArray`:
