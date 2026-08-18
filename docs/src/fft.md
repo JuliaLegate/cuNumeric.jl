@@ -14,7 +14,7 @@ returns a `cufftHandle` (or any other plan object). Each `fft` / `ifft` call
 launches the `CUPYNUMERIC_FFT` task; cuFFT planning and any internal plan cache
 live entirely inside that GPU task. A Julia `Plan` that only stored sizes and
 re-called `fft` would not be a real plan, so `plan_fft` is not implemented.
-`using AbstractFFTs; fft(A)` dispatches, but `plan_fft(A)` will not.
+`using AbstractFFTs; fft(A)` dispatches, but `plan_fft` will not.
 
 ```julia
 using AbstractFFTs
