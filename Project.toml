@@ -32,9 +32,6 @@ libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
 [weakdeps]
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 
-[sources]
-libcxxwrap_julia_jll = {path = "/home/david/.julia/dev/libcxxwrap_julia_jll"}
-
 [extensions]
 DistributedExt = "Distributed"
 
