@@ -17,6 +17,32 @@
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 
+@accelerate function _type_stable_accelerate_function(a, b)
+    intermediate = @. a + b
+    return @. intermediate * 2.0f0
+end
+
+function _type_stable_accelerate_begin(a, b)
+    return @accelerate begin
+        intermediate = @. a + b
+        result = @. intermediate * 2.0f0
+        (intermediate, result)
+    end
+end
+
+function _type_stable_accelerate_let(a, b)
+    return @accelerate let
+        intermediate = @. a + b
+        @. intermediate * 2.0f0
+    end
+end
+
+function _type_stable_accelerate_expr(a, b)
+    return @accelerate (@. (a + b) * 2.0f0)
+end
+
+_type_stable_cuda_argtypes(task::cuNumeric.CUDATask) = task.argtypes
+
 @testset verbose = true "core" begin
     a = cuNumeric.zeros(5)
     b = cuNumeric.zeros(Float64, 3, 4)
@@ -66,6 +92,18 @@ end
     @test @inferred(cuNumeric.NDArray(rand(Float32, 3, 3))) !== nothing
 end
 
+@testset verbose = true "custom CUDA metadata" begin
+    task = cuNumeric.CUDATask("kernel", (Float32, Int32))
+    @test isconcretetype(typeof(task))
+    @test all(isconcretetype, fieldtypes(typeof(task)))
+    @test @inferred(_type_stable_cuda_argtypes(task)) == DataType[Float32, Int32]
+
+    storage_type = cuNumeric.PaddedStorage{Float32,1}
+    @test all(isconcretetype, Base.uniontypes(fieldtype(storage_type, :backing)))
+    @test all(isconcretetype, Base.uniontypes(fieldtype(storage_type, :staging)))
+    @test all(isconcretetype, Base.uniontypes(fieldtype(storage_type, :shape)))
+end
+
 @testset verbose = true "conversion" begin
     # cast to array, as_type
     a = cuNumeric.zeros(Float64, 5, 5)
@@ -102,6 +140,23 @@ end
     @test @inferred(a .+ b) !== nothing
     @test @inferred(a ./ b) !== nothing
     @test @inferred(((a .* b) .+ a) .* 2.0f0) !== nothing
+end
+
+@testset verbose = true "@accelerate forms" begin
+    a = cuNumeric.ones(Float32, 3, 3)
+    b = cuNumeric.ones(Float32, 3, 3)
+
+    function_result = @inferred _type_stable_accelerate_function(a, b)
+    @test function_result isa NDArray{Float32,2}
+
+    begin_result = @inferred _type_stable_accelerate_begin(a, b)
+    @test begin_result isa Tuple{NDArray{Float32,2},NDArray{Float32,2}}
+
+    let_result = @inferred _type_stable_accelerate_let(a, b)
+    @test let_result isa NDArray{Float32,2}
+
+    expr_result = @inferred _type_stable_accelerate_expr(a, b)
+    @test expr_result isa NDArray{Float32,2}
 end
 
 @testset verbose = true "solve" begin

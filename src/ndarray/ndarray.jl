@@ -399,7 +399,7 @@ function _setindex!(
 end
 
 #### START OF SLICING ####
-# LHS slices from `nda_get_slice` are invisible to `@analyze_lifetimes`; destroy
+# LHS slices from `nda_get_slice` are invisible to `@accelerate`; destroy
 # the view handle after submitting the assign so they cannot pile up under Julia
 # GC (which sees each NDArray as ~pointer-sized).
 function _setindex_slice!(lhs::NDArray, rhs::NDArray, slices)

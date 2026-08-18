@@ -263,15 +263,12 @@ function _svd(a::NDArray{T,2}, full_matrices::Bool) where {T}
     )
     k = min(m, n)
     S = real(T)
-    # cuSolver requires full square buffers regardless of full_matrices
-    u_buf = cuNumeric.zeros(T, m, m)
+
+    u_buf = full_matrices ? cuNumeric.zeros(T, m, m) : cuNumeric.zeros(T, m, k)
     s = cuNumeric.zeros(S, k)
-    vh_buf = cuNumeric.zeros(T, n, n)
+    vh_buf = full_matrices ? cuNumeric.zeros(T, n, n) : cuNumeric.zeros(T, k, n)
     svd_single(a, u_buf, s, vh_buf)
-    # Backend factors are logically ordered; only thin strided views need materialization.
-    u = full_matrices ? u_buf : copy(u_buf[:, 1:k])
-    vh = full_matrices ? vh_buf : copy(vh_buf[1:k, :])
-    return u, s, vh
+    return u_buf, s, vh_buf
 end
 
 # svd runs on float/complex only — no integer backend

@@ -23,8 +23,8 @@ const POSARGS = filter(a -> a ∉ VERBOSE_FLAGS, ARGS)
 
 banner(msg) = println("\n", "="^128, "\n", msg, "\n", "="^128)
 
-# `_lifetimes` is a cuNumeric-only code-path variant (@analyze_lifetimes)
-cunumeric_only(name) = endswith(name, "_lifetimes")
+# `_accelerated` is a cuNumeric-only code-path variant (`@accelerate`).
+cunumeric_only(name) = endswith(name, "_accelerated")
 
 const LAST_FUSION_TOGGLE = Ref{Union{Nothing,Bool}}(nothing)
 

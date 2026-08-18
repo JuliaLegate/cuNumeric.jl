@@ -123,16 +123,30 @@ __materialize(x::Base.RefValue{Val{V}}) where {V} = NDArray(V) # Use binary_op P
 # Catch unknown things...
 __materialize(x) = error("Unrecognized leaf in broadcast expression: $(x)")
 
-# Scalar-only nested broadcasts (e.g. `s1 .* s2 .+ A`): the inner
-# `Broadcasted(*, (s1, s2))` keeps DefaultArrayStyle{0}, not NDArrayStyle.
-# Fold to a Number so the parent unravel sees a scalar leaf.
+# Use Base for scalar-only broadcasts, including `literal_pow` wrappers.
 @inline function __materialize(bc::Broadcasted{<:DefaultArrayStyle{0}})
-    return bc.f((__materialize.(bc.args))...)
+    return Base.materialize(bc)
 end
 
 function __materialize(bc::Broadcasted{<:NDArrayStyle})
     bc = Base.Broadcast.instantiate(bc)
     return unravel_broadcast_tree(bc)
+end
+
+# The C API is binary, so evaluate flattened `+` and `*` chains pairwise.
+function _unravel_flattened_associative(f, args::Tuple)
+    acc = first(args)
+    owns_acc = false
+    for arg in Base.tail(args)
+        next = try
+            __materialize(Base.broadcasted(f, acc, arg))
+        finally
+            owns_acc && acc isa NDArray && destroy!(acc)
+        end
+        acc = next
+        owns_acc = acc isa NDArray
+    end
+    return acc
 end
 
 # Destroy promote copies and non-leaf materialized NDArrays (nested results / Val{V}).
@@ -148,6 +162,9 @@ end
 
 # Un-fused implementation of broadcast tree
 function unravel_broadcast_tree(bc::Broadcasted)
+    if length(bc.args) > 2 && _is_flattened_associative(bc.f)
+        return _unravel_flattened_associative(bc.f, bc.args)
+    end
 
     # Recursively materialize/unravel any nested broadcasts
     # until we reach a Broadcasted expression with only
@@ -234,13 +251,11 @@ end
         )
     end
 
-    # Fused writes `dest` in place (no post-fuse `nda_move`); promotion is
-    # checked pre-launch in `fuse_broadcast_tree!`. CPU vs GPU is compile-time
-    # via `@static if FUSE_BROADCAST_EXPRS && HAS_CUDA`.
+    # Require an active GPU target so `--gpus 0` stays on the unfused path.
     # Fusion requires same-shaped NDArray leaves; otherwise fall back.
     # Single-op exprs (length < `FUSE_BROADCAST_MIN_OPS`) stay unfused by default.
     @static if FUSE_BROADCAST_EXPRS && HAS_CUDA
-        if _should_attempt_broadcast_fusion(dest, bc)
+        if _has_gpu_target() && _should_attempt_broadcast_fusion(dest, bc)
             return fuse_broadcast_tree!(dest, bc)
         else
             return _copyto_unfused!(dest, unravel_broadcast_tree(bc))

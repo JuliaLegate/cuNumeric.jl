@@ -80,7 +80,12 @@ M    = [150, 300, 600]
 
 That is 2 types × 3 sweep points = **6 runs**.
 
-`fusion` toggles cuNumeric broadcast fusion (`true`/`false` or `"on"`/`"off"`, default `true`). Comparison backends ignore fusion and run once (on the fused pass), not per variant. Names ending in `_lifetimes` are cuNumeric-only code-path variants.
+`fusion` toggles cuNumeric broadcast fusion (`true`/`false` or `"on"`/`"off"`,
+default `true`). Comparison backends ignore fusion and run once (on the fused
+pass), not per variant. Entries ending in `_accelerated` are cuNumeric-only.
+The Gray-Scott function, `begin`, `let`, and expression entries compare the
+four `@accelerate` scope contracts on the same step; `dmd_accelerated` applies
+the recommended function form to the DMD projection.
 
 Gotcha: when `T = ["Float32", "Float64"]` and a length-2 `N`/`M` sweep you get all **4** combinations, not a paired `Float32 -> N[1]`. To pin a type to a size, use separate `[[name]]` blocks.
 
