@@ -14,14 +14,17 @@ function __init__()
     Base.@eval cuNumeric begin
         function init_workers(; kwargs...)
             assert_experimental()
+            _assert_not_under_mpi()
             return $DistributedExt.init_workers_impl(; kwargs...)
         end
         function addprocs(n::Integer; kwargs...)
             assert_experimental()
+            _assert_not_under_mpi()
             return $DistributedExt.addprocs_impl(n; kwargs...)
         end
         function addprocs(manager::$(Distributed.ClusterManager); kwargs...)
             assert_experimental()
+            _assert_not_under_mpi()
             return $DistributedExt.addprocs_impl(manager; kwargs...)
         end
         function finalize_workers(args...; kwargs...)

@@ -166,6 +166,7 @@ include("cuda/strided_device_array.jl")
 include("cuda/cuda_util.jl")
 include("utilities/version.jl")
 include("util.jl")
+include("mpi_bootstrap.jl")
 
 # Compile-time so the fusion branch is elided; flip via CNPreferences before loading.
 const FUSE_BROADCAST_EXPRS = CNPreferences.FUSE_BROADCAST
@@ -291,8 +292,10 @@ function __init__()
     # Registry CI machines can't set LEGATE_CONFIG, so don't start the runtime there.
     get(ENV, "JULIA_REGISTRYCI_AUTOMERGE", false) == "true" && return nothing
 
-    # Check before LEGATE_SKIP_RUNTIME so a worker inheriting skip=true still fails loud.
-    _assert_worker_configured()
+    # Choose the networking bootstrap. Under an MPI launcher every rank is a Legate rank
+    # (SPMD); otherwise validate the Distributed/p2p worker before it can start a runtime.
+    mpi = _detect_mpi_bootstrap()
+    mpi === nothing ? _assert_worker_configured() : _configure_mpi_bootstrap!(mpi)
 
     get(ENV, "LEGATE_SKIP_RUNTIME", false) == "true" && return nothing
 
