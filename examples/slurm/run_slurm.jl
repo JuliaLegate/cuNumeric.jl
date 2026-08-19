@@ -12,11 +12,11 @@ pids = cuNumeric.addprocs(
     exeflags=["--threads=$cpus"],
     env=[
         "LEGATE_SKIP_RUNTIME" => "false",
-        "LEGATE_CONFIG" => "--gpus 1 --cpus $cpus",
+        "LEGATE_CONFIG" => "--cpus $cpus",
     ],
 )
 
 @everywhere pids begin
     # cuNumeric is already initialized here.
-    println("worker=$(myid()) host=$(gethostname()) gpu=$(get(ENV, "CUDA_VISIBLE_DEVICES", ""))")
+    println("worker=$(myid()) host=$(gethostname()) cpus=$(get(ENV, "SLURM_CPUS_PER_TASK", "?"))")
 end
