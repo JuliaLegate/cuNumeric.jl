@@ -4,14 +4,18 @@ function worker_addr(worker_id::Integer)
         using Sockets
 
         let local_process = Distributed.LPROC
-            port = local_process.bind_port
-            if iszero(port)
+            if iszero(local_process.bind_port)
                 error("Julia worker ", Distributed.myid(), " has no listening port")
             end
 
-            # Realm needs a different interface because Julia already owns bind_addr:port.
-            hostname_ip = Sockets.getaddrinfo(Sockets.gethostname()).host
-            string(Sockets.IPv4(hostname_ip), ':', port)
+            # Use the address Julia bound to (pinnable via `--bind-to`), not
+            # getaddrinfo(gethostname()) which is often loopback/unroutable. Take
+            # a fresh free port so Realm doesn't collide with an existing socket.
+            addr = Sockets.IPv4(local_process.bind_addr)
+            probe = Sockets.listen(addr, 0)
+            realm_port = Int(Sockets.getsockname(probe)[2])
+            close(probe)
+            string(addr, ':', realm_port)
         end
     end
 

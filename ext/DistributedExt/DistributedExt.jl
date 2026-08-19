@@ -24,6 +24,10 @@ function __init__()
             assert_experimental()
             return $DistributedExt.addprocs_impl(manager; kwargs...)
         end
+        function finalize_workers(args...; kwargs...)
+            assert_experimental()
+            return $DistributedExt.finalize_workers_impl(args...; kwargs...)
+        end
     end
 end
 
