@@ -33,6 +33,7 @@ function setup_legate_env(worker_addrs)
     ENV["WORKER_PEERS_INFO"] = peers_info # Realm expects self to be included.
     ENV["REALM_UCP_BOOTSTRAP_PLUGIN"] = "realm_ucp_bootstrap_p2p.so"
     ENV["REALM_UCP_BOOTSTRAP_MODE"] = "p2p"
+    ENV["CUNUMERIC_DISTRIBUTED_WORKER"] = "1" # sentinel checked by cuNumeric.__init__
 
     println("Self: ", self_addr)
     println("Peers: ", peers_info)

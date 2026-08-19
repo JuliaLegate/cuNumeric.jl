@@ -259,6 +259,27 @@ end
 
 _is_precompiling() = ccall(:jl_generating_output, Cint, ()) != 0
 
+# Distributed stdlib UUID; looked up without a hard dependency.
+const _DISTRIBUTED_PKGID = Base.PkgId(
+    Base.UUID("8ba89e20-285c-5b6f-9357-94700520ee1b"), "Distributed"
+)
+
+# A worker only reaches here correctly if setup_legate_env set the sentinel + P2P env
+# before `using cuNumeric`. Anything else (julia -p N, bare Distributed.addprocs) would
+# start a misconfigured runtime, so refuse it.
+function _assert_worker_configured()
+    dist = get(Base.loaded_modules, _DISTRIBUTED_PKGID, nothing)
+    dist === nothing && return nothing                            # not a Distributed session
+    dist.myid() == 1 && return nothing                            # driver, not a worker
+    haskey(ENV, "CUNUMERIC_DISTRIBUTED_WORKER") && return nothing # set by our setup path
+    return error(
+        "cuNumeric loaded on an unconfigured Distributed worker (id $(dist.myid())). " *
+        "Start workers with `cuNumeric.addprocs(...)`, or `cuNumeric.init_workers()` if " *
+        "you launched them yourself; `julia -p N` and bare `Distributed.addprocs` are " *
+        "unsupported.",
+    )
+end
+
 # Runtime initilization
 function __init__()
     CNPreferences.check_unchanged()
@@ -267,11 +288,12 @@ function __init__()
 
     _is_precompiling() && return nothing
 
-    # Cannot set LEGATE_CONFIG on CI machines used
-    # to register packages. So we will just skip starting
-    # legate/cunumeric when using registry CI machines.
+    # Registry CI machines can't set LEGATE_CONFIG, so don't start the runtime there.
     get(ENV, "JULIA_REGISTRYCI_AUTOMERGE", false) == "true" && return nothing
-    # skip runtime here as well
+
+    # Check before LEGATE_SKIP_RUNTIME so a worker inheriting skip=true still fails loud.
+    _assert_worker_configured()
+
     get(ENV, "LEGATE_SKIP_RUNTIME", false) == "true" && return nothing
 
     # Start runtime, but only if not pre-compiling
