@@ -34,6 +34,10 @@ function setup_legate_env(worker_addrs)
     ENV["REALM_UCP_BOOTSTRAP_PLUGIN"] = "realm_ucp_bootstrap_p2p.so"
     ENV["REALM_UCP_BOOTSTRAP_MODE"] = "p2p"
 
+    # Drop UCX's /dev/shm-backed transports, which SIGSEGV when many same-node
+    # UCP workers exhaust a small /dev/shm. Overridable on clusters that size it.
+    get!(ENV, "UCX_TLS", "^posix,sysv,mm")
+
     println("Self: ", self_addr)
     println("Peers: ", peers_info)
     println("Bootstrap plugin: realm_ucp_bootstrap_p2p.so")
