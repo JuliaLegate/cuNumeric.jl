@@ -31,6 +31,32 @@ function addprocs_impl(spec; kwargs...)
     return pids
 end
 
+"""
+    finalize_workers(pids=workers())
+
+Shut the distributed ranks down in lock-step, then remove the workers. Legate's
+`legate_finish()` is collective, so all ranks must reach it together while still
+alive -- letting `Distributed` exit them asynchronously races that barrier.
+Call before the driver exits. (An exit-time crash may still occur on builds
+whose Realm p2p bootstrap doesn't synchronize its UCX teardown -- upstream.)
+"""
+function finalize_workers_impl(pids=filter(!=(1), Distributed.workers()))
+    isempty(pids) && return nothing
+    @info "Finalizing cuNumeric on $(length(pids)) workers..."
+
+    # Quiesce every rank and flush finalizer-queued frees.
+    Distributed.remotecall_eval(Main, pids, quote
+        cuNumeric.issue_execution_fence(; block=true)
+        cuNumeric.drain_pending_frees!()
+    end)
+
+    # All ranks enter the collective finish together, then tear down the workers.
+    Distributed.remotecall_eval(Main, pids, :(cuNumeric.Legate._finish_runtime()))
+    Distributed.rmprocs(pids)
+    @info "✓ Workers finalized"
+    return nothing
+end
+
 function init_workers_impl(; auto_setup::Bool=true)
     worker_ids = filter(!=(1), Distributed.workers())
     if isempty(worker_ids)
