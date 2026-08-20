@@ -1,5 +1,4 @@
 using cuNumeric
-using Plots
 
 # Flattened u snapshots land here for examples/dmd.jl to analyze.
 const SNAPSHOT_FILE = "gray-scott.h5"
@@ -65,6 +64,25 @@ end
     return bc!(u_new, v_new, u, v)
 end
 
+# Plain loop, returns final u. Reused by mpi/ + distributed/.
+function gray_scott_run(N, n_steps)
+    dims = (N, N)
+    args = Params()
+    u = cuNumeric.ones(dims)
+    v = cuNumeric.zeros(dims)
+    u_new = cuNumeric.zeros(dims)
+    v_new = cuNumeric.zeros(dims)
+    u[1:15, 1:15] = cuNumeric.rand(Float32, 15, 15)
+    v[1:15, 1:15] = cuNumeric.rand(Float32, 15, 15)
+    for _ in 1:n_steps
+        step!(u, v, u_new, v_new, args)
+        u, u_new = u_new, u
+        v, v_new = v_new, v
+    end
+    return u
+end
+
+# Single-process demo: snapshots + animated gif (Plots, loaded in the guard below).
 function gray_scott()
     anim = Animation()
 
@@ -114,4 +132,8 @@ function gray_scott()
     return u, v
 end
 
-u, v = gray_scott()
+# Run the demo only as a script; `include`ing this file just reuses the numerics (no Plots).
+if abspath(PROGRAM_FILE) == @__FILE__
+    using Plots
+    u, v = gray_scott()
+end
