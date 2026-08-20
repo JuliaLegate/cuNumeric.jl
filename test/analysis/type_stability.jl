@@ -242,6 +242,17 @@ end
     end
 end
 
+@testset verbose = true "fft" begin
+    if cuNumeric.HAS_CUDA
+        a = cuNumeric.zeros(ComplexF32, 8)
+        b = cuNumeric.zeros(ComplexF32, 4, 6)
+        @test @inferred(fft(a)) !== nothing
+        @test @inferred(ifft(a)) !== nothing
+        @test @inferred(fft(b, 1)) !== nothing
+        @test @inferred(cuNumeric.batched_fft(b)) !== nothing
+    end
+end
+
 @testset verbose = true "batched_solve" begin
     @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_SOLVE_TYPES)
         A = cuNumeric.NDArray(reshape(T[2 1; 5 7], 1, 2, 2))
