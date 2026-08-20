@@ -43,6 +43,8 @@ import Base: axes, convert, copy, copyto!, inv, isfinite, sqrt, -, +, *, ==, !=,
 using LinearAlgebra
 import LinearAlgebra: mul!
 
+import AbstractFFTs: fft, ifft, fft!, ifft!
+
 using Random
 import Random: rand!, randn!, randexp!
 
@@ -160,6 +162,7 @@ const TASK_SCOPE_NAMES = CNPreferences.TASK_SCOPE_NAMES
 # NDArray internal
 include("ndarray/detail/ndarray.jl")
 include("ndarray/detail/linalg.jl")
+include("ndarray/detail/fft.jl")
 
 # Utilities
 include("cuda/strided_device_array.jl")
@@ -188,6 +191,7 @@ include("ndarray/unary.jl")
 include("ndarray/binary.jl")
 include("ndarray/linalg.jl")
 include("ndarray/batched_linalg.jl")
+include("ndarray/fft.jl")
 include("scoping/scoping.jl")
 
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147
