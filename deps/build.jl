@@ -19,6 +19,7 @@
 
 using Pkg
 using Preferences
+using Libdl
 
 # The build only needs Legate's paths/tooling, not a running runtime.
 # Setting this env prevents a segfault on Julia 1.12
@@ -35,6 +36,15 @@ using OpenBLAS32_jll: OpenBLAS32_jll
 const BuildTools = Legate.BuildTools
 
 include("version.jl")
+
+function require_shared_library(root, name, component)
+    prefix = "lib"
+    path = joinpath(root, "lib", "$(prefix)$(name).$(Libdl.dlext)")
+    isfile(path) || error(
+        "$component did not produce $path. See deps/build.log and deps/*.err for details."
+    )
+    return path
+end
 
 function build_cpp_wrapper(
     repo_root, cupynumeric_loc, legate_loc, blas_loc, install_root;
@@ -64,11 +74,18 @@ function build_deps(pkg_root, cupynumeric_root, blas_root; cuda_root=nothing, cu
         pkg_root, get_cupynumeric_version(cupynumeric_root);
         log_dir=@__DIR__, is_compatible=is_supported_version,
     )
+    require_shared_library(
+        joinpath(DEPOT_PATH[1], "dev", "libcxxwrap_julia_jll", "override"),
+        "cxxwrap_julia_stl",
+        "libcxxwrap",
+    )
     build_cpp_wrapper(
         pkg_root, cupynumeric_root, up_dir(legate_lib), blas_root,
         install_lib;
         cuda_root, cuda_enabled,
     )
+    require_shared_library(install_lib, "cunumeric_jl_wrapper", "cuNumeric wrapper build")
+    require_shared_library(install_lib, "cunumeric_c_wrapper", "cuNumeric wrapper build")
     return BuildTools.set_jll_artifact_override(:cunumeric_jl_wrapper_jll, install_lib)
 end
 

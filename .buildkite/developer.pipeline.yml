@@ -19,9 +19,8 @@ steps:
               # concurrent jobs contend on Pkg locks. Separate from the JLL cache.
               cache_dir: "${HOME}/.cache/julia-buildkite-plugin-developer-{{matrix.julia}}-{{matrix.fusion}}"
               persist_depot_dirs: "packages,artifacts,compiled,logs,datadeps,scratchspaces,dev"
-        command: ".buildkite/run_developer_ci.sh"
+        command: ".buildkite/run_isolated_developer_ci.sh"
         artifact_paths:
-          - "deps/build.log"
           - "deps/*.log"
           - "deps/*.err"
           - "*.log"
