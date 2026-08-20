@@ -72,8 +72,9 @@ function gray_scott_run(N, n_steps)
     v = cuNumeric.zeros(dims)
     u_new = cuNumeric.zeros(dims)
     v_new = cuNumeric.zeros(dims)
-    u[1:15, 1:15] = cuNumeric.rand(Float32, 15, 15)
-    v[1:15, 1:15] = cuNumeric.rand(Float32, 15, 15)
+    # Deterministic seed (no rand) so mpi/ + distributed/ checksums are reproducible.
+    u[1:15, 1:15] = cuNumeric.ones(Float32, 15, 15) .* 0.5f0
+    v[1:15, 1:15] = cuNumeric.ones(Float32, 15, 15) .* 0.25f0
     for _ in 1:n_steps
         step!(u, v, u_new, v_new, args)
         u, u_new = u_new, u
