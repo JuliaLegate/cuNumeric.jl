@@ -17,7 +17,7 @@
 # Author(s): David Krasowska <krasow@u.northwestern.edu>
 #            Ethan Meitz <emeitz@andrew.cmu.edu>
 
-set -e
+set -euo pipefail
 
 # Check if exactly one argument is provided
 if [[ $# -ne 1 ]]; then
@@ -34,7 +34,7 @@ if [[ ! -d "$CUNUMERIC_ROOT_DIR" ]]; then
 fi
 
 JULIA='julia'
-JULIA_PATH=$(which $JULIA)
+JULIA_PATH=$(command -v "$JULIA")
 
 if [ -z "$JULIA_PATH" ]; then
   echo "Error: $JULIA is not installed or not in PATH."
@@ -45,19 +45,22 @@ echo "Using $JULIA at: $JULIA_PATH"
 
 GIT_REPO="https://github.com/JuliaInterop/libcxxwrap-julia.git"
 COMMIT_HASH="89e4699837bfa0929610c9e330889fb2df925b47" #(v14.2)
-JULIA_CXXWRAP_SRC=$CUNUMERIC_ROOT_DIR/lib/libcxxwrap-julia
+JULIA_DEP_PATH=$("$JULIA" --startup-file=no -e 'print(DEPOT_PATH[1])')
+JULIA_DEV_PATH="$JULIA_DEP_PATH/dev"
 
-if [ ! -d "$JULIA_CXXWRAP_SRC" ]; then
-    cd $CUNUMERIC_ROOT_DIR/lib
-    git clone $GIT_REPO
+# The generated JlCxx CMake target embeds this include path. Keep the source
+# beside the cached build instead of pointing it at an ephemeral CI checkout.
+JULIA_CXXWRAP_SRC="$JULIA_DEV_PATH/libcxxwrap-julia"
+
+if [ ! -d "$JULIA_CXXWRAP_SRC/.git" ]; then
+    rm -rf "$JULIA_CXXWRAP_SRC"
+    mkdir -p "$JULIA_DEV_PATH"
+    git clone "$GIT_REPO" "$JULIA_CXXWRAP_SRC"
 fi
 
-cd $JULIA_CXXWRAP_SRC
+cd "$JULIA_CXXWRAP_SRC"
 git fetch --tags
-git checkout $COMMIT_HASH
-
-# find julia dependency path
-JULIA_DEP_PATH=$($JULIA -e 'println(DEPOT_PATH[1])')
+git checkout --detach "$COMMIT_HASH"
 
 # https://github.com/JuliaInterop/libcxxwrap-julia/tree/v0.13.3?tab=readme-ov-file#configuring-and-building
 JULIA_CXXWRAP_DEV=$JULIA_DEP_PATH/dev/libcxxwrap_julia_jll
@@ -66,9 +69,9 @@ JULIA_CXXWRAP=$JULIA_CXXWRAP_DEV/override
 # Clean up whatever env is there right now and
 # build default version of CxxWrap / libcxxwrap_julia
 #* THIS COULD BREAK SOME USERS CODE IF THEY ALREADY OVERRIDE THIS PKG
-cd $CUNUMERIC_ROOT_DIR
+cd "$CUNUMERIC_ROOT_DIR"
 [ -f Manifest.toml ] && rm Manifest.toml
-rm -rf $JULIA_CXXWRAP_DEV
+rm -rf "$JULIA_CXXWRAP_DEV"
 julia -e 'using Pkg; Pkg.activate("."); Pkg.add("Legate")'
 julia -e 'using Pkg; Pkg.activate("."); Pkg.precompile(["CxxWrap"])'
 
@@ -79,9 +82,9 @@ julia -e 'using Pkg; Pkg.activate("."); Pkg.develop(PackageSpec(name="libcxxwrap
 
 # JULIA_CXXWRAP_OVERRIDE=$JULIA_CXXWRAP/override/
 # Delete the default JLL installation of cxxwrap_julia
-rm -rf $JULIA_CXXWRAP
-mkdir $JULIA_CXXWRAP
+rm -rf "$JULIA_CXXWRAP"
+mkdir -p "$JULIA_CXXWRAP"
 
-cmake -S $JULIA_CXXWRAP_SRC -B $JULIA_CXXWRAP -DJulia_EXECUTABLE=$JULIA_PATH -DCMAKE_BUILD_TYPE=Release
-cd $JULIA_CXXWRAP
-make -j 16
+cmake -S "$JULIA_CXXWRAP_SRC" -B "$JULIA_CXXWRAP" \
+    -DJulia_EXECUTABLE="$JULIA_PATH" -DCMAKE_BUILD_TYPE=Release
+cmake --build "$JULIA_CXXWRAP" --parallel 16

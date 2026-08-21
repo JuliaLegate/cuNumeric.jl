@@ -19,6 +19,7 @@
 
 using Pkg
 using Preferences
+using Libdl
 
 # The build only needs Legate's paths/tooling, not a running runtime.
 # Setting this env prevents a segfault on Julia 1.12
@@ -36,13 +37,34 @@ const BuildTools = Legate.BuildTools
 
 include("version.jl")
 
+function require_shared_library(root, name, component)
+    prefix = "lib"
+    path = joinpath(root, "lib", "$(prefix)$(name).$(Libdl.dlext)")
+    isfile(path) || error(
+        "$component did not produce $path. See deps/build.log and deps/*.err for details."
+    )
+    return path
+end
+
+function remove_invalid_libcxxwrap_cache()
+    dev_root = joinpath(DEPOT_PATH[1], "dev")
+    jll_root = joinpath(dev_root, "libcxxwrap_julia_jll")
+    required = (
+        joinpath(dev_root, "libcxxwrap-julia", "include", "jlcxx", "jlcxx.hpp"),
+        joinpath(jll_root, "override", "lib", "libcxxwrap_julia.$(Libdl.dlext)"),
+        joinpath(jll_root, "override", "lib", "libcxxwrap_julia_stl.$(Libdl.dlext)"),
+    )
+    isdir(jll_root) && !all(isfile, required) && rm(jll_root; recursive=true)
+    return nothing
+end
+
 function build_cpp_wrapper(
     repo_root, cupynumeric_loc, legate_loc, blas_loc, install_root;
     cuda_root=nothing, cuda_enabled=true,
 )
     @info "libcunumeric_jl_wrapper: Building C++ Wrapper Library"
     isdir(install_root) && (rm(install_root; recursive=true); mkdir(install_root))
-    bld_command = `$(joinpath(repo_root, "scripts/build_cpp_wrapper.sh")) $repo_root $cupynumeric_loc $legate_loc $blas_loc $install_root $(Threads.nthreads())`
+    bld_command = `$(joinpath(repo_root, "scripts/build_cpp_wrapper.sh")) $repo_root $cupynumeric_loc $legate_loc $blas_loc $install_root 8`
     return BuildTools.run_build_wrapper_script(
         repo_root, bld_command; cuda_root, cuda_enabled, log_dir=@__DIR__
     )
@@ -60,15 +82,23 @@ function build_deps(pkg_root, cupynumeric_root, blas_root; cuda_root=nothing, cu
         )
     end
 
+    remove_invalid_libcxxwrap_cache()
     BuildTools.build_jlcxxwrap(
         pkg_root, get_cupynumeric_version(cupynumeric_root);
         log_dir=@__DIR__, is_compatible=is_supported_version,
+    )
+    require_shared_library(
+        joinpath(DEPOT_PATH[1], "dev", "libcxxwrap_julia_jll", "override"),
+        "cxxwrap_julia_stl",
+        "libcxxwrap",
     )
     build_cpp_wrapper(
         pkg_root, cupynumeric_root, up_dir(legate_lib), blas_root,
         install_lib;
         cuda_root, cuda_enabled,
     )
+    require_shared_library(install_lib, "cunumeric_jl_wrapper", "cuNumeric wrapper build")
+    require_shared_library(install_lib, "cunumeric_c_wrapper", "cuNumeric wrapper build")
     return BuildTools.set_jll_artifact_override(:cunumeric_jl_wrapper_jll, install_lib)
 end
 

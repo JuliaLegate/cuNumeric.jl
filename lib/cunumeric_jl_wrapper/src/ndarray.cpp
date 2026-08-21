@@ -60,6 +60,11 @@ struct CN_Store {
   legate::LogicalStore obj;
 };
 
+size_t nda_get_number_of_runtimes() {
+  Legion::Machine legion_machine{Legion::Machine::get_machine()};
+  return legion_machine.get_address_space_count();
+}
+
 CN_NDArray* nda_zeros_array(int32_t dim, const uint64_t* shape, CN_Type type) {
   std::vector<uint64_t> shp(shape, shape + dim);
   NDArray result = zeros(shp, type.obj);
