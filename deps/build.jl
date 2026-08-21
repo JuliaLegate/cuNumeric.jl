@@ -46,6 +46,18 @@ function require_shared_library(root, name, component)
     return path
 end
 
+function remove_invalid_libcxxwrap_cache()
+    dev_root = joinpath(DEPOT_PATH[1], "dev")
+    jll_root = joinpath(dev_root, "libcxxwrap_julia_jll")
+    required = (
+        joinpath(dev_root, "libcxxwrap-julia", "include", "jlcxx", "jlcxx.hpp"),
+        joinpath(jll_root, "override", "lib", "libcxxwrap_julia.$(Libdl.dlext)"),
+        joinpath(jll_root, "override", "lib", "libcxxwrap_julia_stl.$(Libdl.dlext)"),
+    )
+    isdir(jll_root) && !all(isfile, required) && rm(jll_root; recursive=true)
+    return nothing
+end
+
 function build_cpp_wrapper(
     repo_root, cupynumeric_loc, legate_loc, blas_loc, install_root;
     cuda_root=nothing, cuda_enabled=true,
@@ -70,6 +82,7 @@ function build_deps(pkg_root, cupynumeric_root, blas_root; cuda_root=nothing, cu
         )
     end
 
+    remove_invalid_libcxxwrap_cache()
     BuildTools.build_jlcxxwrap(
         pkg_root, get_cupynumeric_version(cupynumeric_root);
         log_dir=@__DIR__, is_compatible=is_supported_version,
