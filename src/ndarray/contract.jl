@@ -128,7 +128,7 @@ function _extent_arrays(extents)
 end
 
 # cupynumeric's MM shortcut asserts on untransposed NDArray shapes. Present a
-# physical `ik,kj->ij` via store transpose (no data copy) when needed.
+# physical `ik,kj->ij` via Legate store transpose (no data copy) when needed.
 function _nda_contract!(C, Cm, A, Am, B, Bm, extent_keys, extent_vals)
     if length(Cm) == 2 && length(Am) == 2 && length(Bm) == 2
         i, j = Cm[1], Cm[2]
