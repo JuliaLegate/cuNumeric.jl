@@ -30,7 +30,9 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <limits>
+#include <map>
 #include <optional>
 #include <stdexcept>
 #include <string_view>
@@ -179,6 +181,47 @@ CN_NDArray* nda_dot(CN_NDArray* rhs1, CN_NDArray* rhs2) {
 
 void nda_three_dot_arg(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out) {
   out->obj.dot(rhs1->obj, rhs2->obj);
+}
+
+CN_NDArray* nda_transpose_axes(CN_NDArray* arr, const int32_t* axes,
+                               int32_t n) {
+  std::vector<int32_t> axis_vec(axes, axes + n);
+  NDArray result = cupynumeric::transpose(arr->obj, std::move(axis_vec));
+  return new CN_NDArray{NDArray(std::move(result))};
+}
+
+CN_NDArray* nda_squeeze(CN_NDArray* arr, const int32_t* axes, int32_t n) {
+  if (n <= 0) {
+    NDArray result = cupynumeric::squeeze(arr->obj, std::nullopt);
+    return new CN_NDArray{NDArray(std::move(result))};
+  }
+  std::vector<int32_t> axis_vec(axes, axes + n);
+  NDArray result = cupynumeric::squeeze(
+      arr->obj,
+      std::optional<std::reference_wrapper<std::vector<int32_t> const>>{
+          axis_vec});
+  return new CN_NDArray{NDArray(std::move(result))};
+}
+
+CN_NDArray* nda_diagonal(CN_NDArray* arr, int32_t offset, int32_t axis1,
+                         int32_t axis2) {
+  NDArray result = cupynumeric::diagonal(arr->obj, offset, axis1, axis2, true);
+  return new CN_NDArray{NDArray(std::move(result))};
+}
+
+void nda_contract(CN_NDArray* out, const char* lhs_modes, int32_t n_lhs,
+                  CN_NDArray* rhs1, const char* rhs1_modes, int32_t n_rhs1,
+                  CN_NDArray* rhs2, const char* rhs2_modes, int32_t n_rhs2,
+                  const char* extent_keys, const int32_t* extents,
+                  int32_t n_extents) {
+  std::vector<char> lhs(lhs_modes, lhs_modes + n_lhs);
+  std::vector<char> r1(rhs1_modes, rhs1_modes + n_rhs1);
+  std::vector<char> r2(rhs2_modes, rhs2_modes + n_rhs2);
+  std::map<char, int> mode2extent;
+  for (int32_t i = 0; i < n_extents; ++i) {
+    mode2extent.emplace(extent_keys[i], extents[i]);
+  }
+  out->obj.contract(lhs, rhs1->obj, r1, rhs2->obj, r2, mode2extent);
 }
 
 CN_NDArray* nda_copy(CN_NDArray* arr) {

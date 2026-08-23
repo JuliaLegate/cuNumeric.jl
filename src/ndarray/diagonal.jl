@@ -1,5 +1,7 @@
 ###### diag / _eye / trace ######
 
+export diagonal
+
 @doc"""
     cuNumeric.diag(arr::NDArray; k=0)
 
@@ -10,6 +12,28 @@ function diag(arr::NDArray; k::Int=0)
 end
 
 LinearAlgebra.diag(arr::NDArray{<:Any,2}, k::Integer=0) = nda_diag(arr, Int32(k))
+
+"""
+    cuNumeric.diagonal(arr::NDArray; offset=0, dims=(1, 2))
+
+Extract the diagonal of `arr` along two 1-based axes `dims`. The result has rank
+`ndims(arr) - 1`, with the diagonal stored as the last axis. `offset` selects a
+superdiagonal (`> 0`) or subdiagonal (`< 0`), matching `LinearAlgebra.diag`.
+
+For a 2D matrix this is the same 1D diagonal as [`diag`](@ref). For `N > 2` the
+non-diagonal axes are kept in order, followed by the extracted diagonal.
+"""
+function diagonal(arr::NDArray; offset::Integer=0, dims::NTuple{2,Integer}=(1, 2))
+    nd = ndims(arr)
+    nd < 2 && throw(ArgumentError("diagonal requires ndims >= 2"))
+    d1 = Int(dims[1])
+    d2 = Int(dims[2])
+    (1 <= d1 <= nd && 1 <= d2 <= nd) || throw(
+        ArgumentError("dims $dims are out of range for $(nd)-d array")
+    )
+    d1 == d2 && throw(ArgumentError("diagonal dims must be distinct, got $dims"))
+    return nda_diagonal(arr, Int32(offset), Int32(d1 - 1), Int32(d2 - 1))
+end
 
 # Internal dense identity used by UniformScaling / Diagonal densify helpers.
 # Prefer `LinearAlgebra.I` / `NDArray{T}(I, n, n)` / `one(A)` in user code.
