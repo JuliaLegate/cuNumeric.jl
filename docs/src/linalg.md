@@ -46,6 +46,41 @@ Pages = ["ndarray/binary.jl"]
 Filter = t -> t isa Function && nameof(t) === :mul!
 ```
 
+## Tensor contractions
+
+`contract` / `contract!` are the pairwise primitive behind a future
+TensorOperations.jl backend. They take **mode labels**, not einsum strings:
+`"ik"` with `"kj"` is a GEMM; `"ijk"` with `"ikl"` and explicit output `"ijl"`
+is a batched product. Labels may be ASCII strings, `Char` tuples, or integers
+(`1` maps to `'a'`).
+
+```julia
+A = cuNumeric.rand(Float32, 64, 32)
+B = cuNumeric.rand(Float32, 32, 16)
+C = contract(A, "ik", B, "kj")              # allocates, Einstein output order
+contract!(similar(C), "ij", A, "ik", B, "kj"; α=2, β=0)
+
+# batched: keep the shared 'i' on the output
+AA = cuNumeric.rand(Float32, 8, 16, 32)
+BB = cuNumeric.rand(Float32, 8, 32, 4)
+CC = cuNumeric.zeros(Float32, 8, 16, 4)
+contract!(CC, "ijl", AA, "ijk", BB, "ikl")
+
+tensordot(AA, BB, ([3], [2]))               # same contraction, axes form
+```
+
+`α` and `β` implement `C = β*C + α*(A ⋆ B)` in Julia. The C++ kernel always
+writes the unscaled product; `β ≠ 0` uses a temporary. Duplicate labels inside
+one array are not allowed — use `cuNumeric.diagonal` first.
+
+This path is multi-GPU via Legate tiling (per-tile cuTENSOR or TBLIS), not
+cuTensorMp. Integer and `Bool` inputs promote to `Float64` like other linalg.
+
+```@autodocs
+Modules = [cuNumeric]
+Pages = ["ndarray/contract.jl"]
+```
+
 ## Solve
 
 `cuNumeric.solve(A, b)` solves a linear system and returns an array with the same
@@ -268,7 +303,9 @@ must be `NDArray` unless noted.
 
 **Helpers on dense `NDArray`**
 
-- `cuNumeric.diag` / `LinearAlgebra.diag` (2D → 1D), `cuNumeric.trace` / `LinearAlgebra.tr` (2D square → 0D)
+- `cuNumeric.diag` / `LinearAlgebra.diag` (2D → 1D), `cuNumeric.diagonal` (two
+  axes of an `N`-D array → rank `N-1`), `cuNumeric.trace` / `LinearAlgebra.tr`
+  (2D square → 0D)
 - `iszero(A)` — all elements `== zero(T)` → 0-dimensional `NDArray{Bool}`
 - `isone(A)` — square 2D vs `_eye(T, n)` → 0-dimensional `NDArray{Bool}` (non-square → `false`)
 

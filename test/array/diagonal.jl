@@ -69,6 +69,24 @@ end
     end
 end
 
+@testset "N-D diagonal extract" begin
+    @testset for T in (Float32, Float64)
+        A = my_rand(T, 4, 4, 3)
+        nda = NDArray(A)
+        ref = [A[i, i, k] for k in 1:3, i in 1:4]
+        _host_diag_compare(ref, cuNumeric.diagonal(nda; dims=(1, 2)), T)
+        A2 = copy(A[:, :, 1])
+        _host_diag_compare(diag(A2), cuNumeric.diagonal(NDArray(A2)), T)
+
+        B = my_rand(T, 3, 5, 5)
+        ndb = NDArray(B)
+        ref_b = [B[i, j, j] for i in 1:3, j in 1:5]
+        _host_diag_compare(ref_b, cuNumeric.diagonal(ndb; dims=(2, 3)), T)
+    end
+    @test_throws ArgumentError cuNumeric.diagonal(cuNumeric.ones(4); dims=(1, 1))
+    @test_throws ArgumentError cuNumeric.diagonal(cuNumeric.ones(2, 3); dims=(1, 1))
+end
+
 @testset "identity via I / _eye" begin
     @testset verbose=true for T in DIAGONAL_NUMERIC_TYPES
         n = 4
