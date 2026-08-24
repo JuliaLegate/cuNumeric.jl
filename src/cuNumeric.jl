@@ -213,8 +213,6 @@ function my_on_exit()
     return drain_pending_frees!()   # flush before Legate tears down
 end
 
-global cuNumeric_config_str::String = ""
-
 ### These functions guard against a user trying
 ### to start multiple runtimes and also to allow
 ## package extensions which always try to re-load

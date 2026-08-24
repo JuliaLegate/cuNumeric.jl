@@ -1,4 +1,4 @@
-global const floaty_unary_ops_no_args = Dict{Function,UnaryOpCode}(
+const floaty_unary_ops_no_args = Dict{Function,UnaryOpCode}(
     Base.acos => cuNumeric.ARCCOS,
     Base.acosh => cuNumeric.ARCCOSH,
     Base.asin => cuNumeric.ARCSIN,
@@ -24,7 +24,7 @@ global const floaty_unary_ops_no_args = Dict{Function,UnaryOpCode}(
     Base.tanh => cuNumeric.TANH,
 )
 
-global const unary_op_map_no_args = Dict{Function,UnaryOpCode}(
+const unary_op_map_no_args = Dict{Function,UnaryOpCode}(
     Base.abs => cuNumeric.ABSOLUTE,
     # Base.conj => cuNumeric.CONJ, # handled as a special case below
     Base.:(-) => cuNumeric.NEGATIVE,
@@ -289,7 +289,7 @@ sum(B, dims=2)    # 3×1 result
 sum(B, dims=(1,2))  # 1×1 result
 ```
 """
-global const unary_reduction_map = Dict{Function,UnaryRedCode}(
+const unary_reduction_map = Dict{Function,UnaryRedCode}(
     # ARGMAX/ARGMIN: 1-d Base.argmax/argmin below, not this map.
     #missing => cuNumeric.CONTAINS, # strings or also integral types
     Base.maximum => cuNumeric.MAX,

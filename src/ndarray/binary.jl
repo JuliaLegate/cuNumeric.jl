@@ -8,7 +8,7 @@
 #     # truncated `div`. Do not ship as `div`: `-7 ÷ 2` is -3 in Julia, -4 for fld.
 
 # Binary ops which are equivalent to Julia's broadcast syntax
-global const binary_op_map = Dict{Function,BinaryOpCode}(
+const binary_op_map = Dict{Function,BinaryOpCode}(
     Base.:+ => cuNumeric.ADD,
     Base.:* => cuNumeric.MULTIPLY,
     Base.:(-) => cuNumeric.SUBTRACT,
@@ -38,7 +38,7 @@ global const binary_op_map = Dict{Function,BinaryOpCode}(
     # Base.:(||) => (cuNumeric.LOGICAL_OR, Bool, :same_as_input), # cannot overload
 )
 
-global const floaty_binary_op_map = Dict{Function,BinaryOpCode}(
+const floaty_binary_op_map = Dict{Function,BinaryOpCode}(
     Base.:/ => cuNumeric.DIVIDE,
     Base.hypot => cuNumeric.HYPOT,
     Base.atan => cuNumeric.ARCTAN2,
