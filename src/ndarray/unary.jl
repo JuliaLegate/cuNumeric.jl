@@ -524,7 +524,6 @@ end
 
 """
     argmax(A::NDArray{<:Any,1})
-    argmin(A::NDArray{<:Any,1})
 
 1-based index of the first extremum, as a 0-d `NDArray{Int64}` (not a Julia
 `Int`). 1-d only. Complex arrays are not supported.
@@ -535,7 +534,12 @@ function argmax(arr::NDArray{T,1}) where {T}
     return _indices_to_one_based(raw)
 end
 
-@doc (@doc argmax)
+"""
+    argmin(A::NDArray{<:Any,1})
+
+1-based index of the first extremum, as a 0-d `NDArray{Int64}` (not a Julia
+`Int`). 1-d only. Complex arrays are not supported.
+"""
 function argmin(arr::NDArray{T,1}) where {T}
     T <: Complex && throw(ArgumentError("argmax/argmin are not supported for complex arrays"))
     raw = nda_unary_reduction_axes(cuNumeric.ARGMIN, arr, Int32[], false)
