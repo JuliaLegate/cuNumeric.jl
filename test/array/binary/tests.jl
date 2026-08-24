@@ -178,9 +178,13 @@ function run_binary_ops_tests(types)
             end
 
             allowscalar() do
-                @test unwrap(arr_cn == arr_cn)
+                eq = arr_cn == arr_cn
+                neq = arr_cn != arr_cn2
+                @test ndims(eq) == 0
+                @test ndims(neq) == 0
+                @test unwrap(eq)
                 @test !unwrap(arr_cn == arr_cn2)
-                @test unwrap(arr_cn != arr_cn2)
+                @test unwrap(neq)
                 @test !unwrap(arr_cn != arr_cn)
                 @test unwrap(all(arr_cn .== arr_cn))
             end
@@ -194,5 +198,36 @@ function run_binary_copyto_tests()
         b = cuNumeric.ones(2, 2)
         copyto!(a, b)
         @test is_same(a, b)
+    end
+end
+
+function run_array_equal_tests()
+    @testset "0-d == / !=" begin
+        a32 = Float32[1, 2, 3]
+        a64 = Float64[1, 2, 3]
+        n32 = @allowscalar NDArray(a32)
+        n64 = @allowscalar NDArray(a64)
+
+        allowscalar() do
+            @test ndims(n32 == n64) == 0
+            @test unwrap(n32 == n64) == (a32 == a64)
+            @test unwrap(n32 != n64) == (a32 != a64)
+
+            b64 = Float64[1, 2, 4]
+            m64 = NDArray(b64)
+            @test unwrap(n32 == m64) == (a32 == b64)
+            @test unwrap(n32 != m64) == (a32 != b64)
+        end
+
+        same = cuNumeric.ones(2, 2)
+        other_shape = cuNumeric.ones(3, 3)
+        other_rank = cuNumeric.ones(4)
+        allowscalar() do
+            @test ndims(same == other_shape) == 0
+            @test !unwrap(same == other_shape)
+            @test unwrap(same != other_shape)
+            @test !unwrap(same == other_rank)
+            @test unwrap(same != other_rank)
+        end
     end
 end

@@ -96,6 +96,9 @@ uint64_t nda_nbytes(CN_NDArray* arr);
 
 void nda_binary_op(CN_NDArray* out, CuPyNumericBinaryOpCode op_code,
                    const CN_NDArray* rhs1, const CN_NDArray* rhs2);
+void nda_binary_reduction(CN_NDArray* out, CuPyNumericBinaryOpCode op_code,
+                          const CN_NDArray* rhs1, const CN_NDArray* rhs2);
+CN_NDArray* nda_array_equal(const CN_NDArray* rhs1, const CN_NDArray* rhs2);
 void nda_unary_op(CN_NDArray* out, CuPyNumericUnaryOpCode op_code,
                   CN_NDArray* input);
 void nda_unary_reduction(CN_NDArray* out, CuPyNumericUnaryRedCode op_code,

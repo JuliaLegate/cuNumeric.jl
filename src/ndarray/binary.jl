@@ -299,18 +299,6 @@ end
     return result
 end
 
-# function Base.:(==)(lhs::NDArray{A}, rhs::NDArray{B}) where {A,B}
-#     error("Not implemented yet")
-#     #! REPLACE WITH ARRAY_EQUAL ONCE THAT IS WRAPPED
-#     #! or explicit call to nda_binary_reduction
-# end
-
-# function Base.:(!=)(lhs::NDArray{A}, rhs::NDArray{B}) where {A,B}
-#     error("Not implemented yet")
-#     #! REPLACE WITH ARRAY_EQUAL ONCE THAT IS WRAPPED
-#     #! or explicit call to nda_binary_reduction
-# end
-
 # Specializations for 2 and -1 in unary.jl
 @inline function __broadcast(
     f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, power::NDArray{T}
