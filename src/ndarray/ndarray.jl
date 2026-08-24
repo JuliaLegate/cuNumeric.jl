@@ -114,15 +114,6 @@ function ravel(arr::NDArray)
 end
 
 @doc"""
-    cuNumeric.unique(arr::NDArray)
-
-Return a new `NDArray` containing the unique elements of the input `arr`.
-"""
-function unique(arr::NDArray)
-    return nda_unique(arr)
-end
-
-@doc"""
     Base.copy(arr::NDArray)
 
 Create and return a deep copy of the given `NDArray`.

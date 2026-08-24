@@ -89,7 +89,7 @@ function _assigned_symbols(expr)
 end
 
 function _lexical_scope(body, bindings::Set{Symbol})
-    ordered = sort!(collect(bindings); by=string)
+    ordered = Base.sort!(collect(bindings); by=string)
     return Expr(:let, Expr(:block, ordered...), body)
 end
 

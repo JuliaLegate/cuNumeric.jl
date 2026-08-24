@@ -430,6 +430,42 @@ function nda_unique(arr::NDArray{T}) where {T}
     return NDArray(ptr, T, Val(1))
 end
 
+function nda_sort(arr::NDArray{T,N}, axis::Int32, stable::Bool) where {T,N}
+    ptr = @task_scope "sort" begin
+        ccall((:nda_sort, libnda),
+            NDArray_t, (NDArray_t, Int32, Bool),
+            arr.ptr, axis, stable)
+    end
+    return NDArray(ptr, T, Val(N))
+end
+
+function nda_sort_inplace(arr::NDArray, axis::Int32, stable::Bool)
+    @task_scope "sort!" begin
+        ccall((:nda_sort_inplace, libnda),
+            Cvoid, (NDArray_t, Int32, Bool),
+            arr.ptr, axis, stable)
+    end
+    return arr
+end
+
+function nda_argsort(arr::NDArray{<:Any,N}, axis::Int32, stable::Bool) where {N}
+    ptr = @task_scope "argsort" begin
+        ccall((:nda_argsort, libnda),
+            NDArray_t, (NDArray_t, Int32, Bool),
+            arr.ptr, axis, stable)
+    end
+    return NDArray(ptr, Int64, Val(N))
+end
+
+function nda_searchsorted(a::NDArray, v::NDArray{<:Any,N}, left::Bool) where {N}
+    ptr = @task_scope "searchsorted" begin
+        ccall((:nda_searchsorted, libnda),
+            NDArray_t, (NDArray_t, NDArray_t, Bool),
+            a.ptr, v.ptr, left)
+    end
+    return NDArray(ptr, Int64, Val(N))
+end
+
 function nda_ravel(arr::NDArray)
     ptr = @task_scope "ravel" begin
         ccall((:nda_ravel, libnda),

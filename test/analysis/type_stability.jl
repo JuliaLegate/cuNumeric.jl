@@ -270,6 +270,22 @@ end
         @test @inferred(cuNumeric.transpose(M)) !== nothing
         @test @inferred(cuNumeric.trace(sq)) !== nothing
         @test @inferred(cuNumeric.diag(sq)) !== nothing
+    end
+end
+
+@testset verbose = true "sort" begin
+    @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
+        v = cuNumeric.zeros(T, 8)
+        @test @inferred(cuNumeric.sort(v)) !== nothing
+        if !(T <: Complex)
+            @test @inferred(cuNumeric.searchsortedfirst(v, zero(T))) !== nothing
+        end
+    end
+end
+
+@testset verbose = true "unique" begin
+    @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
+        v = cuNumeric.zeros(T, 8)
         @test @inferred(cuNumeric.unique(v)) !== nothing
     end
 end

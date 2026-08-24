@@ -30,6 +30,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <functional>
 #include <limits>
 #include <map>
@@ -127,6 +128,24 @@ void nda_add(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out) {
 
 CN_NDArray* nda_unique(CN_NDArray* arr) {
   NDArray result = cupynumeric::unique(arr->obj);
+  return new CN_NDArray{NDArray(std::move(result))};
+}
+
+CN_NDArray* nda_sort(CN_NDArray* arr, int32_t axis, bool stable) {
+  const char* kind = stable ? "stable" : "quicksort";
+  NDArray result =
+      cupynumeric::sort(arr->obj, std::optional<int32_t>{axis}, kind);
+  return new CN_NDArray{NDArray(std::move(result))};
+}
+
+void nda_sort_inplace(CN_NDArray* arr, int32_t axis, bool stable) {
+  arr->obj.sort(arr->obj, false, std::optional<int32_t>{axis}, stable);
+}
+
+CN_NDArray* nda_argsort(CN_NDArray* arr, int32_t axis, bool stable) {
+  const char* kind = stable ? "stable" : "quicksort";
+  NDArray result =
+      cupynumeric::argsort(arr->obj, std::optional<int32_t>{axis}, kind);
   return new CN_NDArray{NDArray(std::move(result))};
 }
 
@@ -475,5 +494,27 @@ CN_NDArray* nda_get_slice(CN_NDArray* arr, const CN_Slice* slices,
 
 CN_NDArray* nda_store_to_ndarray(CN_Store* st) {
   return new CN_NDArray{cupynumeric::as_array(st->obj)};
+}
+
+// Mirrors cupynumeric deferred.searchsorted: fill + MIN/MAX reduction.
+CN_NDArray* nda_searchsorted(CN_NDArray* a, CN_NDArray* v, bool left) {
+  auto* runtime = cupynumeric::CuPyNumericRuntime::get_runtime();
+  NDArray out = runtime->create_array(v->obj.shape(), legate::int64());
+  const int64_t n = static_cast<int64_t>(a->obj.size());
+  out.fill(Scalar(left ? n : int64_t{0}));
+
+  auto task = runtime->create_task(CuPyNumericOpCode::CUPYNUMERIC_SEARCHSORTED);
+  auto p_out =
+      task.add_reduction(out.get_store(), left ? legate::ReductionOpKind::MIN
+                                               : legate::ReductionOpKind::MAX);
+  task.add_input(a->obj.get_store());
+  auto p_v = task.add_input(v->obj.get_store());
+  task.add_constraint(legate::broadcast(p_v));
+  task.add_constraint(legate::broadcast(p_out));
+  task.add_constraint(legate::align(p_out, p_v));
+  task.add_scalar_arg(Scalar(left));
+  task.add_scalar_arg(Scalar(n));
+  runtime->submit(std::move(task));
+  return new CN_NDArray{NDArray(std::move(out))};
 }
 }  // extern "C"
