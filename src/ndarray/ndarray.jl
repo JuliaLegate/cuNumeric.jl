@@ -839,16 +839,12 @@ unwrap(x::NDArray) = only(x)
 
 @doc"""
     ==(arr1::NDArray, arr2::NDArray)
+    !=(arr1::NDArray, arr2::NDArray)
 
-Check if two NDArrays are equal element-wise.
-
-Returns `true` if both arrays have the same shape and all corresponding elements are equal.
-Currently supports arrays up to 3 dimensions. For higher dimensions, returns `false` with a warning.
-
-!!! warning
-
-    This function uses scalar indexing and should not be used in production code. This is meant for testing.
-
+Element-wise equality reduced to a 0-d `NDArray{Bool}` (not a Julia `Bool`).
+Same shape and values yields true; mismatched shape or rank yields false.
+Mixed dtypes follow Julia `==` (promote, then compare). Use `unwrap` or `A[]`
+(with `allowscalar`) for a host value. Broadcast `.==` / `.!=` stay elementwise.
 
 # Examples
 ```@repl
@@ -859,12 +855,47 @@ c = cuNumeric.zeros(2, 2)
 a == c
 ```
 """
-function Base.:(==)(arr1::NDArray{T,N}, arr2::NDArray{T,N}) where {T,N}
-    return nda_array_equal(arr1, arr2) #DOESNT RETURN SCALAR
+function Base.:(==)(a::NDArray, b::NDArray)
+    size(a) == size(b) || return NDArray(false)
+    return _array_equal_impl(a, b)
 end
 
-function Base.:(!=)(arr1::NDArray{T,N}, arr2::NDArray{T,N}) where {T,N}
-    return !(arr1 == arr2)
+function Base.:(!=)(a::NDArray, b::NDArray)
+    return !(a == b)
+end
+
+function _array_equal_impl(a::NDArray{T}, b::NDArray{T}) where {T}
+    out = cuNumeric.zeros(Bool)
+    return nda_binary_reduction!(out, cuNumeric.EQUAL, a, b)
+end
+
+function _array_equal_impl(a::NDArray{A}, b::NDArray{B}) where {A,B}
+    T = promote_type(A, B)
+    return _array_equal_promoted(a, b, T)
+end
+
+function _array_equal_promoted(a::NDArray{T}, b::NDArray{T}, ::Type{T}) where {T}
+    return _array_equal_impl(a, b)
+end
+function _array_equal_promoted(a::NDArray, b::NDArray{T}, ::Type{T}) where {T}
+    p1 = unchecked_promote_arr(a, T)
+    result = _array_equal_impl(p1, b)
+    destroy!(p1)
+    return result
+end
+function _array_equal_promoted(a::NDArray{T}, b::NDArray, ::Type{T}) where {T}
+    p2 = unchecked_promote_arr(b, T)
+    result = _array_equal_impl(a, p2)
+    destroy!(p2)
+    return result
+end
+function _array_equal_promoted(a::NDArray, b::NDArray, ::Type{T}) where {T}
+    p1 = unchecked_promote_arr(a, T)
+    p2 = unchecked_promote_arr(b, T)
+    result = _array_equal_impl(p1, p2)
+    destroy!(p1)
+    destroy!(p2)
+    return result
 end
 
 @doc"""

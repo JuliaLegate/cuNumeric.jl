@@ -370,6 +370,17 @@ function nda_binary_op!(out::NDArray, op_code::BinaryOpCode, rhs1::NDArray, rhs2
     return out
 end
 
+function nda_binary_reduction!(
+    out::NDArray, op_code::BinaryOpCode, rhs1::NDArray, rhs2::NDArray
+)
+    @task_scope _scope_op("binary_red", op_code) begin
+        ccall((:nda_binary_reduction, libnda),
+            Cvoid, (NDArray_t, BinaryOpCode, NDArray_t, NDArray_t),
+            out.ptr, op_code, rhs1.ptr, rhs2.ptr)
+    end
+    return out
+end
+
 function nda_unary_op!(out::NDArray, op_code::UnaryOpCode, input::NDArray)
     @task_scope _scope_op("unary", op_code) begin
         ccall((:nda_unary_op, libnda),

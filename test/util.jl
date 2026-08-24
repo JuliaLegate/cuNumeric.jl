@@ -56,9 +56,9 @@ function reduction_atol(::Type{T}, n, scale=1) where {T}
     return max(atol(T) * n, n * eps(FT) * abs(scale))
 end
 
-is_same(arr1::NDArray, arr2::NDArray) = @allowscalar (arr1 == arr2)[1]
-is_same(arr1::NDArray, arr2::Array) = @allowscalar (arr1 == arr2)[1]
-is_same(arr1::Array, arr2::NDArray) = @allowscalar (arr1 == arr2)[1]
+is_same(arr1::NDArray, arr2::NDArray) = unwrap(arr1 == arr2)
+is_same(arr1::NDArray, arr2::Array) = @allowscalar (arr1 == arr2)
+is_same(arr1::Array, arr2::NDArray) = @allowscalar (arr1 == arr2)
 is_same(arr1::Array, arr2::Array) = (arr1 == arr2)
 
 function my_rand(::Type{F}, dims...; L=F(-1000), R=F(1000)) where {F<:AbstractFloat}
