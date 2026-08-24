@@ -111,7 +111,7 @@ end
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
         n = 5
         ref = Matrix{T}(I, n, n)
-        out = cuNumeric.eye(T, n)
+        out = NDArray{T}(I, n, n)
         allowscalar() do
             @test safe_compare(ref, out, atol(T), rtol(T))
         end
@@ -126,7 +126,7 @@ end
         ref = sum(diag(A))  # widens ints like trace's accumulator
         out = cuNumeric.trace(nda)
         allowscalar() do
-            @test ref ≈ out[1] atol=atol(eltype(ref)) rtol=rtol(eltype(ref))
+            @test ref ≈ out[] atol=atol(eltype(ref)) rtol=rtol(eltype(ref))
         end
     end
 end
@@ -140,7 +140,7 @@ end
             ref = sum(diag(A, k))
             out = cuNumeric.trace(nda; offset=k)
             allowscalar() do
-                @test ref ≈ out[1] atol=atol(eltype(ref)) rtol=rtol(eltype(ref))
+                @test ref ≈ out[] atol=atol(eltype(ref)) rtol=rtol(eltype(ref))
             end
         end
     end
@@ -235,8 +235,12 @@ end
         A = cuNumeric.NDArray(T[1 0; 0 1])
         b = cuNumeric.NDArray(reshape(T[1, 1], 2, 1))
 
-        # int/bool requires promotion to float. Will throw without allowpromtion()
-        @test_throws "Implicit promotion" cuNumeric.solve(A, b)
+        # int/bool converts to float; only a widening conversion needs allowpromotion()
+        if promotion_is_gated(T, Float64)
+            @test_throws "Implicit promotion" cuNumeric.solve(A, b)
+        else
+            @test cuNumeric.solve(A, b) isa NDArray{Float64}
+        end
 
         # ...allowed under @allowpromotion, result is Float64
         allowpromotion() do
@@ -249,32 +253,51 @@ end
     end
 end
 
-function check_svd_reconstruction(ref_A::AbstractMatrix, u, s, vh, tol_a, tol_r)
-    U = Array(u)
-    S = Array(s)
-    Vh = Array(vh)
-    A_rec = U * Diagonal(S) * Vh
+@testset "solve rejects batched input" begin
+    A = cuNumeric.zeros(Float64, 2, 3, 3)
+    b = cuNumeric.zeros(Float64, 2, 3, 1)
+    @test_throws "batched_solve" cuNumeric.solve(A, b)
+end
+
+@testset "backslash" begin
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SOLVE_TYPES)
+        A_ref = T[2 1; 5 7]
+        b_ref = T[11, 13]
+        A = cuNumeric.NDArray(A_ref)
+
+        x_vec = A \ cuNumeric.NDArray(b_ref)
+        x_mat = A \ cuNumeric.NDArray(reshape(b_ref, 2, 1))
+
+        allowscalar() do
+            @test safe_compare(A_ref \ b_ref, x_vec, atol(T), rtol(T))
+            @test safe_compare(A_ref \ reshape(b_ref, 2, 1), x_mat, atol(T), rtol(T))
+        end
+    end
+end
+
+function check_svd_reconstruction(ref_A::AbstractMatrix, F, tol_a, tol_r)
+    A_rec = Array(F.U) * Diagonal(Array(F.S)) * Array(F.Vt)
     return isapprox(ref_A, A_rec; atol=tol_a, rtol=tol_r)
 end
 
-function check_svd_orthonormality(u, vh, tol_a, tol_r)
-    U = Array(u)
-    Vh = Array(vh)
+function check_svd_orthonormality(F, tol_a, tol_r)
+    U = Array(F.U)
+    Vt = Array(F.Vt)
     ku = size(U, 2)
-    kv = size(Vh, 1)
+    kv = size(Vt, 1)
     ok_u = isapprox(U' * U, Matrix{eltype(U)}(I, ku, ku); atol=tol_a, rtol=tol_r)
-    ok_vh = isapprox(Vh * Vh', Matrix{eltype(Vh)}(I, kv, kv); atol=tol_a, rtol=tol_r)
-    return ok_u && ok_vh
+    ok_vt = isapprox(Vt * Vt', Matrix{eltype(Vt)}(I, kv, kv); atol=tol_a, rtol=tol_r)
+    return ok_u && ok_vt
 end
 
 @testset "svd square matrix" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         A_ref = my_rand(T, 5, 5)
-        nda = cuNumeric.NDArray(A_ref)
-        u, s, vh = cuNumeric.svd(nda)
+        F = LinearAlgebra.svd(cuNumeric.NDArray(A_ref))
+        @test F isa LinearAlgebra.SVD
         allowscalar() do
-            @test check_svd_reconstruction(A_ref, u, s, vh, atol(T), rtol(T))
-            @test check_svd_orthonormality(u, vh, atol(T), rtol(T))
+            @test check_svd_reconstruction(A_ref, F, atol(T), rtol(T))
+            @test check_svd_orthonormality(F, atol(T), rtol(T))
         end
     end
 end
@@ -282,41 +305,43 @@ end
 @testset "svd tall matrix (m > n)" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         A_ref = my_rand(T, 6, 4)
-        nda = cuNumeric.NDArray(A_ref)
-        u, s, vh = cuNumeric.svd(nda, false)  # thin SVD for reconstruction test
+        F = LinearAlgebra.svd(cuNumeric.NDArray(A_ref))  # thin, for reconstruction
         allowscalar() do
-            @test check_svd_reconstruction(A_ref, u, s, vh, atol(T), rtol(T))
-            @test check_svd_orthonormality(u, vh, atol(T), rtol(T))
+            @test check_svd_reconstruction(A_ref, F, atol(T), rtol(T))
+            @test check_svd_orthonormality(F, atol(T), rtol(T))
         end
     end
 end
 
-@testset "svd thin output shapes (full_matrices=false)" begin
+@testset "svd wide matrix (m < n) throws" begin
+    A = cuNumeric.NDArray(my_rand(Float32, 3, 5))
+    @test_throws "m >= n" LinearAlgebra.svd(A)
+end
+
+@testset "svd thin output shapes (full=false)" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         m, n = 6, 4
         k = min(m, n)
         A_ref = my_rand(T, m, n)
-        nda = cuNumeric.NDArray(A_ref)
-        u, s, vh = cuNumeric.svd(nda, false)
+        F = LinearAlgebra.svd(cuNumeric.NDArray(A_ref))
         allowscalar() do
-            @test size(Array(u)) == (m, k)
-            @test size(Array(s)) == (k,)
-            @test size(Array(vh)) == (k, n)
-            @test check_svd_reconstruction(A_ref, u, s, vh, atol(T), rtol(T))
+            @test size(Array(F.U)) == (m, k)
+            @test size(Array(F.S)) == (k,)
+            @test size(Array(F.Vt)) == (k, n)
+            @test check_svd_reconstruction(A_ref, F, atol(T), rtol(T))
         end
     end
 end
 
-@testset "svd full output shapes (full_matrices=true)" begin
+@testset "svd full output shapes (full=true)" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         m, n = 6, 4
         A_ref = my_rand(T, m, n)
-        nda = cuNumeric.NDArray(A_ref)
-        u, s, vh = cuNumeric.svd(nda, true)
+        F = LinearAlgebra.svd(cuNumeric.NDArray(A_ref); full=true)
         allowscalar() do
-            @test size(Array(u)) == (m, m)
-            @test size(Array(s)) == (min(m, n),)
-            @test size(Array(vh)) == (n, n)
+            @test size(Array(F.U)) == (m, m)
+            @test size(Array(F.S)) == (min(m, n),)
+            @test size(Array(F.Vt)) == (n, n)
         end
     end
 end
@@ -324,10 +349,9 @@ end
 @testset "svd singular values non-negative and sorted" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         A_ref = my_rand(T, 5, 5)
-        nda = cuNumeric.NDArray(A_ref)
-        _, s, _ = cuNumeric.svd(nda)
+        F = LinearAlgebra.svd(cuNumeric.NDArray(A_ref))
         allowscalar() do
-            sv = Array(s)
+            sv = Array(F.S)
             @test all(sv .>= 0)
             @test issorted(sv; rev=true)
         end
@@ -338,10 +362,9 @@ end
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         n = 4
         A_ref = Matrix{T}(I, n, n)
-        nda = cuNumeric.NDArray(A_ref)
-        _, s, _ = cuNumeric.svd(nda)
+        F = LinearAlgebra.svd(cuNumeric.NDArray(A_ref))
         allowscalar() do
-            @test safe_compare(ones(T, n), s, atol(T), rtol(T))
+            @test safe_compare(ones(T, n), F.S, atol(T), rtol(T))
         end
     end
 end
@@ -353,10 +376,9 @@ end
         v1 = T.(collect(1:5))
         v2 = T.(collect(1:4))
         A_ref = v1 * v2'
-        nda = cuNumeric.NDArray(A_ref)
-        _, s, _ = cuNumeric.svd(nda)
+        F = LinearAlgebra.svd(cuNumeric.NDArray(A_ref))
         allowscalar() do
-            sv = Array(s)
+            sv = Array(F.S)
             @test sv[1] > atol(T)
             @test all(sv[2:end] .< sqrt(atol(T)) * 100)
         end
@@ -367,10 +389,14 @@ end
     @testset verbose=true for T in (Int32, Int64, Bool)
         vals = T == Bool ? T[1 0; 0 1] : reshape(T.(collect(1:4)), 2, 2)
         A = cuNumeric.NDArray(vals)
-        @test_throws "Implicit promotion" cuNumeric.svd(A)
+        if promotion_is_gated(T, Float64)
+            @test_throws "Implicit promotion" LinearAlgebra.svd(A)
+        else
+            @test LinearAlgebra.svd(A) isa LinearAlgebra.SVD
+        end
         allowpromotion() do
-            u, s, vh = cuNumeric.svd(A)
-            @test eltype(Array(u)) == Float64
+            F = LinearAlgebra.svd(A)
+            @test eltype(Array(F.U)) == Float64
         end
     end
 end
@@ -378,8 +404,7 @@ end
 @testset "qr reconstruction" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_QR_TYPES)
         A_ref = my_rand(T, 6, 4)
-        nda = cuNumeric.NDArray(A_ref)
-        q, r = cuNumeric.qr(nda)
+        q, r = LinearAlgebra.qr(cuNumeric.NDArray(A_ref))
         allowscalar() do
             Q = Array(q)
             R = Array(r)
@@ -394,8 +419,7 @@ end
 @testset "qr square matrix" begin
     @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_QR_TYPES)
         A_ref = my_rand(T, 5, 5)
-        nda = cuNumeric.NDArray(A_ref)
-        q, r = cuNumeric.qr(nda)
+        q, r = LinearAlgebra.qr(cuNumeric.NDArray(A_ref))
         allowscalar() do
             Q = Array(q)
             R = Array(r)
@@ -410,13 +434,240 @@ end
     @testset verbose=true for T in (Int32, Int64, Bool)
         vals = T == Bool ? T[1 0; 0 1] : reshape(T.(collect(1:4)), 2, 2)
         A = cuNumeric.NDArray(vals)
-        @test_throws "Implicit promotion" cuNumeric.qr(A)
+        if promotion_is_gated(T, Float64)
+            @test_throws "Implicit promotion" LinearAlgebra.qr(A)
+        else
+            @test LinearAlgebra.qr(A) isa cuNumeric.NDArrayQR
+        end
         allowpromotion() do
-            q, r = cuNumeric.qr(A)
+            q, r = LinearAlgebra.qr(A)
             allowscalar() do
                 @test eltype(Array(q)) == Float64
                 @test isapprox(
                     Float64.(vals), Array(q) * Array(r); atol=atol(Float64), rtol=rtol(Float64)
+                )
+            end
+        end
+    end
+end
+
+@testset "qr returns an NDArrayQR factorization" begin
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_QR_TYPES)
+        A_ref = my_rand(T, 6, 4; L=real(T)(-1), R=real(T)(1))
+
+        F = LinearAlgebra.qr(cuNumeric.NDArray(A_ref))
+        @test F isa cuNumeric.NDArrayQR{T}
+        @test F isa LinearAlgebra.Factorization{T}
+        @test size(F) == (6, 4)
+        @test size(F, 1) == 6
+        @test size(F, 2) == 4
+        @test size(F, 3) == 1
+        @test sprint(show, MIME("text/plain"), F) isa String
+
+        allowscalar() do
+            @test isapprox(A_ref, Array(F.Q) * Array(F.R); atol=atol(T), rtol=rtol(T))
+        end
+    end
+end
+
+# Hermitian positive-definite, with a diagonal shift to keep it well conditioned.
+function spd_matrix(::Type{T}, n) where {T}
+    RT = real(T)
+    B = my_rand(T, n, n; L=RT(-1), R=RT(1))
+    return B * B' + T(n) * Matrix{T}(I, n, n)
+end
+
+@testset "cholesky reconstruction" begin
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_CHOLESKY_TYPES)
+        n = 6
+        A_ref = spd_matrix(T, n)
+        F = LinearAlgebra.cholesky(cuNumeric.NDArray(A_ref))
+
+        @test F isa LinearAlgebra.Cholesky
+        @test F.uplo == 'L'
+
+        allowscalar() do
+            L = Array(F.factors)
+            @test size(L) == (n, n)
+            @test istril(L)  # `zeroout` clears the upper triangle in-task
+            @test isapprox(A_ref, L * L'; atol=atol(T), rtol=rtol(T))
+        end
+    end
+end
+
+@testset "cholesky of the identity" begin
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_CHOLESKY_TYPES)
+        n = 4
+        A_ref = Matrix{T}(I, n, n)
+        F = LinearAlgebra.cholesky(cuNumeric.NDArray(A_ref))
+        allowscalar() do
+            @test safe_compare(A_ref, F.factors, atol(T), rtol(T))
+        end
+    end
+end
+
+@testset "cholesky factorization object" begin
+    n = 5
+    T = Float64
+    A_ref = spd_matrix(T, n)
+    F = LinearAlgebra.cholesky(cuNumeric.NDArray(A_ref))
+
+    L = F.L
+    @test L isa LowerTriangular
+    @test parent(L) === F.factors
+    @test size(F) == (n, n)
+
+    allowscalar() do
+        @test isapprox(A_ref, Array(parent(L)) * Array(parent(L))'; atol=atol(T), rtol=rtol(T))
+    end
+
+    # `F.U` (and hence destructuring as `L, U = F`) needs `copy(F.factors')`,
+    # which falls back to scalar indexing until `adjoint(::NDArray)` lands.
+    @test_throws "scalar-indexed" F.U
+end
+
+@testset "cholesky rejects bad shapes and types" begin
+    @test_throws ArgumentError LinearAlgebra.cholesky(cuNumeric.zeros(Float64, 3, 4))
+    @test_throws ArgumentError LinearAlgebra.cholesky(cuNumeric.zeros(ComplexF64, 0, 0))
+end
+
+# The POTRF task raises this itself. It only surfaces as a catchable error
+# because the launcher marks the task as throwing; without that Legate aborts
+# the process. Not a PosDefException: the pivot index is not reported.
+@testset "cholesky of a non-positive-definite matrix throws" begin
+    A = cuNumeric.NDArray(Float64[1.0 2.0; 2.0 1.0])
+    @test_throws "Matrix is not positive definite" begin
+        F = LinearAlgebra.cholesky(A)
+        allowscalar() do
+            sum(abs.(Array(F.factors)))
+        end
+    end
+end
+
+@testset "cholesky promotion" begin
+    @testset verbose=true for T in (Int32, Int64, Bool)
+        vals = T == Bool ? T[1 0; 0 1] : T[2 0; 0 2]
+        A = cuNumeric.NDArray(vals)
+        if promotion_is_gated(T, Float64)
+            @test_throws "Implicit promotion" LinearAlgebra.cholesky(A)
+        else
+            @test LinearAlgebra.cholesky(A) isa LinearAlgebra.Cholesky
+        end
+        allowpromotion() do
+            F = LinearAlgebra.cholesky(A)
+            allowscalar() do
+                L = Array(F.factors)
+                @test eltype(L) == Float64
+                @test isapprox(Float64.(vals), L * L'; atol=atol(Float64), rtol=rtol(Float64))
+            end
+        end
+    end
+end
+
+# Eigenvectors are only unique up to sign/phase, so compare the residual
+# `A*v - λ*v` rather than the vectors themselves.
+function eigen_residual(A_ref, values, vectors)
+    C = eltype(values)
+    return maximum(abs.(C.(A_ref) * vectors .- vectors * Diagonal(values)))
+end
+
+sort_spectrum(v) = sort(v; by=x -> (real(x), imag(x)))
+
+@testset "eigen residual" begin
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_EIG_TYPES)
+        n = 5
+        A_ref = my_rand(T, n, n; L=real(T)(-1), R=real(T)(1))
+        F = LinearAlgebra.eigen(cuNumeric.NDArray(A_ref))
+
+        @test F isa LinearAlgebra.Eigen
+
+        allowscalar() do
+            values, vectors = Array(F.values), Array(F.vectors)
+            # geev always produces complex output, even for a real input matrix
+            @test eltype(values) == complex(T)
+            @test eltype(vectors) == complex(T)
+            @test size(values) == (n,)
+            @test size(vectors) == (n, n)
+            @test eigen_residual(A_ref, values, vectors) <= max(atol(T), rtol(T) * n)
+            @test isapprox(
+                sort_spectrum(values),
+                sort_spectrum(LinearAlgebra.eigvals(A_ref)),
+                atol=atol(T),
+                rtol=rtol(T),
+            )
+        end
+    end
+end
+
+@testset "eigen of a diagonal matrix" begin
+    @testset verbose=true for T in Base.uniontypes(cuNumeric.SUPPORTED_EIG_TYPES)
+        n = 4
+        A_ref = Matrix{T}(Diagonal(T.(1:n)))
+        values = LinearAlgebra.eigvals(cuNumeric.NDArray(A_ref))
+        allowscalar() do
+            @test isapprox(
+                sort_spectrum(Array(values)),
+                complex(T).(1:n),
+                atol=atol(T),
+                rtol=rtol(T),
+            )
+        end
+    end
+end
+
+@testset "eigen factorization object" begin
+    n = 5
+    T = Float64
+    A_ref = my_rand(T, n, n; L=-1.0, R=1.0)
+    F = LinearAlgebra.eigen(cuNumeric.NDArray(A_ref))
+
+    # an Eigen destructures as (values, vectors)
+    values, vectors = F
+    @test values === F.values
+    @test vectors === F.vectors
+
+    allowscalar() do
+        @test eigen_residual(A_ref, Array(values), Array(vectors)) <= rtol(T) * n
+    end
+end
+
+@testset "eigvals and eigvecs agree with eigen" begin
+    n = 4
+    T = Float64
+    A_ref = my_rand(T, n, n; L=-1.0, R=1.0)
+    nda = cuNumeric.NDArray(A_ref)
+
+    values = LinearAlgebra.eigvals(nda)
+    vectors = LinearAlgebra.eigvecs(nda)
+
+    allowscalar() do
+        @test eigen_residual(A_ref, Array(values), Array(vectors)) <= rtol(T) * n
+    end
+end
+
+@testset "eigen rejects bad shapes and types" begin
+    @test_throws ArgumentError LinearAlgebra.eigen(cuNumeric.zeros(Float64, 3, 4))
+    @test_throws ArgumentError LinearAlgebra.eigvals(cuNumeric.zeros(Float64, 0, 0))
+end
+
+@testset "eigen promotion" begin
+    @testset verbose=true for T in (Int32, Int64, Bool)
+        vals = T == Bool ? T[1 0; 0 1] : T[2 0; 0 3]
+        A = cuNumeric.NDArray(vals)
+        if promotion_is_gated(T, Float64)
+            @test_throws "Implicit promotion" LinearAlgebra.eigen(A)
+        else
+            @test LinearAlgebra.eigen(A) isa LinearAlgebra.Eigen
+        end
+        allowpromotion() do
+            F = LinearAlgebra.eigen(A)
+            allowscalar() do
+                @test eltype(Array(F.values)) == ComplexF64
+                @test isapprox(
+                    sort_spectrum(Array(F.values)),
+                    sort_spectrum(ComplexF64.(LinearAlgebra.eigvals(Float64.(vals)))),
+                    atol=atol(Float64),
+                    rtol=rtol(Float64),
                 )
             end
         end

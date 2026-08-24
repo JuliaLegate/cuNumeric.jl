@@ -38,10 +38,12 @@ makedocs(;
             "Initialization" => "examples/initialization.md",
             "Monte-Carlo" => "examples/montecarlo.md",
             "Gray-Scott" => "examples/grayscott.md",
+            "Dynamic Mode Decomposition" => "examples/dmd.md",
+            "Periodic Poisson (FFT)" => "examples/poisson_fft.md",
         ],
         "Performance Tips" => [
             "Kernel Fusion" => "perf/kernel_fusion.md",
-            "Reduce Allocations" => "perf/reduce_allocations.md",
+            "The @accelerate Macro" => "perf/reduce_allocations.md",
             "Patterns to Avoid" => "perf/patterns_to_avoid.md",
         ],
         "Configuration" => [
@@ -64,6 +66,7 @@ makedocs(;
             "Unary Operations" => "api_unary.md",
             "Binary Operations" => "api_binary.md",
             "Linear Algebra" => "linalg.md",
+            "FFT" => "fft.md",
             "HDF5" => "api_hdf5.md",
             "NDArray Reference" => "api.md",
             "CUDA.jl Tasking" => "api_cuda.md",

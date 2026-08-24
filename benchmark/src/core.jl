@@ -39,6 +39,16 @@ function total_flops end
 function initialize end
 function run! end
 
+# Internal adapter for benchmark generators that share a quoted step body.
+function _define_accelerated_definition(signature, body, form=:function)
+    if form === :function
+        return cuNumeric._accelerate_expand(Expr(:function, signature, body), @__MODULE__)
+    end
+    scoped = form === :begin ? Expr(:block, body.args...) : Expr(:let, body)
+    call = Expr(:macrocall, Symbol("@accelerate"), LineNumberNode(0), scoped)
+    return Expr(:function, signature, Expr(:block, Base.macroexpand(@__MODULE__, call)))
+end
+
 # Maps a benchmarks.toml table name to its benchmark type. Each benchmark file
 # registers itself via `register_benchmark`.
 const BENCHMARKS = Dict{String,Type}()

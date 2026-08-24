@@ -55,6 +55,19 @@ void* nda_store_to_ndarray(legate::LogicalStore st) {
   return static_cast<void*>(new CN_NDArray{cupynumeric::as_array(st)});
 }
 
+// Legate.jl wraps ManualTask::add_input/add_output for a whole partition, but
+// not the overloads taking a projection. GEEV needs one: its eigenvalue store
+// has one fewer dimension than the launch domain. Julia picks the source
+// dimensions; this only translates them into a SymbolicPoint.
+static legate::SymbolicPoint make_projection(const std::vector<int32_t>& dims) {
+  std::vector<legate::SymbolicExpr> exprs;
+  exprs.reserve(dims.size());
+  for (auto d : dims) {
+    exprs.push_back(legate::dimension(static_cast<uint32_t>(d)));
+  }
+  return legate::SymbolicPoint{std::move(exprs)};
+}
+
 #if LEGATE_DEFINED(LEGATE_USE_CUDA)
 void register_tasks() {
   auto library = get_lib();
@@ -69,6 +82,7 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   wrap_binary_ops(mod);
   wrap_unary_reds(mod);
   wrap_linalg_ops(mod);
+  wrap_fft_ops(mod);
   wrap_bitgenerator_ops(mod);
 
   using jlcxx::ParameterList;
@@ -98,6 +112,35 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   mod.method("_get_store", &get_store);
   mod.method("get_lib", &get_lib);
   mod.method("nda_store_to_ndarray", &nda_store_to_ndarray);
+
+  // True when the loaded cuSolver provides cusolverDnXgeev. Without it
+  // cupynumeric has no GPU eigenvalue kernel for general matrices.
+  mod.method("cusolver_has_geev", &cupynumeric_cusolver_has_geev);
+
+  mod.method("add_input_proj",
+             [](legate::ManualTask& task,
+                std::shared_ptr<legate::LogicalStorePartition> part,
+                const std::vector<int32_t>& dims) {
+               task.add_input(*part, make_projection(dims));
+             });
+  mod.method("add_output_proj",
+             [](legate::ManualTask& task,
+                std::shared_ptr<legate::LogicalStorePartition> part,
+                const std::vector<int32_t>& dims) {
+               task.add_output(*part, make_projection(dims));
+             });
+
+  // Marking a task as throwing also grows its leaf allocation pools by
+  // --max-exception-size (4096 bytes by default), which the cupynumeric
+  // decomposition tasks rely on: their mapper only declares enough zero-copy
+  // memory for a single status flag, while the batched GPU kernels allocate one
+  // per matrix. cupynumeric's own Python launchers always set this.
+  mod.method("task_throws_exception", [](legate::ManualTask& task, bool value) {
+    task.throws_exception(value);
+  });
+  mod.method("task_throws_exception", [](legate::AutoTask& task, bool value) {
+    task.throws_exception(value);
+  });
 
   // Legate.jl Scalar has no vector constructors. BITGENERATOR (and similar)
   // tasks take fixed-array scalars; these helpers pack them from Julia

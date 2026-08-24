@@ -5,7 +5,7 @@ Benchmarks are declared in `benchmarks.toml`. `run.jl` parses it.
 ## Running
 
 ```bash
-julia --project run.jl     # runs whatever benchmarks.toml configures
+julia --project=. run.jl   # runs whatever benchmarks.toml configures
 ```
 
 `run.jl` runs each (benchmark, backend) pair in its own process via
@@ -35,7 +35,7 @@ n_warmup = 5
 n_iter   = 1000
 n_trial  = 5
 
-[[gemm]]            # name registered in src/benchmarks.jl
+[[gemm]]            # name registered under src/benchmarks/
 T    = "Float32"     # element type
 gpus = 1
 cpus = 2
@@ -58,6 +58,10 @@ two axes:
 `fusion` toggles cuNumeric broadcast fusion (`true`/`false` or `"on"`/`"off"`,
 default `true`); it only affects cuNumeric, so comparison backends run once, not
 per variant.
+
+Benchmark names are defined by the registered benchmark implementations. A
+benchmark may expose baseline, optimized, backend-specific, or other variants;
+the harness treats each name uniformly and records each result independently.
 
 Each zipped field must be one of:
 
@@ -82,3 +86,14 @@ M    = [150, 300, 600]          #
 When `T = ["Float32", "Float64"]` and a length-2 `N`/`M` sweep you get all **4**
 combinations, not a paired `Float32 -> N[1], Float64 -> N[2]`. To pin a type
 to a specific size, use separate `[[name]]` blocks.
+
+## Plotting
+
+```bash
+julia --project=benchmark benchmark/plot_results.jl
+```
+
+The plotter reads the result files in the selected results directory and writes
+one weak-scaling figure per benchmark, plus aggregate fusion and no-fusion
+figures when those result groups are present. Outputs are grouped under a
+subdirectory named for the shared benchmark prefix.

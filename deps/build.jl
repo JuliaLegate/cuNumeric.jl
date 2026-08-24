@@ -42,7 +42,7 @@ function build_cpp_wrapper(
 )
     @info "libcunumeric_jl_wrapper: Building C++ Wrapper Library"
     isdir(install_root) && (rm(install_root; recursive=true); mkdir(install_root))
-    bld_command = `$(joinpath(repo_root, "scripts/build_cpp_wrapper.sh")) $repo_root $cupynumeric_loc $legate_loc $blas_loc $install_root 8`
+    bld_command = `$(joinpath(repo_root, "scripts/build_cpp_wrapper.sh")) $repo_root $cupynumeric_loc $legate_loc $blas_loc $install_root $(Threads.nthreads())`
     return BuildTools.run_build_wrapper_script(
         repo_root, bld_command; cuda_root, cuda_enabled, log_dir=@__DIR__
     )

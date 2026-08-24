@@ -333,6 +333,38 @@ function run_unary_tests(types; include_bool_reductions::Bool=false)
             end
         end
 
+        # All-positive: |sum| ≈ Σ|xᵢ|, so the Higham input-magnitude floor is
+        # unnecessary. Keep O(n) rtol for association; this still flags a
+        # wrong kernel that cancellation tols would swallow.
+        @testset "sum no cancellation" begin
+            @testset for T in types
+                T <: AbstractFloat || continue
+                x = my_rand(T, N; L=one(T), R=T(1000))
+                ndx = @allowscalar NDArray(x)
+                allowscalar() do
+                    @test isapprox(
+                        sum(x),
+                        unwrap(sum(ndx));
+                        atol=atol(T) * N,
+                        rtol=reduction_rtol(T, N),
+                    )
+                end
+                x2 = my_rand(T, isqrt(N), isqrt(N); L=one(T), R=T(1000))
+                nd2 = @allowscalar NDArray(x2)
+                n1 = size(x2, 1)
+                allowpromotion(true) do
+                    allowscalar() do
+                        @test safe_compare(
+                            sum(x2; dims=1),
+                            sum(nd2; dims=1),
+                            atol(T) * n1,
+                            reduction_rtol(T, n1),
+                        )
+                    end
+                end
+            end
+        end
+
         if include_bool_reductions
             # Test things that only work on Booleans
             julia_bools = rand(Bool, N)

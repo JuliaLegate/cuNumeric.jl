@@ -41,23 +41,26 @@ end
 
 get_n_dim(ptr::NDArray_t) = Int(ccall((:nda_array_dim, libnda), Int32, (NDArray_t,), ptr))
 
-abstract type AbstractNDArray{T<:SUPPORTED_TYPES,N} end
+abstract type AbstractNDArray{T<:SUPPORTED_TYPES,N} <: AbstractArray{T,N} end
+
+# Runtime padding uses an abstract field to break the recursive storage definition.
+abstract type AbstractPaddedStorage{T,N} end
 
 @doc"""
 The NDArray type represents a multi-dimensional array in cuNumeric.
 It is a wrapper around a Legate array and provides various methods for array manipulation and operations.
 Finalizer calls `nda_destroy_array` to clean up the underlying Legate array when the NDArray is garbage collected.
 """
-mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
+mutable struct NDArray{T,N,P} <: AbstractNDArray{T,N}
     ptr::NDArray_t
     nbytes::Int64
-    padding::Union{Nothing,NTuple{N,Int}}
+    padding::Union{Nothing,AbstractPaddedStorage{T,N}}
     parent::P
 
     function NDArray(ptr::NDArray_t, ::Type{T}, ::Val{N}) where {T,N}
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
-        handle = new{T,N,false,Nothing}(ptr, nbytes, nothing, nothing)
+        handle = new{T,N,Nothing}(ptr, nbytes, nothing, nothing)
         finalizer(_finalize_ndarray!, handle)
         return handle
     end
@@ -66,26 +69,53 @@ mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
     function NDArray(ptr::NDArray_t, ::Type{T}, ::Val{N}, parent::P) where {T,N,P}
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
-        handle = new{T,N,false,P}(ptr, nbytes, nothing, parent)
+        handle = new{T,N,P}(ptr, nbytes, nothing, parent)
         finalizer(_finalize_ndarray!, handle)
         return handle
     end
+end
+
+struct PaddedStorage{T,N} <: AbstractPaddedStorage{T,N}
+    backing::NDArray{T,N,Nothing}
+    staging::Union{Nothing,NDArray{T,N,NDArray{T,N,Nothing}}}
+    shape::NTuple{N,Int}
+end
+
+# Narrow the abstract field to its concrete storage type.
+@inline _padding(arr::NDArray{T,N}) where {T,N} =
+    arr.padding::Union{Nothing,PaddedStorage{T,N}}
+
+function _finalize_padded_storage!(storage::PaddedStorage)
+    !isnothing(storage.staging) && finalize(storage.staging)
+    finalize(storage.backing)
+    return nothing
+end
+
+function _destroy_padded_storage!(storage::PaddedStorage)
+    !isnothing(storage.staging) && destroy!(storage.staging)
+    destroy!(storage.backing)
+    return nothing
 end
 
 # May run off the launch thread, so defer the Legate free to drain_pending_frees!.
 # Accounting is atomic and safe to do here immediately.
 function _finalize_ndarray!(arr::NDArray)
     ptr = arr.ptr
-    ptr == C_NULL && return nothing
     arr.ptr = Ptr{Cvoid}(0)
     nbytes = arr.nbytes
     arr.nbytes = 0
-    nbytes > 0 && register_free!(nbytes)
-    _enqueue_free!(ptr)
+    padding = _padding(arr)
+    arr.padding = nothing
+
+    if ptr != C_NULL
+        nbytes > 0 && register_free!(nbytes)
+        _enqueue_free!(ptr)
+    end
+    !isnothing(padding) && _finalize_padded_storage!(padding)
     return nothing
 end
 
-@inline _is_ndarray_slice(arr::NDArray) = arr.parent isa NDArray
+@inline _is_ndarray_slice(arr::NDArray) = arr.parent isa NDArray || !isnothing(_padding(arr))
 
 """
     destroy!(arr::NDArray)
@@ -102,6 +132,9 @@ function destroy!(arr::NDArray)
         arr.nbytes = 0
         nbytes > 0 && register_free!(nbytes)
     end
+    padding = _padding(arr)
+    arr.padding = nothing
+    !isnothing(padding) && _destroy_padded_storage!(padding)
     return arr
 end
 
@@ -511,7 +544,7 @@ function nda_trace(
             (NDArray_t, Int32, Int32, Int32, Legate.LegateTypeAllocated),
             arr.ptr, offset, a1, a2, legate_type)
     end
-    return NDArray(ptr, T, Val(1))
+    return NDArray(ptr, T, Val(0))
 end
 
 # transpose reverses the axes: element type and rank are preserved
@@ -522,6 +555,62 @@ function nda_transpose(arr::NDArray{T,N}) where {T,N}
             arr.ptr)
     end
     return NDArray(ptr, T, Val(N))
+end
+
+# Arbitrary axis permutation; rank is preserved. `axes` are 0-based.
+function nda_transpose_axes(arr::NDArray{T,N}, axes::Vector{Int32}) where {T,N}
+    axes_c = collect(Int32, axes)
+    ptr = @task_scope "permutedims" begin
+        ccall((:nda_transpose_axes, libnda),
+            NDArray_t, (NDArray_t, Ptr{Int32}, Int32),
+            arr.ptr, axes_c, Int32(length(axes_c)))
+    end
+    return NDArray(ptr, T, Val(N))
+end
+
+# Rank-changing: drop size-1 axes. Empty `axes` drops every size-1 axis.
+function nda_squeeze(arr::NDArray, axes::Vector{Int32})
+    axes_c = collect(Int32, axes)
+    ptr = @task_scope "squeeze" begin
+        ccall((:nda_squeeze, libnda),
+            NDArray_t, (NDArray_t, Ptr{Int32}, Int32),
+            arr.ptr, axes_c, Int32(length(axes_c)))
+    end
+    return NDArray(ptr)
+end
+
+function nda_diagonal(arr::NDArray, offset::Int32, axis1::Int32, axis2::Int32)
+    ptr = @task_scope "diagonal" begin
+        ccall((:nda_diagonal, libnda),
+            NDArray_t, (NDArray_t, Int32, Int32, Int32),
+            arr.ptr, offset, axis1, axis2)
+    end
+    return NDArray(ptr)
+end
+
+function nda_contract(
+    out::NDArray,
+    lhs_modes::Vector{UInt8},
+    rhs1::NDArray,
+    rhs1_modes::Vector{UInt8},
+    rhs2::NDArray,
+    rhs2_modes::Vector{UInt8},
+    extent_keys::Vector{UInt8},
+    extents::Vector{Int32},
+)
+    @task_scope "contract" begin
+        ccall((:nda_contract, libnda),
+            Cvoid,
+            (
+                NDArray_t, Ptr{UInt8}, Int32, NDArray_t, Ptr{UInt8}, Int32,
+                NDArray_t, Ptr{UInt8}, Int32, Ptr{UInt8}, Ptr{Int32}, Int32,
+            ),
+            out.ptr, lhs_modes, Int32(length(lhs_modes)),
+            rhs1.ptr, rhs1_modes, Int32(length(rhs1_modes)),
+            rhs2.ptr, rhs2_modes, Int32(length(rhs2_modes)),
+            extent_keys, extents, Int32(length(extents)))
+    end
+    return out
 end
 
 function nda_attach_external(arr::Array{T,N}; shape::Dims{N}=size(arr)) where {T,N}
@@ -627,9 +716,7 @@ end
 
 Return the size of the given `NDArray`.
 """
-shape(arr::NDArray{<:Any,N,true}) where {N} = arr.padding
-
-function shape(arr::NDArray{<:Any,N,false}) where {N}
+function shape(arr::NDArray{<:Any,N}) where {N}
     shp = cuNumeric.nda_array_shape(arr)
     return ntuple(i -> Int(shp[i]), Val(N))
 end

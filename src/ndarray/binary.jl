@@ -140,8 +140,10 @@ function Base.:(+)(rhs1::NDArray{A,N}, rhs2::NDArray{B,N}) where {A,B,N}
     return _nda_binary_op_promoted!(out, cuNumeric.ADD, rhs1, rhs2)
 end
 
-Base.:(*)(val::V, arr::NDArray{A}) where {A,V} = _mul_scalar(__my_promote_type(A, V), val, arr)
-Base.:(*)(arr::NDArray{A}, val::V) where {A,V} = val * arr
+function Base.:(*)(val::V, arr::NDArray{A}) where {A,V<:Number}
+    return _mul_scalar(__my_promote_type(A, V), val, arr)
+end
+Base.:(*)(arr::NDArray{A}, val::V) where {A,V<:Number} = val * arr
 
 _mul_scalar(::Type{T}, val, arr::NDArray{T}) where {T} = nda_multiply_scalar(arr, T(val))
 function _mul_scalar(::Type{U}, val, arr::NDArray) where {U}

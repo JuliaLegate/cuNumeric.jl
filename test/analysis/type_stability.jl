@@ -17,6 +17,32 @@
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 
+@accelerate function _type_stable_accelerate_function(a, b)
+    intermediate = @. a + b
+    return @. intermediate * 2.0f0
+end
+
+function _type_stable_accelerate_begin(a, b)
+    return @accelerate begin
+        intermediate = @. a + b
+        result = @. intermediate * 2.0f0
+        (intermediate, result)
+    end
+end
+
+function _type_stable_accelerate_let(a, b)
+    return @accelerate let
+        intermediate = @. a + b
+        @. intermediate * 2.0f0
+    end
+end
+
+function _type_stable_accelerate_expr(a, b)
+    return @accelerate (@. (a + b) * 2.0f0)
+end
+
+_type_stable_cuda_argtypes(task::cuNumeric.CUDATask) = task.argtypes
+
 @testset verbose = true "core" begin
     a = cuNumeric.zeros(5)
     b = cuNumeric.zeros(Float64, 3, 4)
@@ -66,6 +92,18 @@ end
     @test @inferred(cuNumeric.NDArray(rand(Float32, 3, 3))) !== nothing
 end
 
+@testset verbose = true "custom CUDA metadata" begin
+    task = cuNumeric.CUDATask("kernel", (Float32, Int32))
+    @test isconcretetype(typeof(task))
+    @test all(isconcretetype, fieldtypes(typeof(task)))
+    @test @inferred(_type_stable_cuda_argtypes(task)) == DataType[Float32, Int32]
+
+    storage_type = cuNumeric.PaddedStorage{Float32,1}
+    @test all(isconcretetype, Base.uniontypes(fieldtype(storage_type, :backing)))
+    @test all(isconcretetype, Base.uniontypes(fieldtype(storage_type, :staging)))
+    @test all(isconcretetype, Base.uniontypes(fieldtype(storage_type, :shape)))
+end
+
 @testset verbose = true "conversion" begin
     # cast to array, as_type
     a = cuNumeric.zeros(Float64, 5, 5)
@@ -104,6 +142,23 @@ end
     @test @inferred(((a .* b) .+ a) .* 2.0f0) !== nothing
 end
 
+@testset verbose = true "@accelerate forms" begin
+    a = cuNumeric.ones(Float32, 3, 3)
+    b = cuNumeric.ones(Float32, 3, 3)
+
+    function_result = @inferred _type_stable_accelerate_function(a, b)
+    @test function_result isa NDArray{Float32,2}
+
+    begin_result = @inferred _type_stable_accelerate_begin(a, b)
+    @test begin_result isa Tuple{NDArray{Float32,2},NDArray{Float32,2}}
+
+    let_result = @inferred _type_stable_accelerate_let(a, b)
+    @test let_result isa NDArray{Float32,2}
+
+    expr_result = @inferred _type_stable_accelerate_expr(a, b)
+    @test expr_result isa NDArray{Float32,2}
+end
+
 @testset verbose = true "solve" begin
     # native float/complex, 2D and 1D rhs
     @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_SOLVE_TYPES)
@@ -127,14 +182,14 @@ end
 @testset verbose = true "svd" begin
     @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_SVD_TYPES)
         A = cuNumeric.NDArray(T[1 0; 0 1])
-        @test @inferred(cuNumeric.svd(A)) !== nothing
-        @test @inferred(cuNumeric.svd(A, false)) !== nothing
+        @test @inferred(LinearAlgebra.svd(A)) !== nothing
+        @test @inferred(LinearAlgebra.svd(A; full=true)) !== nothing
     end
 
     @testset "promote $(T)" for T in (Int32, Int64, Bool)
         A = cuNumeric.NDArray(T[1 0; 0 1])
         allowpromotion() do
-            @test @inferred(cuNumeric.svd(A)) !== nothing
+            @test @inferred(LinearAlgebra.svd(A)) !== nothing
         end
     end
 end
@@ -142,14 +197,67 @@ end
 @testset verbose = true "qr" begin
     @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_QR_TYPES)
         A = cuNumeric.NDArray(T[1 0; 0 1])
-        @test @inferred(cuNumeric.qr(A)) !== nothing
+        @test @inferred(LinearAlgebra.qr(A)) !== nothing
     end
 
     @testset "promote $(T)" for T in (Int32, Int64, Bool)
         A = cuNumeric.NDArray(T[1 0; 0 1])
         allowpromotion() do
-            @test @inferred(cuNumeric.qr(A)) !== nothing
+            @test @inferred(LinearAlgebra.qr(A)) !== nothing
         end
+    end
+end
+
+@testset verbose = true "cholesky" begin
+    @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_CHOLESKY_TYPES)
+        A = cuNumeric.NDArray(Matrix{T}(I, 2, 2))
+        @test @inferred(LinearAlgebra.cholesky(A)) !== nothing
+        B = cuNumeric.NDArray(reshape(Matrix{T}(I, 2, 2), 1, 2, 2))
+        @test @inferred(cuNumeric.batched_cholesky(B)) !== nothing
+    end
+
+    @testset "promote $(T)" for T in (Int32, Int64, Bool)
+        A = cuNumeric.NDArray(T[1 0; 0 1])
+        allowpromotion() do
+            @test @inferred(LinearAlgebra.cholesky(A)) !== nothing
+        end
+    end
+end
+
+@testset verbose = true "eigen" begin
+    @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_EIG_TYPES)
+        A = cuNumeric.NDArray(Matrix{T}(I, 2, 2))
+        @test @inferred(LinearAlgebra.eigen(A)) !== nothing
+        @test @inferred(LinearAlgebra.eigvals(A)) !== nothing
+        B = cuNumeric.NDArray(reshape(Matrix{T}(I, 2, 2), 1, 2, 2))
+        @test @inferred(cuNumeric.batched_eigen(B)) !== nothing
+        @test @inferred(cuNumeric.batched_eigvals(B)) !== nothing
+    end
+
+    @testset "promote $(T)" for T in (Int32, Int64, Bool)
+        A = cuNumeric.NDArray(T[1 0; 0 1])
+        allowpromotion() do
+            @test @inferred(LinearAlgebra.eigen(A)) !== nothing
+        end
+    end
+end
+
+@testset verbose = true "fft" begin
+    if cuNumeric.HAS_CUDA
+        a = cuNumeric.zeros(ComplexF32, 8)
+        b = cuNumeric.zeros(ComplexF32, 4, 6)
+        @test @inferred(fft(a)) !== nothing
+        @test @inferred(ifft(a)) !== nothing
+        @test @inferred(fft(b, 1)) !== nothing
+        @test @inferred(cuNumeric.batched_fft(b)) !== nothing
+    end
+end
+
+@testset verbose = true "batched_solve" begin
+    @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_SOLVE_TYPES)
+        A = cuNumeric.NDArray(reshape(T[2 1; 5 7], 1, 2, 2))
+        b = cuNumeric.NDArray(reshape(T[11, 13], 1, 2, 1))
+        @test @inferred(cuNumeric.batched_solve(A, b)) !== nothing
     end
 end
 
@@ -158,7 +266,7 @@ end
         M = cuNumeric.zeros(T, 4, 3)
         sq = cuNumeric.zeros(T, 5, 5)
         v = cuNumeric.zeros(T, 8)
-        @test @inferred(cuNumeric.eye(T, 5)) !== nothing
+        @test @inferred(NDArray{T}(I, 5, 5)) !== nothing
         @test @inferred(cuNumeric.transpose(M)) !== nothing
         @test @inferred(cuNumeric.trace(sq)) !== nothing
         @test @inferred(cuNumeric.diag(sq)) !== nothing

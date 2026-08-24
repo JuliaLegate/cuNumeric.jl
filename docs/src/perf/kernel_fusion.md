@@ -1,61 +1,47 @@
 # Kernel Fusion
 
-On CUDA, nested broadcast expressions are fused into a single PTX kernel when fusion is enabled (the default). There is no separate `@fuse` macro. You write ordinary Julia broadcast code, and cuNumeric compiles eligible trees into one kernel instead of launching one op at a time.
+When CUDA is available, cuNumeric can compile an eligible nested broadcast tree into one PTX kernel instead of launching one operation at a time. CPU execution follows the normal unfused path.
 
-Prefer Julia's `@.` macro for multi-op elementwise expressions. Placing `.` on every operator by hand is easy to get wrong: missing a dot on unary negation or addition silently changes the meaning, and it can also break fusion by splitting work into the wrong ops.
+Prefer Julia's `@.` macro for multi-operation elementwise expressions so every operator is dotted:
 
 ```julia
-# Easy to miss the dot on negation
+# A missing dot on unary negation changes the expression and can prevent fusion.
 y .= .-a .+ b .* c
 
-# Prefer: @. dots every operator, which is clearer and fusion-friendly
+# Prefer this form.
 y .= @. -a + b * c
 ```
 
-## Avoid preallocated intermediate broadcast buffers
+Fusion requires array leaves with the same shape and at least `FUSE_BROADCAST_MIN_OPS` broadcast operations (default: 2). Shape-mismatched broadcasts such as `matrix .+ vector` use the unfused path.
 
-Preallocation is useful for a final output or a buffer that must persist across
-iterations. It can be counterproductive for a single-use intermediate inside
-`@analyze_lifetimes`, however. An in-place `.=` assignment is an observable
-mutation, so inter-statement broadcast fusion treats it as a kernel boundary:
+## Fuse across statements with `@accelerate`
 
-```julia
-tmp = cuNumeric.zeros(Float32, N, N)
-result = cuNumeric.zeros(Float32, N, N)
-
-@analyze_lifetimes begin
-    tmp .= @. A + B
-    result .= @. tmp * C + 1.0f0
-end
-```
-
-This materializes `tmp` before the second expression and requires separate
-kernel launches. Instead, use an ordinary assignment for a single-use
-intermediate and keep `.=` for the final destination:
+An ordinary assignment lets `@accelerate` substitute a single-use producer into its consumer:
 
 ```julia
-result = cuNumeric.zeros(Float32, N, N)
-
-@analyze_lifetimes begin
+@accelerate function update!(result, A, B, C)
     tmp = @. A + B
     result .= @. tmp * C + 1.0f0
+    return result
 end
 ```
 
-The inter-statement pass can substitute `tmp` into its only consumer, producing
-the equivalent of `result .= @. (A + B) * C + 1.0f0`. The intermediate is never
-materialized, so the full expression can run as one fused kernel.
+This can become the equivalent of `result .= @. (A + B) * C + 1.0f0`. The rewrite is conservative: the producer must have one use, no intervening statement may invalidate its inputs, and the normal fusion requirements still apply.
 
-This rewrite is intentionally conservative: the intermediate must have one
-use, no intervening statement may invalidate its inputs, and all normal fusion
-requirements still apply. Keep preallocation when an intermediate is reused,
-must preserve mutation semantics, or cannot be fused. Use
-[`BCAST_FUSION_DEBUG`](../debugging.md#inspect-fused-broadcasts-with-bcast_fusion_debug)
-to confirm whether the rewrite occurred.
+Do not preallocate a single-use intermediate with `.=` merely to avoid allocation:
 
-Fusion applies when CUDA is available, the array leaves share the same shape, and the expression has at least `FUSE_BROADCAST_MIN_OPS` ops (default 2). Otherwise cuNumeric falls back to evaluating one op at a time. Shape-mismatched broadcasts such as `matrix .+ vector` use the unfused path.
+```julia
+tmp .= @. A + B
+result .= @. tmp * C + 1.0f0
+```
 
-Toggle fusion through `CNPreferences` (restart Julia after changing these):
+The mutation of `tmp` is observable, so it remains a kernel boundary. Keep preallocation when the intermediate is reused or its mutation must be visible.
+
+The `begin` form has different ownership semantics: named bindings remain live. On CUDA, an eligible same-shape chain can still be emitted as one multi-output kernel that materializes each binding. See [Accelerate Array Code](./reduce_allocations.md) for all macro forms.
+
+## Configure and inspect fusion
+
+Set preferences in one Julia process, then restart Julia:
 
 ```julia
 using CNPreferences
@@ -63,14 +49,7 @@ using CNPreferences
 CNPreferences.enable_broadcast_fusion!()          # default
 CNPreferences.disable_broadcast_fusion!()
 CNPreferences.set_broadcast_fusion_min_ops!(2)    # default
-CNPreferences.set_broadcast_fusion_min_ops!(1)    # also fuse single-ops
+CNPreferences.set_broadcast_fusion_min_ops!(1)    # include single-op broadcasts
 ```
 
-What `set_broadcast_fusion_min_ops!` controls:
-
-- **`2` (default):** only trees with two or more ops fuse. Example: `y .= @. a * b + c` can fuse; `y .= cos.(x)` does not. Keeping single-ops on the unfused C-API path avoids PTX compile overhead when there is little to gain.
-- **`1`:** every eligible broadcast can fuse, including unary / single-op forms. Prefer this when you want uniform fused behavior (for example in tests) rather than for typical apps.
-
-The threshold counts `Broadcasted` nodes in the expression tree. Set it through `CNPreferences`, then restart Julia. See [CNPreferences](../api_preferences.md).
-
-To inspect a fused launch or a lifetime rewrite, see [Debugging](../debugging.md). For the implementation pipeline, see [Internals](../internals.md).
+The default threshold avoids PTX compilation overhead when there is little work to combine. See [CNPreferences](../api_preferences.md) for preference details and [`BCAST_FUSION_DEBUG`](../debugging.md#inspect-fused-broadcasts-with-bcast_fusion_debug) to confirm which path ran.
