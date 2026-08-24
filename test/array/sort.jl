@@ -44,12 +44,6 @@ function _sort_fixture(::Type{T}) where {T}
     return T[10, 3, 12, 5, 2, 4, 8, 9, 7, 6, 11, 1]
 end
 
-function _dup_fixture(::Type{T}) where {T}
-    T <: Bool && return Bool[1, 0, 1, 0, 0, 1]
-    T <: Complex && return T[10 + 3im, 2 + 4im, 10 + 3im, 2 + 4im, 1, 1]
-    return T[10, 3, 12, 5, 2, 3, 8, 8, 7, 6, 10, 1]
-end
-
 function _search_haystack(::Type{T}) where {T}
     T <: Bool && return Bool[0, 0, 1, 1]
     return T[1, 2, 2, 4, 5, 7]
@@ -99,39 +93,6 @@ end
     end
 end
 
-@testset "sortperm" begin
-    @testset verbose = true for T in SORT_TYPES
-        A = _sort_fixture(T)
-        nda = cuNumeric.NDArray(A)
-        p = Array(cuNumeric.sortperm(nda))
-        sortedA = T <: Complex ? Base.sort(A; by=_lex_complex) : Base.sort(A)
-        @test A[p] == sortedA
-        # Exact perm is only well-defined when values are unique (Bool/Complex
-        # fixtures have ties; default cupynumeric sort is unstable).
-        if allunique(A)
-            @test p == (T <: Complex ? Base.sortperm(A; by=_lex_complex) : Base.sortperm(A))
-        end
-        # 1-d only, same as argmax/argmin
-        @test_throws MethodError cuNumeric.sortperm(cuNumeric.NDArray(reshape(A, 3, 4)); dims=1)
-    end
-end
-
-@testset "sortperm stable duplicates" begin
-    @testset verbose = true for T in SORT_TYPES
-        A = _dup_fixture(T)
-        nda = cuNumeric.NDArray(A)
-        @test Array(cuNumeric.sortperm(nda; stable=true)) == (
-            if T <: Complex
-                Base.sortperm(A; alg=Base.MergeSort, by=_lex_complex)
-            else
-                Base.sortperm(A; alg=Base.MergeSort)
-            end
-        )
-        @test Array(cuNumeric.sort(nda; stable=true)) ==
-            (T <: Complex ? Base.sort(A; by=_lex_complex) : Base.sort(A))
-    end
-end
-
 @testset "unsupported kwargs and not Base.sort" begin
     v = cuNumeric.NDArray(Int32[3, 1, 2])
     @test_throws MethodError cuNumeric.sort(v; alg=Base.QuickSort)
@@ -140,7 +101,6 @@ end
     # cuNumeric.sort is not Base.sort: Julia arrays are a MethodError
     @test_throws MethodError cuNumeric.sort([3, 1, 2])
     @test_throws MethodError cuNumeric.sort!([3, 1, 2])
-    @test_throws MethodError cuNumeric.sortperm([3, 1, 2])
     @test_throws MethodError cuNumeric.searchsortedfirst([1, 2, 3], 2)
     @test_throws MethodError cuNumeric.unique([1, 1, 2])
 end

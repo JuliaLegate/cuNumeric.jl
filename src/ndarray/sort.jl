@@ -60,19 +60,6 @@ function sort!(arr::NDArray{T,N}; dims::Integer, stable::Bool=false) where {T,N}
     return nda_sort_inplace(arr, _checked_sort_axis(N, dims), stable)
 end
 
-@doc"""
-    cuNumeric.sortperm(v::NDArray{T,1}; stable::Bool=false)
-
-1-based permutation indices as an `NDArray{Int64,1}`. 1-d only, same as
-[`argmax`](@ref) / [`argmin`](@ref): cupynumeric argsort is along-axis, and
-mapping that to Julia linear indices for `N>1` is not supported.
-
-Not `Base.sortperm`. Same `stable` kwarg as [`cuNumeric.sort`](@ref).
-"""
-function sortperm(arr::NDArray{T,1}; stable::Bool=false) where {T}
-    return _indices_to_one_based(nda_argsort(arr, Int32(-1), stable))
-end
-
 function _searchsorted_impl(a::NDArray{TA,1}, v::NDArray{TV,N}, left::Bool) where {TA,TV,N}
     (TA <: Complex || TV <: Complex) &&
         throw(ArgumentError("searchsorted is not supported for complex arrays"))

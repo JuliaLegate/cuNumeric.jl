@@ -169,7 +169,6 @@ end
     @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_NUMERIC_TYPES)
         v = cuNumeric.zeros(T, 8)
         @test @inferred(cuNumeric.sort(v)) !== nothing
-        @test @inferred(cuNumeric.sortperm(v)) !== nothing
         if !(T <: Complex)
             @test @inferred(cuNumeric.searchsortedfirst(v, zero(T))) !== nothing
         end
