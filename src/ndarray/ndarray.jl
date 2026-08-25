@@ -209,6 +209,7 @@ function _copy_to_julia_array(arr::NDArray{T,N}) where {T,N}
     attached = NDArray(ptr, T, Val(N), out)
     copyto!(attached, arr)
     get_ptr(attached) # Block until the copy into `out` completes.
+    destroy!(attached)
     return out
 end
 

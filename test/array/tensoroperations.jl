@@ -218,14 +218,18 @@ using TensorOperations: TensorOperations as TO
         D = NDArray(hostD)
         GC.gc()
         cuNumeric.drain_pending_frees!()
-        baseline = cuNumeric.current_device_bytes[]
+        current_bytes =
+            cuNumeric.HAS_CUDA ?
+            cuNumeric.current_device_bytes :
+            cuNumeric.current_host_bytes
+        baseline = current_bytes[]
 
         @tensor C[i, l] := A[i, j] * B[j, k] * D[k, l]
-        @test cuNumeric.current_device_bytes[] == baseline + C.nbytes
+        @test current_bytes[] == baseline + C.nbytes
         @test Array(C) ≈ hostA * hostB * hostD
 
         TO.tensorfree!(C)
         @test C.ptr == C_NULL
-        @test cuNumeric.current_device_bytes[] == baseline
+        @test current_bytes[] == baseline
     end
 end
