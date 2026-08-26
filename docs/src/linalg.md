@@ -62,8 +62,11 @@ A = cuNumeric.rand(Float64, 64, 32)
 B = cuNumeric.rand(Float64, 32, 16)
 
 @tensor opt=true C[i, j] := A[i, k] * B[k, j]
-@tensor squared_norm = conj(C[i, j]) * C[i, j]
+@allowscalar @tensor squared_norm = conj(C[i, j]) * C[i, j]
 ```
+
+A fully contracted `@tensor` result is a Julia scalar, so it goes through
+`tensorscalar` and needs `@allowscalar`. Tensor results stay `NDArray`s.
 
 The extension is optional: TensorOperations is not loaded by cuNumeric itself.
 TensorOperations-created intermediate `NDArray`s are released eagerly after use.

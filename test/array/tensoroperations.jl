@@ -164,12 +164,14 @@ using TensorOperations: TensorOperations as TO
 
         matrix = reshape(ComplexF64.(1:9) .+ im .* ComplexF64.(9:-1:1), 3, 3)
         M = NDArray(matrix)
-        @tensor scalar_trace = M[i, i]
+        @test_throws ErrorException (@tensor t = M[i, i])
+        scalar_trace = @allowscalar @tensor(t = M[i, i])
         @test scalar_trace isa ComplexF64
         @test scalar_trace == sum(matrix[i, i] for i in axes(matrix, 1))
 
         conjugated_trace = TO.tensortrace(M, ((), ()), ((1,), (2,)), true)
-        @test TO.tensorscalar(conjugated_trace) ==
+        @test_throws ErrorException TO.tensorscalar(conjugated_trace)
+        @test (@allowscalar TO.tensorscalar(conjugated_trace)) ==
             sum(conj(matrix[i, i]) for i in axes(matrix, 1))
         TO.tensorfree!(conjugated_trace)
     end
@@ -204,7 +206,7 @@ using TensorOperations: TensorOperations as TO
         vhost = ComplexF64.(5:8) .- im .* ComplexF64.(1:4)
         u = NDArray(uhost)
         v = NDArray(vhost)
-        @tensor scalar_product = u[k] * v[k]
+        scalar_product = @allowscalar @tensor(s = u[k] * v[k])
         @test scalar_product isa ComplexF64
         @test scalar_product ≈ sum(uhost .* vhost)
     end

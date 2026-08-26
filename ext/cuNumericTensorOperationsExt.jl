@@ -232,7 +232,7 @@ end
 
 function TO.tensorscalar(C::CN.NDArray)
     ndims(C) == 0 || throw(DimensionMismatch("tensorscalar requires a rank-zero tensor"))
-    return cuNumeric.@allowscalar C[]
+    return C[]
 end
 
 end
