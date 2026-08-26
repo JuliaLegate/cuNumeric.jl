@@ -68,6 +68,12 @@ const post_gc_host_bytes = Atomic{Int64}(0)
 # how much new memory must accumulate before GC fires again
 const gc_hysteresis_frac = Ref{Float64}(0.05)
 
+function get_number_of_runtimes()
+    n = ccall((:nda_get_number_of_runtimes, libnda),
+        Int32, ())
+    return n
+end
+
 @doc"""
     init_gc!()
 

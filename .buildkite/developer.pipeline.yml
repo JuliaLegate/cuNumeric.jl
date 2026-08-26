@@ -18,12 +18,9 @@ steps:
               # Per version AND fusion: dev wrappers are ABI-specific, and same-depot
               # concurrent jobs contend on Pkg locks. Separate from the JLL cache.
               cache_dir: "${HOME}/.cache/julia-buildkite-plugin-developer-{{matrix.julia}}-{{matrix.fusion}}"
-        command: ".buildkite/run_developer_ci.sh"
-        artifact_paths:
-          - "deps/build.log"
-          - "deps/*.log"
-          - "deps/*.err"
-          - "*.log"
+              # Plugin defaults, plus dev for the cached libcxxwrap source build.
+              persist_depot_dirs: "packages,artifacts,compiled,logs,datadeps,scratchspaces,dev"
+        command: ".buildkite/run_isolated_developer_ci.sh"
         agents:
           queue: "cuda"
         timeout_in_minutes: 90

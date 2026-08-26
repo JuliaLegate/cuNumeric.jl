@@ -70,6 +70,7 @@ makedocs(;
             "HDF5" => "api_hdf5.md",
             "NDArray Reference" => "api.md",
             "CUDA.jl Tasking" => "api_cuda.md",
+            "Distributed Execution" => "api_distributed.md",
             "Internal API" => "api_internal.md",
         ],
     ],
