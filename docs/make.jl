@@ -40,6 +40,7 @@ makedocs(;
             "Gray-Scott" => "examples/grayscott.md",
             "Dynamic Mode Decomposition" => "examples/dmd.md",
             "Periodic Poisson (FFT)" => "examples/poisson_fft.md",
+            "Tensor Network Contraction" => "examples/tensor_network.md",
         ],
         "Performance Tips" => [
             "Kernel Fusion" => "perf/kernel_fusion.md",
