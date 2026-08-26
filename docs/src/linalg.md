@@ -61,7 +61,7 @@ using TensorOperations
 A = cuNumeric.rand(Float64, 64, 32)
 B = cuNumeric.rand(Float64, 32, 16)
 
-@tensor C[i, j] := A[i, k] * B[k, j]
+@tensor opt=true C[i, j] := A[i, k] * B[k, j]
 @tensor squared_norm = conj(C[i, j]) * C[i, j]
 ```
 

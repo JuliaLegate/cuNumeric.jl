@@ -6,7 +6,9 @@ Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 TOML = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+TensorOperations = "6aa20fa7-93e2-5fca-9bc0-fbd0db3c71a2"
 cuNumeric = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
+cuTENSOR = "011b41b2-24ef-40a8-b3eb-fa098493e9e1"
 
 [extras]
 LegatePreferences = "8028f36a-2b64-49e9-aa04-2d0933fd2ed9"

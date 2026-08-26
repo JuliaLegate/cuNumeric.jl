@@ -11,6 +11,10 @@ struct BenchmarkSpec
     gpus::Int
     cpus::Int
     fusion::Bool
+    cuda::Bool
+    n_warmup::Int
+    n_iter::Int
+    n_trial::Int
     args::Vector{Int}
 end
 
@@ -76,6 +80,10 @@ function parse_config(path)
             fusion = aslist(get(e, "fusion", true))
             N = aslist(e["N"])
             M = aslist(get(e, "M", 1))
+            cuda = get(e, "cuda", global_settings.cuda)
+            n_warmup = get(e, "n_warmup", global_settings.n_warmup)
+            n_iter = get(e, "n_iter", global_settings.n_iter)
+            n_trial = get(e, "n_trial", global_settings.n_trial)
 
             n = sweep_length(name, ["gpus" => gpus, "cpus" => cpus, "N" => N, "M" => M])
 
@@ -88,6 +96,10 @@ function parse_config(path)
                         sweep_value(gpus, i),
                         sweep_value(cpus, i),
                         parse_fusion(fuse),
+                        cuda,
+                        n_warmup,
+                        n_iter,
+                        n_trial,
                         [sweep_value(N, i), sweep_value(M, i)],
                     ),
                 )

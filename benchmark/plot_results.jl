@@ -45,6 +45,7 @@ const FAMILIES = [
     ("cunumeric_nofusion", "cuNumeric.jl (unfused)", "#4a3aa7", :diamond),
     ("cupynumeric", "cuPyNumeric", "#eb6834", :rect),
     ("CUDA.jl", "CUDA.jl", "#008300", :utriangle),
+    ("tensoroperations_cuda", "TensorOperations.jl / cuTENSOR", "#159a9c", :star5),
 ]
 
 const INK = "#0b0b0b"
@@ -173,7 +174,7 @@ function build_legend(series)
         grid=false, ticks=false)
     present = [(s.label, s.color, s.marker) for s in series]
     annotate!(pl, 0.015, 0.74, text("Series", 10, INK, :left))
-    xs = range(0.18, 0.80; length=max(length(present), 1))
+    xs = length(present) <= 1 ? (0.18,) : range(0.18, 0.80; length=length(present))
     for ((fam, color, marker), x) in zip(present, xs)
         swatch!(pl, x, 0.74, color, :solid, marker, fam)
     end

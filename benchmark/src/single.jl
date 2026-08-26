@@ -8,6 +8,8 @@
 using cuNumeric
 using CUDACore
 using LinearAlgebra
+using TensorOperations
+using cuTENSOR
 
 include("core.jl")
 const BENCHMARK_DIR = joinpath(@__DIR__, "benchmarks")
@@ -16,10 +18,16 @@ include.(filter(contains(r".jl$"), readdir(BENCHMARK_DIR; join=true)))
 # Resolve a TOML type string like "Float32" to the actual Julia type.
 parse_type(s) = getfield(Base, Symbol(s))::DataType
 
+cuda_clock() = (CUDACore.synchronize(; blocking=true); time_ns() / 1e3)
+
 # mod runs the kernels; label tags stdout; save_as names the results CSV.
 const BACKENDS = Dict(
-    "cunumeric" => (mod=cuNumeric, label="cuNumeric", save_as="cunumeric"),
-    "cudajl" => (mod=CUDACore, label="CUDA.jl", save_as="CUDA.jl"),
+    "cunumeric" => (
+        mod=cuNumeric, label="cuNumeric", save_as="cunumeric", clock=get_time_microseconds
+    ),
+    "cudajl" => (
+        mod=CUDACore, label="CUDA.jl", save_as="CUDA.jl", clock=cuda_clock
+    ),
 )
 
 function run_single(
@@ -34,13 +42,15 @@ function run_single(
     )
     bk = BACKENDS[backend]
 
-    # unfused cuNumeric runs land in their own CSV so they stay a distinct series
-    fused = cuNumeric.FUSE_BROADCAST_EXPRS
-    save_as = fused ? bk.save_as : "$(bk.save_as)_nofusion"
-    label = fused ? bk.label : "$(bk.label) (no fusion)"
-
     T = parse_type(T_str)
     b = build_benchmark(BENCHMARKS[name], T, N, M)
+
+    # unfused cuNumeric runs land in their own CSV so they stay a distinct series
+    fused = cuNumeric.FUSE_BROADCAST_EXPRS
+    default_save_as = fused ? bk.save_as : "$(bk.save_as)_nofusion"
+    default_label = fused ? bk.label : "$(bk.label) (no fusion)"
+    save_as = benchmark_backend_save_as(b, backend, default_save_as)
+    label = benchmark_backend_label(b, backend, default_label)
     gs = GlobalSettings(;
         n_warmup=n_warmup,
         n_iter=n_iter,
@@ -53,7 +63,7 @@ function run_single(
         "[$(label)] $(name) benchmark ($(T)) on $(N)x$(M) for $(n_iter) " *
         "iterations ($(n_warmup) warmup) x $(n_trial) trials",
     )
-    br = run_benchmark(b, gs; mod=bk.mod)
+    br = run_benchmark(b, gs; mod=bk.mod, clock=bk.clock)
     @printf("[%s] Mean Run Time: %.5f ± %.5f ms\n", label, mean(br.times_ms), _std(br.times_ms))
     @printf("[%s] FLOPS: %.5f ± %.5f GFLOPS\n", label, mean(br.gflops), _std(br.gflops))
     println("[$(label)] Correctness: $(br.correctness)")
