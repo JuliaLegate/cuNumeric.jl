@@ -48,8 +48,31 @@ Filter = t -> t isa Function && nameof(t) === :mul!
 
 ## Tensor contractions
 
-`contract` / `contract!` are the pairwise primitive behind a future
-TensorOperations.jl backend. They take **mode labels**, not einsum strings:
+Loading [TensorOperations.jl](https://quantumkithub.github.io/TensorOperations.jl/stable/)
+alongside cuNumeric activates the package extension for `NDArray`. Its `@tensor`
+API supports additions and permutations, traces, pairwise contractions, complex
+conjugation, scalar results, and multi-step expressions while keeping intermediate
+tensors in cuNumeric:
+
+```julia
+using cuNumeric
+using TensorOperations
+
+A = cuNumeric.rand(Float64, 64, 32)
+B = cuNumeric.rand(Float64, 32, 16)
+
+@tensor opt=true C[i, j] := A[i, k] * B[k, j]
+@allowscalar @tensor squared_norm = conj(C[i, j]) * C[i, j]
+```
+
+A fully contracted `@tensor` result is a Julia scalar, so it goes through
+`tensorscalar` and needs `@allowscalar`. Tensor results stay `NDArray`s.
+
+The extension is optional: TensorOperations is not loaded by cuNumeric itself.
+TensorOperations-created intermediate `NDArray`s are released eagerly after use.
+
+The lower-level `contract` / `contract!` functions take **mode labels**, not
+einsum strings:
 `"ik"` with `"kj"` is a GEMM; `"ijk"` with `"ikl"` and explicit output `"ijl"`
 is a batched product. Labels may be ASCII strings, `Char` tuples, or integers
 (`1` maps to `'a'`).

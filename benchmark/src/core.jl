@@ -56,6 +56,9 @@ function register_benchmark(key::AbstractString, ::Type{B}) where {B<:AbstractBe
     return BENCHMARKS[key] = B
 end
 
+benchmark_backend_label(::AbstractBenchmark, backend::String, default::String) = default
+benchmark_backend_save_as(::AbstractBenchmark, backend::String, default::String) = default
+
 function build_benchmark(::Type{B}, ::Type{T}, N, M) where {B<:AbstractBenchmark,T}
     return B{T}(; N=N, M=M)
 end
@@ -80,18 +83,21 @@ function check_benchmark_correctness(b::AbstractBenchmark, gs::GlobalSettings; m
 end
 
 # One timed trial: warmup, then time `n_iter` iterations of `run!`.
-function _trial(b::AbstractBenchmark, gs::GlobalSettings; mod=cuNumeric)
+function _trial(
+    b::AbstractBenchmark, gs::GlobalSettings;
+    mod=cuNumeric, clock=get_time_microseconds,
+)
     GC.gc(true)
     state = initialize(b; mod=mod)
 
     start_time = nothing
     for idx in 1:(gs.n_warmup + gs.n_iter)
         if idx == gs.n_warmup + 1
-            start_time = get_time_microseconds()
+            start_time = clock()
         end
         run!(b, state...)
     end
-    total_time_μs = get_time_microseconds() - start_time
+    total_time_μs = clock() - start_time
 
     mean_time_ms = total_time_μs / (gs.n_iter * 1e3)
     gflops = total_flops(b) / (mean_time_ms * 1e6)
@@ -100,7 +106,10 @@ end
 
 # Run `n_trial` independent trials and collect their per-trial measurements.
 # Correctness (if enabled) runs once before timing, not per trial/iteration.
-function run_benchmark(b::AbstractBenchmark, gs::GlobalSettings; mod=cuNumeric)
+function run_benchmark(
+    b::AbstractBenchmark, gs::GlobalSettings;
+    mod=cuNumeric, clock=get_time_microseconds,
+)
     correctness = "skipped"
     if gs.check_correctness
         if correctness_supported(b)
@@ -113,7 +122,7 @@ function run_benchmark(b::AbstractBenchmark, gs::GlobalSettings; mod=cuNumeric)
     times_ms = Float64[]
     gflops = Float64[]
     for _ in 1:gs.n_trial
-        t, g = _trial(b, gs; mod=mod)
+        t, g = _trial(b, gs; mod=mod, clock=clock)
         push!(times_ms, t)
         push!(gflops, g)
     end
