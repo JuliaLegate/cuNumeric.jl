@@ -1,24 +1,21 @@
-# The `@accelerate` Macro
+# `@accelerate`
 
-`@accelerate` optimizes *straight-line* array code: a fixed sequence of statements
-with no branches, loops, jumps, `try`, or nested functions. Ordinary calls are
-opaque boundaries; general control flow is not rewritten.
+`@accelerate` optimizes array operations with no branches, loops, jumps, `try`, or nested functions (i.e., straight-line code). Ordinary function calls are opaque boundaries, general control flow is not rewritten.
 
-Within that restricted body, it performs:
+Given those contraints, `@accelerate` will:
 
 ```@raw html
 <ol>
-<li><strong>Fusion within a broadcast expression.</strong> On CUDA, an eligible dotted expression such as <code>@. A + B * C</code> can run as one kernel. CPU execution uses the normal unfused path.</li>
-<li><strong>Fusion across broadcast statements.</strong> A single-use broadcast result can be substituted into its consumer, producing fewer GPU kernel launches.</li>
+<li><strong>Fuse broadcast expressions.</strong> On CUDA, an eligible dotted expression such as <code>@. A + B * C</code> can run as one kernel. CPU execution uses the normal unfused path.</li>
+<li><strong>Fuse across broadcast statements.</strong> A single-use broadcast result can be substituted into its consumer, producing fewer GPU kernel launches.</li>
 <li><strong>Temporary lifetime analysis.</strong> After rewriting the code, the macro releases materialized, non-returned <code>NDArray</code>s after their final use on CPU or GPU.</li>
 </ol>
 ```
-
 These jobs must happen together: an intermediate that fuses into its consumer is never allocated, while an intermediate that cannot fuse is materialized and then released after its last use.
 
-## Use the function form by default
+## `@accelerate` on Functions
 
-Annotate a reusable straight-line function:
+We reccomend using `@accelerate` on function definitions as they naturally separate inputs/ouputs (i.e., what should be kept) from everything else (i.e., something we can eagerly delete). We provide other forms (see below), but find this the most natural.
 
 ```julia
 @accelerate function update!(C, A, B)
@@ -28,11 +25,11 @@ Annotate a reusable straight-line function:
 end
 ```
 
-On an eligible GPU path, `combined` can be folded into the second broadcast so the chain runs as one kernel. On CPU, or when fusion is ineligible, `combined` is materialized and released after the update. Function arguments belong to the caller and are never released by `@accelerate`; returned values also remain valid.
+On an eligible GPU path, `combined` will be folded into the second broadcast so the chain runs as one kernel. On CPU, or when fusion is ineligible, `combined` is materialized and *immediately* released after the update (we do not wait for Julia GC). Function arguments belong to the caller and are never released by `@accelerate`. Returned values also remain valid.
 
-## Choose a form
+## Other Forms
 
-The forms differ in which values must remain available, which determines how aggressively the macro may fuse or release intermediates.
+The other forms of `@accelerate` provide other mechanisms to indicate which values must remain available, which in turn determines how aggressively the macro may fuse or release intermediates.
 
 | Form | Use it when | Fusion and lifetime behavior |
 | :--- | :--- | :--- |
@@ -79,7 +76,15 @@ result = @accelerate (@. A + B * C)
 - Keep control flow outside the accelerated body. Loops, conditionals, `try`, short-circuit operators, and nested functions are rejected.
 - Ordinary function calls run in program order and form rewrite boundaries. Annotate the called function separately if its body should also be accelerated.
 
+The `@accelerate` macro is great for fusing hot-loops where GC or kernel launch overhead should be minimized.
+
 ```julia
+@accelerate function update!(C, A, B)
+    combined = @. A + B
+    C .= @. 2.0f0 * combined
+    return C
+end
+
 for _ in 1:nsteps
     update!(C, A, B)
 end

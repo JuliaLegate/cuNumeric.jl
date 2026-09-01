@@ -34,18 +34,18 @@ For more details, see [Hardware](https://julialegate.github.io/cuNumeric.jl/dev/
 
 The semantics of `NDArray` closely mirror Julia's `Array`, and in most cases it is a drop-in replacement. You can use the same constructors (i.e., `zeros`, `ones`, `rand`), broadcasting, slicing, and linear algebra. Under the hood a few details differ from Base, and knowing them can help you write fast code.
 
-**Data may live across many devices.** An `NDArray` is a logical array whose physical buffers can be partitioned over GPUs and CPUs by the Legate runtime. You write ordinary array code and Legate decides where the data lives and how/when it is communicated between devices. As a result, elementwise indexing (i.e. `arr[1]`) is slow (and is prevented by default). Scalar indexing like this forces synchronization and blocks other tasks from executing.
+**Data may live across many devices.** An `NDArray` is a logical array whose physical buffers can be stored across multiple GPUs and CPUs by the Legate runtime. You write ordinary array code and Legate decides where the data lives and how/when it is communicated between devices. As a result, elementwise indexing (i.e. `arr[1]`) is slow (and is prevented by default). Scalar indexing like this forces synchronization and blocks other tasks from executing.
 
-**Slices are views.** Indexing an `NDArray` with ranges returns a view onto the same store, not a copy. That differs from Base Julia, where `A[1:n]` allocates a new `Array`. Mutations through an `NDArray` slice are visible through other aliases of the same data.
+**Slices are views.** Indexing an `NDArray` with ranges returns a view onto the same store, not a copy. That differs from Base Julia, where `A[1:n]` allocates a new `Array`. Mutating an `NDArray` slice mutates the parent and all other aliases of the underlying data.
 
-**Reductions return arrays, not Julia scalars.** Reductions such as `sum(A)` produce a **0D or 1D** `NDArray` (axis reductions produce a lower-rank `NDArray`), rather than a bare `Float64` / `Float32`. That keeps the Legate task graph asynchronous instead of forcing synchronization to communicate with the Julia runtime. When you need a plain Julia number, call `unwrap`:
+**Reductions return arrays, not Julia scalars.** Reductions such as `sum(A)` produce a **0D or 1D** `NDArray` (axis reductions produce a lower-rank `NDArray`), rather than a bare `Float64` / `Float32`. That keeps the task graph asynchronous instead of forcing synchronization to communicate with the Julia runtime. When you need a plain Julia number, call `unwrap` or `only`:
 
 ```julia
 s = sum(A)          # NDArray{T,0}
 x = unwrap(s)       # T, e.g. Float32
 ```
 
-**The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into Legate's task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them (for example `println`, `unwrap`, or converting with `Array(A)`). Hiding latency enables performant code.
+**The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into a task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them [for example `println`, `unwrap`, or communicating with the Julia runtime (i.e., `Array(A)`)]. Hiding latency enables performant code.
 
 For API details see [Initialization](https://julialegate.github.io/cuNumeric.jl/dev/api_initialization) and [NDArray Reference](https://julialegate.github.io/cuNumeric.jl/dev/api). For common performance pitfalls, see [Patterns to Avoid](https://julialegate.github.io/cuNumeric.jl/dev/perf/patterns_to_avoid).
 
@@ -67,25 +67,45 @@ See [Kernel Fusion](https://julialegate.github.io/cuNumeric.jl/dev/perf/kernel_f
 
 Results and reproduction instructions live under [Benchmark Results](https://julialegate.github.io/cuNumeric.jl/dev/benchmarks/results) and [How to Benchmark](https://julialegate.github.io/cuNumeric.jl/dev/benchmarks/howto).
 
+### TensorOperations.jl Integration
+
+We implement a package extension for [TensorOperations.jl](https://github.com/QuantumKitHub/TensorOperations.jl) to enable clean syntax and optimal contraction order for tensor contractions. Simply load TensorOperations alongside cuNumeric to take advantage! Some useful macros if you are unfamiliar are [@tensor](https://quantumkithub.github.io/TensorOperations.jl/stable/man/indexnotation/#The-@tensor-macro), [@tensoropt](https://quantumkithub.github.io/TensorOperations.jl/stable/man/indexnotation/#TensorOperations.@tensoropt) and [@notensor](https://quantumkithub.github.io/TensorOperations.jl/stable/man/indexnotation/#TensorOperations.@notensor).
+
+```julia
+using TensorOperations
+using cuNumeric
+
+α = randn() # Must be Julia scalar, not NDArray currently
+A = cuNumeric.randn(5, 5, 5, 5, 5, 5)
+B = cuNumeric.randn(5, 5, 5)
+C = cuNumeric.randn(5, 5, 5)
+D = cuNumeric.zeros(5, 5, 5)
+
+@tensor begin
+    D[a, b, c] = A[a, e, f, c, f, g] * B[g, b, e] + α * C[c, a, b]
+    E[a, b, c] := A[a, e, f, c, f, g] * B[g, b, e] + α * C[c, a, b]
+end
+```
+
 ### Try an example
 
 ```julia
 using cuNumeric
 
-integrand(x) = @. exp(-x^2)
+integrand(x) = exp(-x^2)
 
 @accelerate function monte_carlo(N, x_max)
     Ω = 2 * x_max
     raw_samples = cuNumeric.rand(N)
     samples = @. Ω * raw_samples - x_max
-    return (Ω / N) * sum(integrand(samples))
+    return (Ω / N) * sum(integrand.(samples))
 end
 
 N = 1_000_000
 x_max = 10.0f0
 estimate = monte_carlo(N, x_max)
 
-println("Monte-Carlo Estimate: $(estimate)")
+println("Monte-Carlo Estimate: $(estimate)") # Should be ~ sqrt(pi)
 ```
 More worked examples (initialization, Gray-Scott, …) are in the documentation sidebar under **Examples**.
 

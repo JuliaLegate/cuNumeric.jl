@@ -4,6 +4,8 @@
 
 Accessing elements of an NDArray one at a time (e.g., `arr[5]`) is slow and should be avoided. Indexing like this requires data to be transferred between device and host and maybe even communicated across nodes. Scalar indexing will emit an error which can be opted out of with `@allowscalar` or `allowscalar() do ... end`. Several functions in the existing API invoke scalar indexing and are intended for testing (e.g., the `==` operator).
 
+Scalar indexing can also appear through the [TensorOperations.jl](https://github.com/QuantumKitHub/TensorOperations.jl) extension when contractions reduce to a scalar. See [Scalars](../api_tensor.md#Scalars). In the future, we may break their API and return 0D NDArrays instead, to avoid blocking the runtime. Today, this can usually be avoided by using other reductions like `sum`, which do return 0D NDArrays, inplace of the einsum notation.
+
 ## Implicit promotion
 
 Mixing integral types of different size (e.g., `Float64` and `Float32`) will result in implicit promotion of the smaller type to the larger types. This creates a copy of the data and hurts performance. Implicit promotion from a smaller integral type to a larger integral type will emit an error which can be opted out of with `@allowpromotion` or `allowpromotion() do ... end`. This error is common when mixing literals with `NDArrays`. By default a floating point literal (i.e., 1.0) is `Float64` but the default type of an `NDArray` is `Float32`.

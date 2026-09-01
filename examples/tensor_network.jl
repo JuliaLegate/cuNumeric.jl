@@ -21,15 +21,14 @@ const BOND_DIM = 16
 Hmatrix = (kron(σx, σx) + kron(σy, σy) + kron(σz, σz)) / 4
 H = NDArray(reshape(Hmatrix, PHYSICAL_DIM, PHYSICAL_DIM, PHYSICAL_DIM, PHYSICAL_DIM))
 
-# MPS tensors A1[ap, s1, c], A2[c, s2, bp] and boundary environments.
+# Initialize Random Tensors
 A1 = NDArray(randn(ComplexF64, BOND_DIM, PHYSICAL_DIM, BOND_DIM))
 A2 = NDArray(randn(ComplexF64, BOND_DIM, PHYSICAL_DIM, BOND_DIM))
 L = NDArray(randn(ComplexF64, BOND_DIM, BOND_DIM))
 R = NDArray(randn(ComplexF64, BOND_DIM, BOND_DIM))
 
-# Open bonds remain, so both results are NDArrays.
-@tensor ψ[a, s1, s2, b] :=
-    L[a, ap] * A1[ap, s1, c] * A2[c, s2, bp] * R[bp, b]
+# Perform Initial Tensor Contraction
+@tensor ψ[a, s1, s2, b] := L[a, ap] * A1[ap, s1, c] * A2[c, s2, bp] * R[bp, b]
 @tensor Hψ[a, s1, s2, b] := H[s1, s2, t1, t2] * ψ[a, t1, t2, b]
 
 println("ψ is a ", typeof(ψ), " of size ", size(ψ))
@@ -37,6 +36,8 @@ println("Hψ is a ", typeof(Hψ), " of size ", size(Hψ))
 
 # Fully contracted @tensor results go through tensorscalar, which indexes the
 # rank-zero NDArray. That is scalar indexing and needs @allowscalar.
+# This code could be replicated by calling `sum` to get a 0D-NDArray results
+# that does NOT block the runtime.
 energy, norm² = @allowscalar begin
     @tensor begin
         e = conj(ψ[a, s1, s2, b]) * Hψ[a, s1, s2, b]

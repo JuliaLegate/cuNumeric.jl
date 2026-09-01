@@ -1,16 +1,15 @@
 # Random
 
 Module-level [`rand`](@ref cuNumeric.rand), [`randn`](@ref cuNumeric.randn),
-and [`randexp`](@ref cuNumeric.randexp) are listed under
+and [`randexp`](@ref cuNumeric.randexp) are documented under
 [Initialization](./api_initialization.md). This page covers the cuPyNumeric RNG
 stack: BitGenerators, `Generator`, and `default_rng`.
 
-Draws go through cuRAND with the [`XORWOW`](@ref cuNumeric.XORWOW) random
+Random draws use cuRAND with the [`XORWOW`](@ref cuNumeric.XORWOW) random
 number generator by default. We support `Float32` and `Float64` uniforms,
 normals, and exponentials (`randexp`), `ComplexF32` / `ComplexF64` uniforms
 and normals (independent real/imag parts; no `randexp`), `Bool` coin flips,
-and signed `Int16` / `Int32` / `Int64`. Ranged integers use Julia
-`rand(1:10, dims...)` (inclusive). There is no native Bool or complex
+and signed `Int16` / `Int32` / `Int64`. There is no native Bool or complex
 distribution, so `rand(Bool, …)` draws `Int16` values in `{0,1}` and compares
 them to zero, and complex draws two real arrays packed as `re + i*imag`.
 

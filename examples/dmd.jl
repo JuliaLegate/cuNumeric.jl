@@ -39,9 +39,9 @@ function dmd(X::NDArray{Float32,2}, r::Int)
 
     # X2 V Σ⁻¹ appears in both the projected operator and the exact modes.
     B = X2 * cuNumeric.transpose(Vt) * Sinv
-    Ã = cuNumeric.transpose(U) * B
+    A_tilde = cuNumeric.transpose(U) * B
 
-    E = eigen(Ã) # always complex, even for a real Ã
+    E = eigen(A_tilde) # always complex, even for a real Ã
     Φ = cuNumeric.as_type(B, ComplexF32) * E.vectors
 
     return E.values, Φ

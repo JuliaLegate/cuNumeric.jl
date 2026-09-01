@@ -57,9 +57,9 @@ println("Hψ is a ", typeof(Hψ), " of size ", size(Hψ))
 
 ## Expectation value
 
-A fully contracted `@tensor` assignment is a Julia scalar. TensorOperations
-gets that value with `tensorscalar`, which indexes the rank-zero `NDArray`.
-That is scalar indexing, so it needs `@allowscalar`.
+A fully contracted `@tensor` assignment is a Julia scalar, not a 0D `NDArray`.
+That path needs `@allowscalar`. See [Scalars](../api_tensor.md#Scalars) for
+the full rules, including that scale factors must be Julia `Number`s.
 
 ```julia
 energy, norm² = @allowscalar begin
@@ -74,5 +74,4 @@ println("two-site energy = ", real(energy / norm²))
 ```
 
 The extension also supports output-index permutations, traces, conjugation, and
-accumulation into an existing tensor. See [Tensor contractions](../linalg.md#Tensor-contractions)
-for the lower-level `contract` and `contract!` interfaces.
+accumulation into an existing tensor. See [Tensor Contractions](../api_tensor.md).

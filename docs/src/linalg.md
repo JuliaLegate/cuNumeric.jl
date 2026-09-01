@@ -1,7 +1,8 @@
 # Linear Algebra
 
 cuNumeric.jl provides matrix multiplication, solves, Cholesky, eigen, SVD, QR,
-and related helpers for `NDArray`.
+and related helpers for `NDArray`. For Einstein-index contractions, see
+[Tensor Contractions](./api_tensor.md).
 
 All of the decompositions accept `Float32`, `Float64`, `ComplexF32`, and
 `ComplexF64`. Integer and `Bool` inputs are converted to `Float64`. As
@@ -44,64 +45,6 @@ mul!(similar(C), A, B)    # in-place GEMM into an existing array
 Modules = [cuNumeric]
 Pages = ["ndarray/binary.jl"]
 Filter = t -> t isa Function && nameof(t) === :mul!
-```
-
-## Tensor contractions
-
-Loading [TensorOperations.jl](https://quantumkithub.github.io/TensorOperations.jl/stable/)
-alongside cuNumeric activates the package extension for `NDArray`. Its `@tensor`
-API supports additions and permutations, traces, pairwise contractions, complex
-conjugation, scalar results, and multi-step expressions while keeping intermediate
-tensors in cuNumeric:
-
-```julia
-using cuNumeric
-using TensorOperations
-
-A = cuNumeric.rand(Float64, 64, 32)
-B = cuNumeric.rand(Float64, 32, 16)
-
-@tensor opt=true C[i, j] := A[i, k] * B[k, j]
-@allowscalar @tensor squared_norm = conj(C[i, j]) * C[i, j]
-```
-
-A fully contracted `@tensor` result is a Julia scalar, so it goes through
-`tensorscalar` and needs `@allowscalar`. Tensor results stay `NDArray`s.
-
-The extension is optional: TensorOperations is not loaded by cuNumeric itself.
-TensorOperations-created intermediate `NDArray`s are released eagerly after use.
-
-The lower-level `contract` / `contract!` functions take **mode labels**, not
-einsum strings:
-`"ik"` with `"kj"` is a GEMM; `"ijk"` with `"ikl"` and explicit output `"ijl"`
-is a batched product. Labels may be ASCII strings, `Char` tuples, or integers
-(`1` maps to `'a'`).
-
-```julia
-A = cuNumeric.rand(Float32, 64, 32)
-B = cuNumeric.rand(Float32, 32, 16)
-C = contract(A, "ik", B, "kj")              # allocates, Einstein output order
-contract!(similar(C), "ij", A, "ik", B, "kj"; α=2, β=0)
-
-# batched: keep the shared 'i' on the output
-AA = cuNumeric.rand(Float32, 8, 16, 32)
-BB = cuNumeric.rand(Float32, 8, 32, 4)
-CC = cuNumeric.zeros(Float32, 8, 16, 4)
-contract!(CC, "ijl", AA, "ijk", BB, "ikl")
-
-tensordot(AA, BB, ([3], [2]))               # same contraction, axes form
-```
-
-`α` and `β` implement `C = β*C + α*(A ⋆ B)` in Julia. The C++ kernel always
-writes the unscaled product; `β ≠ 0` uses a temporary. Duplicate labels inside
-one array are not allowed — use `cuNumeric.diagonal` first.
-
-This path is multi-GPU via Legate tiling (per-tile cuTENSOR or TBLIS), not
-cuTensorMp. Integer and `Bool` inputs promote to `Float64` like other linalg.
-
-```@autodocs
-Modules = [cuNumeric]
-Pages = ["ndarray/contract.jl"]
 ```
 
 ## Solve
