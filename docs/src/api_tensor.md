@@ -18,7 +18,7 @@ of this page.
 using cuNumeric
 using TensorOperations
 
-α = randn() # Julia scalar, not a 0D NDArray
+α = randn() # prefer a Julia Number when you already have one
 A = cuNumeric.randn(5, 5, 5, 5, 5, 5)
 B = cuNumeric.randn(5, 5, 5)
 C = cuNumeric.randn(5, 5, 5)
@@ -32,14 +32,11 @@ end
 
 ## Scalars
 
-`@tensor` does **not** use the same 0D-`NDArray` convention as the rest of cuNumeric. In the future we will break the TensorOperatoins API so that scalars are 0D Arrays instead.
+Prefer a Julia `Number` for scale factors when possible (i.e., `2.0f0`, `randn()`, …). This allows TensorOperations.jl to perform optimizatoins for special values like zero and one.
 
-```@raw html
-<ol>
-<li><strong>Scale factors must be Julia scalars.</strong> Coefficients such as <code>α</code> in <code>α * C[i, j]</code> must be a Julia <code>Number</code>. A 0D <code>NDArray</code> (for example the result of <code>sum</code>) is not accepted.</li>
-<li><strong>A fully contracted result is a Julia scalar.</strong> When every index is contracted, <code>@tensor</code> returns a host <code>Number</code>, not a 0D <code>NDArray</code>. TensorOperations gets that value with <code>tensorscalar</code>, which indexes the rank-zero array and therefore needs <code>@allowscalar</code>.</li>
-</ol>
-```
+A 0D `NDArray` is also accepted as a scale — for example `sum(C)`, or a
+fully contracted `@tensor` result. If you intend to use these results in down-stream tensor contractions keep those on device. `unwrap` copies the value to the host and **blocks the Legate runtime**, so only unwrap
+when you truly need a Julia `Number` (i.e. printing of host-side if-else).
 
 ```julia
 A = cuNumeric.rand(Float64, 64, 32)
@@ -47,19 +44,12 @@ B = cuNumeric.rand(Float64, 32, 16)
 
 @tensor opt=true C[i, j] := A[i, k] * B[k, j]   # NDArray
 
-α = 2.0                                         # OK
-# α = sum(C)                                    # 0D NDArray, not a scale factor
-@tensor D[i, j] := α * C[i, j]
+α = 2.0
+@tensor D[i, j] := α * C[i, j]          # Julia Number, no sync
 
-@allowscalar @tensor s = conj(C[i, j]) * C[i, j]  # Julia Number, blocks
-```
-
-Full contractions also force a host synchronization, which stalls the Legate
-runtime. If you can keep a 0D `NDArray` instead, use an ordinary reduction:
-
-```julia
-s = sum(conj(C) .* C)   # NDArray{T,0}, stays asynchronous
-x = unwrap(s)           # host Number, only when you need it
+@tensor s = conj(C[i, j]) * C[i, j]    # 0D NDArray, stays asynchronous
+@tensor E[i, j] := s * C[i, j]         # reuse 0D as a scale, still no unwrap
+x = unwrap(s)                          # host Number; blocks
 ```
 
 ## Low-level `contract` / `contract!`
@@ -88,9 +78,10 @@ contract!(CC, "ijl", AA, "ijk", BB, "ikl")
 tensordot(AA, BB, ([3], [2]))               # same contraction, axes form
 ```
 
-`α` and `β` implement `C = β*C + α*(A ⋆ B)` in Julia. The C++ kernel always
-writes the unscaled product; `β ≠ 0` uses a temporary. Duplicate labels inside
-one array are not allowed — use `cuNumeric.diagonal` first.
+`α` and `β` implement `C = β*C + α*(A ⋆ B)` in Julia. Prefer a Julia `Number`;
+a 0-d `NDArray` is also accepted. The C++ kernel always writes the unscaled
+product; `β ≠ 0` uses a temporary. Duplicate labels inside one array are not
+allowed — use `cuNumeric.diagonal` first.
 
 This path is multi-GPU via Legate tiling (per-tile cuTENSOR or TBLIS), not
 cuTensorMp. Integer and `Bool` inputs promote to `Float64` like other linalg.

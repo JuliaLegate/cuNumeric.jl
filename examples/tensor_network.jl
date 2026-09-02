@@ -1,8 +1,8 @@
-#= Contract a two-site tensor network, then optionally pull a host scalar.
+#= Contract a two-site tensor network, then print a host scalar.
 
 The first contractions build an MPS-like two-site state and apply a Heisenberg
-operator. Those results stay on device as NDArrays. Fully contracting to
-⟨ψ|H|ψ⟩ / ⟨ψ|ψ⟩ goes through tensorscalar and therefore needs @allowscalar.
+operator. Those results stay on device as NDArrays. The fully contracted
+⟨ψ|H|ψ⟩ / ⟨ψ|ψ⟩ ratio is computed on device; unwrap only to print (it blocks).
 =#
 
 using cuNumeric
@@ -34,16 +34,9 @@ R = NDArray(randn(ComplexF64, BOND_DIM, BOND_DIM))
 println("ψ is a ", typeof(ψ), " of size ", size(ψ))
 println("Hψ is a ", typeof(Hψ), " of size ", size(Hψ))
 
-# Fully contracted @tensor results go through tensorscalar, which indexes the
-# rank-zero NDArray. That is scalar indexing and needs @allowscalar.
-# This code could be replicated by calling `sum` to get a 0D-NDArray results
-# that does NOT block the runtime.
-energy, norm² = @allowscalar begin
-    @tensor begin
-        e = conj(ψ[a, s1, s2, b]) * Hψ[a, s1, s2, b]
-        n = conj(ψ[a, s1, s2, b]) * ψ[a, s1, s2, b]
-    end
-    e, n
-end
+# Fully contracted @tensor results are 0D NDArrays. Keep them on device
+# until a host Number is required; unwrap blocks.
+@tensor energy = conj(ψ[a, s1, s2, b]) * Hψ[a, s1, s2, b]
+@tensor norm² = conj(ψ[a, s1, s2, b]) * ψ[a, s1, s2, b]
 
-println("two-site energy = ", real(energy / norm²))
+println("two-site energy = ", real(unwrap(energy ./ norm²)))

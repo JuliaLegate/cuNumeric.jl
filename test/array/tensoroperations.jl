@@ -164,15 +164,16 @@ using TensorOperations: TensorOperations as TO
 
         matrix = reshape(ComplexF64.(1:9) .+ im .* ComplexF64.(9:-1:1), 3, 3)
         M = NDArray(matrix)
-        @test_throws ErrorException (@tensor t = M[i, i])
-        scalar_trace = @allowscalar @tensor(t = M[i, i])
-        @test scalar_trace isa ComplexF64
-        @test scalar_trace == sum(matrix[i, i] for i in axes(matrix, 1))
+        scalar_trace = @tensor(t = M[i, i])
+        @test scalar_trace isa NDArray
+        @test ndims(scalar_trace) == 0
+        @test only(Array(scalar_trace)) == sum(matrix[i, i] for i in axes(matrix, 1))
 
         conjugated_trace = TO.tensortrace(M, ((), ()), ((1,), (2,)), true)
-        @test_throws ErrorException TO.tensorscalar(conjugated_trace)
-        @test (@allowscalar TO.tensorscalar(conjugated_trace)) ==
-            sum(conj(matrix[i, i]) for i in axes(matrix, 1))
+        ts = TO.tensorscalar(conjugated_trace)
+        @test ts isa NDArray
+        @test ndims(ts) == 0
+        @test only(Array(ts)) == sum(conj(matrix[i, i]) for i in axes(matrix, 1))
         TO.tensorfree!(conjugated_trace)
     end
 
@@ -206,9 +207,31 @@ using TensorOperations: TensorOperations as TO
         vhost = ComplexF64.(5:8) .- im .* ComplexF64.(1:4)
         u = NDArray(uhost)
         v = NDArray(vhost)
-        scalar_product = @allowscalar @tensor(s = u[k] * v[k])
-        @test scalar_product isa ComplexF64
-        @test scalar_product ≈ sum(uhost .* vhost)
+        scalar_product = @tensor(s = u[k] * v[k])
+        @test scalar_product isa NDArray
+        @test ndims(scalar_product) == 0
+        @test only(Array(scalar_product)) ≈ sum(uhost .* vhost)
+    end
+
+    @testset "0D NDArray scale factors" begin
+        hostC = reshape(collect(Float64, 1:6), 2, 3)
+        C = NDArray(hostC)
+        α = sum(C)
+        @test α isa NDArray
+        @test ndims(α) == 0
+
+        @tensor scaled[i, j] := α * C[i, j]
+        @test Array(scaled) ≈ only(Array(α)) .* hostC
+
+        @tensor s = C[i, j] * C[i, j]
+        @test s isa NDArray
+        @test ndims(s) == 0
+        @tensor scaled2[i, j] := s * C[i, j]
+        @test Array(scaled2) ≈ only(Array(s)) .* hostC
+
+        dest = NDArray(fill(2.0, 2, 3))
+        @tensor dest[i, j] += α * C[i, j]
+        @test Array(dest) ≈ fill(2.0, 2, 3) .+ only(Array(α)) .* hostC
     end
 
     @testset "temporary destruction" begin

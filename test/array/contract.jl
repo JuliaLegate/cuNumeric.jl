@@ -216,6 +216,16 @@ end
         _host_contract_compare(
             β3 * seed_ji + α2 * permutedims(prod), out_ji, T; n=nk, scale=α2 * scale
         )
+
+        α0 = NDArray(α2)
+        out = cuNumeric.zeros(T, 4, 5)
+        contract!(out, "ij", nda, "ik", ndb, "kj"; α=α0, β=0)
+        _host_contract_compare(α2 * prod, out, T; n=nk, scale=α2 * scale)
+
+        β0 = NDArray(β3)
+        out = NDArray(copy(seed))
+        contract!(out, "ij", nda, "ik", ndb, "kj"; α=α0, β=β0)
+        _host_contract_compare(β3 * seed + α2 * prod, out, T; n=nk, scale=α2 * scale)
     end
 end
 

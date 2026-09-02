@@ -75,7 +75,7 @@ We implement a package extension for [TensorOperations.jl](https://github.com/Qu
 using TensorOperations
 using cuNumeric
 
-α = randn() # Must be Julia scalar, not NDArray currently
+α = randn() # prefer a Julia Number when you already have one
 A = cuNumeric.randn(5, 5, 5, 5, 5, 5)
 B = cuNumeric.randn(5, 5, 5)
 C = cuNumeric.randn(5, 5, 5)
