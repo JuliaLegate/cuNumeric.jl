@@ -3,7 +3,8 @@ using TOML
 """
 One benchmark invocation parsed from `benchmarks.toml`. `name` selects the
 benchmark type from `BENCHMARKS`; `T` is the element type (e.g. "Float32");
-`args` are the sizes (currently `N M`).
+`args` are the sizes (`N M`) when pinned. When `autosize` is true, `args` is
+unused and `N_hint` / `M_hint` feed `fit_one_gpu`.
 """
 struct BenchmarkSpec
     name::String
@@ -16,6 +17,9 @@ struct BenchmarkSpec
     n_iter::Int
     n_trial::Int
     args::Vector{Int}
+    autosize::Bool
+    N_hint::Union{Int,Nothing}
+    M_hint::Union{Int,Nothing}
 end
 
 # A field may be a scalar or a list.
@@ -58,6 +62,17 @@ function declared_order(path)
     return order
 end
 
+function size_field(raw)
+    raw === nothing && return (:omitted, Int[])
+    vals = collect(aslist(raw))
+    autos = [is_auto_size(v) for v in vals]
+    if any(autos)
+        all(autos) || error("cannot mix auto and numeric sizes in one field; got $(repr(raw))")
+        return (:auto, Int[])
+    end
+    return (:pinned, Int[Int(v) for v in vals])
+end
+
 function parse_config(path)
     raw = TOML.parsefile(path)
 
@@ -68,6 +83,8 @@ function parse_config(path)
         cuda=get(g, "cuda", false),
         check_correctness=get(g, "check_correctness", false),
         n_correctness_iter=get(g, "n_correctness_iter", 5),
+        auto_size=get(g, "auto_size", false),
+        mem_frac=Float64(get(g, "mem_frac", 0.5)),
     )
 
     specs = BenchmarkSpec[]
@@ -79,29 +96,57 @@ function parse_config(path)
             gpus = aslist(e["gpus"])
             cpus = aslist(e["cpus"])
             fusion = aslist(get(e, "fusion", true))
-            N = aslist(e["N"])
-            M = aslist(get(e, "M", 1))
+            nmode, nvals = size_field(get(e, "N", nothing))
+            mmode, mvals = size_field(get(e, "M", nothing))
             cuda = get(e, "cuda", global_settings.cuda)
             n_warmup = get(e, "n_warmup", global_settings.n_warmup)
             n_iter = get(e, "n_iter", global_settings.n_iter)
             n_trial = get(e, "n_trial", global_settings.n_trial)
+            block_auto = get(e, "auto_size", global_settings.auto_size)
 
-            n = sweep_length(name, ["gpus" => gpus, "cpus" => cpus, "N" => N, "M" => M])
+            n_auto = nmode == :omitted || nmode == :auto
+            m_auto = mmode == :auto
+            use_auto = block_auto && (n_auto || m_auto)
+            if use_auto
+                nmode == :pinned && length(nvals) != 1 && error(
+                    "benchmark '$(name)': autosize with pinned N requires a scalar N",
+                )
+                mmode == :pinned && length(mvals) != 1 && error(
+                    "benchmark '$(name)': autosize with pinned M requires a scalar M",
+                )
+                N_hint = nmode == :pinned ? nvals[1] : nothing
+                M_hint = mmode == :pinned ? mvals[1] : nothing
+                n = sweep_length(name, ["gpus" => gpus, "cpus" => cpus])
+            else
+                nmode == :auto && error("benchmark '$(name)': N = \"auto\" requires auto_size = true")
+                mmode == :auto && error("benchmark '$(name)': M = \"auto\" requires auto_size = true")
+                nmode == :omitted && error(
+                    "benchmark '$(name)' is missing N (set N or enable auto_size)",
+                )
+                mmode == :omitted && (mvals = [1])
+                N_hint = nothing
+                M_hint = nothing
+                n = sweep_length(name, ["gpus" => gpus, "cpus" => cpus, "N" => nvals, "M" => mvals])
+            end
 
             for T in types, fuse in fusion, i in 1:n
+                args = use_auto ? Int[0, 0] : Int[sweep_value(nvals, i), sweep_value(mvals, i)]
                 push!(
                     specs,
                     BenchmarkSpec(
                         name,
-                        T,
-                        sweep_value(gpus, i),
-                        sweep_value(cpus, i),
+                        string(T),
+                        Int(sweep_value(gpus, i)),
+                        Int(sweep_value(cpus, i)),
                         parse_fusion(fuse),
                         cuda,
                         n_warmup,
                         n_iter,
                         n_trial,
-                        [sweep_value(N, i), sweep_value(M, i)],
+                        args,
+                        use_auto,
+                        N_hint,
+                        M_hint,
                     ),
                 )
             end

@@ -43,6 +43,8 @@ resolved `cupynumeric_jll`. Build it once:
 n_warmup = 5
 n_iter   = 1000
 n_trial  = 5
+auto_size = true
+mem_frac  = 0.5   # fraction of the smallest visible GPU's total RAM
 
 [[gemm]]            # name registered under src/benchmarks/
 T    = "Float32"     # element type
@@ -63,6 +65,13 @@ two axes:
   fusion setting (`fusion = [true, false]` sweeps both).
 - **`gpus`, `cpus`, `N`, `M` zip** into a single lockstep sweep — element `i`
   of each is paired together.
+
+When `[Global] auto_size = true` and a block **omits** `N` (or sets `N = "auto"`),
+the harness RAM-fits the 1-GPU problem from `total_space` on that benchmark type,
+then maps to `P` GPUs. Pin an explicit `N` list to keep paper sizes. `mem_frac`
+is the fraction of the *smallest* visible GPU's total RAM (`CUNUMERIC_BENCH_MEM_FRAC`
+overrides it). DMD keeps `M` as the intensity knob; Poisson holds grid `N` across
+the GPU sweep and scales batch `M`.
 
 `fusion` toggles cuNumeric broadcast fusion (`true`/`false` or `"on"`/`"off"`,
 default `true`); it only affects cuNumeric, so comparison backends run once, not
@@ -110,13 +119,14 @@ entry—TensorOperations.jl's cuTENSOR backend:
   `C[a,b,c,d] = X[a,i,c,j] * Y[i,b,j,d]`. This single contraction isolates the
   primitive high-rank backend path and counts `N^4(2N^2-1)` operations.
 
-The Julia implementations use `@tensor` on both `NDArray` and `CuArray`; the
+The Julia implementations use `@tensor opt=true` on both `NDArray` and `CuArray`; the
 latter activates TensorOperations' cuTENSOR extension and is recorded as
 `TensorOperations.jl / cuTENSOR`. The cuPyNumeric implementations use equivalent
-`einsum` expressions. Final outputs are preallocated, and contraction-order
-selection is performed before timing (at macro expansion in Julia and during
-initialization in Python). Required intermediate allocation and release remain
-part of each timed projection iteration.
+`einsum` expressions with `einsum_path(optimize="optimal")`. Final outputs are
+preallocated. Required intermediate allocation (projection3: two rank-3 temps;
+contract4: an `N²×N²` GEMM workspace) is part of each timed iteration and of
+Julia `total_space`. The orchestrator computes flop counts in Julia and passes
+them to the Python worker so the formulas live in one place.
 
 ## Plotting
 

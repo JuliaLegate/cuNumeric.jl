@@ -25,6 +25,42 @@ total_flops(b::TensorProjection3) = 3 * b.N^3 * (2 * b.N - 1)
 # N^4 output elements, each containing an N^2-term dot product.
 total_flops(b::TensorContract4) = b.N^4 * (2 * b.N^2 - 1)
 
+# opt=true pairwise: T1[n,j,k] and T2[n,m,k] are both N³, plus A, D, B.
+total_space(b::TensorProjection3{T}) where {T} = (4 * b.N^3 + b.N^2) * sizeof(T)
+
+# opt=true is a (N²×N²)×(N²×N²) GEMM: X, Y, C plus one workspace.
+total_space(b::TensorContract4{T}) where {T} = 4 * b.N^4 * sizeof(T)
+
+function estimate_scaling(b::TensorProjection3, P::Integer)
+    P == 1 && return dims(b)
+    return (align2(floor(Int, b.N * Float64(P)^(1 / 4))), 1)
+end
+
+function estimate_scaling(b::TensorContract4, P::Integer)
+    P == 1 && return dims(b)
+    return (align2(floor(Int, b.N * Float64(P)^(1 / 6))), 1)
+end
+
+function fit_one_gpu(
+    ::Type{TensorProjection3}, ::Type{T};
+    budget::Int, N_hint=nothing, M_hint=nothing,
+) where {T}
+    hi = max(4, Int(floor((Float64(budget) / (4 * sizeof(T)))^(1 / 3))))
+    n = largest_feasible(4, hi, k -> total_space(TensorProjection3{T}(; N=k)) <= budget)
+    n === nothing && error("tensor_projection3 does not fit in $(budget) bytes")
+    return (n, 1)
+end
+
+function fit_one_gpu(
+    ::Type{TensorContract4}, ::Type{T};
+    budget::Int, N_hint=nothing, M_hint=nothing,
+) where {T}
+    hi = max(4, Int(floor((Float64(budget) / (4 * sizeof(T)))^(1 / 4))))
+    n = largest_feasible(4, hi, k -> total_space(TensorContract4{T}(; N=k)) <= budget)
+    n === nothing && error("tensor_contract4 does not fit in $(budget) bytes")
+    return (n, 1)
+end
+
 function build_benchmark(
     ::Type{TensorProjection3}, ::Type{T}, N, M
 ) where {T}
@@ -60,7 +96,7 @@ function run!(::TensorProjection3, D, A, B)
 end
 
 function run!(::TensorContract4, C, X, Y)
-    @tensor C[a, b, c, d] = X[a, i, c, j] * Y[i, b, j, d]
+    @tensor opt=true C[a, b, c, d] = X[a, i, c, j] * Y[i, b, j, d]
     return C
 end
 

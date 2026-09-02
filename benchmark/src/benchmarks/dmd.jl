@@ -36,6 +36,9 @@ _dmd_rank(b::AbstractDMD) = min(20, b.M - 1)
 #   2mr²            Ã = U_r' B
 #   25r³            eigen(Ã) (LAPACK xGEEV)
 #   2mr²            Φ = B W
+const DMD_TALL_RATIO = 10
+const DEFAULT_DMD_M = 512
+
 function total_flops(b::AbstractDMD)
     m = b.N
     n = b.M - 1
@@ -47,6 +50,31 @@ function total_flops(b::AbstractDMD)
         25 * r^3 +
         2 * m * r^2
     )
+end
+
+# X (N×M), thin-SVD U ~ N×(M-1), Vt ~ n×n, B, plus a cuSOLVER-sized fudge.
+function total_space(b::AbstractDMD{T}) where {T}
+    n = max(b.M - 1, 1)
+    s = sizeof(T)
+    return (b.N * b.M + b.N * n + n * n + b.N * n) * s + 2 * b.N * b.M * s
+end
+
+function estimate_scaling(b::AbstractDMD, P::Integer)
+    P == 1 && return (b.N, b.M)
+    b.N >= DMD_TALL_RATIO * b.M || return nothing
+    return (b.N * P, b.M)
+end
+
+function fit_one_gpu(
+    ::Type{B}, ::Type{T};
+    budget::Int, N_hint=nothing, M_hint=nothing,
+) where {B<:AbstractDMD,T}
+    M = something(M_hint, DEFAULT_DMD_M)
+    lo = max(M, 8)
+    hi = max(lo, Int(fld(budget, max(6 * M * sizeof(T), 1))))
+    N = largest_feasible(lo, hi, n -> total_space(B{T}(; N=n, M=M)) <= budget)
+    N === nothing && error("dmd M=$M does not fit in $(budget) bytes")
+    return (max(align8(N), M), M)
 end
 
 function initialize(b::AbstractDMD{T}; mod=cuNumeric) where {T}
@@ -84,10 +112,12 @@ let body = quote
         (B, Ã)
     end
     @eval _dmd_project(::DMDBaseline, X, X2, U, Vt, S) = $body
-    @eval @accelerate function _dmd_project(
-        ::DMDAccelerated, X, X2, U, Vt, S
-    )
-        $body
+    if CUNUMERIC_BENCH_RUNTIME
+        @eval @accelerate function _dmd_project(
+            ::DMDAccelerated, X, X2, U, Vt, S
+        )
+            $body
+        end
     end
 end
 

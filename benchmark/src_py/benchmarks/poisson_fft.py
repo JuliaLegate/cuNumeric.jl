@@ -32,13 +32,6 @@ class PoissonFFT:
     def dims(self):
         return self.N, self.M
 
-    def total_flops(self):
-        # Same breakdown as benchmark/src/benchmarks/poisson_fft.jl
-        n = self.N
-        m = self.M
-        n2 = n * n
-        return m * (20 * n2 * math.log2(n) + 6 * n2)
-
     def initialize(self):
         f = rand_array((self.M, self.N, self.N), self.T)
         kinv = np.array(_poisson_inv_laplacian(self.T, self.N)).reshape(

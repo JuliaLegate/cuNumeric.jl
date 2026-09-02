@@ -41,7 +41,7 @@ def register_benchmark(key, cls):
     BENCHMARKS[key] = cls
 
 
-def trial(bench, n_warmup, n_iter):
+def trial(bench, n_warmup, n_iter, flops):
     state = bench.initialize()
     start = None
     for idx in range(n_warmup + n_iter):
@@ -51,7 +51,7 @@ def trial(bench, n_warmup, n_iter):
     total_us = time() - start
 
     mean_time_ms = total_us / (n_iter * 1e3)
-    gflops = bench.total_flops() / (mean_time_ms * 1e6)
+    gflops = flops / (mean_time_ms * 1e6)
     return mean_time_ms, gflops
 
 

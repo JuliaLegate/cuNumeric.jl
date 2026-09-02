@@ -30,6 +30,26 @@ data(b::AbstractGrayScott{T}) where {T} = "GrayScott with T=$(T), N=$(b.N), M=$(
 allowed_types(::Type{AbstractGrayScott}) = cuNumeric.SUPPORTED_FLOAT_TYPES
 total_flops(b::AbstractGrayScott) = b.N * b.M # grid points updated per step
 
+# Four live grids: u, v, u_new, v_new. Legion halos are not counted.
+total_space(b::AbstractGrayScott{T}) where {T} = 4 * b.N * b.M * sizeof(T)
+
+function estimate_scaling(b::AbstractGrayScott, P::Integer)
+    P == 1 && return (b.N, b.M)
+    n = scale_axis(b.N, P, 1//2)
+    return (n, n)
+end
+
+function fit_one_gpu(
+    ::Type{B}, ::Type{T};
+    budget::Int, N_hint=nothing, M_hint=nothing,
+) where {B<:AbstractGrayScott,T}
+    hi = max(8, Int(floor(sqrt(Float64(budget) / sizeof(T)))))
+    n = largest_feasible(8, hi, k -> total_space(B{T}(; N=k, M=k)) <= budget)
+    n === nothing && error("$B does not fit in $(budget) bytes")
+    n = align8(n)
+    return (n, n)
+end
+
 function build_benchmark(::Type{A}, ::Type{T}, N, M) where {A<:AbstractGrayScott,T}
     return A{T}(; N=N, M=M)
 end
@@ -141,10 +161,12 @@ end
 # Original baseline and recommended function-form benchmark.
 let body = deepcopy(GRAYSCOTT_STEP_BODY)
     @eval _gs_step!(b::GrayScottBaseline, u, v, u_new, v_new, args::GSParams) = $body
-    definition = _define_accelerated_definition(
-        :(_gs_step!(b::GrayScottAccelerated, u, v, u_new, v_new, args::GSParams)), body
-    )
-    @eval $definition
+    if CUNUMERIC_BENCH_RUNTIME
+        definition = _define_accelerated_definition(
+            :(_gs_step!(b::GrayScottAccelerated, u, v, u_new, v_new, args::GSParams)), body
+        )
+        @eval $definition
+    end
 end
 
 function run!(b::AbstractGrayScott, st::GrayScottState)

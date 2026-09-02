@@ -16,9 +16,6 @@ class GrayScott:
     def dims(self):
         return self.N, self.M
 
-    def total_flops(self):
-        return self.N * self.M
-
     def initialize(self):
         u = ones_array((self.N, self.M), self.T)
         v = zeros_array((self.N, self.M), self.T)

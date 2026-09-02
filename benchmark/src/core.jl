@@ -24,11 +24,19 @@ Base.@kwdef struct GlobalSettings
     cuda::Bool = false # also run under CUDA.jl for comparison (single-GPU only)
     check_correctness::Bool = false
     n_correctness_iter::Int = 5
+    auto_size::Bool = false
+    mem_frac::Float64 = 0.5
 end
 
 #########################################
 
 abstract type AbstractBenchmark{T} end
+
+# True when this file is included after `using cuNumeric` (the worker). The
+# orchestrator includes the same kernel files for types / `total_space` /
+# `estimate_scaling` without loading Legion; those files skip `@accelerate`
+# and `::NDArray` methods in that case.
+const CUNUMERIC_BENCH_RUNTIME = isdefined(@__MODULE__, :cuNumeric)
 
 # Interface each benchmark implements (see benchmarks/gemm.jl for a template).
 function name end
@@ -38,6 +46,34 @@ function allowed_types end
 function total_flops end
 function initialize end
 function run! end
+
+include("autosize.jl")
+
+function include_benchmarks()
+    dir = joinpath(@__DIR__, "benchmarks")
+    for file in sort(filter(f -> endswith(f, ".jl"), readdir(dir; join=true)))
+        Base.include(@__MODULE__, file)
+    end
+    return nothing
+end
+
+total_space(b::AbstractBenchmark) =
+    error("total_space not defined for $(typeof(b)); add a method in its benchmark file")
+
+function estimate_scaling(b::AbstractBenchmark, P::Integer)
+    P < 1 && throw(ArgumentError("P must be ≥ 1, got $P"))
+    P == 1 && return map(Int, dims(b))
+    return error(
+        "estimate_scaling not defined for $(typeof(b)); add a method in its benchmark file",
+    )
+end
+
+function fit_one_gpu(
+    ::Type{B}, ::Type{T};
+    budget::Int, N_hint=nothing, M_hint=nothing,
+) where {B,T}
+    return error("fit_one_gpu not defined for $B; add a method in its benchmark file")
+end
 
 # Internal adapter for benchmark generators that share a quoted step body.
 function _define_accelerated_definition(signature, body, form=:function)

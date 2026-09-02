@@ -22,9 +22,6 @@ class TensorProjection3:
     def dims(self):
         return self.N, 1
 
-    def total_flops(self):
-        return 3 * self.N**3 * (2 * self.N - 1)
-
     def initialize(self):
         A = rand_array((self.N, self.N, self.N), self.T)
         B = rand_array((self.N, self.N), self.T)
@@ -48,9 +45,6 @@ class TensorContract4:
 
     def dims(self):
         return self.N, 1
-
-    def total_flops(self):
-        return self.N**4 * (2 * self.N**2 - 1)
 
     def initialize(self):
         X = rand_array((self.N, self.N, self.N, self.N), self.T)

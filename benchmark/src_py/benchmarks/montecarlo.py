@@ -13,9 +13,6 @@ class MonteCarlo:
     def dims(self):
         return self.n_samples, 1
 
-    def total_flops(self):
-        return self.n_samples
-
     def initialize(self):
         x = (self.T(10) * rand_array(self.n_samples, self.T))
         return (x,)

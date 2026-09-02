@@ -12,9 +12,6 @@ class GEMM:
     def dims(self):
         return self.N, self.M
 
-    def total_flops(self):
-        return self.N * self.N * (2 * self.M - 1)
-
     def initialize(self):
         A = rand_array((self.N, self.M), self.T)
         B = rand_array((self.M, self.N), self.T)

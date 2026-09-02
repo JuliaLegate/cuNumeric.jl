@@ -39,6 +39,8 @@ cupynumeric = true   # also run Python cupynumeric (needs install_cupynumeric.sh
 cuda = true          # also run CUDA.jl (single-GPU configs only)
 check_correctness = true
 n_correctness_iter = 5
+auto_size = true
+mem_frac = 0.5       # fraction of the smallest visible GPU's total RAM
 ```
 
 - `n_warmup`: untimed iterations (hide compile / first-touch cost)
@@ -50,23 +52,29 @@ n_correctness_iter = 5
 - `check_correctness`: when `gpus == 1`, the cuNumeric worker also compares a
   tiny problem against CUDA.jl (not CPU). The CUDA.jl timing run is unchanged
   and records `skipped` for correctness. Multi-GPU and cupynumeric skip.
+- `auto_size` / `mem_frac`: when `auto_size` is true and a block omits `N`
+  (or sets `N = "auto"`), the harness RAM-fits the 1-GPU problem then scales
+  with GPU count. `mem_frac` is a fraction of the *smallest* visible GPU's
+  total RAM; override it with `CUNUMERIC_BENCH_MEM_FRAC`. Peak bytes are
+  `total_space` on each Julia benchmark type (live arrays including tensor
+  intermediates), not the seed array. Legion / cuSOLVER scratch is the rest of
+  `mem_frac`. Pin `N = [20000, …]` on a block to keep paper sizes.
 
 Each `[[name]]` block is a registered benchmark (`gemm`, `montecarlo`,
 `dmd_baseline`, `dmd_accelerated`, `grayscott_baseline`, the Gray-Scott
 `@accelerate` forms, `poisson_fft`, `tensor_projection3`, …). Names must match
 what `src/benchmarks/*.jl` registers.
 
-DMD's `N` is the number of spatial degrees of freedom (rows of the snapshot matrix), not a grid side length. The SVD is of the tall-skinny `N × (M-1)` matrix `X1`. Thin SVD plus the rank-`r` lift is `Θ(N)` when `M` and `r` are fixed, so weak scaling is `N ∝ P` (same idea as Monte Carlo, not GEMM's `N ∝ P^{1/3}`). The flop count is in `src/benchmarks/dmd.jl`.
+DMD's `N` is the number of spatial degrees of freedom (rows of the snapshot matrix), not a grid side length. The SVD is of the tall-skinny `N × (M-1)` matrix `X1`. Thin SVD plus the rank-`r` lift is `Θ(N)` when `M` and `r` are fixed, so weak scaling is `N ∝ P` (same idea as Monte Carlo, not GEMM's `N ∝ P^{1/3}`). Auto-sizing only scales to `P>1` when the 1-GPU `N` is at least `10 M`; otherwise the 1-GPU run still happens and larger `P` is skipped. `M` stays in the toml (intensity knob). The flop count is in `src/benchmarks/dmd.jl`.
 
-`poisson_fft` solves ``M`` independent periodic Poisson problems on an ``N \times N`` grid (FFT, divide by ``-|k|^2``, inverse FFT). The transform is over the last two axes, so the leading batch axis can split across GPUs. Weak scaling is ``M \propto P`` with ``N`` fixed. A single all-axes 2-d `fft` of one grid is single-GPU and would not scale that way.
+`poisson_fft` solves ``M`` independent periodic Poisson problems on an ``N \times N`` grid (FFT, divide by ``-|k|^2``, inverse FFT). The transform is over the last two axes, so the leading batch axis can split across GPUs. Weak scaling is ``M \propto P`` with ``N`` **held constant across the GPU sweep** — growing `N` would change the FFT size. `N` itself may be RAM-fitted (one grid filling the 1-GPU budget, then `M = P`) or pinned (`N = 1024` and `M = "auto"` to search the batch). A single all-axes 2-d `fft` of one grid is single-GPU and would not scale that way.
 
 ```toml
 [[gemm]]
 T = ["Float32"]
 gpus = [1, 2, 4, 8]
 cpus = 16
-N = [20000, 25200, 31752, 40000]
-M = [20000, 25200, 31752, 40000]
+# omit N → RAM-fit, then N ∝ P^{1/3}
 ```
 
 ### How lists expand
@@ -104,10 +112,11 @@ You can dispatch a single config without editing the TOML:
 julia --project=. run.jl <gpus> <cpus> <name> <T> <N> <M> <n_iter> <n_warmup> <n_trial> [fusion]
 ```
 
-Example:
+`N` and `M` may be integers or `auto`:
 
 ```bash
 julia --project=. run.jl 1 16 gemm Float32 20000 20000 1000 5 5 true
+CUNUMERIC_BENCH_MEM_FRAC=0.1 julia --project=. run.jl 8 8 gemm Float32 auto auto 3 1 1 true
 ```
 
 `run.jl` still goes through `run_benchmark.sh` so Legate sees the right GPU/CPU count at process start.

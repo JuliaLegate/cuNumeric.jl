@@ -31,8 +31,7 @@ if NEED_CUDA
 end
 
 include("core.jl")
-const BENCHMARK_DIR = joinpath(@__DIR__, "benchmarks")
-include.(filter(contains(r".jl$"), readdir(BENCHMARK_DIR; join=true)))
+include_benchmarks()
 
 # Resolve a TOML type string like "Float32" to the actual Julia type.
 parse_type(s) = getfield(Base, Symbol(s))::DataType
