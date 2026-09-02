@@ -4,7 +4,10 @@
 
 Accessing elements of an NDArray one at a time (e.g., `arr[5]`) is slow and should be avoided. Indexing like this requires data to be transferred between device and host and maybe even communicated across nodes. Scalar indexing will emit an error which can be opted out of with `@allowscalar` or `allowscalar() do ... end`. Several functions in the existing API invoke scalar indexing and are intended for testing (e.g., the `==` operator).
 
-Scalar indexing can also appear through the [TensorOperations.jl](https://github.com/QuantumKitHub/TensorOperations.jl) extension when contractions reduce to a scalar. See [Scalars](../api_tensor.md#Scalars). In the future, we may break their API and return 0D NDArrays instead, to avoid blocking the runtime. Today, this can usually be avoided by using other reductions like `sum`, which do return 0D NDArrays, inplace of the einsum notation.
+`unwrap` (and `A[]`) pulls a host `Number` out of a 0D `NDArray` and
+**blocks the runtime**. Prefer a Julia `Number` when you already have one,
+and leave reductions / fully contracted `@tensor` results as 0D arrays
+until you actually need the host value. See [Scalars](../api_tensor.md#Scalars).
 
 ## Implicit promotion
 

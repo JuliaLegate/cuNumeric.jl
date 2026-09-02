@@ -13,8 +13,8 @@ H = S^x_1 S^x_2 + S^y_1 S^y_2 + S^z_1 S^z_2.
 
 The examples below apply it to an MPS-like state with tensors ``A^{(1)}``,
 ``A^{(2)}`` and boundary environments ``L``, ``R``. The first contractions keep
-open bond indices and stay `NDArray`s. The second contracts every index to a
-host scalar.
+open bond indices and stay `NDArray`s. The second contracts every index; the
+ratio stays on device until `unwrap` for printing.
 
 ```julia
 # found in examples/tensor_network.jl
@@ -23,7 +23,7 @@ using LinearAlgebra
 using Random
 using TensorOperations
 
-Random.seed!(1234)
+Random.seed!(1234) # for Random.randn, cuNumeric expects seed via default_rng
 
 physical_dim = 2
 bond_dim = 16
@@ -44,7 +44,7 @@ R = NDArray(randn(ComplexF64, bond_dim, bond_dim))
 
 These contractions have free indices ``a, s_1, s_2, b``, so the results are
 `NDArray`s. TensorOperations lowers the network to pairwise contractions and
-releases the intermediate `NDArray`s. Nothing here indexes a single element.
+releases the intermediate `NDArray`s.
 
 ```julia
 @tensor ψ[a, s1, s2, b] :=
@@ -57,21 +57,15 @@ println("Hψ is a ", typeof(Hψ), " of size ", size(Hψ))
 
 ## Expectation value
 
-A fully contracted `@tensor` assignment is a Julia scalar, not a 0D `NDArray`.
-That path needs `@allowscalar`. See [Scalars](../api_tensor.md#Scalars) for
-the full rules, including that scale factors must be Julia `Number`s.
+A fully contracted `@tensor` assignment is a 0D `NDArray`, like `sum`.
+Prefer to keep it that way and do device arithmetic (`./`) until you
+need a host `Number`. `unwrap` (here, only to print) **blocks**. See
+[Scalars](../api_tensor.md#Scalars).
 
 ```julia
-energy, norm² = @allowscalar begin
-    @tensor begin
-        e = conj(ψ[a, s1, s2, b]) * Hψ[a, s1, s2, b]
-        n = conj(ψ[a, s1, s2, b]) * ψ[a, s1, s2, b]
-    end
-    e, n
-end
+@tensor energy = conj(ψ[a, s1, s2, b]) * Hψ[a, s1, s2, b]
+@tensor norm² = conj(ψ[a, s1, s2, b]) * ψ[a, s1, s2, b]
 
-println("two-site energy = ", real(energy / norm²))
+println("two-site energy = ", real(unwrap(energy ./ norm²)))
 ```
-
-The extension also supports output-index permutations, traces, conjugation, and
-accumulation into an existing tensor. See [Tensor Contractions](../api_tensor.md).
+See [Tensor Contractions](../api_tensor.md) documentation for more details.

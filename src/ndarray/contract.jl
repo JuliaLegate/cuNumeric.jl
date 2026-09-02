@@ -179,6 +179,8 @@ end
 
 In-place pairwise tensor contraction `C = β * C + α * (A ⋆ B)`.
 
+`α` and `β` may be a Julia `Number` or a 0-d `NDArray`.
+
 `Amodes`, `Bmodes`, and `Cmodes` are mode labels for `A`, `B`, and `C`: an
 ASCII `AbstractString`, a tuple/vector of `Char`, or a vector of integers
 (`1` maps to `'a'`). Each label appears twice (a contracted or free index) or
@@ -210,7 +212,7 @@ function contract!(
     Ap = checked_promote_arr(contract!, A, T)
     Bp = checked_promote_arr(contract!, B, T)
     try
-        return _contract_same_type!(C, Cmodes, Ap, Amodes, Bp, Bmodes, convert(T, α), convert(T, β))
+        return _contract_same_type!(C, Cmodes, Ap, Amodes, Bp, Bmodes, α, β)
     finally
         Ap !== A && destroy!(Ap)
         Bp !== B && destroy!(Bp)
@@ -226,15 +228,15 @@ function contract!(C::NDArray, Cmodes, A::NDArray, Amodes, B::NDArray, Bmodes; �
     return throw(ArgumentError("array type $bad is unsupported in contract!"))
 end
 
-function _contract_same_type!(
-    C::NDArray{T},
-    Cmodes,
-    A::NDArray{T},
-    Amodes,
-    B::NDArray{T},
-    Bmodes,
-    α::T,
-    β::T,
+function _require_0d_scale(x::NDArray)
+    ndims(x) == 0 || throw(
+        ArgumentError("contract! scale factor must be a Number or a 0-d NDArray")
+    )
+    return x
+end
+
+function _contract_prepare(
+    C::NDArray{T}, Cmodes, A::NDArray{T}, Amodes, B::NDArray{T}, Bmodes
 ) where {T}
     (C.ptr === A.ptr || C.ptr === B.ptr) && throw(
         ArgumentError("contract! output must not alias either input")
@@ -252,21 +254,117 @@ function _contract_same_type!(
         )
     end
     extent_keys, extent_vals = _extent_arrays(extents)
+    return Cm, Am, Bm, extent_keys, extent_vals
+end
 
+function _contract_same_type!(
+    C::NDArray{T},
+    Cmodes,
+    A::NDArray{T},
+    Amodes,
+    B::NDArray{T},
+    Bmodes,
+    α::Number,
+    β::Number,
+) where {T}
+    Cm, Am, Bm, extent_keys, extent_vals = _contract_prepare(C, Cmodes, A, Amodes, B, Bmodes)
     if isone(α) && iszero(β)
         _nda_contract!(C, Cm, A, Am, B, Bm, extent_keys, extent_vals)
         return C
     end
+    αT = convert(T, α)
     if iszero(β)
         _nda_contract!(C, Cm, A, Am, B, Bm, extent_keys, extent_vals)
-        C .= α .* C
+        C .= αT .* C
         return C
     end
+    βT = convert(T, β)
     tmp = similar(C)
     _nda_contract!(tmp, Cm, A, Am, B, Bm, extent_keys, extent_vals)
-    C .= β .* C .+ α .* tmp
+    C .= βT .* C .+ αT .* tmp
     destroy!(tmp)
     return C
+end
+
+function _contract_same_type!(
+    C::NDArray{T},
+    Cmodes,
+    A::NDArray{T},
+    Amodes,
+    B::NDArray{T},
+    Bmodes,
+    α::NDArray,
+    β::Number,
+) where {T}
+    _require_0d_scale(α)
+    Cm, Am, Bm, extent_keys, extent_vals = _contract_prepare(C, Cmodes, A, Amodes, B, Bmodes)
+    α′ = eltype(α) === T ? α : as_type(α, T)
+    try
+        if iszero(β)
+            _nda_contract!(C, Cm, A, Am, B, Bm, extent_keys, extent_vals)
+            C .= α′ .* C
+            return C
+        end
+        tmp = similar(C)
+        _nda_contract!(tmp, Cm, A, Am, B, Bm, extent_keys, extent_vals)
+        if isone(β)
+            C .= C .+ α′ .* tmp
+        else
+            βa = NDArray(convert(T, β))
+            C .= βa .* C .+ α′ .* tmp
+            destroy!(βa)
+        end
+        destroy!(tmp)
+        return C
+    finally
+        α′ !== α && destroy!(α′)
+    end
+end
+
+function _contract_same_type!(
+    C::NDArray{T},
+    Cmodes,
+    A::NDArray{T},
+    Amodes,
+    B::NDArray{T},
+    Bmodes,
+    α::Number,
+    β::NDArray,
+) where {T}
+    _require_0d_scale(β)
+    αa = NDArray(convert(T, α))
+    try
+        return _contract_same_type!(C, Cmodes, A, Amodes, B, Bmodes, αa, β)
+    finally
+        destroy!(αa)
+    end
+end
+
+function _contract_same_type!(
+    C::NDArray{T},
+    Cmodes,
+    A::NDArray{T},
+    Amodes,
+    B::NDArray{T},
+    Bmodes,
+    α::NDArray,
+    β::NDArray,
+) where {T}
+    _require_0d_scale(α)
+    _require_0d_scale(β)
+    Cm, Am, Bm, extent_keys, extent_vals = _contract_prepare(C, Cmodes, A, Amodes, B, Bmodes)
+    α′ = eltype(α) === T ? α : as_type(α, T)
+    β′ = eltype(β) === T ? β : as_type(β, T)
+    try
+        tmp = similar(C)
+        _nda_contract!(tmp, Cm, A, Am, B, Bm, extent_keys, extent_vals)
+        C .= β′ .* C .+ α′ .* tmp
+        destroy!(tmp)
+        return C
+    finally
+        α′ !== α && destroy!(α′)
+        β′ !== β && destroy!(β′)
+    end
 end
 
 """
