@@ -38,10 +38,13 @@ makedocs(;
             "Initialization" => "examples/initialization.md",
             "Monte-Carlo" => "examples/montecarlo.md",
             "Gray-Scott" => "examples/grayscott.md",
+            "Dynamic Mode Decomposition" => "examples/dmd.md",
+            "Periodic Poisson (FFT)" => "examples/poisson_fft.md",
+            "Tensor Network Contraction" => "examples/tensor_network.md",
         ],
         "Performance Tips" => [
             "Kernel Fusion" => "perf/kernel_fusion.md",
-            "Reduce Allocations" => "perf/reduce_allocations.md",
+            "@accelerate" => "perf/reduce_allocations.md",
             "Patterns to Avoid" => "perf/patterns_to_avoid.md",
         ],
         "Configuration" => [
@@ -60,9 +63,12 @@ makedocs(;
         ],
         "Public API" => [
             "Initialization" => "api_initialization.md",
+            "Random" => "api_random.md",
             "Unary Operations" => "api_unary.md",
             "Binary Operations" => "api_binary.md",
             "Linear Algebra" => "linalg.md",
+            "Tensor Contractions" => "api_tensor.md",
+            "FFT" => "fft.md",
             "HDF5" => "api_hdf5.md",
             "NDArray Reference" => "api.md",
             "CUDA.jl Tasking" => "api_cuda.md",

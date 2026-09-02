@@ -5,7 +5,7 @@ Benchmarks are declared in `benchmarks.toml`. `run.jl` parses it.
 ## Running
 
 ```bash
-julia --project run.jl     # runs whatever benchmarks.toml configures
+julia --project=. run.jl   # runs whatever benchmarks.toml configures
 ```
 
 `run.jl` runs each (benchmark, backend) pair in its own process via
@@ -15,6 +15,11 @@ cuNumeric always runs; extra comparison backends are toggled in `[Global]`:
 - `cuda = true` → also run under CUDA.jl (single-GPU configs only; CUDA.jl is
   single-device).
 - `cupynumeric = true` → also run under cupynumeric (see below).
+
+Individual `[[benchmark]]` blocks may override `cuda`, `n_warmup`, `n_iter`,
+and `n_trial`. Unspecified values inherit from `[Global]`. This is useful for
+enabling a single-GPU CUDA comparison only for compatible benchmarks or reducing
+the iteration count for expensive kernels.
 
 ### Comparing against cupynumeric
 
@@ -35,7 +40,7 @@ n_warmup = 5
 n_iter   = 1000
 n_trial  = 5
 
-[[gemm]]            # name registered in src/benchmarks.jl
+[[gemm]]            # name registered under src/benchmarks/
 T    = "Float32"     # element type
 gpus = 1
 cpus = 2
@@ -58,6 +63,10 @@ two axes:
 `fusion` toggles cuNumeric broadcast fusion (`true`/`false` or `"on"`/`"off"`,
 default `true`); it only affects cuNumeric, so comparison backends run once, not
 per variant.
+
+Benchmark names are defined by the registered benchmark implementations. A
+benchmark may expose baseline, optimized, backend-specific, or other variants;
+the harness treats each name uniformly and records each result independently.
 
 Each zipped field must be one of:
 
@@ -82,3 +91,36 @@ M    = [150, 300, 600]          #
 When `T = ["Float32", "Float64"]` and a length-2 `N`/`M` sweep you get all **4**
 combinations, not a paired `Float32 -> N[1], Float64 -> N[2]`. To pin a type
 to a specific size, use separate `[[name]]` blocks.
+
+## Tensor contractions
+
+Two direct TensorOperations benchmarks compare the same mathematical kernel
+across cuNumeric.jl, cuPyNumeric, and—when `cuda = true` on a one-GPU
+entry—TensorOperations.jl's cuTENSOR backend:
+
+- `tensor_projection3` computes
+  `D[n,m,l] = A[i,j,k] * B[n,i] * B[m,j] * B[l,k]`. TensorOperations performs
+  three pairwise contractions with rank-3 intermediates. For equal index extent
+  `N`, the counted work is `3N^3(2N-1)`, asymptotically `6N^4`.
+- `tensor_contract4` computes
+  `C[a,b,c,d] = X[a,i,c,j] * Y[i,b,j,d]`. This single contraction isolates the
+  primitive high-rank backend path and counts `N^4(2N^2-1)` operations.
+
+The Julia implementations use `@tensor` on both `NDArray` and `CuArray`; the
+latter activates TensorOperations' cuTENSOR extension and is recorded as
+`TensorOperations.jl / cuTENSOR`. The cuPyNumeric implementations use equivalent
+`einsum` expressions. Final outputs are preallocated, and contraction-order
+selection is performed before timing (at macro expansion in Julia and during
+initialization in Python). Required intermediate allocation and release remain
+part of each timed projection iteration.
+
+## Plotting
+
+```bash
+julia --project=benchmark benchmark/plot_results.jl
+```
+
+The plotter reads the result files in the selected results directory and writes
+one weak-scaling figure per benchmark, plus aggregate fusion and no-fusion
+figures when those result groups are present. Outputs are grouped under a
+subdirectory named for the shared benchmark prefix.

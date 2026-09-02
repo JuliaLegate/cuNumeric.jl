@@ -23,8 +23,8 @@ const POSARGS = filter(a -> a ∉ VERBOSE_FLAGS, ARGS)
 
 banner(msg) = println("\n", "="^128, "\n", msg, "\n", "="^128)
 
-# `_lifetimes` is a cuNumeric-only code-path variant (@analyze_lifetimes)
-cunumeric_only(name) = endswith(name, "_lifetimes")
+# `_accelerated` is a cuNumeric-only code-path variant (`@accelerate`).
+cunumeric_only(name) = endswith(name, "_accelerated")
 
 const LAST_FUSION_TOGGLE = Ref{Union{Nothing,Bool}}(nothing)
 
@@ -106,11 +106,11 @@ function run_all_benchmarks(config="benchmarks.toml")
             T=spec.T,
             N=N, M=M,
             fusion=spec.fusion,
-            n_iter=gs.n_iter,
-            n_warmup=gs.n_warmup,
-            n_trial=gs.n_trial,
+            n_iter=spec.n_iter,
+            n_warmup=spec.n_warmup,
+            n_trial=spec.n_trial,
             cupynumeric=gs.cupynumeric,
-            cudajl=gs.cuda,
+            cudajl=spec.cuda,
             check_correctness=gs.check_correctness,
             n_correctness_iter=gs.n_correctness_iter,
         )

@@ -41,23 +41,26 @@ end
 
 get_n_dim(ptr::NDArray_t) = Int(ccall((:nda_array_dim, libnda), Int32, (NDArray_t,), ptr))
 
-abstract type AbstractNDArray{T<:SUPPORTED_TYPES,N} end
+abstract type AbstractNDArray{T<:SUPPORTED_TYPES,N} <: AbstractArray{T,N} end
+
+# Runtime padding uses an abstract field to break the recursive storage definition.
+abstract type AbstractPaddedStorage{T,N} end
 
 @doc"""
 The NDArray type represents a multi-dimensional array in cuNumeric.
 It is a wrapper around a Legate array and provides various methods for array manipulation and operations.
 Finalizer calls `nda_destroy_array` to clean up the underlying Legate array when the NDArray is garbage collected.
 """
-mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
+mutable struct NDArray{T,N,P} <: AbstractNDArray{T,N}
     ptr::NDArray_t
     nbytes::Int64
-    padding::Union{Nothing,NTuple{N,Int}}
+    padding::Union{Nothing,AbstractPaddedStorage{T,N}}
     parent::P
 
     function NDArray(ptr::NDArray_t, ::Type{T}, ::Val{N}) where {T,N}
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
-        handle = new{T,N,false,Nothing}(ptr, nbytes, nothing, nothing)
+        handle = new{T,N,Nothing}(ptr, nbytes, nothing, nothing)
         finalizer(_finalize_ndarray!, handle)
         return handle
     end
@@ -66,26 +69,53 @@ mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
     function NDArray(ptr::NDArray_t, ::Type{T}, ::Val{N}, parent::P) where {T,N,P}
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
-        handle = new{T,N,false,P}(ptr, nbytes, nothing, parent)
+        handle = new{T,N,P}(ptr, nbytes, nothing, parent)
         finalizer(_finalize_ndarray!, handle)
         return handle
     end
+end
+
+struct PaddedStorage{T,N} <: AbstractPaddedStorage{T,N}
+    backing::NDArray{T,N,Nothing}
+    staging::Union{Nothing,NDArray{T,N,NDArray{T,N,Nothing}}}
+    shape::NTuple{N,Int}
+end
+
+# Narrow the abstract field to its concrete storage type.
+@inline _padding(arr::NDArray{T,N}) where {T,N} =
+    arr.padding::Union{Nothing,PaddedStorage{T,N}}
+
+function _finalize_padded_storage!(storage::PaddedStorage)
+    !isnothing(storage.staging) && finalize(storage.staging)
+    finalize(storage.backing)
+    return nothing
+end
+
+function _destroy_padded_storage!(storage::PaddedStorage)
+    !isnothing(storage.staging) && destroy!(storage.staging)
+    destroy!(storage.backing)
+    return nothing
 end
 
 # May run off the launch thread, so defer the Legate free to drain_pending_frees!.
 # Accounting is atomic and safe to do here immediately.
 function _finalize_ndarray!(arr::NDArray)
     ptr = arr.ptr
-    ptr == C_NULL && return nothing
     arr.ptr = Ptr{Cvoid}(0)
     nbytes = arr.nbytes
     arr.nbytes = 0
-    nbytes > 0 && register_free!(nbytes)
-    _enqueue_free!(ptr)
+    padding = _padding(arr)
+    arr.padding = nothing
+
+    if ptr != C_NULL
+        nbytes > 0 && register_free!(nbytes)
+        _enqueue_free!(ptr)
+    end
+    !isnothing(padding) && _finalize_padded_storage!(padding)
     return nothing
 end
 
-@inline _is_ndarray_slice(arr::NDArray) = arr.parent isa NDArray
+@inline _is_ndarray_slice(arr::NDArray) = arr.parent isa NDArray || !isnothing(_padding(arr))
 
 """
     destroy!(arr::NDArray)
@@ -102,6 +132,9 @@ function destroy!(arr::NDArray)
         arr.nbytes = 0
         nbytes > 0 && register_free!(nbytes)
     end
+    padding = _padding(arr)
+    arr.padding = nothing
+    !isnothing(padding) && _destroy_padded_storage!(padding)
     return arr
 end
 
@@ -155,22 +188,79 @@ function nda_full_array(dims::Dims{N}, value::T) where {T,N}
     return NDArray(ptr, T, Val(N))
 end
 
-function nda_random(arr::NDArray, gen_code)
-    @task_scope "rand!" begin
-        ccall((:nda_random, libnda),
-            Cvoid, (NDArray_t, Int32),
-            arr.ptr, Int32(gen_code))
+# Legacy Float64-only CUPYNUMERIC_RAND wrappers; unused after BitGenerator.
+# function nda_random(arr::NDArray, gen_code)
+#     @task_scope "rand!" begin
+#         ccall((:nda_random, libnda),
+#             Cvoid, (NDArray_t, Int32),
+#             arr.ptr, Int32(gen_code))
+#     end
+# end
+#
+# function nda_random_array(dims::Dims{N}) where {N}
+#     shape = collect(UInt64, dims)
+#     ptr = @task_scope "rand" begin
+#         ccall((:nda_random_array, libnda),
+#             NDArray_t, (Int32, Ptr{UInt64}),
+#             Int32(N), shape)
+#     end
+#     return NDArray(ptr, Float64, Val(N)) #* T is always Float64 cause of cupynumeric
+# end
+
+# Pack an SVector as a Legate fixed-array scalar. Empty vectors pass a null ptr.
+function _add_vector_scalar!(add!, task, ::SVector{0,T}) where {T}
+    add!(task, Ptr{T}(C_NULL), Int32(0))
+    return nothing
+end
+function _add_vector_scalar!(add!, task, v::SVector{N,T}) where {N,T}
+    ref = Ref(v)
+    GC.@preserve ref begin
+        add!(task, Ptr{T}(Base.unsafe_convert(Ptr{SVector{N,T}}, ref)), Int32(N))
     end
+    return nothing
 end
 
-function nda_random_array(dims::Dims{N}) where {N}
-    shape = collect(UInt64, dims)
-    ptr = @task_scope "rand" begin
-        ccall((:nda_random_array, libnda),
-            NDArray_t, (Int32, Ptr{UInt64}),
-            Int32(N), shape)
+# Match cupynumeric/_thunk/deferred.py::bitgenerator_distribution via Julia
+# Legate tasking. Vector scalars still go through tiny C++ helpers because
+# Legate.jl Scalar has no std::vector constructors.
+function nda_bitgenerator_distribution!(
+    arr::NDArray,
+    handle::Int32,
+    generator_type::UInt32,
+    seed::UInt64,
+    flags::UInt32,
+    distribution::UInt32,
+    strides::SVector{N,Int64},
+    intparams::SVector{NI,Int64},
+    floatparams::SVector{NF,Float32},
+    doubleparams::SVector{ND,Float64},
+) where {N,NI,NF,ND}
+    isempty(arr) && return arr
+
+    @task_scope "bitgenerator" begin
+        rt = Legate.get_runtime()
+        lib = cuNumeric.get_lib()
+        task = Legate.create_auto_task(rt, lib, cuNumeric.BITGENERATOR)
+
+        st = cuNumeric.get_store(arr)
+        Legate.add_output(task, st)
+        finalize(st)
+
+        Legate.add_scalar(task, Legate.Scalar(Int32(cuNumeric.BITGENOP_DISTRIBUTION)))
+        Legate.add_scalar(task, Legate.Scalar(handle))
+        Legate.add_scalar(task, Legate.Scalar(generator_type))
+        Legate.add_scalar(task, Legate.Scalar(seed))
+        Legate.add_scalar(task, Legate.Scalar(flags))
+        Legate.add_scalar(task, Legate.Scalar(distribution))
+
+        _add_vector_scalar!(cuNumeric.add_vector_scalar_i64, task, strides)
+        _add_vector_scalar!(cuNumeric.add_vector_scalar_i64, task, intparams)
+        _add_vector_scalar!(cuNumeric.add_vector_scalar_f32, task, floatparams)
+        _add_vector_scalar!(cuNumeric.add_vector_scalar_f64, task, doubleparams)
+
+        Legate.submit_auto_task(rt, task)
     end
-    return NDArray(ptr, Float64, Val(N)) #* T is always Float64 cause of cupynumeric
+    return arr
 end
 
 function nda_get_slice(arr::NDArray{T,N}, slices::Vector{Slice}) where {T,N}
@@ -280,6 +370,17 @@ function nda_binary_op!(out::NDArray, op_code::BinaryOpCode, rhs1::NDArray, rhs2
     return out
 end
 
+function nda_binary_reduction!(
+    out::NDArray, op_code::BinaryOpCode, rhs1::NDArray, rhs2::NDArray
+)
+    @task_scope _scope_op("binary_red", op_code) begin
+        ccall((:nda_binary_reduction, libnda),
+            Cvoid, (NDArray_t, BinaryOpCode, NDArray_t, NDArray_t),
+            out.ptr, op_code, rhs1.ptr, rhs2.ptr)
+    end
+    return out
+end
+
 function nda_unary_op!(out::NDArray, op_code::UnaryOpCode, input::NDArray)
     @task_scope _scope_op("unary", op_code) begin
         ccall((:nda_unary_op, libnda),
@@ -338,6 +439,42 @@ function nda_unique(arr::NDArray{T}) where {T}
             arr.ptr)
     end
     return NDArray(ptr, T, Val(1))
+end
+
+function nda_sort(arr::NDArray{T,N}, axis::Int32, stable::Bool) where {T,N}
+    ptr = @task_scope "sort" begin
+        ccall((:nda_sort, libnda),
+            NDArray_t, (NDArray_t, Int32, Bool),
+            arr.ptr, axis, stable)
+    end
+    return NDArray(ptr, T, Val(N))
+end
+
+function nda_sort_inplace(arr::NDArray, axis::Int32, stable::Bool)
+    @task_scope "sort!" begin
+        ccall((:nda_sort_inplace, libnda),
+            Cvoid, (NDArray_t, Int32, Bool),
+            arr.ptr, axis, stable)
+    end
+    return arr
+end
+
+function nda_argsort(arr::NDArray{<:Any,N}, axis::Int32, stable::Bool) where {N}
+    ptr = @task_scope "argsort" begin
+        ccall((:nda_argsort, libnda),
+            NDArray_t, (NDArray_t, Int32, Bool),
+            arr.ptr, axis, stable)
+    end
+    return NDArray(ptr, Int64, Val(N))
+end
+
+function nda_searchsorted(a::NDArray, v::NDArray{<:Any,N}, left::Bool) where {N}
+    ptr = @task_scope "searchsorted" begin
+        ccall((:nda_searchsorted, libnda),
+            NDArray_t, (NDArray_t, NDArray_t, Bool),
+            a.ptr, v.ptr, left)
+    end
+    return NDArray(ptr, Int64, Val(N))
 end
 
 function nda_ravel(arr::NDArray)
@@ -418,7 +555,7 @@ function nda_trace(
             (NDArray_t, Int32, Int32, Int32, Legate.LegateTypeAllocated),
             arr.ptr, offset, a1, a2, legate_type)
     end
-    return NDArray(ptr, T, Val(1))
+    return NDArray(ptr, T, Val(0))
 end
 
 # transpose reverses the axes: element type and rank are preserved
@@ -429,6 +566,62 @@ function nda_transpose(arr::NDArray{T,N}) where {T,N}
             arr.ptr)
     end
     return NDArray(ptr, T, Val(N))
+end
+
+# Arbitrary axis permutation; rank is preserved. `axes` are 0-based.
+function nda_transpose_axes(arr::NDArray{T,N}, axes::Vector{Int32}) where {T,N}
+    axes_c = collect(Int32, axes)
+    ptr = @task_scope "permutedims" begin
+        ccall((:nda_transpose_axes, libnda),
+            NDArray_t, (NDArray_t, Ptr{Int32}, Int32),
+            arr.ptr, axes_c, Int32(length(axes_c)))
+    end
+    return NDArray(ptr, T, Val(N))
+end
+
+# Rank-changing: drop size-1 axes. Empty `axes` drops every size-1 axis.
+function nda_squeeze(arr::NDArray, axes::Vector{Int32})
+    axes_c = collect(Int32, axes)
+    ptr = @task_scope "squeeze" begin
+        ccall((:nda_squeeze, libnda),
+            NDArray_t, (NDArray_t, Ptr{Int32}, Int32),
+            arr.ptr, axes_c, Int32(length(axes_c)))
+    end
+    return NDArray(ptr)
+end
+
+function nda_diagonal(arr::NDArray, offset::Int32, axis1::Int32, axis2::Int32)
+    ptr = @task_scope "diagonal" begin
+        ccall((:nda_diagonal, libnda),
+            NDArray_t, (NDArray_t, Int32, Int32, Int32),
+            arr.ptr, offset, axis1, axis2)
+    end
+    return NDArray(ptr)
+end
+
+function nda_contract(
+    out::NDArray,
+    lhs_modes::Vector{UInt8},
+    rhs1::NDArray,
+    rhs1_modes::Vector{UInt8},
+    rhs2::NDArray,
+    rhs2_modes::Vector{UInt8},
+    extent_keys::Vector{UInt8},
+    extents::Vector{Int32},
+)
+    @task_scope "contract" begin
+        ccall((:nda_contract, libnda),
+            Cvoid,
+            (
+                NDArray_t, Ptr{UInt8}, Int32, NDArray_t, Ptr{UInt8}, Int32,
+                NDArray_t, Ptr{UInt8}, Int32, Ptr{UInt8}, Ptr{Int32}, Int32,
+            ),
+            out.ptr, lhs_modes, Int32(length(lhs_modes)),
+            rhs1.ptr, rhs1_modes, Int32(length(rhs1_modes)),
+            rhs2.ptr, rhs2_modes, Int32(length(rhs2_modes)),
+            extent_keys, extents, Int32(length(extents)))
+    end
+    return out
 end
 
 function nda_attach_external(arr::Array{T,N}; shape::Dims{N}=size(arr)) where {T,N}
@@ -534,9 +727,7 @@ end
 
 Return the size of the given `NDArray`.
 """
-shape(arr::NDArray{<:Any,N,true}) where {N} = arr.padding
-
-function shape(arr::NDArray{<:Any,N,false}) where {N}
+function shape(arr::NDArray{<:Any,N}) where {N}
     shp = cuNumeric.nda_array_shape(arr)
     return ntuple(i -> Int(shp[i]), Val(N))
 end

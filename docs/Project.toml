@@ -1,7 +1,7 @@
 [compat]
 CNPreferences = "0.1.3"
 Documenter = "1.5"
-cuNumeric = "0.2.0"
+cuNumeric = "0.3.0"
 
 [deps]
 CNPreferences = "3e078157-ea10-49d5-bf32-908f777cd46f"

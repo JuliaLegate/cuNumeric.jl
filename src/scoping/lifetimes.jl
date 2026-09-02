@@ -70,6 +70,6 @@ function rewrite_eager_lifetimes(scope)
     return _prepend_statements(rewritten, temps), assigned_vars
 end
 
-function process_lifetime_scope(scope)
-    return _process_lifetime_scope(scope, rewrite_eager_lifetimes)
+function process_lifetime_scope(scope; protected_roots=Set{Symbol}())
+    return _process_lifetime_scope(scope, rewrite_eager_lifetimes; protected_roots)
 end

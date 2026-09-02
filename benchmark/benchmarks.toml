@@ -36,16 +36,91 @@ T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 16
 fusion = [true, false]
-N = [2000, 2832, 4000, 5656]
-M = [2000, 2832, 4000, 5656]
+N = [24000, 33944, 48000, 67888]
+M = [24000, 33944, 48000, 67888]
 
-[[grayscott_lifetimes]]
+[[grayscott_function_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 16
-fusion = false
-N = [2000, 2832, 4000, 5656]
-M = [2000, 2832, 4000, 5656]
+fusion = [true, false]
+N = [24000, 33944, 48000, 67888]
+M = [24000, 33944, 48000, 67888]
+
+[[grayscott_begin_accelerated]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+fusion = [true, false]
+N = [24000, 33944, 48000, 67888]
+M = [24000, 33944, 48000, 67888]
+
+[[grayscott_let_accelerated]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+fusion = [true, false]
+N = [24000, 33944, 48000, 67888]
+M = [24000, 33944, 48000, 67888]
+
+[[grayscott_expression_accelerated]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+fusion = [true, false]
+N = [24000, 33944, 48000, 67888]
+M = [24000, 33944, 48000, 67888]
+
+#################################
+#              DMD              #
+# Snapshot matrix N × M         #
+# (space × time), r=min(20,M-1).#
+# FLOPs (m=N, n=M-1):           #
+#   2mn² + 11n³   thin SVD      #
+#   2mnr + mr     B = X2 V Σ⁻¹  #
+#   2mr²          Ã = U' B      #
+#   25r³          eigen(Ã)      #
+#   2mr²          Φ = B W       #
+# M fixed ⇒ n,r fixed ⇒ W ~ N.  #
+# Weak scaling: N / P constant. #
+# N = 50000 * P.                #
+# M is the intensity knob: AI   #
+# ~ n²/M ~ M, independent of P. #
+#################################
+
+[[dmd_baseline]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+fusion = [true, false]
+N = [50000, 100000, 200000, 400000]
+M = 512
+
+[[dmd_accelerated]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+fusion = [true, false]
+N = [50000, 100000, 200000, 400000]
+M = 512
+
+#################################
+#     Spectral Poisson (FFT)    #
+# M independent N×N Poisson     #
+# solves (∇²u = f, periodic).   #
+# Transform is the last 2 axes; #
+# batch axis M may split GPUs.  #
+# Work ~ M N² log N.            #
+# Weak scaling: M / P constant. #
+# M = 8 * P, N = 1024.          #
+#################################
+
+[[poisson_fft]]
+T = "Float32"
+gpus = [1, 2, 4, 8]
+cpus = 16
+N = 1024
+M = [8, 16, 32, 64]
 
 #################################
 #   Monte-Carlo Integration     #
@@ -57,3 +132,36 @@ T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 16
 N = [1_000_000, 2_000_000, 4_000_000, 8_000_000]
+
+#########################################
+# Three-mode tensor projection          #
+# D[n,m,l] = A[i,j,k] B[n,i] B[m,j]    #
+#            B[l,k]                     #
+# Optimal pairwise work ~ 6*N^4.        #
+#########################################
+
+[[tensor_projection3]]
+T = "Float32"
+gpus = 1
+cpus = 16
+N = [32, 64, 128]
+cuda = true
+n_warmup = 3
+n_iter = 20
+n_trial = 5
+
+#########################################
+# Rank-4 two-index tensor contraction   #
+# C[a,b,c,d] = X[a,i,c,j] Y[i,b,j,d]   #
+# Work ~ 2*N^6.                         #
+#########################################
+
+[[tensor_contract4]]
+T = "Float32"
+gpus = 1
+cpus = 16
+N = [12, 16, 24]
+cuda = true
+n_warmup = 3
+n_iter = 20
+n_trial = 5

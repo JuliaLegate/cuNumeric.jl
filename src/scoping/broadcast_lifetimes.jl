@@ -115,9 +115,11 @@ function rewrite_broadcast_lifetimes(scope)
     return _prepend_statements(rewritten, temps), assigned_vars
 end
 
-function process_broadcast_lifetime_scope(scope; on_rewrite=nothing)
-    # Returned producers must stay materialized, so exempt them from fusion.
-    protected = _returned_symbols(scope)
+function process_broadcast_lifetime_scope(
+    scope; on_rewrite=nothing, protected_roots=Set{Symbol}()
+)
+    # Returned producers and caller-owned roots stay materialized: exempt from fusion.
+    protected = union(_returned_symbols(scope), protected_roots)
     scope = InterBroadcastFusion.rewrite_scope(scope; on_rewrite, protected)
-    return _process_lifetime_scope(scope, rewrite_broadcast_lifetimes)
+    return _process_lifetime_scope(scope, rewrite_broadcast_lifetimes; protected_roots)
 end

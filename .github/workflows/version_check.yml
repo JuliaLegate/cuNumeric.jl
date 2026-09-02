@@ -8,6 +8,7 @@ on:
 jobs:
   version-check:
     name: Version Check
+    if: ${{ !contains(toJSON(github.event), '[skip ci]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
