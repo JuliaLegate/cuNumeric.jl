@@ -3,10 +3,24 @@ n_warmup = 5
 n_iter = 1000
 n_trial = 5
 cupynumeric = true # (needs install_cupynumeric.sh)
-cuda = false # compare against CUDA.jl (single-GPU configs only)
-# One CPU-reference check per config (not per timed iter). Written to CSV.
+cuda = true         # also run CUDA.jl (single-GPU configs only)
+# When gpus == 1, cuNumeric compares a tiny problem against CUDA.jl.
+# CUDA.jl is still timed; its CSV correctness column is skipped.
 check_correctness = true
 n_correctness_iter = 5
+
+# Names in a list share one weak-scaling figure. Unlisted [[benchmark]]
+# tables each get their own. CUDA.jl and cupynumeric overlay from the
+# group's baseline member (`*_baseline`, else the only / first name).
+[plot.groups]
+grayscott = [
+    "grayscott_baseline",
+    "grayscott_function_accelerated",
+    "grayscott_begin_accelerated",
+    "grayscott_let_accelerated",
+    "grayscott_expression_accelerated",
+]
+dmd = ["dmd_baseline", "dmd_accelerated"]
 
 ####################################
 #             GEMM                 #

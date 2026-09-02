@@ -30,6 +30,10 @@ name(::GrayScottBeginAccelerated) = "grayscott_begin_accelerated"
 name(::GrayScottLetAccelerated) = "grayscott_let_accelerated"
 name(::GrayScottExpressionAccelerated) = "grayscott_expression_accelerated"
 
+function cuda_runnable(b::AbstractGrayScottAccelerateForm{T}) where {T}
+    return GrayScottBaseline{T}(; N=b.N, M=b.M)
+end
+
 # Function form is the reusable default: arguments and the return value survive,
 # while non-returned locals may fuse across statements or die after their last use.
 let body = deepcopy(GRAYSCOTT_STEP_BODY)

@@ -82,7 +82,10 @@ function dispatch(; gpus, cpus, name, T, N, M, n_iter, n_warmup, n_trial,
             push!(cmds, `bash $RUNNER $WORKER $vflag $args cudajl $corr_args`)
         end
         if cupynumeric && !cunumeric_only(name)
-            push!(cmds, `bash $RUNNER $PY_WORKER $vflag --pyenv $(cupynumeric_env_name()) $args`)
+            push!(
+                cmds,
+                `bash $RUNNER $PY_WORKER $vflag --pyenv $(cupynumeric_env_name()) $args $corr_args`,
+            )
         end
     end
 
@@ -92,6 +95,17 @@ function dispatch(; gpus, cpus, name, T, N, M, n_iter, n_warmup, n_trial,
         catch e
             @error "Benchmark '$(name)' failed; continuing." exception = e
         end
+    end
+end
+
+function plot_all_results(config="benchmarks.toml")
+    cfg = isabspath(config) ? config : joinpath(@__DIR__, config)
+    plotter = joinpath(@__DIR__, "plot_results.jl")
+    banner("Plotting results")
+    try
+        run(`$(Base.julia_cmd()) --project=$(@__DIR__) $plotter --config=$cfg`)
+    catch e
+        @error "Plotting failed; continuing." exception = e
     end
 end
 
@@ -115,13 +129,15 @@ function run_all_benchmarks(config="benchmarks.toml")
             n_correctness_iter=gs.n_correctness_iter,
         )
     end
+    return plot_all_results(config)
 end
 
 ensure_project_ready()
 using CNPreferences: CNPreferences
 if isempty(POSARGS)
     run_all_benchmarks()
-else # dispatch on args
+else # dispatch on args; inherit comparison-backend flags from benchmarks.toml
+    gs, _ = parse_config(joinpath(@__DIR__, "benchmarks.toml"))
     dispatch(;
         gpus=parse(Int, POSARGS[1]),
         cpus=parse(Int, POSARGS[2]),
@@ -133,7 +149,9 @@ else # dispatch on args
         n_warmup=parse(Int, POSARGS[8]),
         n_trial=parse(Int, POSARGS[9]),
         fusion=length(POSARGS) >= 10 ? parse_fusion(POSARGS[10]) : true,
-        check_correctness=length(POSARGS) >= 11 ? parse(Bool, POSARGS[11]) : false,
-        n_correctness_iter=length(POSARGS) >= 12 ? parse(Int, POSARGS[12]) : 5,
+        cupynumeric=gs.cupynumeric,
+        cudajl=gs.cuda,
+        check_correctness=length(POSARGS) >= 11 ? parse(Bool, POSARGS[11]) : gs.check_correctness,
+        n_correctness_iter=length(POSARGS) >= 12 ? parse(Int, POSARGS[12]) : gs.n_correctness_iter,
     )
 end

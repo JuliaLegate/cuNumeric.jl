@@ -13,8 +13,12 @@ julia --project=. run.jl   # runs whatever benchmarks.toml configures
 cuNumeric always runs; extra comparison backends are toggled in `[Global]`:
 
 - `cuda = true` → also run under CUDA.jl (single-GPU configs only; CUDA.jl is
-  single-device).
+  single-device). Every kernel has a `CuArray` implementation.
 - `cupynumeric = true` → also run under cupynumeric (see below).
+
+On a single GPU, the cuNumeric worker also compares a tiny problem against
+CUDA.jl (`pass` / `fail` in the CSV). The timed CUDA.jl run still happens;
+its correctness column is `skipped`. Multi-GPU and cupynumeric skip the check.
 
 Individual `[[benchmark]]` blocks may override `cuda`, `n_warmup`, `n_iter`,
 and `n_trial`. Unspecified values inherit from `[Global]`. This is useful for
@@ -116,11 +120,21 @@ part of each timed projection iteration.
 
 ## Plotting
 
+A full `run.jl` pass (no extra args) plots at the end. One-off CLI runs do
+not. To plot existing CSVs:
+
 ```bash
-julia --project=benchmark benchmark/plot_results.jl
+julia --project=. plot_results.jl
 ```
 
-The plotter reads the result files in the selected results directory and writes
-one weak-scaling figure per benchmark, plus aggregate fusion and no-fusion
-figures when those result groups are present. Outputs are grouped under a
-subdirectory named for the shared benchmark prefix.
+`[plot.groups]` in `benchmarks.toml` puts related kernels on one figure.
+Gray-Scott's baseline and `@accelerate` forms share `grayscott`; DMD baseline
+and accelerated share `dmd`. Every other `[[benchmark]]` table is its own
+figure. Each figure overlays CUDA.jl (1 GPU) and cupynumeric from that
+group's baseline CSV (`*_baseline`, else the only / first name). Accelerated
+kernels have no CUDA.jl or Python CSVs; the overlay still comes from the
+baseline.
+
+cuNumeric fused vs unfused uses the same color with solid vs dashed lines.
+Outputs are `plots/<group>_weak_scaling.png`. Optional flags: `--out=`,
+`--suffix=`, `--config=`, or a results-directory path.

@@ -1,6 +1,6 @@
 import cupynumeric as np
 
-from core import register_benchmark
+from core import register_benchmark, rand_array
 
 
 class MonteCarlo:
@@ -17,7 +17,7 @@ class MonteCarlo:
         return self.n_samples
 
     def initialize(self):
-        x = (self.T(10) * np.random.rand(self.n_samples)).astype(self.T)
+        x = (self.T(10) * rand_array(self.n_samples, self.T))
         return (x,)
 
     def run(self, state):

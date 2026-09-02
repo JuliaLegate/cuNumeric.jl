@@ -15,7 +15,7 @@ total_flops(s::MonteCarloIntegration) = s.n_samples
 
 function initialize(mci::MonteCarloIntegration{T}; mod=cuNumeric) where {T}
     # Uniform samples over the integration domain [0, 10].
-    x = T(10) .* mod.rand(T, mci.n_samples)
+    x = T(10) .* rand_array(mod, T, mci.n_samples)
     GC.gc()
     return (x,)
 end
@@ -26,6 +26,10 @@ run!(mci::MonteCarloIntegration, x) = _domain_volume(mci) * sum(exp.(-x .^ 2))
 # n_samples comes in as N; M is unused.
 function build_benchmark(::Type{MonteCarloIntegration}, ::Type{T}, N, M) where {T}
     return MonteCarloIntegration{T}(; n_samples=N)
+end
+
+function correctness_problem(b::MonteCarloIntegration{T}) where {T}
+    return MonteCarloIntegration{T}(; n_samples=min(b.n_samples, 1024))
 end
 
 register_benchmark("montecarlo", MonteCarloIntegration)

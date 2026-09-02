@@ -54,7 +54,7 @@ function initialize(b::AbstractDMD{T}; mod=cuNumeric) where {T}
     b.N >= b.M - 1 || throw(
         ArgumentError("DMD snapshot matrix is N×M with N ≥ M-1 (got N=$(b.N), M=$(b.M))")
     )
-    X = mod.rand(T, b.N, b.M)
+    X = rand_array(mod, T, b.N, b.M)
     GC.gc()
     return (X,)
 end
@@ -96,30 +96,23 @@ function _dmd_compute!(b::AbstractDMD, X, r)
     B, Ã = _dmd_project(b, X, X2, U, Vt, S)
     E = eigen(Ã)
     CT = Complex{eltype(X)}
-    Bc = X isa NDArray ? cuNumeric.as_type(B, CT) : CT.(B)
+    Bc = astype_array(B, CT)
     return E.values, Bc * E.vectors
 end
 
 run!(b::AbstractDMD, X) = _dmd_compute!(b, X, _dmd_rank(b))
 
-correctness_supported(::AbstractDMD) = true
-
-function check_benchmark_correctness(
-    b::AbstractDMD{T}, gs::GlobalSettings; mod=cuNumeric, atol=1e-3, rtol=1e-3
-) where {T}
-    mod === cuNumeric || return "skipped"
-
-    Xh = rand(T, b.N, b.M)
-    X = NDArray(Xh)
-    r = _dmd_rank(b)
-    # Values, not lifetimes: compare the selected device path against the host baseline.
-    ref = DMDBaseline{T}(; N=b.N, M=b.M)
-    λ, _ = _dmd_compute!(b, X, r)
-    λh, _ = _dmd_compute!(ref, Xh, r)
-
-    mag = sort(abs.(Array(λ)); rev=true)
-    magh = sort(abs.(λh); rev=true)
-    return isapprox(mag, magh; atol=atol, rtol=rtol) ? "pass" : "fail"
+function correctness_problem(b::AD) where {AD <: AbstractDMD}
+    m = min(b.M, 16)
+    n = max(min(b.N, 64), m - 1)
+    return AD(; N=n, M=m)
+end
+# Eigenvectors have a phase; compare sorted |λ| only.
+function correctness_result(::AbstractDMD, _, out)
+    return sort(abs.(vec(to_host(out[1]))); rev=true)
+end
+function cuda_runnable(b::DMDAccelerated{T}) where {T}
+    return DMDBaseline{T}(; N=b.N, M=b.M)
 end
 
 register_benchmark("dmd_baseline", DMDBaseline)

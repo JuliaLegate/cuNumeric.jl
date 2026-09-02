@@ -1,6 +1,6 @@
 import cupynumeric as np
 
-from core import register_benchmark
+from core import register_benchmark, rand_array
 
 
 class DMD:
@@ -29,7 +29,7 @@ class DMD:
         )
 
     def initialize(self):
-        X = np.random.rand(self.N, self.M).astype(self.T)
+        X = rand_array((self.N, self.M), self.T)
         return (X,)
 
     def run(self, state):

@@ -1,5 +1,6 @@
 # cupynumeric worker, run by run_benchmark.sh which sets LEGATE_CONFIG first.
 # Args: <gpus> <name> <T> <N> <M> <n_iter> <n_warmup> <n_trial>
+#       [check_correctness] [n_correctness_iter]  (accepted, always skipped)
 import os
 import sys
 
@@ -40,8 +41,9 @@ def main():
 
     print(f"[{MOD}] Mean Run Time: {_mean(times_ms):.5f} ± {_std(times_ms):.5f} ms")
     print(f"[{MOD}] FLOPS: {_mean(gflops):.5f} ± {_std(gflops):.5f} GFLOPS")
+    print(f"[{MOD}] Correctness: skipped")
 
-    save_result(bench.name, bench.dims(), gpus, times_ms, gflops)
+    save_result(bench.name, bench.dims(), gpus, times_ms, gflops, "skipped")
 
 
 if __name__ == "__main__":

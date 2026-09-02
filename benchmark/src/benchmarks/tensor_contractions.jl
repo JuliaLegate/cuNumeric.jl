@@ -1,4 +1,3 @@
-using Random
 using TensorOperations
 
 abstract type AbstractTensorContraction{T} <: AbstractBenchmark{T} end
@@ -38,23 +37,18 @@ function build_benchmark(
     return TensorContract4{T}(; N=N)
 end
 
-function _tensor_rand(mod, ::Type{T}, dims...) where {T}
-    mod === CUDACore && return CUDACore.CuArray(rand(T, dims...))
-    return mod.rand(T, dims...)
-end
-
 function initialize(b::TensorProjection3{T}; mod=cuNumeric) where {T}
-    A = _tensor_rand(mod, T, b.N, b.N, b.N)
-    B = _tensor_rand(mod, T, b.N, b.N)
-    D = mod.zeros(T, b.N, b.N, b.N)
+    A = rand_array(mod, T, b.N, b.N, b.N)
+    B = rand_array(mod, T, b.N, b.N)
+    D = zeros_array(mod, T, b.N, b.N, b.N)
     GC.gc()
     return D, A, B
 end
 
 function initialize(b::TensorContract4{T}; mod=cuNumeric) where {T}
-    X = _tensor_rand(mod, T, b.N, b.N, b.N, b.N)
-    Y = _tensor_rand(mod, T, b.N, b.N, b.N, b.N)
-    C = mod.zeros(T, b.N, b.N, b.N, b.N)
+    X = rand_array(mod, T, b.N, b.N, b.N, b.N)
+    Y = rand_array(mod, T, b.N, b.N, b.N, b.N)
+    C = zeros_array(mod, T, b.N, b.N, b.N, b.N)
     GC.gc()
     return C, X, Y
 end
@@ -70,54 +64,11 @@ function run!(::TensorContract4, C, X, Y)
     return C
 end
 
-correctness_supported(::AbstractTensorContraction) = true
-
-function _backend_array(mod, A)
-    mod === cuNumeric && return NDArray(A)
-    mod === CUDACore && return CUDACore.CuArray(A)
-    return throw(ArgumentError("unsupported tensor contraction backend $mod"))
-end
-
-function _tensor_isapprox(actual, expected, ::Type{T}) where {T}
-    tol = T === Float32 ? 2e-4 : 1e-11
-    return isapprox(Array(actual), expected; atol=tol, rtol=tol)
-end
-
-function check_benchmark_correctness(
-    b::TensorProjection3{T}, gs::GlobalSettings; mod=cuNumeric
-) where {T}
-    mod in (cuNumeric, CUDACore) || return "skipped"
-    n = min(b.N, 4)
-    rng = MersenneTwister(0x3b8a7c21)
-    Ah = rand(rng, T, n, n, n)
-    Bh = rand(rng, T, n, n)
-    ref = zeros(T, n, n, n)
-    @tensor opt=true ref[n, m, l] =
-        Ah[i, j, k] * Bh[n, i] * Bh[m, j] * Bh[l, k]
-
-    D = _backend_array(mod, zeros(T, n, n, n))
-    A = _backend_array(mod, Ah)
-    B = _backend_array(mod, Bh)
-    run!(b, D, A, B)
-    return _tensor_isapprox(D, ref, T) ? "pass" : "fail"
-end
-
-function check_benchmark_correctness(
-    b::TensorContract4{T}, gs::GlobalSettings; mod=cuNumeric
-) where {T}
-    mod in (cuNumeric, CUDACore) || return "skipped"
-    n = min(b.N, 4)
-    rng = MersenneTwister(0xa3c97d42)
-    Xh = rand(rng, T, n, n, n, n)
-    Yh = rand(rng, T, n, n, n, n)
-    ref = zeros(T, n, n, n, n)
-    @tensor ref[a, b, c, d] = Xh[a, i, c, j] * Yh[i, b, j, d]
-
-    C = _backend_array(mod, zeros(T, n, n, n, n))
-    X = _backend_array(mod, Xh)
-    Y = _backend_array(mod, Yh)
-    run!(b, C, X, Y)
-    return _tensor_isapprox(C, ref, T) ? "pass" : "fail"
+correctness_problem(b::TensorProjection3{T}) where {T} = TensorProjection3{T}(; N=min(b.N, 4))
+correctness_problem(b::TensorContract4{T}) where {T} = TensorContract4{T}(; N=min(b.N, 4))
+function correctness_atol_rtol(::AbstractTensorContraction, ::Type{T}) where {T}
+    tol = T === Float32 ? 2.0f-4 : 1e-11
+    return tol, tol
 end
 
 function benchmark_backend_label(

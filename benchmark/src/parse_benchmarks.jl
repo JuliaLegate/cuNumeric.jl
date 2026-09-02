@@ -73,6 +73,7 @@ function parse_config(path)
     specs = BenchmarkSpec[]
     for name in declared_order(path)
         entries = raw[name]
+        entries isa AbstractVector || continue
         for e in entries
             types = aslist(get(e, "T", "Float32"))
             gpus = aslist(e["gpus"])
@@ -108,4 +109,52 @@ function parse_config(path)
     end
 
     return global_settings, specs
+end
+
+# Group members that share a figure. Explicit `[plot.groups]` lists first;
+# every other `[[benchmark]]` table is a singleton group named after itself.
+# Group order follows the first listed member in the file.
+function parse_plot_groups(path)
+    raw = TOML.parsefile(path)
+    declared = declared_order(path)
+    plot = get(raw, "plot", Dict{String,Any}())
+    groups_tbl = get(plot, "groups", Dict{String,Any}())
+
+    explicit = Dict{String,Vector{String}}()
+    for (gname, members) in groups_tbl
+        explicit[string(gname)] = String[string(m) for m in aslist(members)]
+    end
+
+    assigned = Set{String}()
+    groups = Pair{String,Vector{String}}[]
+    remaining = copy(explicit)
+    for name in declared
+        name in assigned && continue
+        gname = nothing
+        for (g, members) in remaining
+            if name in members
+                gname = g
+                break
+            end
+        end
+        if gname !== nothing
+            members = remaining[gname]
+            push!(groups, gname => members)
+            union!(assigned, members)
+            delete!(remaining, gname)
+        else
+            push!(groups, name => [name])
+            push!(assigned, name)
+        end
+    end
+    for (gname, members) in remaining
+        push!(groups, gname => members)
+    end
+    return groups
+end
+
+function plot_baseline(members::Vector{String})
+    i = findfirst(m -> endswith(m, "_baseline"), members)
+    i !== nothing && return members[i]
+    return first(members)
 end

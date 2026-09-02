@@ -43,42 +43,29 @@ function total_flops(b::PoissonFFT)
 end
 
 function initialize(b::PoissonFFT{T}; mod=cuNumeric) where {T}
-    f = mod.rand(T, b.M, b.N, b.N)
-    CT = Complex{T}
-    fc = f isa NDArray ? cuNumeric.as_type(f, CT) : CT.(f)
+    f = rand_array(mod, T, b.M, b.N, b.N)
+    fc = astype_array(f, Complex{T})
     work = copy(fc)
-    kinv_h = _poisson_inv_laplacian(T, b.N)
-    kinv = if fc isa NDArray
-        reshape(NDArray(kinv_h), 1, b.N, b.N)
-    else
-        reshape(kinv_h, 1, b.N, b.N)
-    end
+    kinv = to_backend(mod, reshape(_poisson_inv_laplacian(T, b.N), 1, b.N, b.N))
     GC.gc()
     return fc, work, kinv
 end
 
+_trailing_fft_dims(A) = ntuple(i -> i + 1, ndims(A) - 1)
+
+_batched_fft!(A::NDArray) = (cuNumeric.batched_fft!(A); A)
+_batched_ifft!(A::NDArray) = (cuNumeric.batched_ifft!(A); A)
+_batched_fft!(A) = (fft!(A, _trailing_fft_dims(A)); A)
+_batched_ifft!(A) = (ifft!(A, _trailing_fft_dims(A)); A)
+
 function run!(::PoissonFFT, fc, work, kinv)
     copyto!(work, fc)
-    cuNumeric.batched_fft!(work)
+    _batched_fft!(work)
     work .*= kinv
-    cuNumeric.batched_ifft!(work)
+    _batched_ifft!(work)
     return work
 end
 
-correctness_supported(::PoissonFFT) = true
-
-function check_benchmark_correctness(
-    ::PoissonFFT{T}, gs::GlobalSettings; mod=cuNumeric, atol=1e-3, rtol=1e-3
-) where {T}
-    mod === cuNumeric || return "skipped"
-    n = 32
-    xs = range(T(0), T(1); length=n + 1)[1:(end - 1)]
-    u_true = T[sin(2T(π) * x) * sin(2T(π) * y) for x in xs, y in xs]
-    f_h = (-8 * T(π)^2) .* u_true
-    f = NDArray(reshape(f_h, 1, n, n))
-    kinv = reshape(NDArray(_poisson_inv_laplacian(T, n)), 1, n, n)
-    u = real(cuNumeric.batched_ifft(cuNumeric.batched_fft(f) .* kinv))
-    return isapprox(Array(u)[1, :, :], u_true; atol=atol, rtol=rtol) ? "pass" : "fail"
-end
+correctness_problem(b::PoissonFFT{T}) where {T} = PoissonFFT{T}(; N=min(b.N, 32), M=1)
 
 register_benchmark("poisson_fft", PoissonFFT)

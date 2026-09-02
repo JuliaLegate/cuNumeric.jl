@@ -1,6 +1,6 @@
 import cupynumeric as np
 
-from core import register_benchmark
+from core import register_benchmark, rand_array, zeros_array
 
 
 class GEMM:
@@ -16,9 +16,9 @@ class GEMM:
         return self.N * self.N * (2 * self.M - 1)
 
     def initialize(self):
-        A = np.random.rand(self.N, self.M).astype(self.T)
-        B = np.random.rand(self.M, self.N).astype(self.T)
-        C = np.zeros((self.N, self.N), dtype=self.T)
+        A = rand_array((self.N, self.M), self.T)
+        B = rand_array((self.M, self.N), self.T)
+        C = zeros_array((self.N, self.N), self.T)
         return (C, A, B)
 
     def run(self, state):

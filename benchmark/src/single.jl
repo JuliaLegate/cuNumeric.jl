@@ -6,10 +6,29 @@
 # run.jl sets the compile-time fusion pref before launch; we read it back to label results.
 
 using cuNumeric
-using CUDACore
 using LinearAlgebra
 using TensorOperations
-using cuTENSOR
+
+length(ARGS) >= 9 || error(
+    "single.jl args: <gpus> <name> <T> <N> <M> <n_iter> <n_warmup> <n_trial> <backend> " *
+    "[check_correctness] [n_correctness_iter]",
+)
+
+const GPUS = parse(Int, ARGS[1])
+const BACKEND_NAME = ARGS[9]
+const CHECK_CORRECTNESS = length(ARGS) >= 10 ? parse(Bool, ARGS[10]) : false
+
+# Timed CUDA.jl worker always needs CUDA. The 1-GPU cuNumeric worker loads it
+# only for the tiny oracle check.
+const NEED_CUDA =
+    BACKEND_NAME == "cudajl" ||
+    (BACKEND_NAME == "cunumeric" && CHECK_CORRECTNESS && GPUS == 1)
+
+if NEED_CUDA
+    using CUDA
+    using AbstractFFTs
+    using cuTENSOR
+end
 
 include("core.jl")
 const BENCHMARK_DIR = joinpath(@__DIR__, "benchmarks")
@@ -18,17 +37,20 @@ include.(filter(contains(r".jl$"), readdir(BENCHMARK_DIR; join=true)))
 # Resolve a TOML type string like "Float32" to the actual Julia type.
 parse_type(s) = getfield(Base, Symbol(s))::DataType
 
-cuda_clock() = (CUDACore.synchronize(; blocking=true); time_ns() / 1e3)
-
-# mod runs the kernels; label tags stdout; save_as names the results CSV.
-const BACKENDS = Dict(
-    "cunumeric" => (
-        mod=cuNumeric, label="cuNumeric", save_as="cunumeric", clock=get_time_microseconds
-    ),
-    "cudajl" => (
-        mod=CUDACore, label="CUDA.jl", save_as="CUDA.jl", clock=cuda_clock
-    ),
-)
+# One worker process, one backend. Clock functions have distinct types, so do
+# not stash them in a Dict inferred from the cuNumeric entry.
+function backend_entry(name)
+    name == "cunumeric" && return (
+        mod=cuNumeric, label="cuNumeric", save_as="cunumeric",
+        clock=get_time_microseconds,
+    )
+    if name == "cudajl"
+        cuda_clock() = (CUDA.synchronize(; blocking=true); time_ns() / 1e3)
+        return (mod=CUDA, label="CUDA.jl", save_as="CUDA.jl", clock=cuda_clock)
+    end
+    return error("Unknown backend '$(name)'. Known: cunumeric, cudajl")
+end
+const BACKEND = backend_entry(BACKEND_NAME)
 
 function run_single(
     gpus, name, T_str, N, M, n_iter, n_warmup, n_trial, backend;
@@ -37,10 +59,7 @@ function run_single(
     haskey(BENCHMARKS, name) || error(
         "No benchmark registered for '$(name)'. Known: $(join(sort(collect(keys(BENCHMARKS))), ", "))"
     )
-    haskey(BACKENDS, backend) || error(
-        "Unknown backend '$(backend)'. Known: $(join(sort(collect(keys(BACKENDS))), ", "))"
-    )
-    bk = BACKENDS[backend]
+    bk = BACKEND
 
     T = parse_type(T_str)
     b = build_benchmark(BENCHMARKS[name], T, N, M)
@@ -55,6 +74,7 @@ function run_single(
         n_warmup=n_warmup,
         n_iter=n_iter,
         n_trial=n_trial,
+        n_gpu=gpus,
         check_correctness=check_correctness,
         n_correctness_iter=n_correctness_iter,
     )
@@ -70,7 +90,6 @@ function run_single(
     return save_result(br, gpus; mod=save_as)
 end
 
-gpus = parse(Int, ARGS[1])
 bench_name = ARGS[2]
 T_str = ARGS[3]
 N = parse(Int, ARGS[4])
@@ -78,10 +97,8 @@ M = parse(Int, ARGS[5])
 n_iter = parse(Int, ARGS[6])
 n_warmup = parse(Int, ARGS[7])
 n_trial = parse(Int, ARGS[8])
-backend = ARGS[9]
-check_correctness = length(ARGS) >= 10 ? parse(Bool, ARGS[10]) : false
 n_correctness_iter = length(ARGS) >= 11 ? parse(Int, ARGS[11]) : 5
 run_single(
-    gpus, bench_name, T_str, N, M, n_iter, n_warmup, n_trial, backend;
-    check_correctness=check_correctness, n_correctness_iter=n_correctness_iter,
+    GPUS, bench_name, T_str, N, M, n_iter, n_warmup, n_trial, BACKEND_NAME;
+    check_correctness=CHECK_CORRECTNESS, n_correctness_iter=n_correctness_iter,
 )

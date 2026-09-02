@@ -24,7 +24,7 @@ With no extra args, `run.jl` reads `benchmarks.toml` and runs every expanded con
 2. Calls `run_benchmark.sh`, which exports `LEGATE_CONFIG` from `--gpus` / `--cpus` **before** Julia starts
 3. Launches `src/single.jl` for the cuNumeric backend (and optional comparison backends)
 
-Add `-v` / `--verbose` for more plumbing output.
+After the sweep, it launches `plot_results.jl` on the result CSVs. One-off CLI runs skip plotting. Add `-v` / `--verbose` for more plumbing output.
 
 ## `benchmarks.toml`
 
@@ -36,7 +36,7 @@ n_warmup = 5
 n_iter = 1000
 n_trial = 5
 cupynumeric = true   # also run Python cupynumeric (needs install_cupynumeric.sh)
-cuda = false         # also run CUDA.jl (single-GPU configs only)
+cuda = true          # also run CUDA.jl (single-GPU configs only)
 check_correctness = true
 n_correctness_iter = 5
 ```
@@ -44,10 +44,17 @@ n_correctness_iter = 5
 - `n_warmup`: untimed iterations (hide compile / first-touch cost)
 - `n_iter`: timed iterations per trial (build task queue depth)
 - `n_trial`: independent trials; mean ± stddev across trials is what gets printed / saved
-- `cupynumeric` / `cuda`: optional comparison backends
-- `check_correctness`: one CPU-reference check per config (not per timed iter), recorded in the CSV
+- `cupynumeric` / `cuda`: optional comparison backends. `cuda = true` still
+  **times** CUDA.jl on configs with `gpus == 1` (GEMM, Monte Carlo, Gray-Scott,
+  DMD, Poisson FFT, and the TensorOperations kernels).
+- `check_correctness`: when `gpus == 1`, the cuNumeric worker also compares a
+  tiny problem against CUDA.jl (not CPU). The CUDA.jl timing run is unchanged
+  and records `skipped` for correctness. Multi-GPU and cupynumeric skip.
 
-Each `[[name]]` block is a registered benchmark (`gemm`, `montecarlo`, `dmd_baseline`, `dmd_lifetimes`, `grayscott_baseline`, `grayscott_lifetimes`, `poisson_fft`, …). Names must match what `src/benchmarks/*.jl` registers.
+Each `[[name]]` block is a registered benchmark (`gemm`, `montecarlo`,
+`dmd_baseline`, `dmd_accelerated`, `grayscott_baseline`, the Gray-Scott
+`@accelerate` forms, `poisson_fft`, `tensor_projection3`, …). Names must match
+what `src/benchmarks/*.jl` registers.
 
 DMD's `N` is the number of spatial degrees of freedom (rows of the snapshot matrix), not a grid side length. The SVD is of the tall-skinny `N × (M-1)` matrix `X1`. Thin SVD plus the rank-`r` lift is `Θ(N)` when `M` and `r` are fixed, so weak scaling is `N ∝ P` (same idea as Monte Carlo, not GEMM's `N ∝ P^{1/3}`). The flop count is in `src/benchmarks/dmd.jl`.
 
@@ -107,7 +114,11 @@ julia --project=. run.jl 1 16 gemm Float32 20000 20000 1000 5 5 true
 
 ## Comparison backends
 
-- **CUDA.jl:** set `cuda = true` in `[Global]`. Only runs when `gpus == 1`.
+- **CUDA.jl:** set `cuda = true` in `[Global]`. Timed on configs with `gpus == 1`.
+  Every registered kernel has a `CuArray` path (GEMM / broadcast / FFT /
+  SVD via cuBLAS, cuFFT, cuSOLVER; tensor contractions use TensorOperations'
+  cuTENSOR extension). That timed run is separate from the tiny cuNumeric vs
+  CUDA.jl correctness check.
 - **cupynumeric (Python):** set `cupynumeric = true`, then build a matching conda env once:
 
 ```bash
@@ -118,9 +129,33 @@ julia --project=. run.jl 1 16 gemm Float32 20000 20000 1000 5 5 true
 
 ## Results and timing
 
-Each worker prints mean ± stddev run time (ms) and GFLOPS, plus a correctness tag (`pass` / `fail` / `skipped`). CSVs append under `benchmark/results/`.
+Each worker prints mean ± stddev run time (ms) and GFLOPS, plus a correctness tag (`pass` / `fail` / `skipped`). On one GPU the cuNumeric tag is the tiny CUDA.jl compare; CUDA.jl and cupynumeric record `skipped`. CSVs append under `benchmark/results/`.
 
 Unfused cuNumeric runs are labeled and saved separately (for example `cunumeric_nofusion`) so they stay a distinct series from fused runs.
+
+## Plotting
+
+`[plot.groups]` in `benchmarks.toml` names the figures. Related kernels share one PNG:
+
+```toml
+[plot.groups]
+grayscott = [
+    "grayscott_baseline",
+    "grayscott_function_accelerated",
+    "grayscott_begin_accelerated",
+    "grayscott_let_accelerated",
+    "grayscott_expression_accelerated",
+]
+dmd = ["dmd_baseline", "dmd_accelerated"]
+```
+
+Any `[[benchmark]]` table not listed (GEMM, Poisson, Monte Carlo, tensors) is its own figure. CUDA.jl (single GPU) and cupynumeric overlay from the group's baseline CSV — the member ending in `_baseline`, or the only / first name. Accelerated variants are cuNumeric-only; their CUDA.jl and Python points still come from the baseline.
+
+Fused and unfused cuNumeric share a color (solid vs dashed). A full `run.jl` pass writes `plots/<group>_weak_scaling.png` at the end. To plot existing CSVs:
+
+```bash
+julia --project=. plot_results.jl
+```
 
 ## Hardware notes
 
