@@ -40,6 +40,7 @@ dmd = ["dmd_baseline", "dmd_accelerated"]
 T = ["Float32"]
 gpus = [1, 2, 4, 8]
 cpus = 8
+n_iter = 50
 
 #################################
 #         Gray-Scott            #
@@ -95,6 +96,7 @@ gpus = [1, 2, 4, 8]
 cpus = 8
 fusion = [true, false]
 M = 512
+n_iter = 50
 
 [[dmd_accelerated]]
 T = "Float32"
@@ -102,6 +104,7 @@ gpus = [1, 2, 4, 8]
 cpus = 8
 fusion = [true, false]
 M = 512
+n_iter = 50
 
 #################################
 #     Spectral Poisson (FFT)    #
@@ -121,6 +124,7 @@ M = 512
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 8
+n_iter = 50
 
 #################################
 #   Monte-Carlo Integration     #
@@ -132,32 +136,39 @@ cpus = 8
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 8
+n_iter = 50
 
 #########################################
 # Three-mode tensor projection          #
 # D[n,m,l] = A[i,j,k] B[n,i] B[m,j]    #
 #            B[l,k]                     #
 # Optimal pairwise work ~ 6*N^4.        #
+# Weak scaling: N ∝ P^{1/4}.            #
 # Peak RAM includes two N³ temps.       #
+# CUDA.jl / cuTENSOR overlays at 1 GPU. #
 #########################################
 
 [[tensor_projection3]]
 T = "Float32"
-gpus = [1,2,4,8]
+gpus = [1, 2, 4, 8]
 cpus = 8
-cuda = true
-
+n_warmup = 2
+n_iter = 20
 
 #########################################
 # Rank-4 two-index tensor contraction   #
 # C[a,b,c,d] = X[a,i,c,j] Y[i,b,j,d]   #
 # Work ~ 2*N^6.                         #
+# Weak scaling: N ∝ P^{1/6}.            #
 # Peak RAM includes GEMM workspace.     #
+# Keep n_iter small: RAM-fit N makes    #
+# each step much heavier than GEMM.     #
 #########################################
 
 [[tensor_contract4]]
 T = "Float32"
-gpus = [1,2,4,8]
+gpus = [1, 2, 4, 8]
 cpus = 8
-cuda = true
+n_warmup = 2
+n_iter = 5
 
