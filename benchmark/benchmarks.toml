@@ -1,6 +1,6 @@
 [Global]
-n_warmup = 5
-n_iter = 1000
+n_warmup = 2
+n_iter = 250
 n_trial = 5
 cupynumeric = true # (needs install_cupynumeric.sh)
 cuda = true         # also run CUDA.jl (single-GPU configs only)
@@ -11,7 +11,7 @@ n_correctness_iter = 5
 # RAM-fit the 1-GPU problem, then scale with P. Pin N (and M) on a block
 # to keep paper sizes. CUNUMERIC_BENCH_MEM_FRAC overrides mem_frac.
 auto_size = true
-mem_frac = 0.5
+mem_frac = 0.75
 
 # Names in a list share one weak-scaling figure. Unlisted [[benchmark]]
 # tables each get their own. CUDA.jl and cupynumeric overlay from the
@@ -39,7 +39,7 @@ dmd = ["dmd_baseline", "dmd_accelerated"]
 [[gemm]]
 T = ["Float32"]
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 
 #################################
 #         Gray-Scott            #
@@ -53,31 +53,31 @@ cpus = 16
 [[grayscott_baseline]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 fusion = [true, false]
 
 [[grayscott_function_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 fusion = [true, false]
 
 [[grayscott_begin_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 fusion = [true, false]
 
 [[grayscott_let_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 fusion = [true, false]
 
 [[grayscott_expression_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 fusion = [true, false]
 
 #################################
@@ -92,14 +92,14 @@ fusion = [true, false]
 [[dmd_baseline]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 fusion = [true, false]
 M = 512
 
 [[dmd_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 fusion = [true, false]
 M = 512
 
@@ -120,7 +120,7 @@ M = 512
 [[poisson_fft]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 
 #################################
 #   Monte-Carlo Integration     #
@@ -131,7 +131,7 @@ cpus = 16
 [[montecarlo]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 
 #########################################
 # Three-mode tensor projection          #
@@ -143,12 +143,10 @@ cpus = 16
 
 [[tensor_projection3]]
 T = "Float32"
-gpus = 1
-cpus = 16
+gpus = [1,2,4,8]
+cpus = 8
 cuda = true
-n_warmup = 3
-n_iter = 20
-n_trial = 5
+
 
 #########################################
 # Rank-4 two-index tensor contraction   #
@@ -159,9 +157,7 @@ n_trial = 5
 
 [[tensor_contract4]]
 T = "Float32"
-gpus = 1
-cpus = 16
+gpus = [1,2,4,8]
+cpus = 8
 cuda = true
-n_warmup = 3
-n_iter = 20
-n_trial = 5
+
