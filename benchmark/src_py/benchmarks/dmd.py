@@ -1,6 +1,6 @@
 import cupynumeric as np
 
-from core import register_benchmark
+from core import register_benchmark, rand_array
 
 
 class DMD:
@@ -13,23 +13,8 @@ class DMD:
     def dims(self):
         return self.N, self.M
 
-    def total_flops(self):
-        # Same breakdown as benchmark/src/benchmarks/dmd.jl
-        m = self.N
-        n = self.M - 1
-        r = self.r
-        return (
-            2 * m * n * n
-            + 11 * n * n * n
-            + 2 * m * n * r
-            + m * r
-            + 2 * m * r * r
-            + 25 * r * r * r
-            + 2 * m * r * r
-        )
-
     def initialize(self):
-        X = np.random.rand(self.N, self.M).astype(self.T)
+        X = rand_array((self.N, self.M), self.T)
         return (X,)
 
     def run(self, state):

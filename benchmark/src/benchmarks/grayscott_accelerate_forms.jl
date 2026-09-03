@@ -30,37 +30,43 @@ name(::GrayScottBeginAccelerated) = "grayscott_begin_accelerated"
 name(::GrayScottLetAccelerated) = "grayscott_let_accelerated"
 name(::GrayScottExpressionAccelerated) = "grayscott_expression_accelerated"
 
+function cuda_runnable(b::AbstractGrayScottAccelerateForm{T}) where {T}
+    return GrayScottBaseline{T}(; N=b.N, M=b.M)
+end
+
 # Function form is the reusable default: arguments and the return value survive,
 # while non-returned locals may fuse across statements or die after their last use.
-let body = deepcopy(GRAYSCOTT_STEP_BODY)
-    definition = _define_accelerated_definition(
-        :(_gs_step!(b::GrayScottFunctionAccelerated, u, v, u_new, v_new, args::GSParams)),
-        body,
-        :function,
-    )
-    @eval $definition
-end
+if CUNUMERIC_BENCH_RUNTIME
+    let body = deepcopy(GRAYSCOTT_STEP_BODY)
+        definition = _define_accelerated_definition(
+            :(_gs_step!(b::GrayScottFunctionAccelerated, u, v, u_new, v_new, args::GSParams)),
+            body,
+            :function,
+        )
+        @eval $definition
+    end
 
-# `begin` adds no scope. Every named local remains visible, so it measures the
-# multi-output/materialized path rather than eliminating named intermediates.
-let body = deepcopy(GRAYSCOTT_STEP_BODY)
-    definition = _define_accelerated_definition(
-        :(_gs_step!(b::GrayScottBeginAccelerated, u, v, u_new, v_new, args::GSParams)),
-        body,
-        :begin,
-    )
-    @eval $definition
-end
+    # `begin` adds no scope. Every named local remains visible, so it measures the
+    # multi-output/materialized path rather than eliminating named intermediates.
+    let body = deepcopy(GRAYSCOTT_STEP_BODY)
+        definition = _define_accelerated_definition(
+            :(_gs_step!(b::GrayScottBeginAccelerated, u, v, u_new, v_new, args::GSParams)),
+            body,
+            :begin,
+        )
+        @eval $definition
+    end
 
-# `let` is a hard one-off scope. Only its result escapes, allowing aggressive
-# inter-statement fusion and last-use cleanup for all other local temporaries.
-let body = deepcopy(GRAYSCOTT_STEP_BODY)
-    definition = _define_accelerated_definition(
-        :(_gs_step!(b::GrayScottLetAccelerated, u, v, u_new, v_new, args::GSParams)),
-        body,
-        :let,
-    )
-    @eval $definition
+    # `let` is a hard one-off scope. Only its result escapes, allowing aggressive
+    # inter-statement fusion and last-use cleanup for all other local temporaries.
+    let body = deepcopy(GRAYSCOTT_STEP_BODY)
+        definition = _define_accelerated_definition(
+            :(_gs_step!(b::GrayScottLetAccelerated, u, v, u_new, v_new, args::GSParams)),
+            body,
+            :let,
+        )
+        @eval $definition
+    end
 end
 
 # Expression form has no multi-statement scope. Accelerating each RHS preserves
@@ -82,10 +88,12 @@ function accelerate_grayscott_rhs(body::Expr)
 end
 
 let body = accelerate_grayscott_rhs(deepcopy(GRAYSCOTT_STEP_BODY))
-    @eval function _gs_step!(
-        b::GrayScottExpressionAccelerated, u, v, u_new, v_new, args::GSParams
-    )
-        $body
+    if CUNUMERIC_BENCH_RUNTIME
+        @eval function _gs_step!(
+            b::GrayScottExpressionAccelerated, u, v, u_new, v_new, args::GSParams
+        )
+            $body
+        end
     end
 end
 

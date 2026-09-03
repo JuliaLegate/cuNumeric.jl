@@ -23,11 +23,32 @@ Base.@kwdef struct GrayScottAccelerated{T} <: AbstractGrayScott{T}
     M::Int
 end
 
-name(::AbstractGrayScott) = "grayscott"
+name(::GrayScottBaseline) = "grayscott_baseline"
+name(::GrayScottAccelerated) = "grayscott_accelerated"
 dims(b::AbstractGrayScott) = (b.N, b.M)
 data(b::AbstractGrayScott{T}) where {T} = "GrayScott with T=$(T), N=$(b.N), M=$(b.M)"
 allowed_types(::Type{AbstractGrayScott}) = cuNumeric.SUPPORTED_FLOAT_TYPES
 total_flops(b::AbstractGrayScott) = b.N * b.M # grid points updated per step
+
+# Four live grids: u, v, u_new, v_new. Legion halos are not counted.
+total_space(b::AbstractGrayScott{T}) where {T} = 4 * b.N * b.M * sizeof(T)
+
+function estimate_scaling(b::AbstractGrayScott, P::Integer)
+    P == 1 && return (b.N, b.M)
+    n = scale_axis(b.N, P, 1//2)
+    return (n, n)
+end
+
+function fit_one_gpu(
+    ::Type{B}, ::Type{T};
+    budget::Int, N_hint=nothing, M_hint=nothing,
+) where {B<:AbstractGrayScott,T}
+    hi = max(8, Int(floor(sqrt(Float64(budget) / sizeof(T)))))
+    n = largest_feasible(8, hi, k -> total_space(B{T}(; N=k, M=k)) <= budget)
+    n === nothing && error("$B does not fit in $(budget) bytes")
+    n = align8(n)
+    return (n, n)
+end
 
 function build_benchmark(::Type{A}, ::Type{T}, N, M) where {A<:AbstractGrayScott,T}
     return A{T}(; N=N, M=M)
@@ -42,54 +63,43 @@ mutable struct GrayScottState{A,P}
 end
 
 function initialize(b::AbstractGrayScott{T}; mod=cuNumeric, deterministic::Bool=false) where {T}
-    d = (b.N, b.M)
-    u = mod.ones(T, d)
-    v = mod.zeros(T, d)
-    u_new = mod.zeros(T, d)
-    v_new = mod.zeros(T, d)
+    u = ones_array(mod, T, b.N, b.M)
+    v = zeros_array(mod, T, b.N, b.M)
+    u_new = zeros_array(mod, T, b.N, b.M)
+    v_new = zeros_array(mod, T, b.N, b.M)
 
     seed = min(150, b.N, b.M)
     if deterministic
-        # Fixed host pattern so CPU and GPU (any GPU count) share the same IC.
-        # Avoids Random streams differing across array backends.
-        host_u = T[
-            T(0.5) + T(0.5) * sin(T(i)) * cos(T(j)) for i in 1:seed, j in 1:seed
-        ]
-        host_v = T[
-            T(0.25) + T(0.25) * cos(T(i)) * sin(T(j)) for i in 1:seed, j in 1:seed
-        ]
-        u[1:seed, 1:seed] = mod === cuNumeric ? NDArray(host_u) : host_u
-        v[1:seed, 1:seed] = mod === cuNumeric ? NDArray(host_v) : host_v
+        # Shared host pattern so cuNumeric and CUDA.jl start from the same IC.
+        host_u = T[T(0.5) + T(0.5) * sin(T(i)) * cos(T(j)) for i in 1:seed, j in 1:seed]
+        host_v = T[T(0.25) + T(0.25) * cos(T(i)) * sin(T(j)) for i in 1:seed, j in 1:seed]
+        u[1:seed, 1:seed] = to_backend(mod, host_u)
+        v[1:seed, 1:seed] = to_backend(mod, host_v)
     else
-        u[1:seed, 1:seed] = mod.rand(T, (seed, seed))
-        v[1:seed, 1:seed] = mod.rand(T, (seed, seed))
+        u[1:seed, 1:seed] = rand_array(mod, T, seed, seed)
+        v[1:seed, 1:seed] = rand_array(mod, T, seed, seed)
     end
 
     return (GrayScottState(u, v, u_new, v_new, GSParams{T}()),)
 end
 
-correctness_supported(::AbstractGrayScott) = true
+function to_backend_state(mod, st::GrayScottState)
+    return GrayScottState(
+        to_backend_state(mod, st.u),
+        to_backend_state(mod, st.v),
+        to_backend_state(mod, st.u_new),
+        to_backend_state(mod, st.v_new),
+        st.params,
+    )
+end
 
-function check_benchmark_correctness(
-    b::AbstractGrayScott{T}, gs::GlobalSettings; mod=cuNumeric, atol=1e-4, rtol=1e-4
-) where {T}
-    # CPU reference compares via cuNumeric.compare (scalar gather). Other backends skip.
-    mod === cuNumeric || return "skipped"
-
-    n = gs.n_correctness_iter
-    st_gpu = only(initialize(b; mod=mod, deterministic=true))
-    st_cpu = only(initialize(b; mod=Base, deterministic=true))
-
-    for _ in 1:n
-        run!(b, st_gpu)
-        run!(b, st_cpu)
-    end
-
-    # Element-wise NDArray indexing gathers across tiles — do not use Array(NDArray)
-    # for multi-GPU (get_ptr is local-tile only).
-    u_ok = @allowscalar cuNumeric.compare(st_cpu.u, st_gpu.u, atol, rtol)
-    v_ok = @allowscalar cuNumeric.compare(st_cpu.v, st_gpu.v, atol, rtol)
-    return (u_ok && v_ok) ? "pass" : "fail"
+function correctness_problem(b::AbstractGrayScott{T}) where {T}
+    return typeof(b)(; N=min(32, b.N, b.M), M=min(32, b.N, b.M))
+end
+correctness_iters(::AbstractGrayScott, gs::GlobalSettings) = gs.n_correctness_iter
+correctness_result(::AbstractGrayScott, state, _) = (only(state).u, only(state).v)
+function cuda_runnable(b::GrayScottAccelerated{T}) where {T}
+    return GrayScottBaseline{T}(; N=b.N, M=b.M)
 end
 
 # Shared syntax tree keeps every Gray-Scott variant on the exact same workload.
@@ -151,10 +161,12 @@ end
 # Original baseline and recommended function-form benchmark.
 let body = deepcopy(GRAYSCOTT_STEP_BODY)
     @eval _gs_step!(b::GrayScottBaseline, u, v, u_new, v_new, args::GSParams) = $body
-    definition = _define_accelerated_definition(
-        :(_gs_step!(b::GrayScottAccelerated, u, v, u_new, v_new, args::GSParams)), body
-    )
-    @eval $definition
+    if CUNUMERIC_BENCH_RUNTIME
+        definition = _define_accelerated_definition(
+            :(_gs_step!(b::GrayScottAccelerated, u, v, u_new, v_new, args::GSParams)), body
+        )
+        @eval $definition
+    end
 end
 
 function run!(b::AbstractGrayScott, st::GrayScottState)

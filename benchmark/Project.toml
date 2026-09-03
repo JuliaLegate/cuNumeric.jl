@@ -1,7 +1,7 @@
 [deps]
-BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+AbstractFFTs = "621f4979-c628-5d54-868e-fcf4e3e8185c"
 CNPreferences = "3e078157-ea10-49d5-bf32-908f777cd46f"
-CUDACore = "bd0ed864-bdfe-4181-a5ed-ce625a5fdea2"
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"

@@ -1,12 +1,30 @@
 [Global]
-n_warmup = 5
-n_iter = 1000
+n_warmup = 2
+n_iter = 250
 n_trial = 5
 cupynumeric = true # (needs install_cupynumeric.sh)
-cuda = false # compare against CUDA.jl (single-GPU configs only)
-# One CPU-reference check per config (not per timed iter). Written to CSV.
+cuda = true         # also run CUDA.jl (single-GPU configs only)
+# When gpus == 1, cuNumeric compares a tiny problem against CUDA.jl.
+# CUDA.jl is still timed; its CSV correctness column is skipped.
 check_correctness = true
 n_correctness_iter = 5
+# RAM-fit the 1-GPU problem, then scale with P. Pin N (and M) on a block
+# to keep paper sizes. CUNUMERIC_BENCH_MEM_FRAC overrides mem_frac.
+auto_size = true
+mem_frac = 0.75
+
+# Names in a list share one weak-scaling figure. Unlisted [[benchmark]]
+# tables each get their own. CUDA.jl and cupynumeric overlay from the
+# group's baseline member (`*_baseline`, else the only / first name).
+[plot.groups]
+grayscott = [
+    "grayscott_baseline",
+    "grayscott_function_accelerated",
+    "grayscott_begin_accelerated",
+    "grayscott_let_accelerated",
+    "grayscott_expression_accelerated",
+]
+dmd = ["dmd_baseline", "dmd_accelerated"]
 
 ####################################
 #             GEMM                 #
@@ -14,14 +32,15 @@ n_correctness_iter = 5
 # Work ~ 2*N^2*M = 2*N^3.          #
 # N^3 / P --> constant.            #
 # N = baseline * P^(1/3).          #
+# Paper sizes (A100 80GB, frac~0.5):
+# N = [20000, 25200, 31752, 40000]
 ####################################
 
 [[gemm]]
 T = ["Float32"]
 gpus = [1, 2, 4, 8]
-cpus = 16
-N = [20000, 25200, 31752, 40000]
-M = [20000, 25200, 31752, 40000]
+cpus = 8
+n_iter = 50
 
 #################################
 #         Gray-Scott            #
@@ -29,80 +48,63 @@ M = [20000, 25200, 31752, 40000]
 # Work ~ N*M = N^2.             #
 # N^2 / P --> constant.         #
 # N = baseline * P^(1/2).       #
+# Paper: N = [24000, 33944, 48000, 67888]
 #################################
 
 [[grayscott_baseline]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 fusion = [true, false]
-N = [24000, 33944, 48000, 67888]
-M = [24000, 33944, 48000, 67888]
 
 [[grayscott_function_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 fusion = [true, false]
-N = [24000, 33944, 48000, 67888]
-M = [24000, 33944, 48000, 67888]
 
 [[grayscott_begin_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 fusion = [true, false]
-N = [24000, 33944, 48000, 67888]
-M = [24000, 33944, 48000, 67888]
 
 [[grayscott_let_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 fusion = [true, false]
-N = [24000, 33944, 48000, 67888]
-M = [24000, 33944, 48000, 67888]
 
 [[grayscott_expression_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 fusion = [true, false]
-N = [24000, 33944, 48000, 67888]
-M = [24000, 33944, 48000, 67888]
 
 #################################
 #              DMD              #
 # Snapshot matrix N × M         #
 # (space × time), r=min(20,M-1).#
-# FLOPs (m=N, n=M-1):           #
-#   2mn² + 11n³   thin SVD      #
-#   2mnr + mr     B = X2 V Σ⁻¹  #
-#   2mr²          Ã = U' B      #
-#   25r³          eigen(Ã)      #
-#   2mr²          Φ = B W       #
-# M fixed ⇒ n,r fixed ⇒ W ~ N.  #
-# Weak scaling: N / P constant. #
-# N = 50000 * P.                #
-# M is the intensity knob: AI   #
-# ~ n²/M ~ M, independent of P. #
+# M is the intensity knob (fixed).
+# Weak scaling: N ∝ P if N ≫ M. #
+# Paper: N = [50000, 100000, 200000, 400000]
 #################################
 
 [[dmd_baseline]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 fusion = [true, false]
-N = [50000, 100000, 200000, 400000]
 M = 512
+n_iter = 50
 
 [[dmd_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
+cpus = 8
 fusion = [true, false]
-N = [50000, 100000, 200000, 400000]
 M = 512
+n_iter = 50
 
 #################################
 #     Spectral Poisson (FFT)    #
@@ -110,58 +112,63 @@ M = 512
 # solves (∇²u = f, periodic).   #
 # Transform is the last 2 axes; #
 # batch axis M may split GPUs.  #
-# Work ~ M N² log N.            #
-# Weak scaling: M / P constant. #
-# M = 8 * P, N = 1024.          #
+# N is held across the P sweep  #
+# (changing N changes FFT size).#
+# Omit N to RAM-fit one grid,   #
+# then M = P. Pin e.g. N = 1024 #
+# and M = "auto" to fit batch.  #
+# Paper: N = 1024, M = 8*P      #
 #################################
 
 [[poisson_fft]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
-N = 1024
-M = [8, 16, 32, 64]
+cpus = 8
+n_iter = 50
 
 #################################
 #   Monte-Carlo Integration     #
 #  Work ~ N. Scale N linearly   #
+#  Paper: N = 1e6 * P           #
 #################################
 
 [[montecarlo]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
-N = [1_000_000, 2_000_000, 4_000_000, 8_000_000]
+cpus = 8
+n_iter = 50
 
 #########################################
 # Three-mode tensor projection          #
 # D[n,m,l] = A[i,j,k] B[n,i] B[m,j]    #
 #            B[l,k]                     #
 # Optimal pairwise work ~ 6*N^4.        #
+# Weak scaling: N ∝ P^{1/4}.            #
+# Peak RAM includes two N³ temps.       #
+# CUDA.jl / cuTENSOR overlays at 1 GPU. #
 #########################################
 
 [[tensor_projection3]]
 T = "Float32"
-gpus = 1
-cpus = 16
-N = [32, 64, 128]
-cuda = true
-n_warmup = 3
+gpus = [1, 2, 4, 8]
+cpus = 8
+n_warmup = 2
 n_iter = 20
-n_trial = 5
 
 #########################################
 # Rank-4 two-index tensor contraction   #
 # C[a,b,c,d] = X[a,i,c,j] Y[i,b,j,d]   #
 # Work ~ 2*N^6.                         #
+# Weak scaling: N ∝ P^{1/6}.            #
+# Peak RAM includes GEMM workspace.     #
+# Keep n_iter small: RAM-fit N makes    #
+# each step much heavier than GEMM.     #
 #########################################
 
 [[tensor_contract4]]
 T = "Float32"
-gpus = 1
-cpus = 16
-N = [12, 16, 24]
-cuda = true
-n_warmup = 3
-n_iter = 20
-n_trial = 5
+gpus = [1, 2, 4, 8]
+cpus = 8
+n_warmup = 2
+n_iter = 5
+

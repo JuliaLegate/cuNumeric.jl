@@ -11,8 +11,8 @@ using Statistics
     standard deviations/errors.
 - `n_gpu::Int` : The number of GPUs used by legate. Set through the LEGATE_CONFIG,
     this value is just bookkeeping.
-- `check_correctness::Bool` : If true, run one CPU-reference check per config
-    (not per timed iteration) before timing; result is recorded in the CSV.
+- `check_correctness::Bool` : If true and `n_gpu == 1`, compare a tiny cuNumeric
+    result against CUDA.jl before timing. CUDA.jl / multi-GPU / Python skip.
 - `n_correctness_iter::Int` : Steps to run for that single correctness check.
 """
 Base.@kwdef struct GlobalSettings
@@ -24,11 +24,19 @@ Base.@kwdef struct GlobalSettings
     cuda::Bool = false # also run under CUDA.jl for comparison (single-GPU only)
     check_correctness::Bool = false
     n_correctness_iter::Int = 5
+    auto_size::Bool = false
+    mem_frac::Float64 = 0.5
 end
 
 #########################################
 
 abstract type AbstractBenchmark{T} end
+
+# True when this file is included after `using cuNumeric` (the worker). The
+# orchestrator includes the same kernel files for types / `total_space` /
+# `estimate_scaling` without loading Legion; those files skip `@accelerate`
+# and `::NDArray` methods in that case.
+const CUNUMERIC_BENCH_RUNTIME = isdefined(@__MODULE__, :cuNumeric)
 
 # Interface each benchmark implements (see benchmarks/gemm.jl for a template).
 function name end
@@ -38,6 +46,34 @@ function allowed_types end
 function total_flops end
 function initialize end
 function run! end
+
+include("autosize.jl")
+
+function include_benchmarks()
+    dir = joinpath(@__DIR__, "benchmarks")
+    for file in sort(filter(f -> endswith(f, ".jl"), readdir(dir; join=true)))
+        Base.include(@__MODULE__, file)
+    end
+    return nothing
+end
+
+total_space(b::AbstractBenchmark) =
+    error("total_space not defined for $(typeof(b)); add a method in its benchmark file")
+
+function estimate_scaling(b::AbstractBenchmark, P::Integer)
+    P < 1 && throw(ArgumentError("P must be ≥ 1, got $P"))
+    P == 1 && return map(Int, dims(b))
+    return error(
+        "estimate_scaling not defined for $(typeof(b)); add a method in its benchmark file",
+    )
+end
+
+function fit_one_gpu(
+    ::Type{B}, ::Type{T};
+    budget::Int, N_hint=nothing, M_hint=nothing,
+) where {B,T}
+    return error("fit_one_gpu not defined for $B; add a method in its benchmark file")
+end
 
 # Internal adapter for benchmark generators that share a quoted step body.
 function _define_accelerated_definition(signature, body, form=:function)
@@ -63,6 +99,13 @@ function build_benchmark(::Type{B}, ::Type{T}, N, M) where {B<:AbstractBenchmark
     return B{T}(; N=N, M=M)
 end
 
+# Optional hooks for the generic CUDA.jl check (initialize + run!).
+correctness_problem(b::AbstractBenchmark) = b
+correctness_iters(::AbstractBenchmark, gs::GlobalSettings) = 1
+cuda_runnable(b::AbstractBenchmark) = b
+correctness_result(::AbstractBenchmark, state, out) = out === nothing ? state : out
+correctness_atol_rtol(::AbstractBenchmark, ::Type{T}) where {T} = ref_atol_rtol(T)
+
 #########################################
 
 # Per-trial timings for one benchmark. `times_ms[i]`/`gflops[i]` are the mean
@@ -75,11 +118,94 @@ struct BenchmarkResult{B<:AbstractBenchmark}
     correctness::String
 end
 
-# Optional per-benchmark correctness vs a CPU/`Array` reference.
-# Return "pass", "fail", or "skipped". Default: no check implemented.
-correctness_supported(::AbstractBenchmark) = false
-function check_benchmark_correctness(b::AbstractBenchmark, gs::GlobalSettings; mod=cuNumeric)
-    return "skipped"
+# CUDA.jl 6: the worker may pass `CUDA` or `CUDACore` as `mod`.
+is_cuda_backend(mod) = nameof(mod) === :CUDA || nameof(mod) === :CUDACore
+
+# Timed CUDA.jl is never the thing we check. Oracle compare is cuNumeric vs CUDA
+# on a single GPU (the cuNumeric worker loads CUDA for the tiny problem).
+function correctness_applies(gs::GlobalSettings, mod)
+    is_cuda_backend(mod) && return false
+    return gs.n_gpu == 1
+end
+
+function cuda_backend()
+    for (id, mod) in Base.loaded_modules
+        id.name == "CUDA" && return mod
+    end
+    return error("CUDA.jl must be loaded to check cuNumeric against CUDA.jl")
+end
+
+# 1–4D (or more) constructors. `mod` is cuNumeric or CUDA; both expose
+# rand/zeros/ones(::Type, dims...). Host `Array` is only a seed for to_backend.
+rand_array(mod, ::Type{T}, dims::Integer...) where {T} = mod.rand(T, dims...)
+rand_array(mod, ::Type{T}, dims::Tuple) where {T} = rand_array(mod, T, dims...)
+zeros_array(mod, ::Type{T}, dims::Integer...) where {T} = mod.zeros(T, dims...)
+zeros_array(mod, ::Type{T}, dims::Tuple) where {T} = zeros_array(mod, T, dims...)
+ones_array(mod, ::Type{T}, dims::Integer...) where {T} = mod.ones(T, dims...)
+ones_array(mod, ::Type{T}, dims::Tuple) where {T} = ones_array(mod, T, dims...)
+
+# Avoid `::NDArray` in the signature so the orchestrator can include this file
+# without loading cuNumeric.
+function astype_array(A, ::Type{T}) where {T}
+    nameof(typeof(A)) === :NDArray && return cuNumeric.as_type(A, T)
+    return T.(A)
+end
+
+to_host(A::Array) = A
+to_host(x::Number) = x
+to_host(A) = Array(A)
+
+function to_backend(mod, A::AbstractArray)
+    h = A isa Array ? A : Array(A)
+    mod === cuNumeric && return NDArray(h)
+    is_cuda_backend(mod) && return mod.CuArray(h)
+    return h
+end
+
+to_backend_state(mod, x::AbstractArray) = to_backend(mod, x)
+to_backend_state(mod, x::Tuple) = map(s -> to_backend_state(mod, s), x)
+to_backend_state(mod, x) = x
+
+function ref_atol_rtol(::Type{T}; atol=nothing, rtol=nothing) where {T}
+    default = T <: Float32 ? 1.0f-3 : 1e-10
+    return something(atol, default), something(rtol, default)
+end
+
+function isapprox_ref(actual, expected, ::Type{T}; atol=nothing, rtol=nothing) where {T}
+    at, rt = ref_atol_rtol(T; atol, rtol)
+    return isapprox(to_host(actual), to_host(expected); atol=at, rtol=rt)
+end
+
+_all_approx(a, b, ::Type{T}; kwargs...) where {T} = isapprox_ref(a, b, T; kwargs...)
+function _all_approx(a::Tuple, b::Tuple, ::Type{T}; kwargs...) where {T}
+    length(a) == length(b) || return false
+    return all(_all_approx(x, y, T; kwargs...) for (x, y) in zip(a, b))
+end
+
+# Host-seed once, upload to both backends, initialize/run! the same way as timing.
+function check_benchmark_correctness(
+    b::AbstractBenchmark{T}, gs::GlobalSettings; mod=cuNumeric
+) where {T}
+    tiny = correctness_problem(b)
+    seed = initialize(tiny; mod=Base)
+    atol, rtol = correctness_atol_rtol(b, T)
+    nstep = correctness_iters(tiny, gs)
+    return check_vs_cuda(T; atol, rtol) do backend
+        kernel = backend === cuNumeric ? tiny : cuda_runnable(tiny)
+        state = to_backend_state(backend, seed)
+        out = nothing
+        for _ in 1:nstep
+            out = run!(kernel, state...)
+        end
+        return correctness_result(kernel, state, out)
+    end
+end
+
+# `f(mod)` runs the tiny problem on one backend and returns the value(s) to compare.
+function check_vs_cuda(f, ::Type{T}; atol=nothing, rtol=nothing) where {T}
+    got = f(cuNumeric)
+    ref = f(cuda_backend())
+    return _all_approx(got, ref, T; atol, rtol) ? "pass" : "fail"
 end
 
 # One timed trial: warmup, then time `n_iter` iterations of `run!`.
@@ -112,7 +238,7 @@ function run_benchmark(
 )
     correctness = "skipped"
     if gs.check_correctness
-        if correctness_supported(b)
+        if correctness_applies(gs, mod)
             correctness = check_benchmark_correctness(b, gs; mod=mod)
         else
             correctness = "skipped"
@@ -146,29 +272,3 @@ function save_result(br::BenchmarkResult, gpus; mod::String="cunumeric")
         end
     end
 end
-
-#########################################
-
-# `setup` runs in the worker before the benchmark is built (e.g. flip a runtime
-# preference); code-path variants leave it a no-op.
-# struct Variant
-#     name::String
-#     setup::Function
-# end
-
-# const VARIANTS = Dict{String,Variant}()
-
-# function register_variant(name, setup=() -> nothing)
-#     VARIANTS[name] = Variant(name, setup)
-# end
-
-# function variant_setup(name)
-#     if haskey(VARIANTS, name)
-#         return VARIANTS[name].setup
-#     end
-#     return () -> nothing
-# end
-
-# register_variant("baseline")
-# register_variant("fusion_off", cuNumeric.disable_broadcast_fusion!)
-# register_variant("fusion_on",  cuNumeric.enable_broadcast_fusion!)

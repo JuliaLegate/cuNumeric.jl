@@ -3,7 +3,7 @@ import math
 import cupynumeric as np
 import numpy as onp
 
-from core import register_benchmark
+from core import register_benchmark, rand_array
 
 
 def _integer_fftfreq(n):
@@ -32,15 +32,8 @@ class PoissonFFT:
     def dims(self):
         return self.N, self.M
 
-    def total_flops(self):
-        # Same breakdown as benchmark/src/benchmarks/poisson_fft.jl
-        n = self.N
-        m = self.M
-        n2 = n * n
-        return m * (20 * n2 * math.log2(n) + 6 * n2)
-
     def initialize(self):
-        f = np.random.rand(self.M, self.N, self.N).astype(self.T)
+        f = rand_array((self.M, self.N, self.N), self.T)
         kinv = np.array(_poisson_inv_laplacian(self.T, self.N)).reshape(
             1, self.N, self.N
         )

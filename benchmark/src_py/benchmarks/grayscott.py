@@ -1,10 +1,10 @@
 import cupynumeric as np
 
-from core import register_benchmark
+from core import register_benchmark, rand_array, zeros_array, ones_array
 
 
 class GrayScott:
-    name = "grayscott"
+    name = "grayscott_baseline"
 
     # dt = dx/5; c_u, c_v, f, k as in grayscott.jl's GSParams defaults.
     def __init__(self, T, N, M, dx=1.0, c_u=1.0, c_v=0.3, f=0.03, k=0.06):
@@ -16,19 +16,15 @@ class GrayScott:
     def dims(self):
         return self.N, self.M
 
-    def total_flops(self):
-        return self.N * self.M
-
     def initialize(self):
-        d = (self.N, self.M)
-        u = np.ones(d, dtype=self.T)
-        v = np.zeros(d, dtype=self.T)
-        u_new = np.zeros(d, dtype=self.T)
-        v_new = np.zeros(d, dtype=self.T)
+        u = ones_array((self.N, self.M), self.T)
+        v = zeros_array((self.N, self.M), self.T)
+        u_new = zeros_array((self.N, self.M), self.T)
+        v_new = zeros_array((self.N, self.M), self.T)
 
         seed = min(150, self.N, self.M)
-        u[:seed, :seed] = np.random.rand(seed, seed).astype(self.T)
-        v[:seed, :seed] = np.random.rand(seed, seed).astype(self.T)
+        u[:seed, :seed] = rand_array((seed, seed), self.T)
+        v[:seed, :seed] = rand_array((seed, seed), self.T)
         # mutable list so run() can swap buffers in place
         return [u, v, u_new, v_new]
 
