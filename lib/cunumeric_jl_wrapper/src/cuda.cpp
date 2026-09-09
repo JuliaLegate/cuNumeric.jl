@@ -382,6 +382,10 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
                                             const legate::PhysicalArray &out) {
   const std::uint32_t budget = std::max(lp.tx, 1u);
   const int dim = out.dim();
+  // Cap before narrowing; Julia grid-stride loops cover the remaining elements.
+  const auto blocks = [](std::uint64_t n, std::uint32_t t, std::uint64_t limit) {
+    return static_cast<std::uint32_t>(std::min((n - 1) / t + 1, limit));
+  };
 
   assert(dim > 0);
 
@@ -397,8 +401,8 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
     lp.ty = static_cast<std::uint32_t>(
         std::min<std::uint64_t>(budget / lp.tx, rows));
     lp.tz = 1;
-    lp.bx = static_cast<std::uint32_t>((cols + lp.tx - 1) / lp.tx);
-    lp.by = static_cast<std::uint32_t>((rows + lp.ty - 1) / lp.ty);
+    lp.bx = blocks(cols, lp.tx, 2147483647);
+    lp.by = blocks(rows, lp.ty, 65535);
     lp.bz = 1;
 
 #ifdef CUDA_DEBUG
@@ -425,9 +429,9 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
     const std::uint32_t z_budget = yz_budget / lp.ty;
     lp.tz = static_cast<std::uint32_t>(
         std::min<std::uint64_t>({z_budget, dim1, 64}));
-    lp.bx = static_cast<std::uint32_t>((dim3 + lp.tx - 1) / lp.tx);
-    lp.by = static_cast<std::uint32_t>((dim2 + lp.ty - 1) / lp.ty);
-    lp.bz = static_cast<std::uint32_t>((dim1 + lp.tz - 1) / lp.tz);
+    lp.bx = blocks(dim3, lp.tx, 2147483647);
+    lp.by = blocks(dim2, lp.ty, 65535);
+    lp.bz = blocks(dim1, lp.tz, 65535);
 
 #ifdef CUDA_DEBUG
     std::cerr << "[RunPTXBroadcastTask] local shape=" << dim1 << "x" << dim2
@@ -468,10 +472,7 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
 
   const std::uint32_t threads =
       static_cast<std::uint32_t>(std::min<std::uint64_t>(budget, volume));
-  const std::uint32_t blocks =
-      static_cast<std::uint32_t>((volume + threads - 1) / threads);
-
-  lp.bx = blocks;
+  lp.bx = blocks(volume, threads, 2147483647);
   lp.by = 1;
   lp.bz = 1;
   lp.tx = threads;

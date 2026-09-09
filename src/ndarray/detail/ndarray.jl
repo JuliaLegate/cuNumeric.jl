@@ -278,7 +278,7 @@ end
 nda_array_dim(arr::NDArray) = ccall((:nda_array_dim, libnda),
     Int32, (NDArray_t,), arr.ptr)
 nda_array_size(arr::NDArray) = ccall((:nda_array_size, libnda),
-    Int32, (NDArray_t,), arr.ptr)
+    UInt64, (NDArray_t,), arr.ptr) # C API returns uint64_t, not an axis/count int32_t.
 function nda_array_type_code(arr::NDArray)
     return ccall((:nda_array_type_code, libnda),
         Int32, (NDArray_t,), arr.ptr)
