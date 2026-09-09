@@ -1,7 +1,9 @@
 # From benchmark/, run each case in a fresh process:
-# bash run_benchmark.sh mwe_fusion_indexing.jl --gpus 8 --cpus 8 2147483584 fused
-# bash run_benchmark.sh mwe_fusion_indexing.jl --gpus 8 --cpus 8 2147483712 fused
-# bash run_benchmark.sh mwe_fusion_indexing.jl --gpus 8 --cpus 8 2147483712 native
+# bash run_benchmark.sh mwe_fusion_indexing.jl --gpus 8 --cpus 8 2454267008 fused
+# bash run_benchmark.sh mwe_fusion_indexing.jl --gpus 8 --cpus 8 2454267072 fused
+# bash run_benchmark.sh mwe_fusion_indexing.jl --gpus 8 --cpus 8 2454267072 native
+# These straddle 2^31 at the last partition's START (7*N/8), not global N.
+# With N near 2^31 and eight equal partitions, all starts still fit Int32.
 # Also test the original failing N=4266645824, and repeat with --gpus 1.
 # No RNG, sum, benchmark harness, or preference changes. Two persistent arrays.
 using cuNumeric
@@ -31,6 +33,7 @@ function main(args=ARGS)
     p>0 && n>0 || error("P and N must be positive")
     mode in ("fused","native") || error("Mode must be fused or native")
     println("P=$p N=$n mode=$mode; persistent data=$(2big(n)*sizeof(Float32)) bytes globally")
+    println("Expected last partition start (zero-based, equal tiles): $((p-1)*cld(n,p)); Int32 limit=$(typemax(Int32))")
     x,y = stage("allocate and fill input/output") do
         cuNumeric.ones(Float32,n),cuNumeric.zeros(Float32,n)
     end

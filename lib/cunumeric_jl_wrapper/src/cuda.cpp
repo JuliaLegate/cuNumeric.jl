@@ -161,9 +161,10 @@ struct CuStridedDeviceArray {
                                << std::endl;                                   \
                      std::cerr << "[RunPTXTask] " #MODE " accessor strides: "  \
                                << acc.accessor.strides << std::endl;);         \
+    /* Preserve 64-bit coordinates; Realm::Point<D> defaults to int. */       \
     void *dev_ptr = const_cast<void *>(/*.lo to ensure multiple GPU support*/  \
                                        static_cast<const void *>(              \
-                                           acc.ptr(Realm::Point<D>(shp.lo)))); \
+                                           acc.ptr(shp.lo)));                 \
     auto extents = shp.hi - shp.lo + legate::Point<D>::ONES();                 \
     CuDeviceArray<D> desc;                                                     \
     desc.ptr = dev_ptr;                                                        \
@@ -190,8 +191,9 @@ struct CuStridedDeviceArray {
         std::cerr << "[RunPTXBroadcastTask] " #MODE                            \
                   << " accessor byte strides: " << acc.accessor.strides        \
                   << std::endl;);                                              \
+    /* Preserve 64-bit coordinates; Realm::Point<D> defaults to int. */       \
     void *dev_ptr = const_cast<void *>(                                        \
-        static_cast<const void *>(acc.ptr(Realm::Point<D>(shp.lo))));          \
+        static_cast<const void *>(acc.ptr(shp.lo)));                          \
     auto extents = shp.hi - shp.lo + legate::Point<D>::ONES();                 \
     CuStridedDeviceArray<D> desc;                                              \
     desc.ptr = dev_ptr;                                                        \
