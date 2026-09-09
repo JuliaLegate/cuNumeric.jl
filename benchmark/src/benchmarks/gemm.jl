@@ -22,8 +22,7 @@ total_space(s::GEMM{T}) where {T} = (2 * s.N * s.M + s.N * s.N) * sizeof(T)
 
 function estimate_scaling(s::GEMM, P::Integer)
     P == 1 && return (s.N, s.M)
-    n = scale_axis(s.N, P, 1//3)
-    return (n, n)
+    return (scale_axis(s.N, P, 1//3), scale_axis(s.M, P, 1//3))
 end
 
 function fit_one_gpu(

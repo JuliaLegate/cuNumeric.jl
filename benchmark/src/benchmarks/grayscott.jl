@@ -35,8 +35,7 @@ total_space(b::AbstractGrayScott{T}) where {T} = 4 * b.N * b.M * sizeof(T)
 
 function estimate_scaling(b::AbstractGrayScott, P::Integer)
     P == 1 && return (b.N, b.M)
-    n = scale_axis(b.N, P, 1//2)
-    return (n, n)
+    return (scale_axis(b.N, P, 1//2), scale_axis(b.M, P, 1//2))
 end
 
 function fit_one_gpu(

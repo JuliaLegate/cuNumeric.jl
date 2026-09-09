@@ -88,42 +88,7 @@ const GROUP_TITLES = Dict(
     "tensor_contract4" => "Tensor contraction (rank-4)",
 )
 
-struct Row
-    gpus::Int
-    time_ms::Float64
-    thr::Float64
-end
-
-# Parse a CSV into runs, split wherever the GPU count resets to a smaller value.
-function load_runs(path)
-    rows = Row[]
-    for line in eachline(path)
-        isempty(strip(line)) && continue
-        f = split(line, ',')
-        push!(rows, Row(parse(Int, f[2]), parse(Float64, f[6]), parse(Float64, f[7])))
-    end
-    isempty(rows) && return Vector{Row}[]
-    runs = [Row[]]
-    for (i, r) in enumerate(rows)
-        i > 1 && r.gpus < rows[i - 1].gpus && push!(runs, Row[])
-        push!(runs[end], r)
-    end
-    return runs
-end
-
-# Aggregate trials per GPU count -> sorted vector of (gpus, t, tsd, h, hsd).
-function aggregate(rows)
-    by = Dict{Int,Vector{Row}}()
-    for r in rows
-        push!(get!(by, r.gpus, Row[]), r)
-    end
-    sd(x) = length(x) > 1 ? std(x) : 0.0
-    return [
-        (gpus=g, t=mean(getfield.(by[g], :time_ms)), tsd=sd(getfield.(by[g], :time_ms)),
-            h=mean(getfield.(by[g], :thr)), hsd=sd(getfield.(by[g], :thr)))
-        for g in sort(collect(keys(by)))
-    ]
-end
+include(joinpath(@__DIR__, "src", "result_rows.jl"))
 
 _all_rows(runs) = reduce(vcat, runs; init=Row[])
 
@@ -321,6 +286,7 @@ function main(args=ARGS)
     for (group, members) in parse_plot_groups(cfg.config)
         series = group_series(cfg.results_dir, group, members)
         isempty(series) && continue
+        validate_series_sizes(series)
         fig = weak_scaling_figure(
             series; plot_title=group_title(group) * " — weak scaling"
         )

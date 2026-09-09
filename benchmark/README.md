@@ -4,6 +4,32 @@ Benchmarks are declared in `benchmarks.toml`. `run.jl` parses it.
 
 ## Running
 
+Run a complete selected sweep and plot it without editing other TOML blocks:
+
+```bash
+julia --project=. run.jl --only=montecarlo
+julia --project=. run.jl --only=grayscott
+julia --project=. run.jl --only=grayscott --fusion=both
+julia --project=. run.jl --only=grayscott --dry-run
+```
+
+`--only` accepts benchmark or plot-group names (comma-separated). `--fusion=on`,
+`off`, or `both` overrides the selected blocks. `--config=path` selects another
+configuration. The shipped configuration uses fusion enabled. Positional
+single-run arguments remain supported and do not plot automatically.
+
+Automatic sizing shares one baseline per comparison group and dtype, accounting
+for every selected backend, fusion setting and GPU count. Incompatible pinned
+constraints fail preflight. Comparison backends run once even if only unfused
+Julia configurations are selected. Read [memory accounting](MEMORY.md) before
+running native-library benchmarks: verified workspace bounds are required where
+the harness cannot infer them. Unexpected failures are reported, not retried.
+
+Each invocation writes `results/<run-id>/<dtype>/` plus a `manifest.toml` with
+resolved dimensions, memory estimates, package versions and worker statuses.
+Plots go to `plots/<run-id>/<dtype>/`; failed sweeps are marked incomplete.
+Different sizes at the same GPU count cannot be silently merged into a plot.
+
 ```bash
 julia --project=. run.jl   # runs whatever benchmarks.toml configures
 ```
@@ -76,6 +102,10 @@ then maps to `P` GPUs. Pin an explicit `N` list to keep paper sizes. `mem_frac`
 is the fraction of the *smallest* visible GPU's total RAM (`CUNUMERIC_BENCH_MEM_FRAC`
 overrides it). DMD keeps `M` as the intensity knob; Poisson holds grid `N` across
 the GPU sweep and scales batch `M`.
+Peak estimates are now backend- and variant-aware. Monte Carlo's fused
+iteration needs the samples and broadcast output, but the planner also accounts
+for outputs that may await Julia GC across a trial. See [memory accounting](MEMORY.md)
+for the supported bounds and native-library workspace configuration.
 
 `fusion` toggles cuNumeric broadcast fusion (`true`/`false` or `"on"`/`"off"`,
 default `true`); it only affects cuNumeric, so comparison backends run once, not

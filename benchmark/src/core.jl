@@ -287,7 +287,8 @@ _std(x) = length(x) > 1 ? std(x) : 0.0
 
 function save_result(br::BenchmarkResult, gpus; mod::String="cunumeric")
     N, M = dims(br.benchmark)
-    path = joinpath(@__DIR__, "..", "results", "$(name(br.benchmark))_$(mod).csv")
+    results = get(ENV, "CUNUMERIC_BENCH_RESULTS_DIR", joinpath(@__DIR__, "..", "results"))
+    path = joinpath(results, "$(name(br.benchmark))_$(mod).csv")
     mkpath(dirname(path))
     open(path, "a") do io
         for trial in eachindex(br.times_ms)

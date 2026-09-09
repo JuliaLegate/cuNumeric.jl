@@ -11,7 +11,11 @@ end
 allowed_types(::Type{MonteCarloIntegration}) = cuNumeric.SUPPORTED_FLOAT_TYPES
 
 total_flops(s::MonteCarloIntegration) = s.n_samples
-total_space(s::MonteCarloIntegration{T}) where {T} = s.n_samples * sizeof(T)
+# Fused broadcast: samples x plus exp.(-x .^ 2), materialized before sum.
+# Initialization also needs two arrays: random samples and their scaled output.
+# Assumes fusion is enabled; workspace/runtime overhead uses the headroom left
+# by mem_frac. This is not a memory estimate for unfused comparison backends.
+total_space(s::MonteCarloIntegration{T}) where {T} = 2 * s.n_samples * sizeof(T)
 
 function estimate_scaling(s::MonteCarloIntegration, P::Integer)
     P == 1 && return dims(s)

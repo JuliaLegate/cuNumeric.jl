@@ -59,6 +59,9 @@ fi
 
 export LEGATE_AUTO_CONFIG=1
 export LEGATE_CONFIG="--cpus=$CPUS --gpus=$GPUS"
+if [[ -n ${CUNUMERIC_BENCH_FBMEM_MB:-} ]]; then
+    export LEGATE_CONFIG="$LEGATE_CONFIG --fbmem=$CUNUMERIC_BENCH_FBMEM_MB"
+fi
 export LEGATE_SHOW_CONFIG=$VERBOSE
 
 export LD_LIBRARY_PATH=""
@@ -72,10 +75,11 @@ if [[ $FILENAME == *.py ]]; then
         echo "Error: running a .py worker requires --pyenv <conda-env> (run install_cupynumeric.sh first)."
         exit 1
     fi
-    CMD="conda run --no-capture-output -n $PYENV python $FILENAME $GPUS ${EXTRA_ARGS[@]}"
+    CMD=(conda run --no-capture-output -n "$PYENV" python "$FILENAME" "$GPUS" "${EXTRA_ARGS[@]}")
 else
-    CMD="julia --project $FILENAME $GPUS ${EXTRA_ARGS[@]}"
+    CMD=("${CUNUMERIC_BENCH_JULIA:-julia}" --project "$FILENAME" "$GPUS" "${EXTRA_ARGS[@]}")
 fi
 
-[[ $VERBOSE == 1 ]] && printf "Running: %s\n" "$CMD"
-eval "$CMD"
+[[ $VERBOSE == 1 ]] && printf "Running: %q " "${CMD[@]}"
+[[ $VERBOSE == 1 ]] && printf '\n'
+"${CMD[@]}"

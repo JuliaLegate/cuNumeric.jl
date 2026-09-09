@@ -5,7 +5,7 @@ import cupynumeric as np
 from legate.timing import time  # blocks on preceding legate ops; returns microseconds
 
 MOD = "cupynumeric"
-RESULTS_DIR = os.path.join(os.path.dirname(__file__), "..", "results")
+RESULTS_DIR = os.environ.get("CUNUMERIC_BENCH_RESULTS_DIR", os.path.join(os.path.dirname(__file__), "..", "results"))
 
 DTYPES = {"Float32": np.float32, "Float64": np.float64}
 

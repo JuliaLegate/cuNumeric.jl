@@ -73,7 +73,7 @@ function size_field(raw)
     return (:pinned, Int[Int(v) for v in vals])
 end
 
-function parse_config(path)
+function parse_config(path; only=nothing, fusion_override=nothing)
     raw = TOML.parsefile(path)
 
     g = raw["Global"]
@@ -88,14 +88,22 @@ function parse_config(path)
     )
 
     specs = BenchmarkSpec[]
+    selected = only === nothing ? nothing : Set(split(only, ','))
+    if selected !== nothing
+        groups = Dict(parse_plot_groups(path))
+        selected = Set(vcat([get(groups, s, [s]) for s in selected]...))
+        unknown = setdiff(selected, Set(declared_order(path)))
+        isempty(unknown) || error("Unknown benchmark selection: $(join(unknown, ", "))")
+    end
     for name in declared_order(path)
+        selected !== nothing && name ∉ selected && continue
         entries = raw[name]
         entries isa AbstractVector || continue
         for e in entries
             types = aslist(get(e, "T", "Float32"))
             gpus = aslist(e["gpus"])
             cpus = aslist(e["cpus"])
-            fusion = aslist(get(e, "fusion", true))
+            fusion = aslist(fusion_override === nothing ? get(e, "fusion", true) : fusion_override)
             nmode, nvals = size_field(get(e, "N", nothing))
             mmode, mvals = size_field(get(e, "M", nothing))
             cuda = get(e, "cuda", global_settings.cuda)

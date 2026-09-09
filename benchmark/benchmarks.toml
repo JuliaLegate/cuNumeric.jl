@@ -55,31 +55,31 @@ n_iter = 50
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 8
-fusion = [true, false]
+fusion = true
 
 [[grayscott_function_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 8
-fusion = [true, false]
+fusion = true
 
 [[grayscott_begin_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 8
-fusion = [true, false]
+fusion = true
 
 [[grayscott_let_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 8
-fusion = [true, false]
+fusion = true
 
 [[grayscott_expression_accelerated]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 8
-fusion = [true, false]
+fusion = true
 
 #################################
 #              DMD              #
@@ -94,7 +94,7 @@ fusion = [true, false]
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 8
-fusion = [true, false]
+fusion = true
 M = 512
 n_iter = 50
 
@@ -102,7 +102,7 @@ n_iter = 50
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 8
-fusion = [true, false]
+fusion = true
 M = 512
 n_iter = 50
 
