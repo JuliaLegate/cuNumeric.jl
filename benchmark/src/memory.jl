@@ -53,6 +53,10 @@ function memory_estimate(b::MonteCarloIntegration{T}, c::MemoryContext) where {T
     arrays = c.backend == :cupynumeric ? 3 : c.backend == :cudajl || c.fusion ? 2 : 4
     # Julia has tracing GC, not Python's reference counting. The returned
     # broadcast output is not explicitly destroyed by this baseline kernel.
+    # This assumes the fully dotted expression in montecarlo.jl. On the unfused
+    # path nested broadcast temporaries are explicitly destroyed by the runtime;
+    # an undotted operation would instead escape that cleanup and need its own
+    # per-iteration retention allowance.
     # Bound its retention over the complete trial instead of assuming a GC.
     retained = c.backend == :cunumeric || c.backend == :cudajl ? c.steps-1 : 0
     return MemoryEstimate(init, (arrays + retained)*bytes, 0,

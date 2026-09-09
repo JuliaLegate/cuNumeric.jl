@@ -75,7 +75,7 @@ if [[ $FILENAME == *.py ]]; then
         echo "Error: running a .py worker requires --pyenv <conda-env> (run install_cupynumeric.sh first)."
         exit 1
     fi
-    CMD=(conda run --no-capture-output -n "$PYENV" python "$FILENAME" "$GPUS" "${EXTRA_ARGS[@]}")
+    CMD=("${CUNUMERIC_BENCH_CONDA:-${CONDA_EXE:-conda}}" run --no-capture-output -n "$PYENV" python "$FILENAME" "$GPUS" "${EXTRA_ARGS[@]}")
 else
     CMD=("${CUNUMERIC_BENCH_JULIA:-julia}" --project "$FILENAME" "$GPUS" "${EXTRA_ARGS[@]}")
 fi

@@ -57,8 +57,29 @@ function prepare_backend(fusion,verbose)
     Pkg.precompile("cuNumeric";io=verbose ? stderr : devnull)
 end
 
+function preflight_backends(runs;env=ENV,which=Sys.which,check=success)
+    any(r.backend==:cupynumeric for r in runs) || return nothing
+    conda = get(env,"CUNUMERIC_BENCH_CONDA",get(env,"CONDA_EXE","conda"))
+    executable = which(conda)
+    executable === nothing && error(
+        "cuPyNumeric is enabled, but conda is not available to the worker. " *
+        "Add conda to PATH or set CUNUMERIC_BENCH_CONDA to its executable path; " *
+        "then run bash install_cupynumeric.sh. No benchmarks have been started.",
+    )
+    name = get(env,"CUPYNUMERIC_ENV",nothing)
+    name === nothing && (name = cupynumeric_env_name())
+    code = "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('cupynumeric') else 1)"
+    check(`$executable run --no-capture-output -n $name python -c $code`) || error(
+        "Conda environment '$name' is unavailable or lacks cupynumeric. " *
+        "Run bash install_cupynumeric.sh, or set CUPYNUMERIC_ENV to an existing environment. " *
+        "No benchmarks have been started.",
+    )
+    return nothing
+end
+
 function execute_plan(runs,gs,opts,budget,raw;launch=run,prepare=prepare_backend,
-    results_root=normpath(joinpath(@__DIR__,"..","results")))
+    results_root=normpath(joinpath(@__DIR__,"..","results")),preflight=preflight_backends)
+    preflight(runs)
     root = normpath(joinpath(@__DIR__,".."))
     mkpath(results_root)
     dir = mktempdir(results_root;prefix=Dates.format(now(),"yyyymmdd-HHMMSS")*"-",cleanup=false)
@@ -98,8 +119,12 @@ function execute_plan(runs,gs,opts,budget,raw;launch=run,prepare=prepare_backend
         catch e
             failed = true
             manifest["runs"][i]["status"] = "failed"
-            manifest["runs"][i]["error"] = sprint(showerror,e)
-            @error "Worker failed; no size retry. Continuing independent configurations." exception=e
+            # ProcessFailedException prints inherited environment variables.
+            # Report exit codes without copying that environment into logs.
+            message = e isa ProcessFailedException ?
+                "Worker exited with code(s) " * join((p.exitcode for p in e.procs),", ") : sprint(showerror,e)
+            manifest["runs"][i]["error"] = message
+            @error "Worker failed; no size retry. Continuing independent configurations." reason=message
         end
         save_manifest()
     end

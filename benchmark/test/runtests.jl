@@ -11,6 +11,53 @@ const CONFIG = joinpath(@__DIR__,"..","benchmarks.toml")
 const RAW = TOML.parsefile(CONFIG)
 const GROUPS = parse_plot_groups(CONFIG)
 
+# A CPU array that counts materialized arrays, exercising Julia's actual
+# broadcast lowering rather than checking the kernel's source spelling.
+const MATERIALIZATIONS = Ref(0)
+struct CountedArray{T,N} <: AbstractArray{T,N}
+    data::Array{T,N}
+end
+struct CountedStyle{N} <: Base.Broadcast.AbstractArrayStyle{N} end
+CountedStyle{N}(::Val{M}) where {N,M} = CountedStyle{M}()
+Base.size(a::CountedArray) = size(a.data)
+Base.getindex(a::CountedArray,I...) = getindex(a.data,I...)
+Base.setindex!(a::CountedArray,v,I...) = setindex!(a.data,v,I...)
+Base.BroadcastStyle(::Type{<:CountedArray{T,N}}) where {T,N} = CountedStyle{N}()
+function Base.similar(bc::Base.Broadcast.Broadcasted{CountedStyle{N}},::Type{T}) where {N,T}
+    MATERIALIZATIONS[] += 1
+    return CountedArray(Array{T}(undef,map(length,axes(bc))))
+end
+function Base.similar(a::CountedArray,::Type{T},dims::Dims) where {T}
+    MATERIALIZATIONS[] += 1
+    return CountedArray(Array{T}(undef,dims))
+end
+
+@testset "Monte Carlo broadcasts fuse across negation" begin
+    for T in (Float32,Float64)
+        data = T[0,0.5,1,2,5]
+        x = CountedArray(data)
+        b = MonteCarloIntegration{T}(;n_samples=length(x))
+        MATERIALIZATIONS[] = 0
+        got = run!(b,x)
+        @test MATERIALIZATIONS[] == 1
+        @test got ≈ (T(10)/length(data))*sum(exp(-v^2) for v in data)
+        # Reproduce the old expression to prove this test detects the bug.
+        MATERIALIZATIONS[] = 0
+        sum(exp.(-x .^ 2))
+        @test MATERIALIZATIONS[] == 3
+    end
+end
+
+@testset "cuPyNumeric preflight" begin
+    gs = GlobalSettings(;n_warmup=1,n_iter=1,cupynumeric=true)
+    s = BenchmarkSpec("montecarlo","Float32",1,8,true,false,1,1,1,[0,0],true,nothing,nothing)
+    runs = plan_runs([s],gs,RAW,GROUPS,1000000)
+    env = Dict("CUNUMERIC_BENCH_CONDA"=>"/test/conda","CUPYNUMERIC_ENV"=>"testenv")
+    @test_throws ErrorException preflight_backends(runs;env,which=x->nothing)
+    @test_throws ErrorException preflight_backends(runs;env,which=identity,check=c->false)
+    @test preflight_backends(runs;env,which=identity,check=c->true) === nothing
+end
+
 function spec(name;T="Float32",gpus=1,fusion=true,cuda=false,N=nothing,M=nothing,auto=true)
     BenchmarkSpec(name,T,gpus,8,fusion,cuda,2,5,2,
         auto ? [0,0] : [N,M],auto,N,M)

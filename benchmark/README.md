@@ -60,6 +60,11 @@ the iteration count for expensive kernels.
 cupynumeric runs in a conda env whose major.minor matches this project's
 resolved `cupynumeric_jll`. Build it once:
 
+The runner checks that conda and the requested environment are available before
+starting any timed workers. If conda is not on the worker's PATH, set
+`CUNUMERIC_BENCH_CONDA` to its executable path (or use `CONDA_EXE`). The installer
+honors the same setting.
+
 ```bash
 ./install_cupynumeric.sh   # creates env cupynumeric-bench-<major.minor>
 ```

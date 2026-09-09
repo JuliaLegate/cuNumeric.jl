@@ -40,7 +40,9 @@ function initialize(mci::MonteCarloIntegration{T}; mod=cuNumeric) where {T}
 end
 
 _domain_volume(mci::MonteCarloIntegration{T}) where {T} = T(10) / mci.n_samples
-run!(mci::MonteCarloIntegration, x) = _domain_volume(mci) * sum(exp.(-x .^ 2))
+# Dot the negation too: plain `-` materializes the squared array and prevents
+# the surrounding exponential from sharing one broadcast with the square.
+run!(mci::MonteCarloIntegration, x) = _domain_volume(mci) * sum(exp.(.-(x .^ 2)))
 
 # n_samples comes in as N; M is unused.
 function build_benchmark(::Type{MonteCarloIntegration}, ::Type{T}, N, M) where {T}
