@@ -10,6 +10,10 @@ julia --project=. run.jl   # runs whatever benchmarks.toml configures
 
 `run.jl` runs each (benchmark, backend) pair in its own process via
 `run_benchmark.sh`, so backends never share a GPU/runtime within a measurement.
+Julia workers log correctness checking and show a trial progress meter with the
+latest trial's mean time and GFLOP/s. The meter advances only after a trial
+finishes, outside the timed loop; initialization and warmup can also take time
+before the next update.
 cuNumeric always runs; extra comparison backends are toggled in `[Global]`:
 
 - `cuda = true` → also run under CUDA.jl (single-GPU configs only; CUDA.jl is

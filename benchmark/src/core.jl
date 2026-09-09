@@ -1,4 +1,5 @@
 using Printf
+using ProgressMeter: ProgressMeter
 using Statistics
 
 """
@@ -176,6 +177,17 @@ function isapprox_ref(actual, expected, ::Type{T}; atol=nothing, rtol=nothing) w
     return isapprox(to_host(actual), to_host(expected); atol=at, rtol=rt)
 end
 
+# Full cuNumeric reductions return 0-D arrays, while CUDA returns scalars.
+# Define this only in the worker; the orchestrator does not load cuNumeric.
+if CUNUMERIC_BENCH_RUNTIME
+    @eval function isapprox_ref(
+        actual::AbstractArray{<:Any,0}, expected::Number, ::Type{T}; kwargs...
+    ) where {T}
+        value = cuNumeric.@allowscalar actual[]
+        return isapprox_ref(value, expected, T; kwargs...)
+    end
+end
+
 _all_approx(a, b, ::Type{T}; kwargs...) where {T} = isapprox_ref(a, b, T; kwargs...)
 function _all_approx(a::Tuple, b::Tuple, ::Type{T}; kwargs...) where {T}
     length(a) == length(b) || return false
@@ -239,18 +251,34 @@ function run_benchmark(
     correctness = "skipped"
     if gs.check_correctness
         if correctness_applies(gs, mod)
+            println("Checking correctness against CUDA.jl on a small problem...")
+            flush(stdout)
             correctness = check_benchmark_correctness(b, gs; mod=mod)
         else
             correctness = "skipped"
         end
     end
 
+    println("Correctness: $(correctness)")
+    println(
+        "Starting $(gs.n_trial) trials; each includes initialization, " *
+        "$(gs.n_warmup) warmups, and $(gs.n_iter) timed iterations.",
+    )
+    flush(stdout)
     times_ms = Float64[]
     gflops = Float64[]
-    for _ in 1:gs.n_trial
+    progress = ProgressMeter.Progress(gs.n_trial; dt=0.0, desc="$(name(b)) trials: ")
+    ProgressMeter.update!(progress, 0)
+    for trial in 1:gs.n_trial
         t, g = _trial(b, gs; mod=mod, clock=clock)
         push!(times_ms, t)
         push!(gflops, g)
+        # Update only after _trial has stopped its clock; never inside the kernel loop.
+        ProgressMeter.next!(progress; showvalues=[
+            ("Completed trials", "$(trial)/$(gs.n_trial)"),
+            ("Last trial mean (ms/iteration)", t),
+            ("Last trial GFLOP/s", g),
+        ])
     end
     return BenchmarkResult(times_ms, gflops, b, correctness)
 end
