@@ -13,6 +13,9 @@ end
 
 abstract type AbstractGrayScott{T} <: AbstractBenchmark{T} end
 
+# Timesteps form one trajectory; allow Legate to schedule ahead within it.
+fence_each_iteration(::AbstractGrayScott) = false
+
 Base.@kwdef struct GrayScottBaseline{T} <: AbstractGrayScott{T}
     N::Int
     M::Int

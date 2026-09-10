@@ -5,8 +5,8 @@ using Statistics
 """
 - `n_warmup::Int` : Number of warmup steps. These are not timed. Intended
     to avoid pre-compilation cost being timed.
-- `n_iter::Int` : Number of iterations to run per trial. Should be large enough
-    to build up queue depth of tasks such that latency is hidden.
+- `n_iter::Int` : Number of completed iterations per trial. Gray–Scott instead
+    queues timesteps and synchronizes at the trial boundaries.
 - `n_trial::Int` : Number of independent trials to run. Timing is restarted and
     legate in between each trial. Sets number of datapoints used to estimated
     standard deviations/errors.
@@ -32,6 +32,10 @@ end
 #########################################
 
 abstract type AbstractBenchmark{T} end
+
+# Independent problems must finish before the next repetition is submitted.
+fence_each_iteration(::AbstractBenchmark) = true
+benchmark_synchronize() = cuNumeric.issue_execution_fence(; block=true)
 
 # True when this file is included after `using cuNumeric` (the worker). The
 # orchestrator includes the same kernel files for types / `total_space` /
@@ -223,10 +227,11 @@ end
 # One timed trial: warmup, then time `n_iter` iterations of `run!`.
 function _trial(
     b::AbstractBenchmark, gs::GlobalSettings;
-    mod=cuNumeric, clock=get_time_microseconds,
+    mod=cuNumeric, clock=get_time_microseconds, synchronize=benchmark_synchronize,
 )
     GC.gc(true)
     state = initialize(b; mod=mod)
+    fence_each = fence_each_iteration(b)
 
     start_time = nothing
     for idx in 1:(gs.n_warmup + gs.n_iter)
@@ -234,6 +239,7 @@ function _trial(
             start_time = clock()
         end
         run!(b, state...)
+        fence_each && synchronize()
     end
     total_time_μs = clock() - start_time
 
@@ -246,7 +252,7 @@ end
 # Correctness (if enabled) runs once before timing, not per trial/iteration.
 function run_benchmark(
     b::AbstractBenchmark, gs::GlobalSettings;
-    mod=cuNumeric, clock=get_time_microseconds,
+    mod=cuNumeric, clock=get_time_microseconds, synchronize=benchmark_synchronize,
 )
     correctness = "skipped"
     if gs.check_correctness
@@ -262,7 +268,8 @@ function run_benchmark(
     println("Correctness: $(correctness)")
     println(
         "Starting $(gs.n_trial) trials; each includes initialization, " *
-        "$(gs.n_warmup) warmups, and $(gs.n_iter) timed iterations.",
+        "$(gs.n_warmup) warmups, and $(gs.n_iter) timed iterations; " *
+        (fence_each_iteration(b) ? "per-iteration synchronization." : "batch synchronization."),
     )
     flush(stdout)
     times_ms = Float64[]
@@ -270,7 +277,7 @@ function run_benchmark(
     progress = ProgressMeter.Progress(gs.n_trial; dt=0.0, desc="$(name(b)) trials: ")
     ProgressMeter.update!(progress, 0)
     for trial in 1:gs.n_trial
-        t, g = _trial(b, gs; mod=mod, clock=clock)
+        t, g = _trial(b, gs; mod=mod, clock=clock, synchronize=synchronize)
         push!(times_ms, t)
         push!(gflops, g)
         # Update only after _trial has stopped its clock; never inside the kernel loop.

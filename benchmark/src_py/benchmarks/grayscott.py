@@ -5,6 +5,7 @@ from core import register_benchmark, rand_array, zeros_array, ones_array
 
 class GrayScott:
     name = "grayscott_baseline"
+    fence_each_iteration = False  # Timesteps belong to one trajectory.
 
     # dt = dx/5; c_u, c_v, f, k as in grayscott.jl's GSParams defaults.
     def __init__(self, T, N, M, dx=1.0, c_u=1.0, c_v=0.3, f=0.03, k=0.06):

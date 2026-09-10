@@ -160,7 +160,7 @@ function main(args=ARGS;budget_provider=selected_gpu_budget,executor=execute_pla
     raw = TOML.parsefile(opts.config)
     budget,_ = budget_provider(gs.mem_frac,maximum(s.gpus for s in specs))
     runs = plan_runs(specs,gs,raw,parse_plot_groups(opts.config),budget)
-    print_plan(runs,budget)
+    opts.dry && print_plan(runs,budget)
     opts.dry && return 0
     return executor(runs,gs,opts,budget,raw)
 end

@@ -2,6 +2,13 @@
 
 Benchmarks are declared in `benchmarks.toml`. `run.jl` parses it.
 
+Each independent iteration completes before the next is submitted, including
+warmups, for cuNumeric, CUDA.jl, and cuPyNumeric. Blocking synchronization is
+included in timed iterations. Gray–Scott is the exception: its timesteps form
+one trajectory, so all variants retain batch synchronization at timing boundaries.
+Initialization remains outside timing. Earlier non-Gray–Scott results used batch
+synchronization and should be rerun for comparison. Fences do not force GC.
+
 ## Running
 
 Run a complete selected sweep and plot it without editing other TOML blocks:

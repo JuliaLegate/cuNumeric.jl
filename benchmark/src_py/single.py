@@ -37,7 +37,9 @@ def main():
 
     print(
         f"[{MOD}] {name} benchmark ({T_str}) on {N}x{M} for {n_iter} "
-        f"iterations ({n_warmup} warmup) x {n_trial} trials"
+        f"iterations ({n_warmup} warmup) x {n_trial} trials; "
+        + ("per-iteration synchronization" if getattr(bench, "fence_each_iteration", True)
+           else "batch synchronization")
     )
 
     times_ms, gflops = [], []

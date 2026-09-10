@@ -2,6 +2,7 @@ import os
 import math
 
 import cupynumeric as np
+from legate.core import get_legate_runtime
 from legate.timing import time  # blocks on preceding legate ops; returns microseconds
 
 MOD = "cupynumeric"
@@ -43,11 +44,15 @@ def register_benchmark(key, cls):
 
 def trial(bench, n_warmup, n_iter, flops):
     state = bench.initialize()
+    fence_each = getattr(bench, "fence_each_iteration", True)
+    synchronize = get_legate_runtime().issue_execution_fence
     start = None
     for idx in range(n_warmup + n_iter):
         if idx == n_warmup:
             start = time()
         bench.run(state)
+        if fence_each:
+            synchronize(block=True)
     total_us = time() - start
 
     mean_time_ms = total_us / (n_iter * 1e3)

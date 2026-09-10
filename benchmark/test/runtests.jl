@@ -6,6 +6,7 @@ include("../src/memory.jl")
 include("../src/planning.jl")
 include("../src/runner.jl")
 include("../src/result_rows.jl")
+include("timing.jl")
 
 const CONFIG = joinpath(@__DIR__,"..","benchmarks.toml")
 const RAW = TOML.parsefile(CONFIG)

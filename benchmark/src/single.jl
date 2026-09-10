@@ -42,10 +42,13 @@ function backend_entry(name)
     name == "cunumeric" && return (
         mod=cuNumeric, label="cuNumeric", save_as="cunumeric",
         clock=get_time_microseconds,
+        synchronize=benchmark_synchronize,
     )
     if name == "cudajl"
-        cuda_clock() = (CUDA.synchronize(; blocking=true); time_ns() / 1e3)
-        return (mod=CUDA, label="CUDA.jl", save_as="CUDA.jl", clock=cuda_clock)
+        cuda_sync() = CUDA.synchronize(; blocking=true)
+        cuda_clock() = (cuda_sync(); time_ns() / 1e3)
+        return (mod=CUDA, label="CUDA.jl", save_as="CUDA.jl", clock=cuda_clock,
+                synchronize=cuda_sync)
     end
     return error("Unknown backend '$(name)'. Known: cunumeric, cudajl")
 end
@@ -82,7 +85,7 @@ function run_single(
         "[$(label)] $(name) benchmark ($(T)) on $(N)x$(M) for $(n_iter) " *
         "iterations ($(n_warmup) warmup) x $(n_trial) trials",
     )
-    br = run_benchmark(b, gs; mod=bk.mod, clock=bk.clock)
+    br = run_benchmark(b, gs; mod=bk.mod, clock=bk.clock, synchronize=bk.synchronize)
     @printf("[%s] Mean Run Time: %.5f ± %.5f ms\n", label, mean(br.times_ms), _std(br.times_ms))
     @printf("[%s] FLOPS: %.5f ± %.5f GFLOPS\n", label, mean(br.gflops), _std(br.gflops))
     println("[$(label)] Correctness: $(br.correctness)")
