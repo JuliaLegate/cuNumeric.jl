@@ -1,6 +1,6 @@
 import cupynumeric as np
 
-from core import register_benchmark
+from core import register_benchmark, rand_array, zeros_array
 
 
 def _optimal_path(expression, *operands):
@@ -22,13 +22,10 @@ class TensorProjection3:
     def dims(self):
         return self.N, 1
 
-    def total_flops(self):
-        return 3 * self.N**3 * (2 * self.N - 1)
-
     def initialize(self):
-        A = np.random.rand(self.N, self.N, self.N).astype(self.T)
-        B = np.random.rand(self.N, self.N).astype(self.T)
-        D = np.zeros((self.N, self.N, self.N), dtype=self.T)
+        A = rand_array((self.N, self.N, self.N), self.T)
+        B = rand_array((self.N, self.N), self.T)
+        D = zeros_array((self.N, self.N, self.N), self.T)
         path = _optimal_path(self.expression, A, B, B, B)
         return D, A, B, path
 
@@ -49,13 +46,10 @@ class TensorContract4:
     def dims(self):
         return self.N, 1
 
-    def total_flops(self):
-        return self.N**4 * (2 * self.N**2 - 1)
-
     def initialize(self):
-        X = np.random.rand(self.N, self.N, self.N, self.N).astype(self.T)
-        Y = np.random.rand(self.N, self.N, self.N, self.N).astype(self.T)
-        C = np.zeros((self.N, self.N, self.N, self.N), dtype=self.T)
+        X = rand_array((self.N, self.N, self.N, self.N), self.T)
+        Y = rand_array((self.N, self.N, self.N, self.N), self.T)
+        C = zeros_array((self.N, self.N, self.N, self.N), self.T)
         path = _optimal_path(self.expression, X, Y)
         return C, X, Y, path
 

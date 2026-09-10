@@ -127,16 +127,21 @@ end
            Int(CUDACore.threadIdx().x)
 end
 
+# Widen before multiplying. C++ caps the grid; loops must still visit every element.
+@inline _broadcast_grid_stride(axis) =
+    Int(getproperty(CUDACore.gridDim(), axis)) * Int(getproperty(CUDACore.blockDim(), axis))
+
 function make_linear_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args)
     f = bc.f
 
     @kernel unsafe_indices = true function broadcast_kernel_linear_splat(dest, runtime_args...)
         I = _broadcast_linear_work_id()
-        if I <= length(dest)
+        while I <= length(dest)
             @inbounds args_modified = _materialize_broadcast_args(
                 arg_plan, runtime_args, static_args, I
             )
             @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+            I += _broadcast_grid_stride(:x)
         end
     end
 
@@ -159,12 +164,17 @@ function make_cartesian_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, s
     @kernel unsafe_indices = true function broadcast_kernel_cartesian_splat(
         dest, runtime_args...
     )
-        I = _broadcast_cartesian_work_id()
-        if I[1] <= size(dest, 1) && I[2] <= size(dest, 2)
-            @inbounds args_modified = _materialize_broadcast_args(
-                arg_plan, runtime_args, static_args, I
-            )
-            @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+        start = _broadcast_cartesian_work_id()
+        I = start
+        while I[2] <= size(dest, 2)
+            while I[1] <= size(dest, 1)
+                @inbounds args_modified = _materialize_broadcast_args(
+                    arg_plan, runtime_args, static_args, I
+                )
+                @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+                I += CartesianIndex(_broadcast_grid_stride(:y), 0)
+            end
+            I = CartesianIndex(start[1], I[2] + _broadcast_grid_stride(:x))
         end
     end
 
@@ -192,12 +202,20 @@ function make_cartesian_kernel_3d(
     @kernel unsafe_indices = true function broadcast_kernel_cartesian_3d_splat(
         dest, runtime_args...
     )
-        I = _broadcast_cartesian_work_id_3d()
-        if I[1] <= size(dest, 1) && I[2] <= size(dest, 2) && I[3] <= size(dest, 3)
-            @inbounds args_modified = _materialize_broadcast_args(
-                arg_plan, runtime_args, static_args, I
-            )
-            @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+        start = _broadcast_cartesian_work_id_3d()
+        I = start
+        while I[3] <= size(dest, 3)
+            while I[2] <= size(dest, 2)
+                while I[1] <= size(dest, 1)
+                    @inbounds args_modified = _materialize_broadcast_args(
+                        arg_plan, runtime_args, static_args, I
+                    )
+                    @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+                    I += CartesianIndex(_broadcast_grid_stride(:z), 0, 0)
+                end
+                I = CartesianIndex(start[1], I[2] + _broadcast_grid_stride(:y), I[3])
+            end
+            I = CartesianIndex(start[1], start[2], I[3] + _broadcast_grid_stride(:x))
         end
     end
 
@@ -835,10 +853,15 @@ end
 # `args` = (outputs[1:NOUT]..., runtime_args...); bounds from the first output.
 function make_multi_output_kernel(segs, ::Val{NOUT}, static_args, ::Val{2}) where {NOUT}
     @kernel unsafe_indices = true function broadcast_kernel_multi_2d(args...)
-        I = _broadcast_cartesian_work_id()
+        start = _broadcast_cartesian_work_id()
+        I = start
         dest = getfield(args, 1)
-        @inbounds if I[1] <= size(dest, 1) && I[2] <= size(dest, 2)
-            _run_segments(segs, args[1:NOUT], args[(NOUT + 1):end], static_args, (), I)
+        @inbounds while I[2] <= size(dest, 2)
+            while I[1] <= size(dest, 1)
+                _run_segments(segs, args[1:NOUT], args[(NOUT + 1):end], static_args, (), I)
+                I += CartesianIndex(_broadcast_grid_stride(:y), 0)
+            end
+            I = CartesianIndex(start[1], I[2] + _broadcast_grid_stride(:x))
         end
     end
     return broadcast_kernel_multi_2d
@@ -846,10 +869,18 @@ end
 
 function make_multi_output_kernel(segs, ::Val{NOUT}, static_args, ::Val{3}) where {NOUT}
     @kernel unsafe_indices = true function broadcast_kernel_multi_3d(args...)
-        I = _broadcast_cartesian_work_id_3d()
+        start = _broadcast_cartesian_work_id_3d()
+        I = start
         dest = getfield(args, 1)
-        @inbounds if I[1] <= size(dest, 1) && I[2] <= size(dest, 2) && I[3] <= size(dest, 3)
-            _run_segments(segs, args[1:NOUT], args[(NOUT + 1):end], static_args, (), I)
+        @inbounds while I[3] <= size(dest, 3)
+            while I[2] <= size(dest, 2)
+                while I[1] <= size(dest, 1)
+                    _run_segments(segs, args[1:NOUT], args[(NOUT + 1):end], static_args, (), I)
+                    I += CartesianIndex(_broadcast_grid_stride(:z), 0, 0)
+                end
+                I = CartesianIndex(start[1], I[2] + _broadcast_grid_stride(:y), I[3])
+            end
+            I = CartesianIndex(start[1], start[2], I[3] + _broadcast_grid_stride(:x))
         end
     end
     return broadcast_kernel_multi_3d
@@ -859,8 +890,9 @@ end
 function make_multi_output_kernel(segs, ::Val{NOUT}, static_args, ::Val) where {NOUT}
     @kernel unsafe_indices = true function broadcast_kernel_multi_linear(args...)
         I = _broadcast_linear_work_id()
-        @inbounds if I <= length(getfield(args, 1))
+        @inbounds while I <= length(getfield(args, 1))
             _run_segments(segs, args[1:NOUT], args[(NOUT + 1):end], static_args, (), I)
+            I += _broadcast_grid_stride(:x)
         end
     end
     return broadcast_kernel_multi_linear

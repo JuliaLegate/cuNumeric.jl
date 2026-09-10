@@ -36,6 +36,9 @@ _dmd_rank(b::AbstractDMD) = min(20, b.M - 1)
 #   2mr²            Ã = U_r' B
 #   25r³            eigen(Ã) (LAPACK xGEEV)
 #   2mr²            Φ = B W
+const DMD_TALL_RATIO = 10
+const DEFAULT_DMD_M = 512
+
 function total_flops(b::AbstractDMD)
     m = b.N
     n = b.M - 1
@@ -49,12 +52,37 @@ function total_flops(b::AbstractDMD)
     )
 end
 
+# X (N×M), thin-SVD U ~ N×(M-1), Vt ~ n×n, B, plus a cuSOLVER-sized fudge.
+function total_space(b::AbstractDMD{T}) where {T}
+    n = max(b.M - 1, 1)
+    s = sizeof(T)
+    return (b.N * b.M + b.N * n + n * n + b.N * n) * s + 2 * b.N * b.M * s
+end
+
+function estimate_scaling(b::AbstractDMD, P::Integer)
+    P == 1 && return (b.N, b.M)
+    b.N >= DMD_TALL_RATIO * b.M || return nothing
+    return (b.N * P, b.M)
+end
+
+function fit_one_gpu(
+    ::Type{B}, ::Type{T};
+    budget::Int, N_hint=nothing, M_hint=nothing,
+) where {B<:AbstractDMD,T}
+    M = something(M_hint, DEFAULT_DMD_M)
+    lo = max(M, 8)
+    hi = max(lo, Int(fld(budget, max(6 * M * sizeof(T), 1))))
+    N = largest_feasible(lo, hi, n -> total_space(B{T}(; N=n, M=M)) <= budget)
+    N === nothing && error("dmd M=$M does not fit in $(budget) bytes")
+    return (max(align8(N), M), M)
+end
+
 function initialize(b::AbstractDMD{T}; mod=cuNumeric) where {T}
     # X1 is N×(M-1); the SVD backend requires m >= n.
     b.N >= b.M - 1 || throw(
         ArgumentError("DMD snapshot matrix is N×M with N ≥ M-1 (got N=$(b.N), M=$(b.M))")
     )
-    X = mod.rand(T, b.N, b.M)
+    X = rand_array(mod, T, b.N, b.M)
     GC.gc()
     return (X,)
 end
@@ -84,10 +112,12 @@ let body = quote
         (B, Ã)
     end
     @eval _dmd_project(::DMDBaseline, X, X2, U, Vt, S) = $body
-    @eval @accelerate function _dmd_project(
-        ::DMDAccelerated, X, X2, U, Vt, S
-    )
-        $body
+    if CUNUMERIC_BENCH_RUNTIME
+        @eval @accelerate function _dmd_project(
+            ::DMDAccelerated, X, X2, U, Vt, S
+        )
+            $body
+        end
     end
 end
 
@@ -96,30 +126,23 @@ function _dmd_compute!(b::AbstractDMD, X, r)
     B, Ã = _dmd_project(b, X, X2, U, Vt, S)
     E = eigen(Ã)
     CT = Complex{eltype(X)}
-    Bc = X isa NDArray ? cuNumeric.as_type(B, CT) : CT.(B)
+    Bc = astype_array(B, CT)
     return E.values, Bc * E.vectors
 end
 
 run!(b::AbstractDMD, X) = _dmd_compute!(b, X, _dmd_rank(b))
 
-correctness_supported(::AbstractDMD) = true
-
-function check_benchmark_correctness(
-    b::AbstractDMD{T}, gs::GlobalSettings; mod=cuNumeric, atol=1e-3, rtol=1e-3
-) where {T}
-    mod === cuNumeric || return "skipped"
-
-    Xh = rand(T, b.N, b.M)
-    X = NDArray(Xh)
-    r = _dmd_rank(b)
-    # Values, not lifetimes: compare the selected device path against the host baseline.
-    ref = DMDBaseline{T}(; N=b.N, M=b.M)
-    λ, _ = _dmd_compute!(b, X, r)
-    λh, _ = _dmd_compute!(ref, Xh, r)
-
-    mag = sort(abs.(Array(λ)); rev=true)
-    magh = sort(abs.(λh); rev=true)
-    return isapprox(mag, magh; atol=atol, rtol=rtol) ? "pass" : "fail"
+function correctness_problem(b::AD) where {AD <: AbstractDMD}
+    m = min(b.M, 16)
+    n = max(min(b.N, 64), m - 1)
+    return AD(; N=n, M=m)
+end
+# Eigenvectors have a phase; compare sorted |λ| only.
+function correctness_result(::AbstractDMD, _, out)
+    return sort(abs.(vec(to_host(out[1]))); rev=true)
+end
+function cuda_runnable(b::DMDAccelerated{T}) where {T}
+    return DMDBaseline{T}(; N=b.N, M=b.M)
 end
 
 register_benchmark("dmd_baseline", DMDBaseline)

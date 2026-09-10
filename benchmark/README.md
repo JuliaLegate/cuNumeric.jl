@@ -2,7 +2,40 @@
 
 Benchmarks are declared in `benchmarks.toml`. `run.jl` parses it.
 
+Each independent iteration completes before the next is submitted, including
+warmups, for cuNumeric, CUDA.jl, and cuPyNumeric. Blocking synchronization is
+included in timed iterations. Gray–Scott is the exception: its timesteps form
+one trajectory, so all variants retain batch synchronization at timing boundaries.
+Initialization remains outside timing. Earlier non-Gray–Scott results used batch
+synchronization and should be rerun for comparison. Fences do not force GC.
+
 ## Running
+
+Run a complete selected sweep and plot it without editing other TOML blocks:
+
+```bash
+julia --project=. run.jl --only=montecarlo
+julia --project=. run.jl --only=grayscott
+julia --project=. run.jl --only=grayscott --fusion=both
+julia --project=. run.jl --only=grayscott --dry-run
+```
+
+`--only` accepts benchmark or plot-group names (comma-separated). `--fusion=on`,
+`off`, or `both` overrides the selected blocks. `--config=path` selects another
+configuration. The shipped configuration uses fusion enabled. Positional
+single-run arguments remain supported and do not plot automatically.
+
+Automatic sizing shares one baseline per comparison group and dtype, accounting
+for every selected backend, fusion setting and GPU count. Incompatible pinned
+constraints fail preflight. Comparison backends run once even if only unfused
+Julia configurations are selected. Read [memory accounting](MEMORY.md) before
+running native-library benchmarks: verified workspace bounds are required where
+the harness cannot infer them. Unexpected failures are reported, not retried.
+
+Each invocation writes `results/<run-id>/<dtype>/` plus a `manifest.toml` with
+resolved dimensions, memory estimates, package versions and worker statuses.
+Plots go to `plots/<run-id>/<dtype>/`; failed sweeps are marked incomplete.
+Different sizes at the same GPU count cannot be silently merged into a plot.
 
 ```bash
 julia --project=. run.jl   # runs whatever benchmarks.toml configures
@@ -10,11 +43,19 @@ julia --project=. run.jl   # runs whatever benchmarks.toml configures
 
 `run.jl` runs each (benchmark, backend) pair in its own process via
 `run_benchmark.sh`, so backends never share a GPU/runtime within a measurement.
+Julia workers log correctness checking and show a trial progress meter with the
+latest trial's mean time and GFLOP/s. The meter advances only after a trial
+finishes, outside the timed loop; initialization and warmup can also take time
+before the next update.
 cuNumeric always runs; extra comparison backends are toggled in `[Global]`:
 
 - `cuda = true` → also run under CUDA.jl (single-GPU configs only; CUDA.jl is
-  single-device).
+  single-device). Every kernel has a `CuArray` implementation.
 - `cupynumeric = true` → also run under cupynumeric (see below).
+
+On a single GPU, the cuNumeric worker also compares a tiny problem against
+CUDA.jl (`pass` / `fail` in the CSV). The timed CUDA.jl run still happens;
+its correctness column is `skipped`. Multi-GPU and cupynumeric skip the check.
 
 Individual `[[benchmark]]` blocks may override `cuda`, `n_warmup`, `n_iter`,
 and `n_trial`. Unspecified values inherit from `[Global]`. This is useful for
@@ -25,6 +66,11 @@ the iteration count for expensive kernels.
 
 cupynumeric runs in a conda env whose major.minor matches this project's
 resolved `cupynumeric_jll`. Build it once:
+
+The runner checks that conda and the requested environment are available before
+starting any timed workers. If conda is not on the worker's PATH, set
+`CUNUMERIC_BENCH_CONDA` to its executable path (or use `CONDA_EXE`). The installer
+honors the same setting.
 
 ```bash
 ./install_cupynumeric.sh   # creates env cupynumeric-bench-<major.minor>
@@ -39,6 +85,8 @@ resolved `cupynumeric_jll`. Build it once:
 n_warmup = 5
 n_iter   = 1000
 n_trial  = 5
+auto_size = true
+mem_frac  = 0.5   # fraction of the smallest visible GPU's total RAM
 
 [[gemm]]            # name registered under src/benchmarks/
 T    = "Float32"     # element type
@@ -59,6 +107,17 @@ two axes:
   fusion setting (`fusion = [true, false]` sweeps both).
 - **`gpus`, `cpus`, `N`, `M` zip** into a single lockstep sweep — element `i`
   of each is paired together.
+
+When `[Global] auto_size = true` and a block **omits** `N` (or sets `N = "auto"`),
+the harness RAM-fits the 1-GPU problem from `total_space` on that benchmark type,
+then maps to `P` GPUs. Pin an explicit `N` list to keep paper sizes. `mem_frac`
+is the fraction of the *smallest* visible GPU's total RAM (`CUNUMERIC_BENCH_MEM_FRAC`
+overrides it). DMD keeps `M` as the intensity knob; Poisson holds grid `N` across
+the GPU sweep and scales batch `M`.
+Peak estimates are now backend- and variant-aware. Monte Carlo's fused
+iteration needs the samples and broadcast output, but the planner also accounts
+for outputs that may await Julia GC across a trial. See [memory accounting](MEMORY.md)
+for the supported bounds and native-library workspace configuration.
 
 `fusion` toggles cuNumeric broadcast fusion (`true`/`false` or `"on"`/`"off"`,
 default `true`); it only affects cuNumeric, so comparison backends run once, not
@@ -106,21 +165,32 @@ entry—TensorOperations.jl's cuTENSOR backend:
   `C[a,b,c,d] = X[a,i,c,j] * Y[i,b,j,d]`. This single contraction isolates the
   primitive high-rank backend path and counts `N^4(2N^2-1)` operations.
 
-The Julia implementations use `@tensor` on both `NDArray` and `CuArray`; the
+The Julia implementations use `@tensor opt=true` on both `NDArray` and `CuArray`; the
 latter activates TensorOperations' cuTENSOR extension and is recorded as
 `TensorOperations.jl / cuTENSOR`. The cuPyNumeric implementations use equivalent
-`einsum` expressions. Final outputs are preallocated, and contraction-order
-selection is performed before timing (at macro expansion in Julia and during
-initialization in Python). Required intermediate allocation and release remain
-part of each timed projection iteration.
+`einsum` expressions with `einsum_path(optimize="optimal")`. Final outputs are
+preallocated. Required intermediate allocation (projection3: two rank-3 temps;
+contract4: an `N²×N²` GEMM workspace) is part of each timed iteration and of
+Julia `total_space`. The orchestrator computes flop counts in Julia and passes
+them to the Python worker so the formulas live in one place.
 
 ## Plotting
 
+A full `run.jl` pass (no extra args) plots at the end. One-off CLI runs do
+not. To plot existing CSVs:
+
 ```bash
-julia --project=benchmark benchmark/plot_results.jl
+julia --project=. plot_results.jl
 ```
 
-The plotter reads the result files in the selected results directory and writes
-one weak-scaling figure per benchmark, plus aggregate fusion and no-fusion
-figures when those result groups are present. Outputs are grouped under a
-subdirectory named for the shared benchmark prefix.
+`[plot.groups]` in `benchmarks.toml` puts related kernels on one figure.
+Gray-Scott's baseline and `@accelerate` forms share `grayscott`; DMD baseline
+and accelerated share `dmd`. Every other `[[benchmark]]` table is its own
+figure. Each figure overlays CUDA.jl (1 GPU) and cupynumeric from that
+group's baseline CSV (`*_baseline`, else the only / first name). Accelerated
+kernels have no CUDA.jl or Python CSVs; the overlay still comes from the
+baseline.
+
+cuNumeric fused vs unfused uses the same color with solid vs dashed lines.
+Outputs are `plots/<group>_weak_scaling.png`. Optional flags: `--out=`,
+`--suffix=`, `--config=`, or a results-directory path.

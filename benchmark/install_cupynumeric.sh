@@ -8,6 +8,11 @@
 #   ./install_cupynumeric.sh --name myenv    # override the env name
 #   ./install_cupynumeric.sh --into existing # install into an existing env instead of creating one
 set -euo pipefail
+CONDA="${CUNUMERIC_BENCH_CONDA:-${CONDA_EXE:-conda}}"
+command -v "$CONDA" >/dev/null 2>&1 || {
+    echo "Error: conda not found. Add it to PATH or set CUNUMERIC_BENCH_CONDA to its executable path."
+    exit 1
+}
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -57,20 +62,20 @@ NUMPY_SPEC="numpy<2.3"
 
 if [[ -n "$INTO_ENV" ]]; then
     echo "Installing $SPEC into existing env '$INTO_ENV'..."
-    conda install -y -n "$INTO_ENV" -c conda-forge -c legate "$SPEC" "$NUMPY_SPEC"
+    "$CONDA" install -y -n "$INTO_ENV" -c conda-forge -c legate "$SPEC" "$NUMPY_SPEC"
     echo "Done. Activate with: conda activate $INTO_ENV"
     exit 0
 fi
 
 [[ -z "$ENV_NAME" ]] && ENV_NAME="cupynumeric-bench-$VER"
 
-if conda env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
+if "$CONDA" env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
     echo "Env '$ENV_NAME' already exists with $SPEC; nothing to do."
     echo "Activate with: conda activate $ENV_NAME"
     exit 0
 fi
 
 echo "Creating env '$ENV_NAME' with $SPEC..."
-conda create -y -n "$ENV_NAME" -c conda-forge -c legate "$SPEC" "$NUMPY_SPEC"
+"$CONDA" create -y -n "$ENV_NAME" -c conda-forge -c legate "$SPEC" "$NUMPY_SPEC"
 
 echo "Done. Activate with: conda activate $ENV_NAME"
