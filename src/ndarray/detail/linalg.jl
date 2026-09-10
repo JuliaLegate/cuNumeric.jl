@@ -131,9 +131,9 @@ function _solve(a::NDArray{T,N}, b::NDArray{S,N}) where {T,S,N}
                 " (size $(size(b)[end-1]) is different from $(size(a)[end]))",
             ),
         )
-    prod(size(a)) == 0 || prod(size(b)) == 0 && return cuNumeric.zeros(T, size(b)...)
+    (prod(size(a)) == 0 || prod(size(b)) == 0) && return cuNumeric.zeros(T, size(b)...)
     x = cuNumeric.zeros(T, size(b)...)
-    solve_batched(a, b, x)
+    _solve!(_linalg_backend(Val(:solve), a), x, a, b)
     return x
 end
 
@@ -283,6 +283,7 @@ function qr_single(a::NDArray{T,N}, q::NDArray, r::NDArray) where {T,N}
     rt = Legate.get_runtime()
     lib = cuNumeric.get_lib()
     task = Legate.create_auto_task(rt, lib, cuNumeric.CQR)
+    cuNumeric.task_throws_exception(task, true)
 
     l_a = nda_to_logical_array(a)
     l_q = nda_to_logical_array(q)
@@ -300,6 +301,13 @@ function qr_single(a::NDArray{T,N}, q::NDArray, r::NDArray) where {T,N}
 end
 
 function _qr(a::NDArray{T,2}) where {T}
+    m, n = size(a)
+    k = min(m, n)
+    k == 0 && return cuNumeric.zeros(T, m, k), cuNumeric.zeros(T, k, n)
+    return _qr(_linalg_backend(Val(:qr), a), a)
+end
+
+function _qr(::_SingleProcLinalg, a::NDArray{T,2}) where {T}
     m, n = size(a)
     k = min(m, n)
     # cuSolver requires full square buffers regardless of output shape
@@ -359,7 +367,7 @@ assumed Hermitian without being checked, matching cupynumeric.
 function _cholesky(a::NDArray{T,N}) where {T,N}
     _check_square_matrices(:cholesky, a)
     out = cuNumeric.zeros(T, size(a)...)
-    potrf!(out, a; lower=true, zeroout=true)
+    _cholesky!(_linalg_backend(Val(:cholesky), a), out, a)
     return out
 end
 

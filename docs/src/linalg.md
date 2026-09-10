@@ -25,6 +25,39 @@ equivalent, so they get their own `batched_*` names.
 | `LinearAlgebra.qr(A)` | `NDArrayQR` | not supported |
 | `cuNumeric.solve(A, b)`, `A \ b` | `NDArray` | `cuNumeric.batched_solve(A, B)` |
 
+## Distributed solves and factorizations
+
+The existing `A \ b`, `cuNumeric.solve`, `cholesky`, and `qr` APIs select
+distributed tasks automatically. Selection follows cuPyNumeric 26.06:
+
+| Operation | cuSolverMp cutoff | Internal block size |
+| --- | --- | --- |
+| Square solve | dimension ≥ 2048 | 512 |
+| Lower Cholesky | dimension ≥ 8192 | 2048 |
+| Reduced QR | matrix contains ≥ 1048576 elements | 128 |
+
+These cutoffs and block sizes are named module constants. The loaded library
+must support cuSolverMp and Legate must have more than one active GPU. The
+library selects the algorithm; Legate handles placement, communication, and
+redistribution. Configure resources before starting Julia, as described in
+[Hardware Configuration](./configuration/hardware.md).
+
+Ordinary solve and QR tasks remain the fallback. Cholesky also uses the tiled
+POTRF/TRSM/SYRK/GEMM algorithm for eligible multi-processor configurations;
+below its partitioning cutoff this is a single tile. Batched operations still
+distribute independent matrices, each of which must fit on one processor.
+SVD and general eigen do not acquire distributed factorization paths.
+
+Results retain their existing Julia types, element promotion, and shapes.
+Inputs are preserved. Kernel failures propagate when the runtime reports them;
+failed collectives are not retried using another algorithm. No new factor-reuse,
+triangular-solve, or CG API is introduced by this change.
+
+This requires the new C++ wrapper; see [Developer Mode](./developer_mode.md#cusolvermp-wrapper-update).
+The acceptance runner and multi-node validation procedure are in
+[`scripts/linalg/README.md`](https://github.com/JuliaLegate/cuNumeric.jl/blob/develop/scripts/linalg/README.md).
+Multi-node support remains pending validation on the target cluster.
+
 ## Matrix multiply
 
 For two 2D arrays, `*` performs matrix multiplication; use `.*` for an
@@ -303,5 +336,4 @@ There is no public dense-matrix `lu`, matrix `inv`, or `ldiv!` yet (beyond the
 operations, not matrix inverse.
 
 Also missing: `eigh` / Hermitian eigen (needs `Hermitian` and `Symmetric`
-support on `NDArray`), batched SVD and QR, and the multi-GPU cuSolverMp paths
-for Cholesky and solve.
+support on `NDArray`), batched SVD and QR, and conjugate gradient.

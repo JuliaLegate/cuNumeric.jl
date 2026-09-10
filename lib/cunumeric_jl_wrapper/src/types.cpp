@@ -169,6 +169,17 @@ void wrap_linalg_ops(jlcxx::Module& mod) {
                 legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_SOLVE});
   mod.set_const("MP_SOLVE",
                 legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_MP_SOLVE});
+  mod.set_const("MP_POTRF",
+                legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_MP_POTRF});
+  mod.set_const("MP_QR",
+                legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_MP_QR});
+  mod.set_const("POTRS", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_POTRS});
+  mod.set_const("TRSM", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_TRSM});
+  mod.set_const("SYRK", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_SYRK});
+  mod.set_const("GEMM", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_GEMM});
+  mod.set_const("TRANSPOSE_COPY_2D",
+                legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_TRANSPOSE_COPY_2D});
+  mod.set_const("TRILU", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_TRILU});
   mod.set_const("SVD", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_SVD});
   mod.set_const("CQR", legate::LocalTaskID{CuPyNumericOpCode::CUPYNUMERIC_QR});
   mod.set_const("POTRF",

@@ -32,6 +32,9 @@ benchmark/results**
 benchmark/results/*
 benchmark/plots**
 
+# Distributed linear algebra acceptance logs and profiles
+/linalg-results/
+
 compile_wrapper.sh
 
 *.tar.gz
