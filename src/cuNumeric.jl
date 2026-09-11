@@ -161,6 +161,7 @@ const TASK_SCOPE_NAMES = CNPreferences.TASK_SCOPE_NAMES
 
 # NDArray internal
 include("ndarray/detail/ndarray.jl")
+include("ndarray/detail/distributed_linalg.jl")
 include("ndarray/detail/linalg.jl")
 include("ndarray/detail/fft.jl")
 
@@ -277,6 +278,12 @@ function __init__()
     get(ENV, "JULIA_REGISTRYCI_AUTOMERGE", false) == "true" && return nothing
     # skip runtime here as well
     get(ENV, "LEGATE_SKIP_RUNTIME", false) == "true" && return nothing
+
+    isdefined(@__MODULE__, :cusolvermp_available) || error(
+        "cuNumeric requires C++ wrapper 26.6.2 or newer. " *
+        "Until that JLL is published, enable CNPreferences.use_developer_mode(; use_jll=true), " *
+        "restart Julia, run Pkg.build(\"cuNumeric\"), and restart Julia again.",
+    )
 
     # Start runtime, but only if not pre-compiling
     ensure_runtime!()

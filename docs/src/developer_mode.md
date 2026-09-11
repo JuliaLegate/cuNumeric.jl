@@ -53,6 +53,29 @@ If the build fails, check CMake / g++ (C++20) / CUDA toolkit availability as des
 4. using cuNumeric
 ```
 
+## cuSolverMp wrapper update
+
+Distributed solve, Cholesky, and QR require wrapper source version **26.6.2**.
+The cupynumeric backend remains on the 26.06 line. Until the new wrapper JLL
+is published, rebuild this checkout in developer mode against `cupynumeric_jll`:
+
+```julia
+using Pkg
+Pkg.develop(PackageSpec(path="lib/CNPreferences"))
+using CNPreferences
+CNPreferences.use_developer_mode(; use_jll=true)
+```
+
+Restart Julia, run `Pkg.build("cuNumeric")` with this project active, then
+restart again before loading cuNumeric. An old wrapper produces an explicit
+upgrade/rebuild error instead of reaching a missing task binding.
+
+The project temporarily permits the published 26.6.1 wrapper JLL so package
+resolution and developer builds can bootstrap. Its binary is insufficient for
+this source tree. When 26.6.2 is published, raise the `cunumeric_jl_wrapper_jll`
+compat lower bound to `26.6.2` before releasing these Julia changes. No Legate.jl
+update is needed: version 0.2.1 already supplies explicit partition color shapes.
+
 ## Switch back to JLLs
 
 When you no longer need a local wrapper:
