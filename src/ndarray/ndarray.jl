@@ -182,7 +182,7 @@ end
 # NDArray-specific overrides of Core's AbstractArray constructors (NDArray <:
 # AbstractArray): exact `Array{T}` / `Array{T,N}` / `Array` signatures so we win
 # over `Array{T,N}(::AbstractArray)` (which would scalar-index). Bulk path uses
-# `_copy_to_julia_array`; 1-d dispatches same-type (zero-copy) vs convert.
+# `_copy_to_julia_array`; 1-d has specialized same-type and converting paths.
 function (::Type{Array{T}})(arr::NDArray{S,0}) where {T,S}
     out = Array{T,0}(undef)
     allowscalar() do
@@ -192,7 +192,15 @@ function (::Type{Array{T}})(arr::NDArray{S,0}) where {T,S}
 end
 
 function (::Type{Array{T}})(arr::NDArray{T,1}) where {T}
-    return make_array(T, Ptr{T}(get_ptr(arr)), size(arr))
+    out = Vector{T}(undef, length(arr))
+    isempty(out) && return out
+    # get_ptr waits for the source to be available in host memory. Keep its
+    # owner alive until the synchronous CPU copy into Julia-owned storage ends.
+    GC.@preserve arr out begin
+        src = Ptr{T}(get_ptr(arr))
+        unsafe_copyto!(pointer(out), src, length(out))
+    end
+    return out
 end
 
 function (::Type{Array{T}})(arr::NDArray{S,1}) where {T,S}
@@ -231,7 +239,20 @@ function _nda_from_julia_array(arr::Array{T,0}) where {T}
 end
 
 function _nda_from_julia_array(arr::Array{T,1}) where {T}
-    return cuNumeric.nda_attach_external(arr)
+    # Prototype: the attachment borrows Julia memory only for this copy.
+    # Preserve the source through completion, not just task submission.
+    GC.@preserve arr begin
+        attached = cuNumeric.nda_attach_external(arr)
+        try
+            out = copy(attached)
+            GC.@preserve attached out begin
+                issue_execution_fence(; block=true)
+            end
+            return out
+        finally
+            destroy!(attached)
+        end
+    end
 end
 
 function _nda_from_julia_array(arr::Array{T,N}) where {T,N}
