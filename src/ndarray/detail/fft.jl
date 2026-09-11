@@ -203,36 +203,40 @@ function fft_task!(
     _bluestein_mask(axes0, size(inp), size(out))
     kind = _fft_kind(T)
 
-    @task_scope _fft_scope_name(direction) begin
-        rt = Legate.get_runtime()
-        lib = cuNumeric.get_lib()
-        task = Legate.create_auto_task(rt, lib, cuNumeric.FFT)
-        cuNumeric.task_throws_exception(task, true)
+    # Root the Julia wrappers through submission; pending tasks retain the stores.
+    # Internal FFT execution stays asynchronous and does not require extra copies.
+    GC.@preserve inp out begin
+        @task_scope _fft_scope_name(direction) begin
+            rt = Legate.get_runtime()
+            lib = cuNumeric.get_lib()
+            task = Legate.create_auto_task(rt, lib, cuNumeric.FFT)
+            cuNumeric.task_throws_exception(task, true)
 
-        l_out = nda_to_logical_array(out)
-        l_in = inp === out ? l_out : nda_to_logical_array(inp)
+            l_out = nda_to_logical_array(out)
+            l_in = inp === out ? l_out : nda_to_logical_array(inp)
 
-        out_var = Legate.add_output(task, l_out)
-        in_var = Legate.add_input(task, l_in)
+            out_var = Legate.add_output(task, l_out)
+            in_var = Legate.add_input(task, l_in)
 
-        # 26.06 fft_template.inl: kind, direction, operate_over_axes, then axes.
-        Legate.add_scalar(task, Legate.Scalar(kind))
-        Legate.add_scalar(task, Legate.Scalar(direction))
-        Legate.add_scalar(task, Legate.Scalar(operate_over))
-        for ax in axes0
-            Legate.add_scalar(task, Legate.Scalar(ax))
-        end
+            # 26.06 fft_template.inl: kind, direction, operate_over_axes, then axes.
+            Legate.add_scalar(task, Legate.Scalar(kind))
+            Legate.add_scalar(task, Legate.Scalar(direction))
+            Legate.add_scalar(task, Legate.Scalar(operate_over))
+            for ax in axes0
+                Legate.add_scalar(task, Legate.Scalar(ax))
+            end
 
-        Legate.add_constraint(task, Legate.align(out_var, in_var))
-        if N > length(unique_axes)
-            Legate.add_broadcast(task, l_in, CxxWrap.StdVector(UInt32.(unique_axes)))
-        else
-            Legate.add_broadcast(task, l_in)
-        end
+            Legate.add_constraint(task, Legate.align(out_var, in_var))
+            if N > length(unique_axes)
+                Legate.add_broadcast(task, l_in, CxxWrap.StdVector(UInt32.(unique_axes)))
+            else
+                Legate.add_broadcast(task, l_in)
+            end
 
-        Legate.submit_auto_task(rt, task)
-        if scale
-            out .*= _ifft_scale(T, size(out), dims)
+            Legate.submit_auto_task(rt, task)
+            if scale
+                out .*= _ifft_scale(T, size(out), dims)
+            end
         end
     end
     return out
