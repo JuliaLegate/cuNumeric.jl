@@ -20,6 +20,7 @@ function _select_compatible_ptx_version()
 end
 
 function _setup_cuda_tasking()
+    Int(Legate.num_gpus()) == 0 && return nothing
     if CUDACore.functional()
         _COMPATIBLE_PTX_VERSION[] = _select_compatible_ptx_version()
         # in cuda.jl to notify /wrapper/src/cuda.cpp about CUDA.jl kernel state size

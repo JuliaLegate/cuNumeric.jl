@@ -36,27 +36,7 @@ end
 # DEFINITELY DUPLICATED CODE
 #############################################
 
-function check_jll(m::Module)
-    if !m.is_available()
-        m_host_cuda = cupynumeric_jll.host_platform["cuda"]
-
-        if (m_host_cuda == "none")
-            error(
-                "$(string(m)) installed but not available on this platform.\n $(string(cupynumeric_jll.host_platform))"
-            )
-        end
-
-        v_host_cuda = VersionNumber(m_host_cuda)
-        valid_cuda_version = Legate.MIN_CUDA_VERSION <= v_host_cuda <= Legate.MAX_CUDA_VERSION
-        if !valid_cuda_version
-            error(
-                "$(string(m)) installed but not available on this platform. Host CUDA ver: $(v_host_cuda) not in range supported by $(string(m)): $(MIN_CUDA_VERSION)-$(MAX_CUDA_VERSION)."
-            )
-        else
-            error("$(string(m)) installed but not available on this platform. Unknown reason.")
-        end
-    end
-end
+check_jll(m::Module) = Legate.check_jll(m)
 
 function find_paths(
     mode::String;

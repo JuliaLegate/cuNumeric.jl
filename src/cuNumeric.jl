@@ -56,7 +56,7 @@ import StatsBase: var, mean, std
 include(joinpath(@__DIR__, "../deps/version.jl"))
 include("utilities/preference.jl")
 
-const HAS_CUDA = LegatePreferences.has_cuda_gpu()
+const HAS_CUDA = Legate.has_cuda_gpu()
 if !HAS_CUDA
     @warn "We couldn't find a CUDA-enabled GPU. If you have an NVIDIA GPU something might be wrong."
 end
