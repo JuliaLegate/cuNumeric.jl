@@ -29,45 +29,49 @@
     end
 end
 
-@testset "Zero-Copy Verification (1D)" begin
-    # 1D attach remains zero-copy; N>=2 copies into a C-ordered buffer.
-    A = rand(Float64, 16)
+@testset "Independent Storage (1D)" begin
+    # Conversion copies into Legate-owned storage before returning.
+    A = Float64.(1:16)
+    expected = copy(A)
     NA = NDArray(A)
 
     @allowscalar begin
         @test all(A .== Array(NA))
     end
 
-    @test pointer(A) == cuNumeric.get_ptr(NA)
+    GC.@preserve A NA begin
+        @test pointer(A) != cuNumeric.get_ptr(NA)
+    end
 
-    # modify julia array, verify ndarray sees it
+    # Mutating the Julia source must not change the NDArray.
     A[1] = 99.0
     @allowscalar begin
-        @test NA[1] == 99.0
+        @test NA[1] == expected[1]
     end
 
-    # modify ndarray, verify julia array sees it
+    # Mutating the NDArray must not change the Julia source.
     @allowscalar begin
         NA[2] = 88.0
+        @test NA[2] == 88.0
     end
-    @test A[2] == 88.0
+    @test A[2] == expected[2]
 end
 
 @testset "Lifetime Protection" begin
-    function create_attached_ndarray()
+    function create_owned_ndarray()
         local_A = rand(Float32, 100)
         local_A[1] = 1.23f0
         return NDArray(local_A), local_A[1]
     end
 
-    NA, expected_val = create_attached_ndarray()
+    NA, expected_val = create_owned_ndarray()
 
     # force gc to try and collect the local array
     GC.gc(true)
     GC.gc(true) # do it again
     GC.gc(true) # and again lol
 
-    # data should still be intact via parent reference
+    # Data survives in Legate-owned storage after the Julia source is collected.
     @allowscalar begin
         @test NA[1] == expected_val
     end
@@ -87,7 +91,7 @@ end
 
     NA = create_typed_ndarray()
 
-    # the temporary Float64 array should be kept alive by NA.parent
+    # The temporary Float64 source is no longer needed after construction.
     GC.gc(true)
     GC.gc(true)
     GC.gc(true)
@@ -97,7 +101,7 @@ end
         @test NA[10] == 10.0
     end
 
-    # modification should work on the attached temporary
+    # Modification should work on the independently owned storage.
     @allowscalar begin
         NA[1] = 42.0
         @test NA[1] == 42.0
