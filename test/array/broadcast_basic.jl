@@ -68,6 +68,18 @@ end
         result_cpu = zeros(dims)
         @test result == result_cpu
 
+        # Plain broadcast assignment lowers to identity.(source). It must copy
+        # into both dense NDArrays and writable views.
+        result .= arrA
+        @test result == arrA_cpu
+
+        parent = cuNumeric.zeros(Float64, N + 2, N + 2)
+        center = parent[2:(N + 1), 2:(N + 1)]
+        center .= arrA
+        expected_parent = zeros(N + 2, N + 2)
+        expected_parent[2:(N + 1), 2:(N + 1)] .= arrA_cpu
+        @test parent == expected_parent
+
         # where the real testing starts
         arrA = 13.74 .- arrA
         arrA_cpu = 13.74 .- arrA_cpu
@@ -123,6 +135,21 @@ end
 
         result = arrA .* arrB
         result_cpu = arrA_cpu .* arrB_cpu
+        @test result == result_cpu
+
+        # `@.` lowers associative chains to n-ary Broadcasted nodes. Both the
+        # fused GPU path and pairwise unfused CPU path must accept them.
+        result = @. arrA + arrB + arrA + arrB + arrA
+        result_cpu = @. arrA_cpu + arrB_cpu + arrA_cpu + arrB_cpu + arrA_cpu
+        @test result == result_cpu
+
+        result = @. 0.5 * arrA * arrB * arrA
+        result_cpu = @. 0.5 * arrA_cpu * arrB_cpu * arrA_cpu
+        @test result == result_cpu
+
+        dx = 0.1
+        result = @. arrA / dx^2
+        result_cpu = @. arrA_cpu / dx^2
         @test result == result_cpu
 
         operator(arrA, arrB)

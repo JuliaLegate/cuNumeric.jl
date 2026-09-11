@@ -7,31 +7,21 @@ using InteractiveUtils: versioninfo
 run_gpu_tests = CUDA.functional()
 
 @info "Julia information:\n" * sprint(io -> versioninfo(io))
-run_gpu_tests && @info "CUDA information:\n" * sprint(io -> CUDA.versioninfo(io))
 @info "cuNumeric information:\n" * sprint(io -> cuNumeric.versioninfo(io))
 
 # Forcibly precompile the current environment in parallel: Pkg sometimes ignores
 # dependencies pointed through via `[sources]`
 Pkg.precompile()
 
-cuda_init = if run_gpu_tests
-    quote
-        using CUDA
-        import CUDA: i32
-    end
-else
-    :()
-end
-
 const init_code = quote
     using LinearAlgebra
     using Random
+    using StatsBase
+    using FFTW
     import Random: rand
 
     ENV["LEGATE_SKIP_RUNTIME"] = "false"
     using cuNumeric
-
-    $cuda_init
 
     include("util.jl")
 end
@@ -43,16 +33,23 @@ delete!(testsuite, "util")
 delete!(testsuite, "array/unary/tests")
 delete!(testsuite, "array/binary/tests")
 
-if !run_gpu_tests
-    @warn "CUDA GPU not available, skipping GPU-only tests"
-    filter!(test -> !startswith(first(test), "gpu_only/"), testsuite)
+test_args = parse_args(ARGS)
+if filter_tests!(testsuite, test_args)
+    if !run_gpu_tests
+        @warn "CUDA GPU not available, skipping GPU-only tests"
+        filter!(
+            test ->
+                !startswith(first(test), "gpu_only/") &&
+                !startswith(first(test), "cuda.jl/"),
+            testsuite,
+        )
+    end
+
+    if !run_gpu_tests || !cuNumeric.FUSE_BROADCAST_EXPRS
+        @warn "Broadcast fusion is disabled, skipping fusion tests"
+        filter!(test -> !startswith(first(test), "gpu_only/broadcast_fusion"), testsuite)
+    end
 end
 
-if !run_gpu_tests || !cuNumeric.FUSE_BROADCAST_EXPRS
-    @warn "Broadcast fusion is disabled, skipping fusion tests"
-    filter!(test -> !startswith(first(test), "gpu_only/broadcast_fusion"), testsuite)
-end
-
-filter!(test -> !startswith(first(test), "defunct/"), testsuite)
-
-runtests(cuNumeric, ARGS; testsuite, init_code)
+cuda_tests = filter(test -> startswith(test, "cuda.jl/"), collect(keys(testsuite)))
+runtests(cuNumeric, test_args; testsuite, init_code, serial=cuda_tests)

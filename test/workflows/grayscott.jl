@@ -33,64 +33,62 @@ struct ParamsGS{T<:AbstractFloat}
     end
 end
 
-function step(u, v, u_new, v_new, args::ParamsGS)
-    @analyze_lifetimes begin
-        # calculate F_u and F_v functions
-        # currently we don't have NDArray^x working yet.
-        F_u = (
-            (
-                -u[2:(end - 1), 2:(end - 1)] .*
-                (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
-            ) + args.f*(1 .- u[2:(end - 1), 2:(end - 1)])
-        )
-        F_v = (
-            (
-                u[2:(end - 1), 2:(end - 1)] .*
-                (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
-            ) - (args.f+args.k)*v[2:(end - 1), 2:(end - 1)]
-        )
-        # 2-D Laplacian of f using array slicing, excluding boundaries
-        # For an N x N array f, f_lap is the Nend x Nend array in the "middle"
-        u_lap = (
-            (
-                u[3:end, 2:(end - 1)] - 2*u[2:(end - 1), 2:(end - 1)] +
-                u[1:(end - 2), 2:(end - 1)]
-            ) ./ args.dx^2 +
-            (
-                u[2:(end - 1), 3:end] - 2*u[2:(end - 1), 2:(end - 1)] +
-                u[2:(end - 1), 1:(end - 2)]
-            ) ./ args.dx^2
-        )
-        v_lap = (
-            (
-                v[3:end, 2:(end - 1)] - 2*v[2:(end - 1), 2:(end - 1)] +
-                v[1:(end - 2), 2:(end - 1)]
-            ) ./ args.dx^2 +
-            (
-                v[2:(end - 1), 3:end] - 2*v[2:(end - 1), 2:(end - 1)] +
-                v[2:(end - 1), 1:(end - 2)]
-            ) ./ args.dx^2
-        )
+@accelerate function step(u, v, u_new, v_new, args::ParamsGS)
+    # calculate F_u and F_v functions
+    # currently we don't have NDArray^x working yet.
+    F_u = (
+        (
+            -u[2:(end - 1), 2:(end - 1)] .*
+            (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
+        ) + args.f*(1 .- u[2:(end - 1), 2:(end - 1)])
+    )
+    F_v = (
+        (
+            u[2:(end - 1), 2:(end - 1)] .*
+            (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
+        ) - (args.f+args.k)*v[2:(end - 1), 2:(end - 1)]
+    )
+    # 2-D Laplacian of f using array slicing, excluding boundaries
+    # For an N x N array f, f_lap is the Nend x Nend array in the "middle"
+    u_lap = (
+        (
+            u[3:end, 2:(end - 1)] - 2*u[2:(end - 1), 2:(end - 1)] +
+            u[1:(end - 2), 2:(end - 1)]
+        ) ./ args.dx^2 +
+        (
+            u[2:(end - 1), 3:end] - 2*u[2:(end - 1), 2:(end - 1)] +
+            u[2:(end - 1), 1:(end - 2)]
+        ) ./ args.dx^2
+    )
+    v_lap = (
+        (
+            v[3:end, 2:(end - 1)] - 2*v[2:(end - 1), 2:(end - 1)] +
+            v[1:(end - 2), 2:(end - 1)]
+        ) ./ args.dx^2 +
+        (
+            v[2:(end - 1), 3:end] - 2*v[2:(end - 1), 2:(end - 1)] +
+            v[2:(end - 1), 1:(end - 2)]
+        ) ./ args.dx^2
+    )
 
-        # # Forward-Euler time step for all points except the boundaries
-        u_new[2:(end - 1), 2:(end - 1)] =
-            ((args.c_u * u_lap) + F_u) * args.dt + u[2:(end - 1), 2:(end - 1)]
-        v_new[2:(end - 1), 2:(end - 1)] =
-            ((args.c_v * v_lap) + F_v) * args.dt + v[2:(end - 1), 2:(end - 1)]
+    # # Forward-Euler time step for all points except the boundaries
+    u_new[2:(end - 1), 2:(end - 1)] =
+        ((args.c_u * u_lap) + F_u) * args.dt + u[2:(end - 1), 2:(end - 1)]
+    v_new[2:(end - 1), 2:(end - 1)] =
+        ((args.c_v * v_lap) + F_v) * args.dt + v[2:(end - 1), 2:(end - 1)]
 
-        # Apply periodic boundary conditions
-        u_new[:, 1] = u[:, end - 1]
-        u_new[:, end] = u[:, 2]
-        u_new[1, :] = u[end - 1, :]
-        u_new[end, :] = u[2, :]
-        v_new[:, 1] = v[:, end - 1]
-        v_new[:, end] = v[:, 2]
-        v_new[1, :] = v[end - 1, :]
-        v_new[end, :] = v[2, :]
-    end
+    # Apply periodic boundary conditions
+    u_new[:, 1] = u[:, end - 1]
+    u_new[:, end] = u[:, 2]
+    u_new[1, :] = u[end - 1, :]
+    u_new[end, :] = u[2, :]
+    v_new[:, 1] = v[:, end - 1]
+    v_new[:, end] = v[:, 2]
+    v_new[1, :] = v[end - 1, :]
+    v_new[end, :] = v[2, :]
 end
 
-# same as above but without @analyze_lifetimes macro
+# same as above but without the @accelerate macro
 function step_base(u, v, u_new, v_new, args::ParamsGS)
     # calculate F_u and F_v functions
     # currently we don't have NDArray^x working yet.
@@ -239,8 +237,8 @@ function run_slice_test(op, op_scoped, FT, N; f=0.04, k=0.06, dx=1.0)
     return base, scoped
 end
 
-binary_scope(op) = (a, b, out) -> @analyze_lifetimes out[:, :] = op(a, b)
-slice_scope(op) = (u, v, out, args) -> @analyze_lifetimes out[:, :] = op(u, v, args)
+binary_scope(op) = (a, b, out) -> @accelerate out[:, :] = op(a, b)
+slice_scope(op) = (u, v, out, args) -> @accelerate out[:, :] = op(u, v, args)
 
 const OPS = Dict(
     :add => (+),
@@ -436,68 +434,30 @@ function test_scoping_rewrite_pipeline()
         @test isempty(freed)
     end
 
-    @testset "Lexical lifetime scope" begin
-        function hidden_binding()
-            @analyze_lifetimes begin
-                internal_result = 41
+    @testset "Block form keeps Julia scope" begin
+        # Block form adds no scope: bindings stay live in the enclosing scope (1:1 Julia).
+        function visible_binding()
+            @accelerate begin
+                internal_result = 42
                 nothing
             end
-            return internal_result
+            return internal_result      # would be UndefVar under a `let`
         end
-
-        function shadowed_binding()
-            internal_result = :outer
-            @analyze_lifetimes begin
-                internal_result = :inner
-                nothing
-            end
-            return internal_result
-        end
-
-        function hidden_destructured_bindings()
-            @analyze_lifetimes begin
-                internal_first, internal_second = (1, 2)
-                nothing
-            end
-            return internal_first, internal_second
-        end
-
-        function unrelated_undefined_binding()
-            return unrelated_result
-        end
-
-        function rendered_error(f)
-            try
-                f()
-            catch exc
-                return sprint(io -> showerror(io, exc, catch_backtrace()))
-            end
-            return ""
-        end
+        @test visible_binding() == 42
 
         output = [0]
-        returned = @analyze_lifetimes begin
+        returned = @accelerate begin
             internal_result = 42
             output[1] = internal_result
             internal_result
         end
-
-        @test_throws UndefVarError hidden_binding()
-        @test_throws UndefVarError hidden_destructured_bindings()
-        @test occursin(
-            "If `internal_result` was created there", rendered_error(hidden_binding)
-        )
-        @test occursin(
-            "If `unrelated_result` was created there",
-            rendered_error(unrelated_undefined_binding),
-        )
-        @test shadowed_binding() == :outer
         @test output == [42]
         @test returned == 42
 
         if cuNumeric.FUSE_BROADCAST_EXPRS
-            function hidden_fused_binding(a, b, destination)
-                @analyze_lifetimes begin
+            # A fused intermediate is materialized and also stays live.
+            function fused_binding(a, b, destination)
+                @accelerate begin
                     fused_result = a .* b
                     destination .= fused_result .+ 1
                 end
@@ -505,9 +465,7 @@ function test_scoping_rewrite_pipeline()
             end
 
             destination = zeros(Int, 2)
-            @test_throws UndefVarError hidden_fused_binding(
-                [2, 3], [4, 5], destination
-            )
+            @test fused_binding([2, 3], [4, 5], destination) == [8, 15]
             @test destination == [9, 16]
         end
     end
@@ -519,7 +477,7 @@ function test_scoping_regressions(T, N)
     C = cuNumeric.zeros(T, (N, N))
 
     @testset "In-place assignment" begin
-        @analyze_lifetimes begin
+        @accelerate begin
             result = A[1:end, :] .+ B[1:end, :]
             C .= result .* T(2.0)
         end
@@ -529,7 +487,7 @@ function test_scoping_regressions(T, N)
 
     @testset "Macro as RHS" begin
         # Test values: (1+1)^2 = 4
-        res = @analyze_lifetimes (A .+ B) .^ 2
+        res = @accelerate (A .+ B) .^ 2
         @test res isa cuNumeric.NDArray
         @test all(Array(res) .== T(4.0))
     end
@@ -537,7 +495,7 @@ function test_scoping_regressions(T, N)
     @testset "Returned bindings stay materialized" begin
         # A returned producer must come back as a materialized NDArray, not a
         # lazy broadcast tree; `c` stays a private intermediate that fuses away.
-        x, y = @analyze_lifetimes begin
+        x, y = @accelerate begin
             x = A .+ B
             c = x .* A
             y = c .^ 2
@@ -551,14 +509,14 @@ function test_scoping_regressions(T, N)
 
     @testset "Return forms yield materialized bindings" begin
         # `x = y` alias, tuple, and trailing `return` all return real NDArrays.
-        aliased = @analyze_lifetimes begin
+        aliased = @accelerate begin
             y = A .+ B
             x = y
         end
         @test aliased isa cuNumeric.NDArray
         @test all(Array(aliased) .== T(2))
 
-        rx, ry = @analyze_lifetimes begin
+        rx, ry = @accelerate begin
             rx = A .+ B
             ry = rx .^ 2
             return (rx, ry)
@@ -570,7 +528,7 @@ function test_scoping_regressions(T, N)
     if cuNumeric.FUSE_BROADCAST_EXPRS
         @testset "Indexed fused assignment writes through NDArray slices" begin
             out = cuNumeric.zeros(T, (N + 2, N + 2))
-            @analyze_lifetimes begin
+            @accelerate begin
                 producer = A .* T(2)
                 out[2:(end - 1), 2:(end - 1)] = producer .+ T(1)
             end
@@ -582,7 +540,7 @@ function test_scoping_regressions(T, N)
         @testset "Nested @. macros fuse before lifetime analysis" begin
             multiplier = cuNumeric.ones(T, (N, N))
             result = cuNumeric.zeros(T, (N, N))
-            @analyze_lifetimes begin
+            @accelerate begin
                 tmp = @. A + B
                 result .= @. tmp * multiplier + T(1.0)
             end

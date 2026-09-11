@@ -11,7 +11,7 @@ Out of the box (no `LocalPreferences.toml` changes):
 | `FUSE_BROADCAST_MIN_OPS` | **2** (single-op broadcasts stay unfused) |
 | Task scope names | **off** |
 
-Build-mode setup (JLL / conda / developer) is documented under [Build Modes](./install.md). Fusion usage tips live under [Kernel Fusion](./perf/kernel_fusion.md).
+Build-mode setup (JLL / conda / developer) is documented under [Build Modes](./install.md).
 
 ## Build mode
 

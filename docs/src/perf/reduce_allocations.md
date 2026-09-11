@@ -1,31 +1,93 @@
-# Reduce Allocations
+# `@accelerate`
 
-Every intermediate `NDArray` (from a slice, broadcast, or function call) allocates a fresh buffer and waits for the Julia GC to free it. Because the GC runs on memory pressure, many dead buffers accumulate and pressure cuNumeric's allocator.
+`@accelerate` optimizes array operations with no branches, loops, jumps, `try`, or nested functions (i.e., straight-line code). Ordinary function calls are opaque boundaries, general control flow is not rewritten.
 
-`@analyze_lifetimes` performs a **static last-use analysis** at macro-expansion time and inserts eager `maybe_insert_delete` calls immediately after each temporary's final use. Freed buffers can then be reused by later same-sized allocations instead of waiting on GC.
+Given those contraints, `@accelerate` will:
 
-When broadcast fusion is on, intermediate dotted nodes in a broadcast tree are not real `NDArray` allocations. The macro accounts for that automatically.
+```@raw html
+<ol>
+<li><strong>Fuse broadcast expressions.</strong> On CUDA, an eligible dotted expression such as <code>@. A + B * C</code> can run as one kernel. CPU execution uses the normal unfused path.</li>
+<li><strong>Fuse across broadcast statements.</strong> A single-use broadcast result can be substituted into its consumer, producing fewer GPU kernel launches.</li>
+<li><strong>Temporary lifetime analysis.</strong> After rewriting the code, the macro releases materialized, non-returned <code>NDArray</code>s after their final use on CPU or GPU.</li>
+</ol>
+```
+These jobs must happen together: an intermediate that fuses into its consumer is never allocated, while an intermediate that cannot fuse is materialized and then released after its last use.
+
+## `@accelerate` on Functions
+
+We reccomend using `@accelerate` on function definitions as they naturally separate inputs/ouputs (i.e., what should be kept) from everything else (i.e., something we can eagerly delete). We provide other forms (see below), but find this the most natural.
 
 ```julia
-T = Float32
-A = cuNumeric.ones(T, (N, N))
-B = cuNumeric.ones(T, (N, N))
-C = cuNumeric.zeros(T, (N, N))
-
-@analyze_lifetimes begin
-    result = @. A[1:end, :] + B[1:end, :]
-    C .= @. result * 2.0f0
+@accelerate function update!(C, A, B)
+    combined = @. A + B
+    C .= @. 2.0f0 * combined
+    return C
 end
 ```
 
-**Benchmark** (Gray-Scott reaction-diffusion, 512×512, 10 000 steps):
+On an eligible GPU path, `combined` will be folded into the second broadcast so the chain runs as one kernel. On CPU, or when fusion is ineligible, `combined` is materialized and *immediately* released after the update (we do not wait for Julia GC). Function arguments belong to the caller and are never released by `@accelerate`. Returned values also remain valid.
 
+## Other Forms
+
+The other forms of `@accelerate` provide other mechanisms to indicate which values must remain available, which in turn determines how aggressively the macro may fuse or release intermediates.
+
+| Form | Use it when | Fusion and lifetime behavior |
+| :--- | :--- | :--- |
+| `@accelerate function ... end` | Defining reusable array code. This is the recommended default. | Arguments and returned values are protected. Non-returned locals may fuse into consumers or be released after their last use. |
+| `@accelerate begin ... end` | Named results must remain in the current scope. | `begin` creates no new Julia scope, so every named binding is protected. An eligible same-shape CUDA chain may still use one multi-output kernel, but each named result is materialized. |
+| `@accelerate let ... end` | Writing a one-off multi-statement calculation when only its result is needed. | `let` creates a local scope. Only the result escapes; other locals may fuse away or be released after their last use. |
+| `@accelerate expr` | Evaluating one expression without named intermediates. | The result is materialized and returned. Eligible operations fuse within the expression, and transient temporaries are released. |
+
+For example, nested scope lets a private intermediate feed a value that is also
+used by the outer block:
+
+```julia
+@accelerate begin
+    shifted = let
+        product = @. A * B
+        @. product + 1
+    end
+    x = @. shifted * C
+end
+
+consume(shifted, x)
 ```
-               user     system   elapsed   CPU    max RSS
-without   106.50 s   23.87 s   58.66 s   222%   3786 MB
-with       61.74 s   13.66 s   27.84 s   270%   2999 MB
+
+Choose `let` when only the final result should escape:
+
+```julia
+result = @accelerate let
+    product = @. A * B
+    @. product + 1
+end
 ```
 
-~2× wall-clock speedup and ~800 MB lower peak memory with no algorithmic changes.
+For a single unnamed expression, use:
 
-Use `@show_lifetimes` to print the rewrite without running it ([Debugging](../debugging.md)). For how the rewriter and GC heuristics work, see [Internals](../internals.md).
+```julia
+result = @accelerate (@. A + B * C)
+```
+
+## Writing an accelerated body
+
+- Apply `@.` to each elementwise right-hand side. Applying it to the entire body would change `x = ...` into `x .= ...` and `f(...)` into `f.(...)`.
+- Use ordinary `=` for a disposable intermediate. This allows a single-use producer to fuse into its consumer.
+- Use `.=` when the mutation must be visible. The destination write is preserved, although an eligible producer may fuse into it.
+- Keep control flow outside the accelerated body. Loops, conditionals, `try`, short-circuit operators, and nested functions are rejected.
+- Ordinary function calls run in program order and form rewrite boundaries. Annotate the called function separately if its body should also be accelerated.
+
+The `@accelerate` macro is great for fusing hot-loops where GC or kernel launch overhead should be minimized.
+
+```julia
+@accelerate function update!(C, A, B)
+    combined = @. A + B
+    C .= @. 2.0f0 * combined
+    return C
+end
+
+for _ in 1:nsteps
+    update!(C, A, B)
+end
+```
+
+See [Kernel Fusion](./kernel_fusion.md) for CUDA fusion requirements and [`@show_lifetimes`](../debugging.md#inspect-lifetime-rewrites-with-show_lifetimes) to inspect the exact rewrite without executing it.

@@ -1,6 +1,6 @@
 # Benchmark Results
 
-For JuliaCon2025 we benchmarks cuNumeric.jl on 8 A100 GPUs (single-node) and compared it to the Python library cuPyNumeric and other relevant benchmarks depending on the problem. All results shown are weak scaling. We hope to have multi-node benchmarks soon!
+These historical JuliaCon 2025 results compare cuNumeric.jl with cuPyNumeric and problem-specific alternatives on one node with eight A100 GPUs. All plots show weak scaling. See [How to Benchmark](./howto.md) for the current harness and its baseline, `@accelerate`, fused, and unfused variants.
 
 ## SGEMM
 
@@ -24,7 +24,7 @@ mul!(C, A, B)
 
 ## Monte-Carlo Integration
 
-Monte-Carlo integration is embaressingly parallel and should scale perfectly. We do not know the exact number of operations in `exp` so the GFLOPs is off by a constant factor.
+Monte-Carlo integration is embarrassingly parallel. Because the exact operation count of `exp` is implementation-dependent, the plotted operation rate is scaled by an approximate constant.
 
 Code Outline:
 ```julia

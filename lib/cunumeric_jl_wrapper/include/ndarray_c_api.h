@@ -72,6 +72,15 @@ CN_NDArray* nda_multiply_scalar(CN_NDArray* rhs1, CN_Type type,
 CN_NDArray* nda_add_scalar(CN_NDArray* rhs1, CN_Type type, const void* value);
 CN_NDArray* nda_dot(CN_NDArray* rhs1, CN_NDArray* rhs2);
 void nda_three_dot_arg(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out);
+CN_NDArray* nda_transpose_axes(CN_NDArray* arr, const int32_t* axes, int32_t n);
+CN_NDArray* nda_squeeze(CN_NDArray* arr, const int32_t* axes, int32_t n);
+CN_NDArray* nda_diagonal(CN_NDArray* arr, int32_t offset, int32_t axis1,
+                         int32_t axis2);
+void nda_contract(CN_NDArray* out, const char* lhs_modes, int32_t n_lhs,
+                  CN_NDArray* rhs1, const char* rhs1_modes, int32_t n_rhs1,
+                  CN_NDArray* rhs2, const char* rhs2_modes, int32_t n_rhs2,
+                  const char* extent_keys, const int32_t* extents,
+                  int32_t n_extents);
 CN_NDArray* nda_copy(CN_NDArray* arr);
 void nda_assign(CN_NDArray* arr, CN_NDArray* other);
 
@@ -87,14 +96,29 @@ uint64_t nda_nbytes(CN_NDArray* arr);
 
 void nda_binary_op(CN_NDArray* out, CuPyNumericBinaryOpCode op_code,
                    const CN_NDArray* rhs1, const CN_NDArray* rhs2);
+void nda_binary_reduction(CN_NDArray* out, CuPyNumericBinaryOpCode op_code,
+                          const CN_NDArray* rhs1, const CN_NDArray* rhs2);
+CN_NDArray* nda_array_equal(const CN_NDArray* rhs1, const CN_NDArray* rhs2);
 void nda_unary_op(CN_NDArray* out, CuPyNumericUnaryOpCode op_code,
                   CN_NDArray* input);
 void nda_unary_reduction(CN_NDArray* out, CuPyNumericUnaryRedCode op_code,
                          CN_NDArray* input);
+CN_NDArray* nda_unary_reduction_axes(CuPyNumericUnaryRedCode op_code,
+                                     CN_NDArray* input, const int32_t* axes,
+                                     int32_t num_axes, bool keepdims);
 CN_NDArray* nda_get_slice(CN_NDArray* arr, const CN_Slice* slices,
                           int32_t ndim);
 CN_NDArray* nda_attach_external(const void* ptr, size_t size, int dim,
                                 const uint64_t* shape, CN_Type type);
+
+// axis is 0-based. stable=true maps to cupynumeric kind="stable".
+CN_NDArray* nda_sort(CN_NDArray* arr, int32_t axis, bool stable);
+void nda_sort_inplace(CN_NDArray* arr, int32_t axis, bool stable);
+CN_NDArray* nda_argsort(CN_NDArray* arr, int32_t axis, bool stable);
+// a is 1-D sorted; v is the needle array (any rank, same dtype).
+// left=true is NumPy side='left'; left=false is side='right'.
+// Returns int64 indices with v's shape (0-based).
+CN_NDArray* nda_searchsorted(CN_NDArray* a, CN_NDArray* v, bool left);
 
 #ifdef __cplusplus
 }

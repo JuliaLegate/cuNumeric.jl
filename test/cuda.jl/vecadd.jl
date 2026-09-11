@@ -21,6 +21,11 @@
     -- Register various custom kernels using CUDA.jl
 =#
 
+using CUDA: blockDim, blockIdx, threadIdx
+import CUDA: i32
+
+cuNumeric.Experimental(true)
+
 function kernel_add(a, b, c, N)
     i = (blockIdx().x - 1i32) * blockDim().x + threadIdx().x
     if i <= N
@@ -29,9 +34,8 @@ function kernel_add(a, b, c, N)
     return nothing
 end
 
-# testing a second kernel
-# on purpose switching inputs and outputs
-function kernel_mul(a, b, c, N)
+# Test a second kernel with `c` as an input and `b` as the output.
+function kernel_mul(a, c, b, N)
     i = (blockIdx().x - 1i32) * blockDim().x + threadIdx().x
     if i <= N
         @inbounds b[i] = a[i] * c[i]
@@ -70,18 +74,16 @@ function cuda_binaryop(max_diff)
         N
     )
 
-    @test @allowscalar cuNumeric.compare(c, c_cpu, atol(Float32), rtol(Float32))
+    @test @allowscalar cuNumeric.compare(c, c_cpu, max_diff, max_diff)
 
-    for i in 1:N
-        @allowscalar b[i] = a[i] * c[i]
-    end
+    b_cpu .= a_cpu .* c_cpu
 
-    task = cuNumeric.@cuda_task kernel_mul(a, b, c, UInt32(1))
+    task = cuNumeric.@cuda_task kernel_mul(a, c, b, UInt32(1))
     cuNumeric.@launch task=task threads=threads blocks=blocks inputs=(a, c) outputs=b scalars=UInt32(
         N
     )
 
-    @test @allowscalar cuNumeric.compare(b, b_cpu, atol(Float32), rtol(Float32))
+    @test @allowscalar cuNumeric.compare(b, b_cpu, max_diff, max_diff)
 end
 
 function kernel_sin(a, b, N)
@@ -119,5 +121,14 @@ function cuda_unaryop(max_diff)
     # TODO explore getting inplace ops working.
     cuNumeric.@launch task=task threads=threads blocks=blocks inputs=a outputs=b scalars=UInt32(N)
 
-    @test @allowscalar cuNumeric.compare(b, b_cpu, atol(Float32), rtol(Float32))
+    @test @allowscalar cuNumeric.compare(b, b_cpu, max_diff, max_diff)
+end
+
+try
+    @testset "Custom CUDA kernels" begin
+        cuda_binaryop(1.0f-5)
+        cuda_unaryop(1.0f-5)
+    end
+finally
+    cuNumeric.Experimental(false)
 end

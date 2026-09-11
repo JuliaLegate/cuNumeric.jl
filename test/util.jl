@@ -27,6 +27,10 @@ const DOMAIN_GENERATORS = Dict{Symbol,Function}(
     :positive => (T, N) -> (x=rand(T, N); T <: Signed ? abs.(max.(x, -typemax(T))) : x),
 )
 
+# The package only gates promotion when the target type is wider in bytes, so
+# Int64/UInt64 -> Float64 needs no `@allowpromotion` while Int32/Bool do.
+promotion_is_gated(::Type{FROM}, ::Type{TO}) where {FROM,TO} = sizeof(TO) > sizeof(FROM)
+
 rtol(::Type{Float16}) = 1e-2
 rtol(::Type{Float32}) = 1e-5
 rtol(::Type{Float64}) = 1e-12
@@ -52,9 +56,9 @@ function reduction_atol(::Type{T}, n, scale=1) where {T}
     return max(atol(T) * n, n * eps(FT) * abs(scale))
 end
 
-is_same(arr1::NDArray, arr2::NDArray) = @allowscalar (arr1 == arr2)[1]
-is_same(arr1::NDArray, arr2::Array) = @allowscalar (arr1 == arr2)[1]
-is_same(arr1::Array, arr2::NDArray) = @allowscalar (arr1 == arr2)[1]
+is_same(arr1::NDArray, arr2::NDArray) = unwrap(arr1 == arr2)
+is_same(arr1::NDArray, arr2::Array) = @allowscalar (arr1 == arr2)
+is_same(arr1::Array, arr2::NDArray) = @allowscalar (arr1 == arr2)
 is_same(arr1::Array, arr2::Array) = (arr1 == arr2)
 
 function my_rand(::Type{F}, dims...; L=F(-1000), R=F(1000)) where {F<:AbstractFloat}
