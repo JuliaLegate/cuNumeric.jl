@@ -110,7 +110,9 @@ end
 function dl_check_qr(T; distributed=false)
     cn = cuNumeric
     rng = MersenneTwister(73)
-    for (m, n) in ((33, 33), (65, 17), (17, 65))
+    @testset "QR shape ($m, $n)" for (m, n) in (
+        (33, 33), (65, 17), (17, 65), (7, 1), (1, 7)
+    )
         a = randn(rng, T, m, n)
         da = cn.NDArray(a)
         q, r = if distributed

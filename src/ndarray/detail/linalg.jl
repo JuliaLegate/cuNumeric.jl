@@ -310,13 +310,11 @@ end
 function _qr(::_SingleProcLinalg, a::NDArray{T,2}) where {T}
     m, n = size(a)
     k = min(m, n)
-    # cuSolver requires full square buffers regardless of output shape
-    q_buf = cuNumeric.zeros(T, m, m)
-    r_buf = cuNumeric.zeros(T, n, n)
-    qr_single(a, q_buf, r_buf)
-    # Host conversion assumes contiguous storage, so materialize the economy slices.
-    q = copy(q_buf[:, 1:k])
-    r = copy(r_buf[1:k, :])
+    # CQR writes dense column-major economy factors with leading dimensions
+    # m for Q and k for R. Square buffers give R the wrong stride when m < n.
+    q = cuNumeric.zeros(T, m, k)
+    r = cuNumeric.zeros(T, k, n)
+    qr_single(a, q, r)
     return q, r
 end
 
