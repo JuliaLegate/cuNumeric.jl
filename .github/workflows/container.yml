@@ -61,6 +61,40 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.event.release.tag_name || github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Select wrapper build
+        id: wrapper-build
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          # Published releases and explicitly selected tags use their released
+          # wrapper. Branch builds use the in-tree wrapper when it differs from
+          # the wrapper published from main.
+          if [[ "$EVENT_NAME" == "release" || -n "$INPUT_TAG" ]]; then
+            changed=false
+          else
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+            if git diff --quiet origin/main...HEAD -- lib/cunumeric_jl_wrapper; then
+              changed=false
+            else
+              status=$?
+              if [[ "$status" -eq 1 ]]; then
+                changed=true
+              else
+                exit "$status"
+              fi
+            fi
+          fi
+
+          if [[ "$changed" == "true" ]]; then
+            echo "Wrapper changes detected; building Dockerfile.developer"
+            echo "dockerfile=Dockerfile.developer" >> "$GITHUB_OUTPUT"
+          else
+            echo "No wrapper changes detected; building Dockerfile"
+            echo "dockerfile=Dockerfile" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Get package spec
         id: pkg
@@ -157,7 +191,7 @@ jobs:
       - name: Build image
         uses: docker/build-push-action@v6
         with:
-          file: Dockerfile
+          file: ${{ steps.wrapper-build.outputs.dockerfile }}
           load: true
           push: false
           provenance: false # the build fetches the repo again, so provenance tracking is not useful
