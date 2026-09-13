@@ -62,6 +62,26 @@ end
 
 _submit_linalg_task(task) = Legate.submit_manual_task(Legate.get_runtime(), task)
 
+# Partitions own their store; submitted tasks retain their own references.
+# Drop Julia's temporary owners promptly instead of waiting for GC. Recursion
+# keeps earlier partitions protected if creating a later partition fails.
+_with_linalg_partitions(f) = f()
+function _with_linalg_partitions(f, spec::Tuple, specs::Tuple...)
+    store = nda_to_logical_store(first(spec))
+    partition = try
+        Legate.partition_by_tiling(store, Base.tail(spec)...)
+    finally
+        finalize(store.handle)
+    end
+    try
+        return _with_linalg_partitions(specs...) do parts...
+            f(partition, parts...)
+        end
+    finally
+        finalize(partition.handle)
+    end
+end
+
 # Partition along rows, just as Python does. Every rank uses identical color
 # spaces even when a reduced QR output has fewer rows than the input.
 function _mp_row_partition(n::Int, gpus::Integer)
@@ -74,17 +94,18 @@ _solve!(::_SingleProcLinalg, x, a, b) = solve_batched(a, b, x)
 function _solve!(::_CuSolverMpLinalg, x, a, b)
     n, nrhs = size(a, 1), size(b, 2)
     rows, colors = _mp_row_partition(n, _LINALG_RUNTIME[].gpus)
-    pa = Legate.partition_by_tiling(nda_to_logical_store(a), (rows, n))
-    pb = Legate.partition_by_tiling(nda_to_logical_store(b), (rows, nrhs))
-    px = Legate.partition_by_tiling(nda_to_logical_store(x), (rows, nrhs))
-    @task_scope "mp_solve" begin
-        task = _linalg_manual_task(MP_SOLVE, (0, 0), (colors[1] - 1, 0); throws=true)
-        Legate.add_input(task, pa)
-        Legate.add_input(task, pb)
-        Legate.add_output(task, px)
-        _linalg_scalars!(task, Int64(n), Int64(nrhs), Int64(MIN_SOLVE_TILE_SIZE))
-        add_nccl_communicator(task)
-        _submit_linalg_task(task)
+    _with_linalg_partitions(
+        (a, (rows, n)), (b, (rows, nrhs)), (x, (rows, nrhs))
+    ) do pa, pb, px
+        @task_scope "mp_solve" begin
+            task = _linalg_manual_task(MP_SOLVE, (0, 0), (colors[1] - 1, 0); throws=true)
+            Legate.add_input(task, pa)
+            Legate.add_input(task, pb)
+            Legate.add_output(task, px)
+            _linalg_scalars!(task, Int64(n), Int64(nrhs), Int64(MIN_SOLVE_TILE_SIZE))
+            add_nccl_communicator(task)
+            _submit_linalg_task(task)
+        end
     end
     return x
 end
@@ -93,17 +114,16 @@ function _qr!(::_CuSolverMpLinalg, q, r, a)
     m, n = size(a)
     rows, colors = _mp_row_partition(m, _LINALG_RUNTIME[].gpus)
     tiles = (rows, n)
-    pa = Legate.partition_by_tiling(nda_to_logical_store(a), tiles)
-    pq = Legate.partition_by_tiling(nda_to_logical_store(q), tiles, colors)
-    pr = Legate.partition_by_tiling(nda_to_logical_store(r), tiles, colors)
-    @task_scope "mp_qr" begin
-        task = _linalg_manual_task(MP_QR, (0, 0), (colors[1] - 1, 0); throws=true)
-        Legate.add_input(task, pa)
-        Legate.add_output(task, pq)
-        Legate.add_output(task, pr)
-        _linalg_scalars!(task, Int64(m), Int64(n), Int64(QR_TILE_SIZE), Int64(QR_TILE_SIZE))
-        add_nccl_communicator(task)
-        _submit_linalg_task(task)
+    _with_linalg_partitions((a, tiles), (q, tiles, colors), (r, tiles, colors)) do pa, pq, pr
+        @task_scope "mp_qr" begin
+            task = _linalg_manual_task(MP_QR, (0, 0), (colors[1] - 1, 0); throws=true)
+            Legate.add_input(task, pa)
+            Legate.add_output(task, pq)
+            Legate.add_output(task, pr)
+            _linalg_scalars!(task, Int64(m), Int64(n), Int64(QR_TILE_SIZE), Int64(QR_TILE_SIZE))
+            add_nccl_communicator(task)
+            _submit_linalg_task(task)
+        end
     end
     return nothing
 end
@@ -115,8 +135,8 @@ function _cholesky!(::_CuSolverMpLinalg, out, a)
         rt = Legate.get_runtime()
         task = Legate.create_auto_task(rt, get_lib(), MP_POTRF)
         task_throws_exception(task, true)
-        ai = Legate.add_input(task, nda_to_logical_array(a))
-        oi = Legate.add_output(task, nda_to_logical_array(out))
+        ai = _add_task_array!(Legate.add_input, task, a)
+        oi = _add_task_array!(Legate.add_output, task, out)
         Legate.add_constraint(task, Legate.align(oi, ai))
         _linalg_scalars!(task, Int64(size(a, 1)), Int64(MIN_CHOLESKY_TILE_SIZE))
         add_nccl_communicator(task)
@@ -129,9 +149,8 @@ end
 function _cholesky_tril!(out::NDArray)
     rt = Legate.get_runtime()
     task = Legate.create_auto_task(rt, get_lib(), TRILU)
-    store = nda_to_logical_array(out)
-    Legate.add_output(task, store)
-    Legate.add_input(task, store)
+    _add_task_array!(Legate.add_output, task, out)
+    _add_task_array!(Legate.add_input, task, out)
     # The third argument identifies Cholesky to the backend/mapper.
     _linalg_scalars!(task, true, Int32(0), true)
     Legate.submit_auto_task(rt, task)
@@ -155,26 +174,26 @@ function _cholesky!(::_TiledCholesky, out, a)
     initial = _cholesky_color_shape(n, _LINALG_RUNTIME[].procs)
     tile = cld(n, initial[1])
     colors = cld(n, tile)
-    pa = Legate.partition_by_tiling(nda_to_logical_store(a), (tile, tile))
-    po = Legate.partition_by_tiling(nda_to_logical_store(out), (tile, tile))
-    @task_scope "tiled_cholesky" begin
-        task = _linalg_manual_task(TRANSPOSE_COPY_2D, (0, 0), (colors - 1, colors - 1))
-        Legate.add_output(task, po)
-        Legate.add_input(task, pa)
-        _submit_linalg_task(task)
-        for i in 0:(colors - 1)
-            _cholesky_potrf!(po, i)
-            _cholesky_trsm!(po, i, colors)
-            for k in (i + 1):(colors - 1)
-                _cholesky_syrk!(po, k, i)
-                _cholesky_gemm!(po, k, i, colors)
+    _with_linalg_partitions((a, (tile, tile)), (out, (tile, tile))) do pa, po
+        @task_scope "tiled_cholesky" begin
+            task = _linalg_manual_task(TRANSPOSE_COPY_2D, (0, 0), (colors - 1, colors - 1))
+            Legate.add_output(task, po)
+            Legate.add_input(task, pa)
+            _submit_linalg_task(task)
+            for i in 0:(colors - 1)
+                _cholesky_potrf!(po, i)
+                _cholesky_trsm!(po, i, colors)
+                for k in (i + 1):(colors - 1)
+                    _cholesky_syrk!(po, k, i)
+                    _cholesky_gemm!(po, k, i, colors)
+                end
             end
+            task = _linalg_manual_task(TRILU, (0, 0), (colors - 1, colors - 1))
+            Legate.add_output(task, po)
+            Legate.add_input(task, po)
+            _linalg_scalars!(task, true, Int32(0), true)
+            _submit_linalg_task(task)
         end
-        task = _linalg_manual_task(TRILU, (0, 0), (colors - 1, colors - 1))
-        Legate.add_output(task, po)
-        Legate.add_input(task, po)
-        _linalg_scalars!(task, true, Int32(0), true)
-        _submit_linalg_task(task)
     end
     return out
 end

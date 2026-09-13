@@ -17,6 +17,35 @@
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 
+@testset "linear algebra partition lifetime" begin
+    a = cuNumeric.NDArray(reshape(Float64.(1:15), 5, 3))
+    for fail in (false, true)
+        released = Ref(0)
+        function use_partitions(p, q)
+            for part in (p, q)
+                finalizer(part.handle) do _
+                    released[] += 1
+                end
+            end
+            @test released[] == 0
+            fail && error("partition callback failed")
+            return 7
+        end
+        if fail
+            @test_throws "partition callback failed" cuNumeric._with_linalg_partitions(
+                use_partitions, (a, (3, 3)), (a, (3, 3), (2, 1))
+            )
+        else
+            @test (@inferred cuNumeric._with_linalg_partitions(
+                use_partitions, (a, (3, 3)), (a, (3, 3), (2, 1))
+            )) == 7
+        end
+        # No GC is needed to release either partition owner, even on failure.
+        @test released[] == 2
+    end
+    @allowscalar @test Array(a) == reshape(Float64.(1:15), 5, 3)
+end
+
 @testset "Array ↔ NDArray value roundtrip (row-major attach)" begin
     A = rand(Float64, 4, 4)
     NA = NDArray(A)

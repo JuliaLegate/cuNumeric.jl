@@ -23,26 +23,22 @@ function solve_batched(a::NDArray{T,N}, b::NDArray, x::NDArray) where {T,N}
     tilesize_a, color_shape = prepare_manual_task_for_batched_matrices(full_shape)
     tilesize_b = (tilesize_a[1:(end - 1)]..., nrhs)
 
-    store_a = nda_to_logical_store(a)
-    store_b = nda_to_logical_store(b)
-    store_x = nda_to_logical_store(x)
+    _with_linalg_partitions(
+        (a, tilesize_a), (b, tilesize_b), (x, tilesize_b)
+    ) do tiled_a, tiled_b, tiled_x
+        @task_scope "solve" begin
+            rt = Legate.get_runtime()
+            domain = Legate.domain_from_shape(Legate.Shape(Legate.to_cxx_vector(color_shape)))
+            lib = cuNumeric.get_lib()
+            task = Legate.create_manual_task(rt, lib, cuNumeric.SOLVE, domain)
+            cuNumeric.task_throws_exception(task, true)
 
-    tiled_a = Legate.partition_by_tiling(store_a, collect(tilesize_a))
-    tiled_b = Legate.partition_by_tiling(store_b, collect(tilesize_b))
-    tiled_x = Legate.partition_by_tiling(store_x, collect(tilesize_b))
+            Legate.add_input(task, tiled_a)
+            Legate.add_input(task, tiled_b)
+            Legate.add_output(task, tiled_x)
 
-    @task_scope "solve" begin
-        rt = Legate.get_runtime()
-        domain = Legate.domain_from_shape(Legate.Shape(Legate.to_cxx_vector(color_shape)))
-        lib = cuNumeric.get_lib()
-        task = Legate.create_manual_task(rt, lib, cuNumeric.SOLVE, domain)
-        cuNumeric.task_throws_exception(task, true)
-
-        Legate.add_input(task, tiled_a)
-        Legate.add_input(task, tiled_b)
-        Legate.add_output(task, tiled_x)
-
-        Legate.submit_manual_task(rt, task)
+            Legate.submit_manual_task(rt, task)
+        end
     end
 end
 
@@ -148,17 +144,16 @@ function potrf!(out::NDArray{T,N}, a::NDArray{T,N}; lower::Bool, zeroout::Bool) 
         task = Legate.create_auto_task(rt, lib, cuNumeric.POTRF)
         cuNumeric.task_throws_exception(task, true)
 
-        l_a = nda_to_logical_array(a)
-        l_out = nda_to_logical_array(out)
-
-        in_var = Legate.add_input(task, l_a)
-        out_var = Legate.add_output(task, l_out)
+        in_var = _add_task_array!(Legate.add_input, task, a)
+        out_var = _add_task_array!(Legate.add_output, task, out)
 
         Legate.add_scalar(task, Legate.Scalar(lower))
         Legate.add_scalar(task, Legate.Scalar(zeroout))
 
         # Each matrix must live on one processor; only the batch axes may split.
-        Legate.add_broadcast(task, l_a, CxxWrap.StdVector(UInt32[N - 2, N - 1]))
+        Legate.add_constraint(
+            task, Legate.broadcast(in_var, CxxWrap.StdVector(UInt32[N - 2, N - 1]))
+        )
         Legate.add_constraint(task, Legate.align(out_var, in_var))
 
         Legate.submit_auto_task(rt, task)
@@ -272,17 +267,12 @@ function _qr!(::_SingleProcLinalg, q, r, a)
     task = Legate.create_auto_task(rt, lib, cuNumeric.CQR)
     cuNumeric.task_throws_exception(task, true)
 
-    l_a = nda_to_logical_array(a)
-    l_q = nda_to_logical_array(q)
-    l_r = nda_to_logical_array(r)
-
-    Legate.add_input(task, l_a)
-    Legate.add_output(task, l_q)
-    Legate.add_output(task, l_r)
-
-    Legate.add_broadcast(task, l_a)
-    Legate.add_broadcast(task, l_q)
-    Legate.add_broadcast(task, l_r)
+    ai = _add_task_array!(Legate.add_input, task, a)
+    qi = _add_task_array!(Legate.add_output, task, q)
+    ri = _add_task_array!(Legate.add_output, task, r)
+    for variable in (ai, qi, ri)
+        Legate.add_constraint(task, Legate.broadcast(variable))
+    end
 
     Legate.submit_auto_task(rt, task)
     return nothing
