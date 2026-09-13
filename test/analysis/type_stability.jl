@@ -224,6 +224,39 @@ end
     end
 end
 
+# A synthetic configuration exercises MP selection without changing the live
+# runtime cache or requiring multiple GPUs. Size remains a runtime argument.
+dl_mp_backend(op, shape) =
+    cuNumeric._linalg_backend(op, shape, cuNumeric._LinalgRuntime(true, 4, 4))
+
+@testset "distributed linear algebra inference" begin
+    cn = cuNumeric
+    mp = cn._CuSolverMpLinalg
+    single = cn._SingleProcLinalg
+    tiled = cn._TiledCholesky
+    @test (@inferred cn._LinalgRuntime(true, 4, 4)).mp_eligible
+    @test (@inferred cn._mp_row_partition(33, 4)) == (9, (4, 1))
+
+    # Dynamic sizes legitimately infer a small union of backend tags, never Any.
+    for (op, fallback, shape) in (
+        (:solve, single, (cn.MIN_SOLVE_MATRIX_SIZE, cn.MIN_SOLVE_MATRIX_SIZE)),
+        (:qr, single, (cn.MIN_QR_MATRIX_SIZE, 1)),
+        (:cholesky, tiled, (cn.MIN_CHOLESKY_MATRIX_SIZE, cn.MIN_CHOLESKY_MATRIX_SIZE)),
+    )
+        @test dl_mp_backend(Val(op), shape) isa mp
+        @test only(Base.return_types(dl_mp_backend, Tuple{Val{op},NTuple{2,Int}})) ==
+            Union{mp,fallback}
+    end
+
+    # Infer the real MP launchers without executing collectives on this machine.
+    for T in (Float32, Float64, ComplexF32, ComplexF64)
+        a = cn.NDArray{T,2,Nothing}
+        @test only(Base.return_types(cn._solve!, Tuple{mp,a,a,a})) == a
+        @test only(Base.return_types(cn._qr!, Tuple{mp,a,a,a})) == Nothing
+        @test only(Base.return_types(cn._cholesky!, Tuple{mp,a,a})) == a
+    end
+end
+
 @testset verbose = true "eigen" begin
     @testset "$(T)" for T in Base.uniontypes(cuNumeric.SUPPORTED_EIG_TYPES)
         A = cuNumeric.NDArray(Matrix{T}(I, 2, 2))

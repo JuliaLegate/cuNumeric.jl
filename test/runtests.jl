@@ -30,6 +30,8 @@ end
 
 testsuite = find_tests(@__DIR__)
 delete!(testsuite, "util")
+# These cases deliberately fail a runtime; run individually under a timeout.
+delete!(testsuite, "linalg_errors")
 delete!(testsuite, "array/unary/tests")
 delete!(testsuite, "array/binary/tests")
 

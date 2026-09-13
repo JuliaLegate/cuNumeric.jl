@@ -9,6 +9,9 @@ Solve the linear system `A * x = b`.
 `A` must be a square `(m, m)` matrix. `b` must have shape `(m,)` or `(m, n)`.
 The result has the same shape as `b`.
 
+Large systems automatically use cuSolverMp when it is available and Legate has
+multiple active GPUs. Algorithm selection follows cuPyNumeric 26.06.
+
 Accepted element types are `Float32`, `Float64`, `ComplexF32`, and `ComplexF64`.
 Integer and `Bool` inputs are converted to `Float64`. As everywhere else in
 the package, that conversion needs `@allowpromotion` only when it widens the
@@ -50,6 +53,9 @@ Only the lower triangle of `A` is read and, unlike Base, it is *not* checked for
 being Hermitian. A non-positive-definite input raises an `ErrorException` from
 the task rather than `LinearAlgebra.PosDefException`, so the `check` keyword is
 not supported.
+
+Large matrices use cuSolverMp when available with multiple active GPUs.
+Other multi-processor configurations use cuPyNumeric's tiled Cholesky algorithm.
 
 Accepted element types are `Float32`, `Float64`, `ComplexF32`, and `ComplexF64`.
 Integer and `Bool` inputs are converted to `Float64`. As everywhere else in
@@ -182,6 +188,9 @@ end
 
 Reduced QR factorization of `A`, with `A ≈ F.Q * F.R`. For an `m × n` input and
 `k = min(m, n)`, `F.Q` is `m × k` and `F.R` is `k × n`.
+
+Large matrices automatically use cuSolverMp when available with multiple active
+GPUs, including tall and wide inputs.
 
 See [`NDArrayQR`](@ref) for why this is not a `LinearAlgebra.QRCompactWY`.
 
