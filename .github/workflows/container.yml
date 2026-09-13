@@ -125,6 +125,12 @@ jobs:
           VERSION=$(grep "^version = " Project.toml | cut -d'"' -f2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+          # Include the checked-out source revision in every image tag. In
+          # particular, github.sha identifies this workflow run for
+          # workflow_run events, not necessarily the commit being packaged.
+          COMMIT_SHA=$(git rev-parse --short=12 HEAD)
+          echo "commit=$COMMIT_SHA" >> $GITHUB_OUTPUT
+
       - name: Get CUDA major version
         id: cuda
         run: |
@@ -158,7 +164,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-              type=raw,value=${{ steps.pkg.outputs.name }}-julia${{ matrix.julia }}-cuda${{ steps.cuda.outputs.major }}.${{ steps.cuda.outputs.minor }}
+              type=raw,value=${{ steps.pkg.outputs.commit }}-julia${{ matrix.julia }}-cuda${{ steps.cuda.outputs.major }}.${{ steps.cuda.outputs.minor }}
               type=raw,value=${{ steps.pkg.outputs.name }},enable=${{ matrix.default == true && (github.ref_type == 'tag' || inputs.tag != '') }}
               type=raw,value=latest,enable=${{ matrix.default == true && (github.ref_type == 'tag' || (inputs.tag != '' && inputs.mark_as_latest)) }}
               type=raw,value=dev,enable=${{ matrix.default == true && github.ref_type == 'branch' && inputs.tag == '' }}
