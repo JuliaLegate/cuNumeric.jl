@@ -300,12 +300,6 @@ function __init__()
     # skip runtime here as well
     get(ENV, "LEGATE_SKIP_RUNTIME", false) == "true" && return nothing
 
-    isdefined(@__MODULE__, :cusolvermp_available) || error(
-        "cuNumeric requires C++ wrapper 26.6.2 or newer. " *
-        "Until that JLL is published, enable CNPreferences.use_developer_mode(; use_jll=true), " *
-        "restart Julia, run Pkg.build(\"cuNumeric\"), and restart Julia again.",
-    )
-
     # Start runtime, but only if not pre-compiling
     ensure_runtime!()
 

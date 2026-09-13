@@ -21,6 +21,8 @@ struct _SingleProcLinalg end
 struct _CuSolverMpLinalg end
 struct _TiledCholesky end
 
+const _LINALG_CONJ_TRANSPOSE = Int32(2)
+
 _linalg_backend(op, a::NDArray) = _linalg_backend(op, size(a), _LINALG_RUNTIME[])
 
 # Tuple length carries dimensionality in its type. Stacked systems never enter
@@ -87,10 +89,8 @@ function _solve!(::_CuSolverMpLinalg, x, a, b)
     return x
 end
 
-function _qr(::_CuSolverMpLinalg, a::NDArray{T,2}) where {T}
+function _qr!(::_CuSolverMpLinalg, q, r, a)
     m, n = size(a)
-    k = min(m, n)
-    q, r = cuNumeric.zeros(T, m, k), cuNumeric.zeros(T, k, n)
     rows, colors = _mp_row_partition(m, _LINALG_RUNTIME[].gpus)
     tiles = (rows, n)
     pa = Legate.partition_by_tiling(nda_to_logical_store(a), tiles)
@@ -105,7 +105,7 @@ function _qr(::_CuSolverMpLinalg, a::NDArray{T,2}) where {T}
         add_nccl_communicator(task)
         _submit_linalg_task(task)
     end
-    return q, r
+    return nothing
 end
 
 _cholesky!(::_SingleProcLinalg, out, a) = potrf!(out, a; lower=true, zeroout=true)
@@ -194,7 +194,7 @@ function _cholesky_trsm!(p, i, colors)
     add_input_tile(task, p.handle, UInt64(i), UInt64(i))
     Legate.add_input(task, p)
     # Right-side solve with the conjugate transpose of the lower factor.
-    _linalg_scalars!(task, false, true, Int32(2), false)
+    _linalg_scalars!(task, false, true, _LINALG_CONJ_TRANSPOSE, false)
     return _submit_linalg_task(task)
 end
 

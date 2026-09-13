@@ -1,5 +1,5 @@
 # Opt-in: run each case in a separate process under an external timeout.
-# Run each case in a separate process with a timeout; a failed collective can poison its runtime.
+# A failed collective can poison its runtime.
 using cuNumeric, LinearAlgebra, Test
 
 length(ARGS) == 1 && only(ARGS) in ("solve", "cholesky", "tiled_cholesky") ||
@@ -13,7 +13,7 @@ backend = op == "tiled_cholesky" ? cuNumeric._TiledCholesky() :
 println("Testing numerical failure with ", typeof(backend))
 
 @testset "$op numerical failure" begin
-    expected = op == "solve" ? "singular" : "positive definite"
+    expected = op == "solve" ? r"singular"i : r"positive definite"i
     @test_throws expected begin
         out = if op == "solve"
             a \ b

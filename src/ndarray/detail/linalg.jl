@@ -1,21 +1,6 @@
-function choose_nd_color_shape(shape::NTuple{N,Int}) where {N}
-    color_shape = Base.ones(Int, N)
-    if N > 2
-        color_shape[1] = _LINALG_RUNTIME[].procs
-        done = false
-        while !done && color_shape[1] % 2 == 0
-            weight_per_dim = [shape[i] / color_shape[i] for i in 1:(N - 2)]
-            max_weight, idx = findmax(weight_per_dim)
-            if weight_per_dim[idx] > 2 * weight_per_dim[1]
-                color_shape[1] ÷= 2
-                color_shape[idx] *= 2
-            else
-                done = true
-            end
-        end
-    end
-    return Tuple(color_shape)
-end
+# Only a single matrix or one batch axis is supported. Keep matrix axes whole.
+choose_nd_color_shape(::NTuple{2,Int}) = (1, 1)
+choose_nd_color_shape(::NTuple{3,Int}) = (_LINALG_RUNTIME[].procs, 1, 1)
 
 # One batch dimension is the ceiling for every batched op:
 #   - the POTRF task body is only instantiated for 2 <= DIM < 4
@@ -131,8 +116,10 @@ function _solve(a::NDArray{T,N}, b::NDArray{S,N}) where {T,S,N}
                 " (size $(size(b)[end-1]) is different from $(size(a)[end]))",
             ),
         )
-    (prod(size(a)) == 0 || prod(size(b)) == 0) && return cuNumeric.zeros(T, size(b)...)
+    size(a)[1:(end - 2)] == size(b)[1:(end - 2)] ||
+        throw(ArgumentError("Batched matrices must have matching batch dimensions"))
     x = cuNumeric.zeros(T, size(b)...)
+    isempty(x) && return x
     _solve!(_linalg_backend(Val(:solve), a), x, a, b)
     return x
 end
@@ -279,7 +266,7 @@ _svd_eltype(::Type{T}) where {T<:SUPPORTED_SVD_TYPES} = T
 
 # qr
 
-function qr_single(a::NDArray{T,N}, q::NDArray, r::NDArray) where {T,N}
+function _qr!(::_SingleProcLinalg, q, r, a)
     rt = Legate.get_runtime()
     lib = cuNumeric.get_lib()
     task = Legate.create_auto_task(rt, lib, cuNumeric.CQR)
@@ -297,24 +284,19 @@ function qr_single(a::NDArray{T,N}, q::NDArray, r::NDArray) where {T,N}
     Legate.add_broadcast(task, l_q)
     Legate.add_broadcast(task, l_r)
 
-    return Legate.submit_auto_task(rt, task)
+    Legate.submit_auto_task(rt, task)
+    return nothing
 end
 
 function _qr(a::NDArray{T,2}) where {T}
-    m, n = size(a)
-    k = min(m, n)
-    k == 0 && return cuNumeric.zeros(T, m, k), cuNumeric.zeros(T, k, n)
-    return _qr(_linalg_backend(Val(:qr), a), a)
-end
-
-function _qr(::_SingleProcLinalg, a::NDArray{T,2}) where {T}
     m, n = size(a)
     k = min(m, n)
     # CQR writes dense column-major economy factors with leading dimensions
     # m for Q and k for R. Square buffers give R the wrong stride when m < n.
     q = cuNumeric.zeros(T, m, k)
     r = cuNumeric.zeros(T, k, n)
-    qr_single(a, q, r)
+    k == 0 && return q, r
+    _qr!(_linalg_backend(Val(:qr), a), q, r, a)
     return q, r
 end
 

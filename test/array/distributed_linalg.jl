@@ -48,6 +48,11 @@ end
     @test rt.gpus == Int(cuNumeric.Legate.num_gpus())
     @test rt.procs == Int(cuNumeric.Legate.num_procs())
     @test rt.mp_eligible == (rt.available && rt.gpus > 1)
+    @test cuNumeric.choose_nd_color_shape((33, 33)) == (1, 1)
+    @test cuNumeric.choose_nd_color_shape((5, 33, 33)) == (rt.procs, 1, 1)
+    tiles, colors = cuNumeric.prepare_manual_task_for_batched_matrices((5, 33, 33))
+    @test tiles == (cld(5, rt.procs), 33, 33)
+    @test colors == (cld(5, tiles[1]), 1, 1)
 end
 
 function dl_check_solve(T)
@@ -141,6 +146,14 @@ end
     @test size(cn.zeros(Float64, 3, 3) \ cn.zeros(Float64, 3, 0)) == (3, 0)
     @test_throws ArgumentError cn.zeros(Float64, 2, 3) \ cn.zeros(Float64, 2)
     @test_throws ArgumentError cn.zeros(Float64, 3, 3) \ cn.zeros(Float64, 2)
+    # Reject mismatched batches before constructing partitions, including empties.
+    for (a_batch, b_batch) in ((2, 3), (3, 2), (0, 2), (2, 0))
+        @test_throws "matching batch dimensions" cn.batched_solve(
+            cn.zeros(Float64, a_batch, 3, 3), cn.zeros(Float64, b_batch, 3, 1)
+        )
+    end
+    @test size(cn.batched_solve(cn.zeros(Float64, 0, 3, 3), cn.zeros(Float64, 0, 3, 1))) ==
+        (0, 3, 1)
     for (m, n) in ((0, 0), (0, 3), (3, 0))
         f = qr(cn.zeros(Float64, m, n))
         @test size(f.Q) == (m, min(m, n))
