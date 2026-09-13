@@ -11,6 +11,12 @@ on:
         type: boolean
         required: false
         default: false
+  # Build the image associated with a published GitHub release.
+  release:
+    types: [published]
+  # GitHub Actions cannot filter pushes by commit message at trigger time, so
+  # the job-level condition below implements the [container] opt-in.
+  push:
   workflow_run:
     workflows: ['CI']
     types: [completed]
@@ -18,7 +24,20 @@ on:
       - main
 jobs:
   push_to_registry:
-    if: ${{ !contains(toJSON(github.event), '[skip ci]') && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success') }}
+    if: >-
+      ${{
+        !contains(toJSON(github.event), '[skip ci]') &&
+        (
+          github.event_name == 'workflow_dispatch' ||
+          github.event_name == 'release' ||
+          (github.event_name == 'push' && contains(github.event.head_commit.message, '[container]')) ||
+          (
+            github.event_name == 'workflow_run' &&
+            github.event.workflow_run.conclusion == 'success' &&
+            !contains(github.event.workflow_run.head_commit.message, '[container]')
+          )
+        )
+      }}
     name: Container for ${{ matrix.platform }} - Julia ${{ matrix.julia }} - CUDA ${{ matrix.cuda }}
     permissions:
       contents: read
@@ -40,6 +59,8 @@ jobs:
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.event.release.tag_name || github.event.workflow_run.head_sha || github.sha }}
 
       - name: Get package spec
         id: pkg
@@ -47,6 +68,12 @@ jobs:
           if [[ -n "${{ inputs.tag }}" ]]; then
             echo "ref=${{ inputs.tag }}" >> $GITHUB_OUTPUT
             echo "name=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "ref=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+            echo "name=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+            echo "ref=${{ github.event.workflow_run.head_sha }}" >> $GITHUB_OUTPUT
+            echo "name=${{ github.event.workflow_run.head_branch }}" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref_type }}" == "tag" ]]; then
             echo "ref=${{ github.ref_name }}" >> $GITHUB_OUTPUT
             echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
