@@ -3,59 +3,45 @@
 # Task construction follows cuPyNumeric 26.06's linalg/_solve.py, _qr.py,
 # and _cholesky.py.
 # Keep algorithm selection here; Legate owns placement and redistribution.
-const MIN_SOLVE_MATRIX_SIZE = 2048
-const MIN_SOLVE_TILE_SIZE = 512
-const MIN_CHOLESKY_MATRIX_SIZE = 8192
-const MIN_CHOLESKY_TILE_SIZE = 2048
-const MIN_QR_MATRIX_SIZE = 1048576
-const QR_TILE_SIZE = 128
-const MAX_CHOLESKY_TILES_PER_PROC = 4
+struct _LinalgRuntime
+    available::Bool
+    gpus::Int
+    procs::Int
+    mp_eligible::Bool
+end
+
+_LinalgRuntime(available::Bool, gpus::Int, procs::Int) =
+    _LinalgRuntime(available, gpus, procs, available && gpus > 1)
+
+# Populated once in _start_runtime(), including deferred initialization.
+# These describe the configured machine for the lifetime of this runtime.
+const _LINALG_RUNTIME = Ref(_LinalgRuntime(false, 0, 0))
 
 struct _SingleProcLinalg end
 struct _CuSolverMpLinalg end
 struct _TiledCholesky end
 
-# Neither the loaded library's capability nor the active machine is queried at
-# module/precompile time. Explicit arguments also let policy tests run on CPUs.
-function _linalg_backend(op, a::NDArray; kwargs...)
-    return _linalg_backend(
-        op, size(a), cusolvermp_available(), Int(Legate.num_gpus()), Int(Legate.num_procs());
-        kwargs...,
-    )
-end
-
-_mp_eligible(available::Bool, gpus::Integer) = available && gpus > 1
+_linalg_backend(op, a::NDArray) = _linalg_backend(op, size(a), _LINALG_RUNTIME[])
 
 # Tuple length carries dimensionality in its type. Stacked systems never enter
 # the MP selector; only their leading batch axes may be distributed.
-_linalg_backend(::Val{:solve}, ::Tuple, available::Bool, gpus, procs) = _SingleProcLinalg()
+_linalg_backend(::Val{:solve}, ::Tuple, ::_LinalgRuntime) = _SingleProcLinalg()
 
-function _linalg_backend(::Val{:solve}, shape::NTuple{2,Int}, available::Bool, gpus, procs)
-    use_mp = shape[1] >= MIN_SOLVE_MATRIX_SIZE && _mp_eligible(available, gpus)
+function _linalg_backend(::Val{:solve}, shape::NTuple{2,Int}, rt::_LinalgRuntime)
+    use_mp = rt.mp_eligible && shape[1] >= MIN_SOLVE_MATRIX_SIZE
     return use_mp ? _CuSolverMpLinalg() : _SingleProcLinalg()
 end
 
-function _linalg_backend(::Val{:qr}, shape::Tuple{Int,Int}, available::Bool, gpus, procs)
-    use_mp = (
-        !iszero(min(shape...)) && prod(shape) >= MIN_QR_MATRIX_SIZE &&
-        _mp_eligible(available, gpus)
-    )
+function _linalg_backend(::Val{:qr}, shape::NTuple{2,Int}, rt::_LinalgRuntime)
+    use_mp = rt.mp_eligible && prod(shape) >= MIN_QR_MATRIX_SIZE
     return use_mp ? _CuSolverMpLinalg() : _SingleProcLinalg()
 end
 
-function _linalg_backend(
-    ::Val{:cholesky}, ::Tuple, available::Bool, gpus, procs;
-    lower::Bool=true, inplace::Bool=false,
-)
-    return _SingleProcLinalg()
-end
+_linalg_backend(::Val{:cholesky}, ::Tuple, ::_LinalgRuntime) = _SingleProcLinalg()
 
-function _linalg_backend(
-    ::Val{:cholesky}, shape::NTuple{2,Int}, available::Bool, gpus, procs;
-    lower::Bool=true, inplace::Bool=false,
-)
-    (!lower || inplace || procs == 1) && return _SingleProcLinalg()
-    use_mp = shape[1] >= MIN_CHOLESKY_MATRIX_SIZE && _mp_eligible(available, gpus)
+function _linalg_backend(::Val{:cholesky}, shape::NTuple{2,Int}, rt::_LinalgRuntime)
+    rt.procs == 1 && return _SingleProcLinalg()
+    use_mp = rt.mp_eligible && shape[1] >= MIN_CHOLESKY_MATRIX_SIZE
     return use_mp ? _CuSolverMpLinalg() : _TiledCholesky()
 end
 
@@ -77,24 +63,15 @@ _submit_linalg_task(task) = Legate.submit_manual_task(Legate.get_runtime(), task
 # Partition along rows, just as Python does. Every rank uses identical color
 # spaces even when a reduced QR output has fewer rows than the input.
 function _mp_row_partition(n::Int, gpus::Integer)
-    n > 0 && gpus > 1 || throw(ArgumentError("MP tasks need nonempty inputs and multiple GPUs"))
     rows = cld(n, gpus)
     return rows, (cld(n, rows), 1)
 end
 
-function _check_mp_launch(tile::Integer)
-    tile > 0 || throw(ArgumentError("cuSolverMp tile size must be positive"))
-    cusolvermp_available() && Legate.num_gpus() > 1 ||
-        throw(ArgumentError("cuSolverMp requires a supporting library and multiple active GPUs"))
-    return nothing
-end
-
 _solve!(::_SingleProcLinalg, x, a, b) = solve_batched(a, b, x)
 
-function _solve!(::_CuSolverMpLinalg, x, a, b; tile::Int=MIN_SOLVE_TILE_SIZE)
-    _check_mp_launch(tile)
+function _solve!(::_CuSolverMpLinalg, x, a, b)
     n, nrhs = size(a, 1), size(b, 2)
-    rows, colors = _mp_row_partition(n, Int(Legate.num_gpus()))
+    rows, colors = _mp_row_partition(n, _LINALG_RUNTIME[].gpus)
     pa = Legate.partition_by_tiling(nda_to_logical_store(a), (rows, n))
     pb = Legate.partition_by_tiling(nda_to_logical_store(b), (rows, nrhs))
     px = Legate.partition_by_tiling(nda_to_logical_store(x), (rows, nrhs))
@@ -103,19 +80,18 @@ function _solve!(::_CuSolverMpLinalg, x, a, b; tile::Int=MIN_SOLVE_TILE_SIZE)
         Legate.add_input(task, pa)
         Legate.add_input(task, pb)
         Legate.add_output(task, px)
-        _linalg_scalars!(task, Int64(n), Int64(nrhs), Int64(tile))
+        _linalg_scalars!(task, Int64(n), Int64(nrhs), Int64(MIN_SOLVE_TILE_SIZE))
         add_nccl_communicator(task)
         _submit_linalg_task(task)
     end
     return x
 end
 
-function _qr(::_CuSolverMpLinalg, a::NDArray{T,2}; tile::Int=QR_TILE_SIZE) where {T}
-    _check_mp_launch(tile)
+function _qr(::_CuSolverMpLinalg, a::NDArray{T,2}) where {T}
     m, n = size(a)
     k = min(m, n)
     q, r = cuNumeric.zeros(T, m, k), cuNumeric.zeros(T, k, n)
-    rows, colors = _mp_row_partition(m, Int(Legate.num_gpus()))
+    rows, colors = _mp_row_partition(m, _LINALG_RUNTIME[].gpus)
     tiles = (rows, n)
     pa = Legate.partition_by_tiling(nda_to_logical_store(a), tiles)
     pq = Legate.partition_by_tiling(nda_to_logical_store(q), tiles, colors)
@@ -125,7 +101,7 @@ function _qr(::_CuSolverMpLinalg, a::NDArray{T,2}; tile::Int=QR_TILE_SIZE) where
         Legate.add_input(task, pa)
         Legate.add_output(task, pq)
         Legate.add_output(task, pr)
-        _linalg_scalars!(task, Int64(m), Int64(n), Int64(tile), Int64(tile))
+        _linalg_scalars!(task, Int64(m), Int64(n), Int64(QR_TILE_SIZE), Int64(QR_TILE_SIZE))
         add_nccl_communicator(task)
         _submit_linalg_task(task)
     end
@@ -134,8 +110,7 @@ end
 
 _cholesky!(::_SingleProcLinalg, out, a) = potrf!(out, a; lower=true, zeroout=true)
 
-function _cholesky!(::_CuSolverMpLinalg, out, a; tile::Int=MIN_CHOLESKY_TILE_SIZE)
-    _check_mp_launch(tile)
+function _cholesky!(::_CuSolverMpLinalg, out, a)
     @task_scope "mp_potrf" begin
         rt = Legate.get_runtime()
         task = Legate.create_auto_task(rt, get_lib(), MP_POTRF)
@@ -143,7 +118,7 @@ function _cholesky!(::_CuSolverMpLinalg, out, a; tile::Int=MIN_CHOLESKY_TILE_SIZ
         ai = Legate.add_input(task, nda_to_logical_array(a))
         oi = Legate.add_output(task, nda_to_logical_array(out))
         Legate.add_constraint(task, Legate.align(oi, ai))
-        _linalg_scalars!(task, Int64(size(a, 1)), Int64(tile))
+        _linalg_scalars!(task, Int64(size(a, 1)), Int64(MIN_CHOLESKY_TILE_SIZE))
         add_nccl_communicator(task)
         Legate.submit_auto_task(rt, task)
         _cholesky_tril!(out)
@@ -163,15 +138,11 @@ function _cholesky_tril!(out::NDArray)
     return nothing
 end
 
-function _cholesky_color_shape(
-    n::Int, procs::Integer;
-    min_matrix::Int=MIN_CHOLESKY_MATRIX_SIZE, min_tile::Int=MIN_CHOLESKY_TILE_SIZE,
-)
-    n > 0 && procs > 0 && min_matrix >= 0 && min_tile > 0 ||
-        throw(ArgumentError("invalid tiled Cholesky dimensions or tile policy"))
-    (procs == 1 || n <= min_matrix) && return (1, 1)
+function _cholesky_color_shape(n::Int, procs::Int)
+    (procs == 1 || n <= MIN_CHOLESKY_MATRIX_SIZE) && return (1, 1)
     tiles = Int(procs)
-    while cld(n, tiles) > min_tile && 2 * tiles <= procs * MAX_CHOLESKY_TILES_PER_PROC
+    while cld(n, tiles) > MIN_CHOLESKY_TILE_SIZE &&
+        2 * tiles <= procs * MAX_CHOLESKY_TILES_PER_PROC
         tiles *= 2
     end
     return (tiles, tiles)
@@ -179,12 +150,9 @@ end
 
 # Each task reads only tiles ready at this stage; Legate records the DAG from
 # these inputs/outputs. No execution fence or host copy is needed between steps.
-function _cholesky!(
-    ::_TiledCholesky, out, a;
-    min_matrix::Int=MIN_CHOLESKY_MATRIX_SIZE, min_tile::Int=MIN_CHOLESKY_TILE_SIZE,
-)
+function _cholesky!(::_TiledCholesky, out, a)
     n = size(a, 1)
-    initial = _cholesky_color_shape(n, Int(Legate.num_procs()); min_matrix, min_tile)
+    initial = _cholesky_color_shape(n, _LINALG_RUNTIME[].procs)
     tile = cld(n, initial[1])
     colors = cld(n, tile)
     pa = Legate.partition_by_tiling(nda_to_logical_store(a), (tile, tile))

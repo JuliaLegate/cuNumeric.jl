@@ -159,6 +159,23 @@ include("warnings.jl")
 # Compile-time so task scope instrumentation is fully elided when disabled.
 const TASK_SCOPE_NAMES = CNPreferences.TASK_SCOPE_NAMES
 
+# Loaded at compile time; change through CNPreferences and restart Julia.
+const MIN_SOLVE_MATRIX_SIZE = load_preference(CNPreferences, "MIN_SOLVE_MATRIX_SIZE", 2048)
+const MIN_SOLVE_TILE_SIZE = load_preference(CNPreferences, "MIN_SOLVE_TILE_SIZE", 512)
+const MIN_CHOLESKY_MATRIX_SIZE = load_preference(CNPreferences, "MIN_CHOLESKY_MATRIX_SIZE", 8192)
+const MIN_CHOLESKY_TILE_SIZE = load_preference(CNPreferences, "MIN_CHOLESKY_TILE_SIZE", 2048)
+const MIN_QR_MATRIX_SIZE = load_preference(CNPreferences, "MIN_QR_MATRIX_SIZE", 1048576)
+const QR_TILE_SIZE = load_preference(CNPreferences, "QR_TILE_SIZE", 128)
+const MAX_CHOLESKY_TILES_PER_PROC = load_preference(CNPreferences, "MAX_CHOLESKY_TILES_PER_PROC", 4)
+
+for key in (
+    :MIN_SOLVE_MATRIX_SIZE, :MIN_SOLVE_TILE_SIZE, :MIN_CHOLESKY_MATRIX_SIZE,
+    :MIN_CHOLESKY_TILE_SIZE, :MIN_QR_MATRIX_SIZE, :QR_TILE_SIZE, :MAX_CHOLESKY_TILES_PER_PROC,
+)
+    value = getfield(@__MODULE__, key)
+    value isa Int && value > 0 || throw(ArgumentError("$key must be a positive Int"))
+end
+
 # NDArray internal
 include("ndarray/detail/ndarray.jl")
 include("ndarray/detail/distributed_linalg.jl")
@@ -232,6 +249,10 @@ function _start_runtime()
     AA = ArgcArgv(String[])
     # AA = ArgcArgv([Base.julia_cmd()[1]])
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
+
+    _LINALG_RUNTIME[] = _LinalgRuntime(
+        cusolvermp_available(), Int(Legate.num_gpus()), Int(Legate.num_procs())
+    )
 
     _init_deferred_free!()   # record launch thread for deferred frees (memory.jl)
 

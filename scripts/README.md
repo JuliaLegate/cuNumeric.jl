@@ -75,8 +75,3 @@ This error was shown for each reduction operator in `legion_redop.inl` for compl
 #endif
 #endif
 ```
-
-## Distributed linear algebra
-
-See [linalg/README.md](linalg/README.md) for CPU, multi-GPU, and multi-node
-acceptance runs, including isolated numerical-failure tests.

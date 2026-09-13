@@ -60,9 +60,9 @@ function versioninfo(io::IO=stdout)
     # Do not start the runtime or query its machine just to print diagnostics.
     active = runtime_started()
     not_queried = "not queried (runtime inactive)"
-    mp_available = active ? cusolvermp_available() : not_queried
-    active_gpus = active ? Int(Legate.num_gpus()) : not_queried
-    mp_eligible = active ? _mp_eligible(mp_available, active_gpus) : not_queried
+    mp_available = active ? _LINALG_RUNTIME[].available : not_queried
+    active_gpus = active ? _LINALG_RUNTIME[].gpus : not_queried
+    mp_eligible = active ? _LINALG_RUNTIME[].mp_eligible : not_queried
 
     str = """
     ───────────────────────────────────────────────

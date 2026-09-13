@@ -36,7 +36,7 @@ distributed tasks automatically. Selection follows cuPyNumeric 26.06:
 | Lower Cholesky | dimension ≥ 8192 | 2048 |
 | Reduced QR | matrix contains ≥ 1048576 elements | 128 |
 
-These cutoffs and block sizes are named module constants. The loaded library
+These are the default values of preference-backed module constants. The loaded library
 must support cuSolverMp and Legate must have more than one active GPU. The
 library selects the algorithm; Legate handles placement, communication, and
 redistribution. Configure resources before starting Julia, as described in
@@ -54,9 +54,26 @@ failed collectives are not retried using another algorithm. No new factor-reuse,
 triangular-solve, or CG API is introduced by this change.
 
 This requires the new C++ wrapper; see [Developer Mode](./developer_mode.md#cusolvermp-wrapper-update).
-The acceptance runner and multi-node validation procedure are in
-[`scripts/linalg/README.md`](https://github.com/JuliaLegate/cuNumeric.jl/blob/develop/scripts/linalg/README.md).
-Multi-node support remains pending validation on the target cluster.
+
+### Tuning
+
+Use [`CNPreferences.set_linalg!`](./api_preferences.md#linear-algebra) to set any
+of the seven documented constants. `MIN_*_MATRIX_SIZE` controls when an operation
+can select cuSolverMp. Solve and Cholesky use the row count; QR uses the number
+of matrix elements. `MIN_SOLVE_TILE_SIZE`, `MIN_CHOLESKY_TILE_SIZE`, and
+`QR_TILE_SIZE` set the solver block sizes. QR uses the same block size on both axes.
+
+For the tiled Cholesky fallback, `MIN_CHOLESKY_MATRIX_SIZE` also sets the
+single-tile cutoff. `MIN_CHOLESKY_TILE_SIZE` guides tile subdivision, and
+`MAX_CHOLESKY_TILES_PER_PROC` limits the number of tiles per matrix axis relative
+to the processor count. These are tuning heuristics, not memory limits.
+
+The constants are loaded in `cuNumeric.jl` through `load_preference(CNPreferences, ...)`.
+Changing them requires a fresh Julia process. Library capability, configured
+GPU/processor counts, and MP eligibility are cached once during runtime startup
+in a typed `const Ref`. Solves reuse that configuration; size checks still happen
+per operation. This assumes the configured machine stays fixed for the runtime's
+lifetime. Scoped processor subsets would require revisiting this cache.
 
 ## Matrix multiply
 

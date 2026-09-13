@@ -1,7 +1,7 @@
 function choose_nd_color_shape(shape::NTuple{N,Int}) where {N}
     color_shape = Base.ones(Int, N)
     if N > 2
-        color_shape[1] = Legate.num_procs()
+        color_shape[1] = _LINALG_RUNTIME[].procs
         done = false
         while !done && color_shape[1] % 2 == 0
             weight_per_dim = [shape[i] / color_shape[i] for i in 1:(N - 2)]
