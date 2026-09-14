@@ -9,6 +9,7 @@
 #   ./install_cupynumeric.sh --into existing # install into an existing env instead of creating one
 set -euo pipefail
 CONDA="${CUNUMERIC_BENCH_CONDA:-${CONDA_EXE:-conda}}"
+JULIA="${CUNUMERIC_BENCH_JULIA:-julia}"
 command -v "$CONDA" >/dev/null 2>&1 || {
     echo "Error: conda not found. Add it to PATH or set CUNUMERIC_BENCH_CONDA to its executable path."
     exit 1
@@ -39,8 +40,8 @@ done
 
 # Resolve the JLL version Julia actually instantiated for this project, then keep
 # major.minor only — conda packages are not published per patch.
-echo "Detecting cupynumeric_jll version from the benchmark project..."
-VER=$(cd "$SCRIPT_DIR" && julia --project -e '
+echo "Detecting cupynumeric_jll version from the isolated cuNumeric project..."
+VER=$(cd "$SCRIPT_DIR" && "$JULIA" --project=environments/cunumeric -e '
 using Pkg
 for (_, info) in Pkg.dependencies()
     info.name == "cupynumeric_jll" || continue
