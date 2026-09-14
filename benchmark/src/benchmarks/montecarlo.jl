@@ -52,5 +52,6 @@ end
 function correctness_problem(b::MonteCarloIntegration{T}) where {T}
     return MonteCarloIntegration{T}(; n_samples=min(b.n_samples, 1024))
 end
+cuda_correctness_supported(::MonteCarloIntegration) = true
 
 register_benchmark("montecarlo", MonteCarloIntegration)

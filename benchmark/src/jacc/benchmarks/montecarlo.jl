@@ -37,6 +37,9 @@ end
 
 # Multi.parallel_reduce synchronizes every participating device before return.
 model_synchronize(::JACCMonteCarlo) = nothing
+function model_correctness_context(benchmark::JACCMonteCarlo, config)
+    return (; reference="CPU", dims=(min(benchmark.n_samples, 1024), 1))
+end
 
 function model_check_correctness(benchmark::JACCMonteCarlo{T}, config) where {T}
     n = min(benchmark.n_samples, 1024)

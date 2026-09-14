@@ -7,6 +7,7 @@ include("../src/memory.jl")
 include("../src/planning.jl")
 include("../src/runner.jl")
 include("../src/result_rows.jl")
+include("../src/model_worker.jl")
 include("timing.jl")
 
 const CONFIG = joinpath(@__DIR__, "..", "benchmarks.toml")
@@ -89,7 +90,7 @@ end
 
 @testset "Smoke configuration" begin
     gs, specs = parse_config(SMOKE_CONFIG)
-    @test gs.models == [:cunumeric, :cupynumeric, :cudajl, :jacc, :dagger]
+    @test gs.models == [:cunumeric, :cupynumeric, :cudajl, :jacc]
     @test gs.check_correctness
     @test length(specs) == 1
     @test only(specs).name == "montecarlo"
@@ -168,8 +169,13 @@ end
     ok = `bash $runner --model=jacc --gpus=1 --cpus=0 -- bash -c $("test \"\$CUNUMERIC_BENCH_ACTIVE_MODEL\" = jacc")`
     nested = addenv(`bash $runner --model=jacc --gpus=1 --cpus=0 -- true`,
         "CUNUMERIC_BENCH_ACTIVE_MODEL"=>"cunumeric")
+    clean_library_path = addenv(
+        `bash $runner --model=cudajl --gpus=1 --cpus=0 -- bash -c $("test -z \"\${LD_LIBRARY_PATH+x}\"")`,
+        "LD_LIBRARY_PATH"=>"/system/cuda/lib64",
+    )
     @test success(pipeline(ok; stdout=devnull, stderr=devnull))
     @test !success(pipeline(nested; stdout=devnull, stderr=devnull))
+    @test success(pipeline(clean_library_path; stdout=devnull, stderr=devnull))
 end
 
 @testset "Memory dispatch matrix" begin

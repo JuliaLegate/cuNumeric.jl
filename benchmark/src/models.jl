@@ -182,7 +182,6 @@ function model_environment(
         "LEGATE_AUTO_CONFIG" => "1",
         "LEGATE_CONFIG" => config,
         "LEGATE_SHOW_CONFIG" => verbose ? "1" : "0",
-        "LD_LIBRARY_PATH" => "",
     )
 end
 
