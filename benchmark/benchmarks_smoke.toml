@@ -2,7 +2,7 @@
 # julia --project=. run.jl --config=benchmarks_smoke.toml
 # Select another model with --models=cunumeric, --models=jacc, etc.
 [Global]
-models = ["cudajl"]
+models = ["cunumeric", "cupynumeric", "cudajl", "jacc", "dagger"]
 n_warmup = 1
 n_iter = 1
 n_trial = 1
