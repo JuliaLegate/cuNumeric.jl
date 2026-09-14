@@ -35,15 +35,17 @@ function validate_memory_context(b::AbstractBenchmark{T}, c) where {T}
         error("$(model_label(execution_model(c.model))) does not support $(c.gpus) GPUs")
     supports_benchmark(execution_model(c.model), name(b)) ||
         error("$(name(b)) is not implemented for $(model_label(execution_model(c.model)))")
-    T in (Float32, Float64) || error("Memory accounting currently supports Float32 and Float64; got $T")
-    all(>(0), dims(b)) || error("Problem dimensions must be positive")
+    T in (Float32, Float64) ||
+        error("Memory accounting currently supports Float32 and Float64; got $T")
+    return all(>(0), dims(b)) || error("Problem dimensions must be positive")
 end
 
 # A conservative slab bound: rounding a partition up cannot undercount uneven
 # dimensions. Stencil halos are counted separately below. DMD is never divided.
 slab(n, tail, p) = cld(big(n), p) * big(tail)
-random_peak(elements, ::Type{T}, model) where {T} =
-    elements * (model == :cupynumeric ? sizeof(Float64) + sizeof(T) : sizeof(T))
+function random_peak(elements, ::Type{T}, model) where {T}
+    return elements * (model == :cupynumeric ? sizeof(Float64) + sizeof(T) : sizeof(T))
+end
 
 function memory_estimate(b::MonteCarloIntegration{T}, c::MemoryContext) where {T}
     validate_memory_context(b, c)
@@ -51,7 +53,7 @@ function memory_estimate(b::MonteCarloIntegration{T}, c::MemoryContext) where {T
     bytes = e * sizeof(T)
     if c.model in (:jacc, :dagger)
         return MemoryEstimate(
-            2bytes,2bytes,0,
+            2bytes, 2bytes, 0,
             "partitioned samples plus conservative per-device reduction workspace; " *
             "model-native fused map/reduce",
         )
@@ -73,7 +75,8 @@ function memory_estimate(b::MonteCarloIntegration{T}, c::MemoryContext) where {T
     # Bound its retention over the complete trial instead of assuming a GC.
     retained = c.model == :cunumeric || c.model == :cudajl ? c.steps-1 : 0
     return MemoryEstimate(init, (arrays + retained)*bytes, 0,
-        "samples + broadcast output; unfused temporaries; up to $retained prior Julia outputs awaiting GC; random dtype conversion")
+        "samples + broadcast output; unfused temporaries; up to $retained prior Julia outputs awaiting GC; random dtype conversion",
+    )
 end
 
 function memory_estimate(b::GEMM{T}, c::MemoryContext) where {T}
@@ -94,7 +97,7 @@ function memory_estimate(b::AbstractGrayScott{T}, c::MemoryContext) where {T}
     # Local expressions can retain parents; never treat a slice as a free copy.
     grid = big(b.N) * b.M * sizeof(T)
     interior = big(max(b.N-2, 0)) * max(b.M-2, 0) * sizeof(T)
-    init = 4grid + random_peak(big(min(150,b.N,b.M))^2, T, c.model)
+    init = 4grid + random_peak(big(min(150, b.N, b.M))^2, T, c.model)
     # Four named RHS results plus an assignment output. Hard-scope acceleration
     # may eliminate these, but this remains a valid upper bound for every form.
     # Do not assume a lower peak solely from the @accelerate spelling.
@@ -103,12 +106,14 @@ function memory_estimate(b::AbstractGrayScott{T}, c::MemoryContext) where {T}
     # include outer destination and intermediate binary operands.
     temps = fused ? 5 : 8
     variant = name(b)
-    hard_scope = b isa Union{GrayScottAccelerated,GrayScottFunctionAccelerated,GrayScottLetAccelerated}
+    hard_scope =
+        b isa Union{GrayScottAccelerated,GrayScottFunctionAccelerated,GrayScottLetAccelerated}
     # Hard scopes insert explicit last-use destruction whether fusion is on or
     # off. Baseline/begin/expression leave the named results for tracing GC.
     retained = c.model == :cunumeric && hard_scope || c.model == :cupynumeric ? 0 : 6*(c.steps-1)
     return MemoryEstimate(init, 4grid + (temps+retained)*interior, 0,
-        "$variant: four persistent grids + $temps active interior buffers + $retained prior buffers awaiting GC; full-parent bound; fusion=$(c.fusion)")
+        "$variant: four persistent grids + $temps active interior buffers + $retained prior buffers awaiting GC; full-parent bound; fusion=$(c.fusion)",
+    )
 end
 
 function memory_estimate(b::AbstractDMD{T}, c::MemoryContext) where {T}
@@ -127,8 +132,9 @@ function memory_estimate(b::AbstractDMD{T}, c::MemoryContext) where {T}
     retained_steps = c.model == :cupynumeric ? 1 : c.steps
     iteration = (persistent + retained_steps*(factors + project + complex_lift))*sizeof(T)
     init = random_peak(n*big(b.M), T, c.model)
-    return MemoryEstimate(init, iteration, library_workspace(b,c),
-        "full single-task SVD on one GPU (P does not divide memory); factors, retained parents, projections, complex lift")
+    return MemoryEstimate(init, iteration, library_workspace(b, c),
+        "full single-task SVD on one GPU (P does not divide memory); factors, retained parents, projections, complex lift",
+    )
 end
 
 function memory_estimate(b::PoissonFFT{T}, c::MemoryContext) where {T}
@@ -138,23 +144,25 @@ function memory_estimate(b::PoissonFFT{T}, c::MemoryContext) where {T}
     kinv = big(b.N)^2*sizeof(T)
     # Python FFT precision is conservatively bounded by complex128.
     pycomplex = e*sizeof(ComplexF64)
-    init = max(random_peak(e,T,c.model), realbytes+2complexbytes+kinv)
+    init = max(random_peak(e, T, c.model), realbytes+2complexbytes+kinv)
     iteration = c.model == :cupynumeric ? realbytes+2pycomplex+kinv : 2complexbytes+kinv
-    return MemoryEstimate(init, iteration, library_workspace(b,c),
-        "batched grids + replicated inverse Laplacian; Python out-of-place FFT precision; native FFT workspace")
+    return MemoryEstimate(init, iteration, library_workspace(b, c),
+        "batched grids + replicated inverse Laplacian; Python out-of-place FFT precision; native FFT workspace",
+    )
 end
 
 function memory_estimate(b::AbstractTensorContraction{T}, c::MemoryContext) where {T}
-    validate_memory_context(b,c)
+    validate_memory_context(b, c)
     # Full operands and intermediates, without assuming distributed packing.
     n = big(b.N)
     if b isa TensorProjection3
         live = (4n^3+n^2)*sizeof(T)
-        init = max((2n^3+n^2)*sizeof(T), random_peak(n^3,T,c.model))
+        init = max((2n^3+n^2)*sizeof(T), random_peak(n^3, T, c.model))
     else
         live = 3n^4*sizeof(T)
-        init = max(live, n^4*sizeof(T)+random_peak(n^4,T,c.model))
+        init = max(live, n^4*sizeof(T)+random_peak(n^4, T, c.model))
     end
-    return MemoryEstimate(init, live, library_workspace(b,c),
-        "full contraction inputs/outputs and pairwise intermediates; native packing/workspace counted separately")
+    return MemoryEstimate(init, live, library_workspace(b, c),
+        "full contraction inputs/outputs and pairwise intermediates; native packing/workspace counted separately",
+    )
 end

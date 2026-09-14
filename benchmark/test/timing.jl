@@ -24,7 +24,7 @@ name(::TimingProbes) = "timing probe"
         gs = GlobalSettings(; n_warmup=warmup, n_iter=3)
         step = fence_each_iteration(b) ? [:run, :sync] : [:run]
         expected = vcat([:initialize], repeat(step, warmup), [:clock],
-                        repeat(step, 3), [:clock])
+            repeat(step, 3), [:clock])
         # Also exercises forwarding the backend callback through run_benchmark.
         result = run_benchmark(b, gs; mod=Base, clock, synchronize)
         @test events == expected

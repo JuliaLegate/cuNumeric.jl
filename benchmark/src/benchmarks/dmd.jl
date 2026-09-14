@@ -89,10 +89,14 @@ end
 
 _is_cunumeric_array(A) = nameof(typeof(A)) === :NDArray
 _dmd_T(A) = _is_cunumeric_array(A) ?
-    getfield(@__MODULE__, :cuNumeric).transpose(A) : transpose(A)
-_dmd_row(v) = _is_cunumeric_array(v) ?
-    getfield(@__MODULE__, :cuNumeric).reshape(v, (1, length(v))) :
-    reshape(v, 1, length(v))
+            getfield(@__MODULE__, :cuNumeric).transpose(A) : transpose(A)
+function _dmd_row(v)
+    return if _is_cunumeric_array(v)
+        getfield(@__MODULE__, :cuNumeric).reshape(v, (1, length(v)))
+    else
+        reshape(v, 1, length(v))
+    end
+end
 
 # svd / eigen return factorizations whose stores the lifetime rewriter cannot
 # see, so those stay outside the macro. The GEMM lift is wrapped.
@@ -136,7 +140,7 @@ end
 
 run!(b::AbstractDMD, X) = _dmd_compute!(b, X, _dmd_rank(b))
 
-function correctness_problem(b::AD) where {AD <: AbstractDMD}
+function correctness_problem(b::AD) where {AD<:AbstractDMD}
     m = min(b.M, 16)
     n = max(min(b.N, 64), m - 1)
     return AD(; N=n, M=m)

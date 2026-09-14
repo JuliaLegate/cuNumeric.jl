@@ -45,7 +45,7 @@ const MODEL_BY_ID = Dict(model_id(model) => model for model in EXECUTION_MODELS)
 function execution_model(id::Symbol)
     return get(MODEL_BY_ID, id) do
         known = join(string.(sort!(collect(keys(MODEL_BY_ID)))), ", ")
-        error("Unknown execution model '$id'. Known models: $known")
+        return error("Unknown execution model '$id'. Known models: $known")
     end
 end
 
@@ -72,15 +72,16 @@ preparation_key(::CuNumericModel, run) = run.spec.fusion
 
 prepare_model(::ExecutionModel, run, verbose; prepare_cunumeric) = nothing
 function prepare_model(::CuNumericModel, run, verbose; prepare_cunumeric)
-    return prepare_cunumeric(run.spec.fusion,verbose)
+    return prepare_cunumeric(run.spec.fusion, verbose)
 end
 
 # Model-specific benchmark code is opt-in.  cuNumeric owns the accelerated
 # variants; the other existing array baselines use only the non-accelerated
 # definitions.  JACC and Dagger currently have native Monte Carlo workers.
 supports_benchmark(::CuNumericModel, ::AbstractString) = true
-supports_benchmark(::Union{CuPyNumericModel,CUDAJLModel}, name::AbstractString) =
-    !endswith(name, "_accelerated")
+function supports_benchmark(::Union{CuPyNumericModel,CUDAJLModel}, name::AbstractString)
+    return !endswith(name, "_accelerated")
+end
 supports_benchmark(::Union{JACCModel,DaggerModel}, name::AbstractString) =
     name == "montecarlo"
 
@@ -129,10 +130,11 @@ function julia_worker_command(model::ExecutionModel, request::WorkerRequest, roo
     return `$julia --project=$project --threads=$threads $worker $(common_worker_args(request))`
 end
 
-model_worker_command(
-    model::Union{CuNumericModel,CUDAJLModel,JACCModel,DaggerModel}, request, root,
-) =
-    julia_worker_command(model, request, root)
+function model_worker_command(
+    model::Union{CuNumericModel,CUDAJLModel,JACCModel,DaggerModel}, request, root
+)
+    return julia_worker_command(model, request, root)
+end
 
 function model_worker_command(model::CuPyNumericModel, request, root)
     conda = get(ENV, "CUNUMERIC_BENCH_CONDA", get(ENV, "CONDA_EXE", "conda"))
@@ -152,25 +154,25 @@ end
 function selected_cuda_visibility(gpus::Integer; env=ENV)
     gpus > 0 || error("GPU count must be positive")
     visibility = get(env, "CUDA_VISIBLE_DEVICES", nothing)
-    visibility === nothing && return join(0:gpus-1, ',')
+    visibility === nothing && return join(0:(gpus - 1), ',')
     tokens = strip.(split(visibility, ','))
     any(isempty, tokens) && error("CUDA_VISIBLE_DEVICES contains an empty device identifier")
     length(unique(tokens)) == length(tokens) ||
         error("CUDA_VISIBLE_DEVICES contains duplicate device identifiers")
     length(tokens) >= gpus || error(
-        "Requested $gpus GPUs, but CUDA_VISIBLE_DEVICES contains only $(length(tokens))",
+        "Requested $gpus GPUs, but CUDA_VISIBLE_DEVICES contains only $(length(tokens))"
     )
     return join(tokens[1:gpus], ',')
 end
 
 function model_environment(
-    ::Union{JACCModel,DaggerModel}, request::WorkerRequest, verbose,
+    ::Union{JACCModel,DaggerModel}, request::WorkerRequest, verbose
 )
     return Dict("CUDA_VISIBLE_DEVICES" => selected_cuda_visibility(request.gpus))
 end
 
 function model_environment(
-    ::Union{CuNumericModel,CuPyNumericModel}, request::WorkerRequest, verbose,
+    ::Union{CuNumericModel,CuPyNumericModel}, request::WorkerRequest, verbose
 )
     config = "--cpus=$(request.cpus) --gpus=$(request.gpus)"
     if haskey(ENV, "CUNUMERIC_BENCH_FBMEM_MB")
@@ -194,7 +196,7 @@ end
 preflight_model(::ExecutionModel; kwargs...) = nothing
 
 function preflight_model(
-    ::CuPyNumericModel; env=ENV, which=Sys.which, check=success, root=nothing,
+    ::CuPyNumericModel; env=ENV, which=Sys.which, check=success, root=nothing
 )
     conda = get(env, "CUNUMERIC_BENCH_CONDA", get(env, "CONDA_EXE", "conda"))
     executable = which(conda)
@@ -220,7 +222,7 @@ function preflight_julia_model(
 )
     project = model_project(model, root)
     isfile(joinpath(project, "Project.toml")) || error(
-        "$(model_label(model)) is enabled, but its isolated environment is missing at $project",
+        "$(model_label(model)) is enabled, but its isolated environment is missing at $project"
     )
     julia = get(env, "CUNUMERIC_BENCH_JULIA", joinpath(Sys.BINDIR, Base.julia_exename()))
     executable = which(julia)
@@ -233,14 +235,18 @@ function preflight_julia_model(
     return nothing
 end
 
-preflight_model(model::JACCModel; kwargs...) =
-    preflight_julia_model(model, "import JACC; JACC.@init_backend"; kwargs...)
-preflight_model(model::DaggerModel; kwargs...) =
-    preflight_julia_model(model, "import Dagger; import CUDA"; kwargs...)
-preflight_model(model::CuNumericModel; kwargs...) =
-    preflight_julia_model(model, "import cuNumeric"; kwargs...)
-preflight_model(model::CUDAJLModel; kwargs...) =
-    preflight_julia_model(model, "import CUDA; import TensorOperations"; kwargs...)
+function preflight_model(model::JACCModel; kwargs...)
+    return preflight_julia_model(model, "import JACC; JACC.@init_backend"; kwargs...)
+end
+function preflight_model(model::DaggerModel; kwargs...)
+    return preflight_julia_model(model, "import Dagger; import CUDA"; kwargs...)
+end
+function preflight_model(model::CuNumericModel; kwargs...)
+    return preflight_julia_model(model, "import cuNumeric"; kwargs...)
+end
+function preflight_model(model::CUDAJLModel; kwargs...)
+    return preflight_julia_model(model, "import CUDA; import TensorOperations"; kwargs...)
+end
 
 function preflight_models(runs; kwargs...)
     isempty(runs) && return nothing
@@ -260,18 +266,18 @@ function isolated_model_versions(runs, root)
         model = execution_model(id)
         packages = model_packages(model)
         isempty(packages) && continue
-        manifest_path = joinpath(model_project(model,root),"Manifest.toml")
+        manifest_path = joinpath(model_project(model, root), "Manifest.toml")
         isfile(manifest_path) || continue
-        deps = get(TOML.parsefile(manifest_path),"deps",Dict{String,Any}())
+        deps = get(TOML.parsefile(manifest_path), "deps", Dict{String,Any}())
         versions = Dict{String,String}()
         for package in packages
-            entries = get(deps,package,Any[])
+            entries = get(deps, package, Any[])
             isempty(entries) && continue
             entry = entries isa AbstractVector ? first(entries) : entries
-            haskey(entry,"version") && (versions[package] = string(entry["version"]))
+            haskey(entry, "version") && (versions[package] = string(entry["version"]))
         end
         result[string(id)] = Dict(
-            "project" => relpath(model_project(model,root),root),
+            "project" => relpath(model_project(model, root), root),
             "versions" => versions,
         )
     end

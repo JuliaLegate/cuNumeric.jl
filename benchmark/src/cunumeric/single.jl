@@ -8,7 +8,7 @@ using LinearAlgebra
 using TensorOperations
 
 const NEED_CUDA_ORACLE =
-    length(ARGS) >= 9 && parse(Int,ARGS[1]) == 1 && parse(Bool,ARGS[9])
+    length(ARGS) >= 9 && parse(Int, ARGS[1]) == 1 && parse(Bool, ARGS[9])
 if NEED_CUDA_ORACLE
     using CUDA
     using AbstractFFTs
@@ -19,7 +19,7 @@ assert_models_not_loaded(("JACC", "Dagger"))
 
 function array_backend_entry()
     return (
-        id=:cunumeric,mod=cuNumeric,label="cuNumeric",save_as="cunumeric",
+        id=:cunumeric, mod=cuNumeric, label="cuNumeric", save_as="cunumeric",
         clock=get_time_microseconds,
         synchronize=benchmark_synchronize,
         fused=()->cuNumeric.FUSE_BROADCAST_EXPRS,

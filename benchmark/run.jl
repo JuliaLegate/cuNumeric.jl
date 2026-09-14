@@ -2,18 +2,18 @@
 using Pkg, TOML
 
 function ensure_project_ready()
-    Pkg.instantiate()
+    return Pkg.instantiate()
 end
 
 function cupynumeric_env_name()
     haskey(ENV, "CUPYNUMERIC_ENV") && return ENV["CUPYNUMERIC_ENV"]
-    manifest = joinpath(@__DIR__,"environments","cunumeric","Manifest.toml")
+    manifest = joinpath(@__DIR__, "environments", "cunumeric", "Manifest.toml")
     isfile(manifest) || error(
         "cuNumeric worker manifest is missing; instantiate environments/cunumeric " *
         "or set CUPYNUMERIC_ENV explicitly",
     )
-    deps = get(TOML.parsefile(manifest),"deps",Dict{String,Any}())
-    entries = get(deps,"cupynumeric_jll",Any[])
+    deps = get(TOML.parsefile(manifest), "deps", Dict{String,Any}())
+    entries = get(deps, "cupynumeric_jll", Any[])
     isempty(entries) &&
         error("could not resolve cupynumeric_jll; set CUPYNUMERIC_ENV explicitly")
     entry = entries isa AbstractVector ? first(entries) : entries

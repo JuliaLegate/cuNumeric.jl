@@ -255,7 +255,9 @@ function weak_scaling_figure(series; plot_title)
         append!(efficiencies, [x.h / (x.gpus * base) for x in s.agg])
     end
     p3 = plot(; ylabel="Parallel efficiency", title="Weak-scaling efficiency",
-        ylims=positive_ylim(max(1.0, isempty(efficiencies) ? 0.0 : maximum(efficiencies)); pad=0.12),
+        ylims=positive_ylim(
+            max(1.0, isempty(efficiencies) ? 0.0 : maximum(efficiencies)); pad=0.12
+        ),
         common..., left_margin=16Plots.mm)
     hline!(p3, [1.0]; color=IDEALCOL, ls=:dashdot, lw=1.6, label="")
     for s in series
