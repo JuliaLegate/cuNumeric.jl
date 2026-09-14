@@ -42,7 +42,29 @@ end
 _domain_volume(mci::MonteCarloIntegration{T}) where {T} = T(10) / mci.n_samples
 # Dot the negation too: plain `-` materializes the squared array and prevents
 # the surrounding exponential from sharing one broadcast with the square.
-run!(mci::MonteCarloIntegration, x) = _domain_volume(mci) * sum(exp.(.-(x .^ 2)))
+_montecarlo_integrand(x) = exp.(.-(x .^ 2))
+
+let body = quote
+        # Keep the nested broadcast behind a helper: @accelerate's lifetime
+        # pass can then release the materialized integrand after `sum` without
+        # splitting the pointwise exp/negation/power broadcast tree.
+        integrand = _montecarlo_integrand(x)
+        return _domain_volume(mci) * sum(integrand)
+    end
+    if CUNUMERIC_BENCH_RUNTIME
+        # The cuNumeric benchmark path should exercise the recommended
+        # acceleration scope by default. Other array models share this source
+        # file but receive the ordinary Julia definition below.
+        definition = _define_accelerated_definition(
+            :(run!(mci::MonteCarloIntegration, x)), body
+        )
+        @eval $definition
+    else
+        @eval function run!(mci::MonteCarloIntegration, x)
+            $body
+        end
+    end
+end
 
 # n_samples comes in as N; M is unused.
 function build_benchmark(::Type{MonteCarloIntegration}, ::Type{T}, N, M) where {T}

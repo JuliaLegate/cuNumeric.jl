@@ -8,7 +8,7 @@ n_iter = 10
 n_trial = 5
 check_correctness = true
 auto_size = true
-mem_frac = 0.01
+mem_frac = 0.75
 
 [[montecarlo]]
 T = "Float32"
