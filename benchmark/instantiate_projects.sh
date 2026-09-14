@@ -9,7 +9,7 @@ cd "$benchmark_dir"
 for environment in cuda jacc dagger; do
     echo "Instantiating environments/$environment"
     "$julia_bin" --project="environments/$environment" \
-        -e 'using Pkg; Pkg.instantiate()'
+        -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
 done
 
 echo "Developing local packages and instantiating environments/cunumeric"

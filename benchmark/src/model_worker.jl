@@ -3,6 +3,7 @@
 # called; this file never imports an execution model itself.
 
 using Printf
+using ProgressMeter: ProgressMeter
 using Statistics
 
 include(joinpath(@__DIR__, "model_isolation.jl"))
@@ -44,6 +45,7 @@ end
 model_fence_each_iteration(benchmark) = true
 model_synchronize(benchmark) = nothing
 model_check_correctness(benchmark, config) = "skipped"
+model_correctness_context(benchmark, config) = nothing
 
 function montecarlo_correctness_samples(::Type{T}, n::Integer) where {T}
     return T.(range(T(0), T(10); length=n))
@@ -58,7 +60,7 @@ function montecarlo_correctness_status(actual, expected, ::Type{T}) where {T}
     return isapprox(actual, expected; atol=tolerance, rtol=tolerance) ? "pass" : "fail"
 end
 
-function model_trial(benchmark, config)
+function model_trial(benchmark, config; clock=time_ns)
     GC.gc(true)
     state = model_initialize(benchmark)
     fence_each = model_fence_each_iteration(benchmark)
@@ -71,13 +73,13 @@ function model_trial(benchmark, config)
     # clock, including for models whose operations build asynchronous graphs.
     model_synchronize(benchmark)
 
-    start = time_ns()
+    start = clock()
     for _ in 1:config.n_iter
         model_run!(benchmark, state)
         fence_each && model_synchronize(benchmark)
     end
     model_synchronize(benchmark)
-    elapsed_us = (time_ns() - start) / 1e3
+    elapsed_us = (clock() - start) / 1e3
 
     mean_time_ms = elapsed_us / (config.n_iter * 1e3)
     gflops = config.flops / (mean_time_ms * 1e6)
@@ -104,36 +106,47 @@ function run_model_worker(model::Symbol, label::String, args=ARGS)
     assert_active_model(model)
     config = parse_model_worker_args(args)
     benchmark = model_build_benchmark(config)
+    verbose = get(ENV, "CUNUMERIC_BENCH_VERBOSE", "0") == "1"
+    if verbose && config.check_correctness
+        context = model_correctness_context(benchmark, config)
+        context !== nothing && println(
+            "Correctness check: reference=$(context.reference), " *
+            "dimensions=$(join(context.dims, '×'))",
+        )
+    end
     correctness = config.check_correctness ? model_check_correctness(benchmark, config) : "skipped"
-    println(
-        "[$label] $(config.name) benchmark ($(config.T_name)) on " *
-        "$(config.N)x$(config.M) for $(config.n_iter) iterations " *
-        "($(config.n_warmup) warmup) x $(config.n_trial) trials",
+    verbose && println(
+        "[$label] trials=$(config.n_trial), warmups=$(config.n_warmup), " *
+        "iterations=$(config.n_iter)",
     )
 
     times_ms = Float64[]
     gflops = Float64[]
+    progress = ProgressMeter.Progress(
+        config.n_trial; dt=0.0, desc="$(config.name) trials: ", barlen=40
+    )
+    ProgressMeter.update!(progress, 0)
     for trial in 1:config.n_trial
         time_ms, throughput = model_trial(benchmark, config)
         push!(times_ms, time_ms)
         push!(gflops, throughput)
-        @printf(
-            "[%s] Trial %d/%d: %.5f ms, %.5f GFLOPS\n",
-            label, trial, config.n_trial, time_ms, throughput,
+        ProgressMeter.next!(
+            progress;
+            showvalues=[
+                ("Completed trials", "$(trial)/$(config.n_trial)"),
+                ("Last trial mean (ms/iteration)", @sprintf("%.5f", time_ms)),
+                ("Last trial GFLOP/s", @sprintf("%.5f", throughput)),
+            ],
         )
     end
-    @printf(
-        "[%s] Mean Run Time: %.5f ± %.5f ms\n",
-        label,
-        mean(times_ms),
-        length(times_ms)>1 ? std(times_ms) : 0.0
-    )
-    @printf(
-        "[%s] FLOPS: %.5f ± %.5f GFLOPS\n",
-        label,
-        mean(gflops),
-        length(gflops)>1 ? std(gflops) : 0.0
-    )
     println("[$label] Correctness: $correctness")
+    @printf(
+        "[%s] Mean time: %.5f ± %.5f ms (trial SD)\n",
+        label, mean(times_ms), length(times_ms)>1 ? std(times_ms) : 0.0,
+    )
+    @printf(
+        "[%s] Mean throughput: %.5f ± %.5f GFLOP/s (trial SD)\n",
+        label, mean(gflops), length(gflops)>1 ? std(gflops) : 0.0,
+    )
     return save_model_results(config, model, times_ms, gflops, correctness)
 end

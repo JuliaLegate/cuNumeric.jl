@@ -40,6 +40,9 @@ function model_run!(benchmark::DaggerMonteCarlo{T}, samples) where {T}
 end
 
 model_synchronize(::DaggerMonteCarlo) = Dagger.gpu_synchronize(:CUDA)
+function model_correctness_context(benchmark::DaggerMonteCarlo, config)
+    return (; reference="CPU", dims=(min(benchmark.n_samples, 1024), 1))
+end
 
 function model_check_correctness(benchmark::DaggerMonteCarlo{T}, config) where {T}
     n = min(benchmark.n_samples, 1024)

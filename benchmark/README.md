@@ -67,9 +67,11 @@ native Monte Carlo implementations; unsupported pairs are omitted when another
 selected model supports the run, and rejected if a configuration would have no
 worker at all. CUDA.jl remains single-device.
 
-On a single GPU, the cuNumeric worker also compares a tiny problem against
-CUDA.jl (`pass` / `fail` in the CSV). The timed CUDA.jl run still happens;
-its correctness column is `skipped`. Multi-GPU and cupynumeric skip the check.
+On a single GPU, the cuNumeric worker compares an exact reduced-size problem
+against CUDA.jl (`pass` / `fail` in the CSV). For Monte Carlo, CUDA.jl,
+cuPyNumeric, JACC and Dagger also compare deterministic inputs against a CPU
+reference. Unsupported model/benchmark checks and multi-GPU array checks are
+recorded as `skipped`.
 
 Individual `[[benchmark]]` blocks may override `models`, `n_warmup`, `n_iter`,
 and `n_trial`. Unspecified values inherit from `[Global]`. The legacy global
@@ -81,7 +83,8 @@ cuNumeric, CUDA.jl, JACC and Dagger use separate Julia projects. A selected mode
 can therefore never import a competing programming model accidentally. CUDA is
 still a dependency of GPU programming models where it is their device backend;
 in particular, the optional cuNumeric correctness oracle uses CUDA.jl on one
-small problem. Instantiate the projects once:
+reduced-size problem whose exact dimensions are reported in verbose output.
+Instantiate the projects once:
 
 ```bash
 ./instantiate_projects.sh
