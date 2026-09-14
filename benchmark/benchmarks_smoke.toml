@@ -7,12 +7,10 @@ n_warmup = 2
 n_iter = 10
 n_trial = 5
 check_correctness = true
-auto_size = false
+auto_size = true
 mem_frac = 0.01
 
 [[montecarlo]]
 T = "Float32"
 gpus = 1
 cpus = 1
-N = 1024
-M = 1
