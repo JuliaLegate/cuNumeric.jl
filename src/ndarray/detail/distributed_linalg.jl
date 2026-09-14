@@ -10,8 +10,9 @@ struct _LinalgRuntime
     mp_eligible::Bool
 end
 
-_LinalgRuntime(available::Bool, gpus::Int, procs::Int) =
-    _LinalgRuntime(available, gpus, procs, available && gpus > 1)
+function _LinalgRuntime(available::Bool, gpus::Int, procs::Int)
+    return _LinalgRuntime(available, gpus, procs, available && gpus > 1)
+end
 
 # Populated once in _start_runtime(), including deferred initialization.
 # These describe the configured machine for the lifetime of this runtime.
@@ -75,7 +76,7 @@ function _with_linalg_partitions(f, spec::Tuple, specs::Tuple...)
     end
     try
         return _with_linalg_partitions(specs...) do parts...
-            f(partition, parts...)
+            return f(partition, parts...)
         end
     finally
         finalize(partition.handle)
@@ -161,7 +162,7 @@ function _cholesky_color_shape(n::Int, procs::Int)
     (procs == 1 || n <= MIN_CHOLESKY_MATRIX_SIZE) && return (1, 1)
     tiles = Int(procs)
     while cld(n, tiles) > MIN_CHOLESKY_TILE_SIZE &&
-        2 * tiles <= procs * MAX_CHOLESKY_TILES_PER_PROC
+          2 * tiles <= procs * MAX_CHOLESKY_TILES_PER_PROC
         tiles *= 2
     end
     return (tiles, tiles)

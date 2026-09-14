@@ -20,7 +20,7 @@ include("../src/benchmarks/montecarlo.jl")
             @test 2 * n * sizeof(T) <= P * budget
         end
         @test_throws ErrorException fit_one_gpu(
-            MonteCarloIntegration, T; budget=2 * 8 * sizeof(T) - 1,
+            MonteCarloIntegration, T; budget=2 * 8 * sizeof(T) - 1
         )
     end
 end

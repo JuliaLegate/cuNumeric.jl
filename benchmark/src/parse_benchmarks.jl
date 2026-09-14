@@ -136,20 +136,24 @@ function parse_config(path; only=nothing, fusion_override=nothing, models_overri
             m_auto = mmode == :auto
             use_auto = block_auto && (n_auto || m_auto)
             if use_auto
-                nmode == :pinned && length(nvals) != 1 && error(
-                    "benchmark '$(name)': autosize with pinned N requires a scalar N",
-                )
-                mmode == :pinned && length(mvals) != 1 && error(
-                    "benchmark '$(name)': autosize with pinned M requires a scalar M",
-                )
+                nmode == :pinned && length(nvals) != 1 &&
+                    error(
+                        "benchmark '$(name)': autosize with pinned N requires a scalar N"
+                    )
+                mmode == :pinned && length(mvals) != 1 &&
+                    error(
+                        "benchmark '$(name)': autosize with pinned M requires a scalar M"
+                    )
                 N_hint = nmode == :pinned ? nvals[1] : nothing
                 M_hint = mmode == :pinned ? mvals[1] : nothing
                 n = sweep_length(name, ["gpus" => gpus, "cpus" => cpus])
             else
-                nmode == :auto && error("benchmark '$(name)': N = \"auto\" requires auto_size = true")
-                mmode == :auto && error("benchmark '$(name)': M = \"auto\" requires auto_size = true")
+                nmode == :auto &&
+                    error("benchmark '$(name)': N = \"auto\" requires auto_size = true")
+                mmode == :auto &&
+                    error("benchmark '$(name)': M = \"auto\" requires auto_size = true")
                 nmode == :omitted && error(
-                    "benchmark '$(name)' is missing N (set N or enable auto_size)",
+                    "benchmark '$(name)' is missing N (set N or enable auto_size)"
                 )
                 mmode == :omitted && (mvals = [1])
                 N_hint = nothing

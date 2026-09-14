@@ -12,11 +12,11 @@ using cuTENSOR
 assert_models_not_loaded(("cuNumeric", "JACC", "Dagger"))
 
 function array_backend_entry()
-    cuda_sync() = CUDA.synchronize(;blocking=true)
+    cuda_sync() = CUDA.synchronize(; blocking=true)
     cuda_clock() = (cuda_sync(); time_ns()/1e3)
     return (
-        id=:cudajl,mod=CUDA,label="CUDA.jl",save_as="CUDA.jl",
-        clock=cuda_clock,synchronize=cuda_sync,fused=()->true,
+        id=:cudajl, mod=CUDA, label="CUDA.jl", save_as="CUDA.jl",
+        clock=cuda_clock, synchronize=cuda_sync, fused=()->true,
     )
 end
 

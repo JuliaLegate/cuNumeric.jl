@@ -41,7 +41,8 @@ static inline uint64_t query_machine_config_common(
     Realm::Processor::Kind proc_kind, Realm::Memory::Kind mem_kind) {
   Machine legion_machine{Machine::get_machine()};
   uint64_t total_mem = 0;
-  std::set<Realm::Memory> seen;  // Processors on one node share memory-query results.
+  std::set<Realm::Memory>
+      seen;  // Processors on one node share memory-query results.
 
   Machine::ProcessorQuery procs =
       Machine::ProcessorQuery(legion_machine).only_kind(proc_kind);
@@ -75,7 +76,8 @@ static inline uint64_t query_allocated_bytes_common(
   auto ctx = Legion::Runtime::get_context();
 
   uint64_t current_bytes = 0;
-  std::set<Realm::Memory> seen;  // Count each physical memory once, not per processor.
+  std::set<Realm::Memory>
+      seen;  // Count each physical memory once, not per processor.
 
   Machine::ProcessorQuery procs =
       Machine::ProcessorQuery(legion_machine).only_kind(proc_kind);
