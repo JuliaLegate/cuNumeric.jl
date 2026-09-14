@@ -6,7 +6,7 @@ models = ["cunumeric", "cupynumeric", "cudajl", "jacc", "dagger"]
 n_warmup = 1
 n_iter = 1
 n_trial = 1
-check_correctness = false
+check_correctness = true
 auto_size = false
 mem_frac = 0.01
 

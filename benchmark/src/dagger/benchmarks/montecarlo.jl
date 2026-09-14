@@ -40,3 +40,19 @@ function model_run!(benchmark::DaggerMonteCarlo{T}, samples) where {T}
 end
 
 model_synchronize(::DaggerMonteCarlo) = Dagger.gpu_synchronize(:CUDA)
+
+function model_check_correctness(benchmark::DaggerMonteCarlo{T}, config) where {T}
+    n = min(benchmark.n_samples, 1024)
+    host_samples = montecarlo_correctness_samples(T, n)
+    block = cld(n, benchmark.gpus)
+    samples = Dagger.with_options(; scope=benchmark.scope) do
+        return wait_for_darray(Dagger.DArray(host_samples, Dagger.Blocks(block)))
+    end
+    check_benchmark = DaggerMonteCarlo{T,typeof(benchmark.scope)}(
+        n, benchmark.gpus, benchmark.scope
+    )
+    actual = model_run!(check_benchmark, samples)
+    model_synchronize(check_benchmark)
+    expected = montecarlo_correctness_reference(host_samples)
+    return montecarlo_correctness_status(actual, expected, T)
+end

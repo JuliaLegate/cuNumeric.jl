@@ -43,6 +43,20 @@ end
 
 model_fence_each_iteration(benchmark) = true
 model_synchronize(benchmark) = nothing
+model_check_correctness(benchmark, config) = "skipped"
+
+function montecarlo_correctness_samples(::Type{T}, n::Integer) where {T}
+    return T.(range(T(0), T(10); length=n))
+end
+
+function montecarlo_correctness_reference(samples::AbstractVector{T}) where {T}
+    return (T(10) / length(samples)) * sum(x -> exp(-(x*x)), samples)
+end
+
+function montecarlo_correctness_status(actual, expected, ::Type{T}) where {T}
+    tolerance = T <: Float32 ? 1.0f-3 : 1e-10
+    return isapprox(actual, expected; atol=tolerance, rtol=tolerance) ? "pass" : "fail"
+end
 
 function model_trial(benchmark, config)
     GC.gc(true)
@@ -70,15 +84,16 @@ function model_trial(benchmark, config)
     return mean_time_ms, gflops
 end
 
-function save_model_results(config, model::Symbol, times_ms, gflops)
+function save_model_results(config, model::Symbol, times_ms, gflops, correctness)
     results = get(ENV, "CUNUMERIC_BENCH_RESULTS_DIR", joinpath(@__DIR__, "..", "results"))
     path = joinpath(results, "$(config.name)_$(model).csv")
     mkpath(dirname(path))
     open(path, "a") do io
         for trial in eachindex(times_ms)
             @printf(
-                io, "%s,%d,%d,%d,%d,%.6f,%.6f,skipped\n",
+                io, "%s,%d,%d,%d,%d,%.6f,%.6f,%s\n",
                 model, config.gpus, config.N, config.M, trial, times_ms[trial], gflops[trial],
+                correctness,
             )
         end
     end
@@ -89,9 +104,7 @@ function run_model_worker(model::Symbol, label::String, args=ARGS)
     assert_active_model(model)
     config = parse_model_worker_args(args)
     benchmark = model_build_benchmark(config)
-    config.check_correctness && @warn(
-        "Correctness checking is not implemented for $label; recording skipped",
-    )
+    correctness = config.check_correctness ? model_check_correctness(benchmark, config) : "skipped"
     println(
         "[$label] $(config.name) benchmark ($(config.T_name)) on " *
         "$(config.N)x$(config.M) for $(config.n_iter) iterations " *
@@ -121,6 +134,6 @@ function run_model_worker(model::Symbol, label::String, args=ARGS)
         mean(gflops),
         length(gflops)>1 ? std(gflops) : 0.0
     )
-    println("[$label] Correctness: skipped")
-    return save_model_results(config, model, times_ms, gflops)
+    println("[$label] Correctness: $correctness")
+    return save_model_results(config, model, times_ms, gflops, correctness)
 end

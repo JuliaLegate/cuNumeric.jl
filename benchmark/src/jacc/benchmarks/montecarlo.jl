@@ -37,3 +37,12 @@ end
 
 # Multi.parallel_reduce synchronizes every participating device before return.
 model_synchronize(::JACCMonteCarlo) = nothing
+
+function model_check_correctness(benchmark::JACCMonteCarlo{T}, config) where {T}
+    n = min(benchmark.n_samples, 1024)
+    samples = montecarlo_correctness_samples(T, n)
+    check_benchmark = JACCMonteCarlo{T}(n, benchmark.gpus)
+    actual = model_run!(check_benchmark, JACC.Multi.array(samples))
+    expected = montecarlo_correctness_reference(samples)
+    return montecarlo_correctness_status(actual, expected, T)
+end
