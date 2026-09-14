@@ -16,6 +16,9 @@ class MonteCarlo:
     def dims(self):
         return self.n_samples, 1
 
+    def correctness_dims(self):
+        return min(self.n_samples, 1024), 1
+
     def initialize(self):
         x = (self.T(10) * rand_array(self.n_samples, self.T))
         return (x,)

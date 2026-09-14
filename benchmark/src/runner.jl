@@ -66,7 +66,7 @@ function plan_manifest(runs, budget, raw)
 end
 
 function prepare_backend(fusion, verbose)
-    println("Setting fusion=$fusion and precompiling cuNumeric...")
+    verbose && println("Preparing cuNumeric: fusion=$fusion")
     root = normpath(joinpath(@__DIR__, ".."))
     project = model_project(execution_model(:cunumeric), root)
     julia = get(

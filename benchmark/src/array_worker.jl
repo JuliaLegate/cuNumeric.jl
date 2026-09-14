@@ -49,7 +49,7 @@ function run_array_worker(args=ARGS)
         n_correctness_iter,
     )
 
-    println(
+    get(ENV, "CUNUMERIC_BENCH_VERBOSE", "0") == "1" && println(
         "[$label] $name benchmark ($T_name) on $(N)x$(M) for $n_iter iterations " *
         "($n_warmup warmup) x $n_trial trials",
     )
@@ -57,15 +57,15 @@ function run_array_worker(args=ARGS)
         benchmark, settings; mod=backend.mod, clock=backend.clock,
         synchronize=backend.synchronize,
     )
+    println("[$label] Correctness: $(result.correctness)")
     @printf(
-        "[%s] Mean Run Time: %.5f ± %.5f ms\n",
+        "[%s] Mean time: %.5f ± %.5f ms (trial SD)\n",
         label, mean(result.times_ms), _std(result.times_ms),
     )
     @printf(
-        "[%s] FLOPS: %.5f ± %.5f GFLOPS\n",
+        "[%s] Mean throughput: %.5f ± %.5f GFLOP/s (trial SD)\n",
         label, mean(result.gflops), _std(result.gflops),
     )
-    println("[$label] Correctness: $(result.correctness)")
     return save_result(result, gpus; mod=save_as)
 end
 

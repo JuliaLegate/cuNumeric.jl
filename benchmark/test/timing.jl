@@ -4,6 +4,13 @@ end
 struct GrayScottTimingProbe <: AbstractGrayScott{Float32}
     events::Vector{Symbol}
 end
+
+struct ModelTimingProbe
+    events::Vector{Symbol}
+end
+model_initialize(b::ModelTimingProbe) = (push!(b.events, :initialize); nothing)
+model_run!(b::ModelTimingProbe, state) = push!(b.events, :run)
+model_synchronize(b::ModelTimingProbe) = push!(b.events, :sync)
 const TimingProbes = Union{TimingProbe,GrayScottTimingProbe}
 initialize(b::TimingProbes; mod=Base) = (push!(b.events, :initialize); ())
 run!(b::TimingProbes) = push!(b.events, :run)
@@ -31,4 +38,29 @@ name(::TimingProbes) = "timing probe"
         @test result.times_ms == [2.0]
         @test result.gflops == [0.003]
     end
+end
+
+@testset "Native model timing boundaries" begin
+    events = Symbol[]
+    probe = ModelTimingProbe(events)
+    config = ModelWorkerConfig(
+        1, "probe", Float32, "Float32", 8, 1, 3, 2, 1, false, 1, 6000.0
+    )
+    ticks = Ref(0)
+    clock() = (push!(events, :clock); ticks[] += 6_000_000)
+    time_ms, gflops = model_trial(probe, config; clock)
+    @test events == [
+        :initialize,
+        :run, :sync,
+        :run, :sync,
+        :sync,
+        :clock,
+        :run, :sync,
+        :run, :sync,
+        :run, :sync,
+        :sync,
+        :clock,
+    ]
+    @test time_ms == 2.0
+    @test gflops == 0.003
 end

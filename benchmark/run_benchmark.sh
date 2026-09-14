@@ -61,6 +61,11 @@ fi
 export CUNUMERIC_BENCH_ACTIVE_MODEL=$MODEL
 export CUNUMERIC_BENCH_GPUS=$GPUS
 export CUNUMERIC_BENCH_CPUS=$CPUS
+export CUNUMERIC_BENCH_VERBOSE=$VERBOSE
+
+# Do not allow system CUDA/Legate library paths to override the artifacts or
+# libraries selected by an isolated model environment.
+unset LD_LIBRARY_PATH
 
 if [[ $VERBOSE == 1 ]]; then
     printf 'Running [%s]:' "$MODEL"

@@ -126,8 +126,11 @@ end
 # CUDA.jl 6: the worker may pass `CUDA` or `CUDACore` as `mod`.
 is_cuda_backend(mod) = nameof(mod) === :CUDA || nameof(mod) === :CUDACore
 
-function correctness_applies(gs::GlobalSettings, mod)
-    return gs.n_gpu == 1
+cuda_correctness_supported(::AbstractBenchmark) = false
+
+function correctness_applies(gs::GlobalSettings, mod, benchmark)
+    gs.n_gpu == 1 || return false
+    return !is_cuda_backend(mod) || cuda_correctness_supported(benchmark)
 end
 
 correctness_reference_label(mod) = is_cuda_backend(mod) ? "CPU" : "CUDA.jl"
@@ -257,30 +260,37 @@ function run_benchmark(
     b::AbstractBenchmark, gs::GlobalSettings;
     mod=cuNumeric, clock=get_time_microseconds, synchronize=benchmark_synchronize,
 )
+    verbose = get(ENV, "CUNUMERIC_BENCH_VERBOSE", "0") == "1"
     correctness = "skipped"
     if gs.check_correctness
-        if correctness_applies(gs, mod)
-            println(
-                "Checking correctness against $(correctness_reference_label(mod)) " *
-                "on a small problem...",
-            )
-            flush(stdout)
+        if correctness_applies(gs, mod, b)
+            if verbose
+                check_dims = join(dims(correctness_problem(b)), '×')
+                println(
+                    "Correctness check: reference=$(correctness_reference_label(mod)), " *
+                    "dimensions=$check_dims",
+                )
+                flush(stdout)
+            end
             correctness = check_benchmark_correctness(b, gs; mod=mod)
         else
             correctness = "skipped"
         end
     end
 
-    println("Correctness: $(correctness)")
-    println(
-        "Starting $(gs.n_trial) trials; each includes initialization, " *
-        "$(gs.n_warmup) warmups, and $(gs.n_iter) timed iterations; " *
-        (fence_each_iteration(b) ? "per-iteration synchronization." : "batch synchronization."),
-    )
-    flush(stdout)
+    if verbose
+        println(
+            "Trials: count=$(gs.n_trial), warmups=$(gs.n_warmup), " *
+            "iterations=$(gs.n_iter), synchronization=" *
+            (fence_each_iteration(b) ? "per-iteration" : "per-trial"),
+        )
+        flush(stdout)
+    end
     times_ms = Float64[]
     gflops = Float64[]
-    progress = ProgressMeter.Progress(gs.n_trial; dt=0.0, desc="$(name(b)) trials: ")
+    progress = ProgressMeter.Progress(
+        gs.n_trial; dt=0.0, desc="$(name(b)) trials: ", barlen=40
+    )
     ProgressMeter.update!(progress, 0)
     for trial in 1:gs.n_trial
         t, g = _trial(b, gs; mod=mod, clock=clock, synchronize=synchronize)
@@ -291,8 +301,8 @@ function run_benchmark(
             progress;
             showvalues=[
                 ("Completed trials", "$(trial)/$(gs.n_trial)"),
-                ("Last trial mean (ms/iteration)", t),
-                ("Last trial GFLOP/s", g),
+                ("Last trial mean (ms/iteration)", @sprintf("%.5f", t)),
+                ("Last trial GFLOP/s", @sprintf("%.5f", g)),
             ],
         )
     end
