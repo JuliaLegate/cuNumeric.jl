@@ -1,7 +1,7 @@
 # From benchmark/, run each case in a fresh process:
-# bash run_benchmark.sh mwe_fusion_indexing.jl --gpus 8 --cpus 8 2454267008 fused
-# bash run_benchmark.sh mwe_fusion_indexing.jl --gpus 8 --cpus 8 2454267072 fused
-# bash run_benchmark.sh mwe_fusion_indexing.jl --gpus 8 --cpus 8 2454267072 native
+# bash run_benchmark.sh --model=cunumeric --gpus=8 --cpus=8 -- julia --project=. mwe_fusion_indexing.jl 8 2454267008 fused
+# bash run_benchmark.sh --model=cunumeric --gpus=8 --cpus=8 -- julia --project=. mwe_fusion_indexing.jl 8 2454267072 fused
+# bash run_benchmark.sh --model=cunumeric --gpus=8 --cpus=8 -- julia --project=. mwe_fusion_indexing.jl 8 2454267072 native
 # These straddle 2^31 at the last partition's START (7*N/8), not global N.
 # With N near 2^31 and eight equal partitions, all starts still fit Int32.
 # Also test the original failing N=4266645824, and repeat with --gpus 1.
@@ -27,7 +27,7 @@ function landmarks(n, p)
 end
 
 function main(args=ARGS)
-    length(args)==3 || error("Use run_benchmark.sh with --gpus P --cpus C N fused|native")
+    length(args)==3 || error("Pass P N fused|native; see the run_benchmark.sh examples above")
     p,n = parse.(Int,args[1:2])
     mode = args[3]
     p>0 && n>0 || error("P and N must be positive")

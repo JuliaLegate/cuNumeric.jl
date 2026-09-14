@@ -1,28 +1,33 @@
 # Shared sizing: explicit plans, no runtime probes and no mutable sizing cache.
 struct PlannedRun
     spec::BenchmarkSpec
-    backend::Symbol
+    model::Symbol
     N::Int
     M::Int
     memory::MemoryEstimate
 end
 
-function workspace_bound(raw, name, backend)
+function workspace_bound(raw, name, model)
     entry = get(get(raw, "workspace", Dict()), name, Dict())
-    value = get(entry, string(backend), nothing)
+    value = get(entry, string(model), nothing)
     value === nothing && return nothing
-    value isa Integer && value >= 0 || error("workspace.$name.$backend must be a nonnegative byte count")
+    value isa Integer && value >= 0 || error("workspace.$name.$model must be a nonnegative byte count")
     return Int(value)
 end
 
 function contexts(spec, gs, raw)
-    backends = Symbol[:cunumeric]
-    if !endswith(spec.name, "_accelerated")
-        spec.cuda && spec.gpus == 1 && push!(backends, :cudajl)
-        gs.cupynumeric && push!(backends, :cupynumeric)
+    selected = ExecutionModel[]
+    for id in spec.models
+        model = execution_model(id)
+        supports_run(model, spec.name, spec.gpus) && push!(selected, model)
     end
-    return [MemoryContext(; backend, fusion=spec.fusion, gpus=spec.gpus,steps=spec.n_warmup+spec.n_iter,
-        workspace_bytes=workspace_bound(raw, spec.name, backend)) for backend in backends]
+    isempty(selected) && error(
+        "$(spec.name) on $(spec.gpus) GPU(s) has no implementation among selected models " *
+        "$(join(string.(spec.models), ", "))",
+    )
+    return [MemoryContext(; model=model_id(model), fusion=spec.fusion,
+        gpus=spec.gpus,steps=spec.n_warmup+spec.n_iter,
+        workspace_bytes=workspace_bound(raw, spec.name, model_id(model))) for model in selected]
 end
 
 function validate_spec(s)
@@ -64,12 +69,13 @@ function candidate_runs(specs,gs,raw,baseline)
         n,m = dimensions_at(s,baseline)
         b = build_benchmark(BENCHMARKS[s.name],parse_bench_type(s.T),n,m)
         for c in contexts(s,gs,raw)
-            # Comparison backends have no fusion setting and run only once.
-            key = (s.name,s.T,s.gpus,s.cpus,n,m,c.backend,
-                c.backend == :cunumeric ? s.fusion : nothing,s.n_iter,s.n_warmup,s.n_trial)
+            # Models without a fusion setting run only once.
+            key = (s.name,s.T,s.gpus,s.cpus,n,m,c.model,
+                uses_fusion(execution_model(c.model)) ? s.fusion : nothing,
+                s.n_iter,s.n_warmup,s.n_trial)
             key in seen && continue
             push!(seen,key)
-            push!(runs,PlannedRun(s,c.backend,n,m,memory_estimate(b,c)))
+            push!(runs,PlannedRun(s,c.model,n,m,memory_estimate(b,c)))
         end
     end
     # Multiple explicit blocks must not create misleading overlays.
@@ -131,10 +137,10 @@ function print_plan(runs,budget)
     println("Per-GPU budget: $budget bytes; sizes are shared within each comparison group.")
     for r in runs
         m = r.memory
-        println("$(r.spec.name) / $(r.backend) / $(r.spec.T) fusion=$(r.spec.fusion) GPUs=$(r.spec.gpus) N=$(r.N) M=$(r.M)")
+        println("$(r.spec.name) / $(r.model) / $(r.spec.T) fusion=$(r.spec.fusion) GPUs=$(r.spec.gpus) N=$(r.N) M=$(r.M)")
         println("  initialization=$(m.initialization), iteration=$(m.iteration), workspace=$(m.workspace), peak=$(peak_bytes(m)) bytes")
         println("  $(m.explanation)")
     end
     limiting = runs[argmax([peak_bytes(r.memory) for r in runs])]
-    println("Largest planned peak: $(limiting.spec.name) / $(limiting.backend) / $(limiting.spec.gpus) GPUs")
+    println("Largest planned peak: $(limiting.spec.name) / $(limiting.model) / $(limiting.spec.gpus) GPUs")
 end

@@ -1,0 +1,18 @@
+# Minimal end-to-end launcher check:
+# julia --project=. run.jl --config=benchmarks_smoke.toml
+# Select another model with --models=cunumeric, --models=jacc, etc.
+[Global]
+models = ["cudajl"]
+n_warmup = 1
+n_iter = 1
+n_trial = 1
+check_correctness = false
+auto_size = false
+mem_frac = 0.01
+
+[[montecarlo]]
+T = "Float32"
+gpus = 1
+cpus = 1
+N = 1024
+M = 1

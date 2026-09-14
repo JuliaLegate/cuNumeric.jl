@@ -1,8 +1,8 @@
-# From benchmark/: bash run_benchmark.sh diagnose_montecarlo.jl --gpus 8 --cpus 8 4266645824
+# From benchmark/: bash run_benchmark.sh --model=cunumeric --gpus=8 --cpus=8 -- julia --project=. diagnose_montecarlo.jl 8 4266645824
 # Diagnostic only: fences deliberately change execution timing.
 using cuNumeric
 
-length(ARGS) == 2 || error("Use run_benchmark.sh with --gpus <P> --cpus <C> <N>")
+length(ARGS) == 2 || error("Pass <P> <N>; see the run_benchmark.sh example above")
 const N = parse(Int, ARGS[2])
 N > 0 || error("N must be positive")
 println("Monte Carlo diagnostic: GPUs=$(ARGS[1]), N=$N, fusion=$(cuNumeric.FUSE_BROADCAST_EXPRS)")

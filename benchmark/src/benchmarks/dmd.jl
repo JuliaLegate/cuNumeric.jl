@@ -87,8 +87,12 @@ function initialize(b::AbstractDMD{T}; mod=cuNumeric) where {T}
     return (X,)
 end
 
-_dmd_T(A) = A isa NDArray ? cuNumeric.transpose(A) : transpose(A)
-_dmd_row(v) = v isa NDArray ? cuNumeric.reshape(v, (1, length(v))) : reshape(v, 1, length(v))
+_is_cunumeric_array(A) = nameof(typeof(A)) === :NDArray
+_dmd_T(A) = _is_cunumeric_array(A) ?
+    getfield(@__MODULE__, :cuNumeric).transpose(A) : transpose(A)
+_dmd_row(v) = _is_cunumeric_array(v) ?
+    getfield(@__MODULE__, :cuNumeric).reshape(v, (1, length(v))) :
+    reshape(v, 1, length(v))
 
 # svd / eigen return factorizations whose stores the lifetime rewriter cannot
 # see, so those stay outside the macro. The GEMM lift is wrapped.

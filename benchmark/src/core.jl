@@ -21,8 +21,7 @@ Base.@kwdef struct GlobalSettings
     n_iter::Int # Number of iterations to run per trial
     n_trial::Int = 1 # Number of independent trials to run. Benchmark
     n_gpu::Int = 0
-    cupynumeric::Bool = false # also run baselines under cupynumeric for comparison
-    cuda::Bool = false # also run under CUDA.jl for comparison (single-GPU only)
+    models::Vector{Symbol} = [:cunumeric]
     check_correctness::Bool = false
     n_correctness_iter::Int = 5
     auto_size::Bool = false
@@ -162,7 +161,7 @@ to_host(A) = Array(A)
 
 function to_backend(mod, A::AbstractArray)
     h = A isa Array ? A : Array(A)
-    mod === cuNumeric && return NDArray(h)
+    nameof(mod) === :cuNumeric && return mod.NDArray(h)
     is_cuda_backend(mod) && return mod.CuArray(h)
     return h
 end

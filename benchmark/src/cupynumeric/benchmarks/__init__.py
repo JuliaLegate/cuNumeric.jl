@@ -1,3 +1,4 @@
+# cuPyNumeric benchmark registry.
 import importlib
 import pkgutil
 

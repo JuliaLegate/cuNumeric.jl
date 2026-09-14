@@ -1,6 +1,7 @@
 using Test, Statistics, TOML
 include("../src/core.jl")
 include_benchmarks()
+include("../src/models.jl")
 include("../src/parse_benchmarks.jl")
 include("../src/memory.jl")
 include("../src/planning.jl")
@@ -50,17 +51,17 @@ end
 end
 
 @testset "cuPyNumeric preflight" begin
-    gs = GlobalSettings(;n_warmup=1,n_iter=1,cupynumeric=true)
-    s = BenchmarkSpec("montecarlo","Float32",1,8,true,false,1,1,1,[0,0],true,nothing,nothing)
+    gs = GlobalSettings(;n_warmup=1,n_iter=1,models=[:cunumeric,:cupynumeric])
+    s = BenchmarkSpec("montecarlo","Float32",1,8,true,gs.models,1,1,1,[0,0],true,nothing,nothing)
     runs = plan_runs([s],gs,RAW,GROUPS,1000000)
     env = Dict("CUNUMERIC_BENCH_CONDA"=>"/test/conda","CUPYNUMERIC_ENV"=>"testenv")
-    @test_throws ErrorException preflight_backends(runs;env,which=x->nothing)
-    @test_throws ErrorException preflight_backends(runs;env,which=identity,check=c->false)
-    @test preflight_backends(runs;env,which=identity,check=c->true) === nothing
+    @test_throws ErrorException preflight_models(runs;env,which=x->nothing)
+    @test_throws ErrorException preflight_models(runs;env,which=identity,check=c->false)
+    @test preflight_models(runs;env,which=identity,check=c->true) === nothing
 end
 
-function spec(name;T="Float32",gpus=1,fusion=true,cuda=false,N=nothing,M=nothing,auto=true)
-    BenchmarkSpec(name,T,gpus,8,fusion,cuda,2,5,2,
+function spec(name;T="Float32",gpus=1,fusion=true,models=[:cunumeric],N=nothing,M=nothing,auto=true)
+    BenchmarkSpec(name,T,gpus,8,fusion,collect(models),2,5,2,
         auto ? [0,0] : [N,M],auto,N,M)
 end
 
@@ -71,6 +72,8 @@ end
     @test_throws ErrorException parse_config(CONFIG;only="missing")
     o = cli_options(["--only=montecarlo","--fusion=both","--dry-run"])
     @test o.only == "montecarlo" && o.dry && o.fusion == [true,false]
+    @test cli_options(["--models=jacc,dagger"]).models == [:jacc,:dagger]
+    @test_throws ErrorException cli_options(["--models=missing"])
     @test_throws ErrorException cli_options(["--typo"])
     p = positional_spec(["1","8","montecarlo","Float32","auto","1","5","2","2"],gs)
     @test p.autosize && p.M_hint==1 && p.n_iter==5
@@ -78,11 +81,85 @@ end
         budget_provider=(f,p)->(1_000_000,f),executor=(args...)->error("dry-run launched workers"))==0
 end
 
+@testset "Execution model registry and isolation" begin
+    @test parse_models(["cuNumeric", "CUDA.jl", "JACC", "Dagger.jl"]) ==
+        [:cunumeric,:cudajl,:jacc,:dagger]
+    @test supports_benchmark(execution_model(:jacc),"montecarlo")
+    @test !supports_benchmark(execution_model(:jacc),"gemm")
+    @test !supports_gpu_count(execution_model(:cudajl),2)
+
+    gs, specs = parse_config(CONFIG;only="montecarlo",models_override=[:jacc,:dagger])
+    runs = plan_runs(specs,gs,RAW,GROUPS,1_000_000)
+    @test Set(r.model for r in runs) == Set((:jacc,:dagger))
+    @test all(r.model != :cunumeric for r in runs)
+
+    request = WorkerRequest(2,8,"montecarlo","Float32",1024,1,3,1,2,false,5,1024.0)
+    one_gpu_request = WorkerRequest(
+        1,8,"montecarlo","Float32",1024,1,3,1,2,false,5,1024.0,
+    )
+    cunumeric_cmd = join(
+        wrapped_worker_command(execution_model(:cunumeric),one_gpu_request,pwd()).exec,' ',
+    )
+    cuda_cmd = join(
+        wrapped_worker_command(execution_model(:cudajl),one_gpu_request,pwd()).exec,' ',
+    )
+    jacc_cmd = join(wrapped_worker_command(execution_model(:jacc),request,pwd()).exec,' ')
+    dagger_cmd = join(wrapped_worker_command(execution_model(:dagger),request,pwd()).exec,' ')
+    @test occursin(joinpath("src","cunumeric","single.jl"),cunumeric_cmd)
+    @test occursin("--project=$(joinpath(pwd(),"environments","cunumeric"))",cunumeric_cmd)
+    @test occursin(joinpath("src","cuda","single.jl"),cuda_cmd)
+    @test occursin("--project=$(joinpath(pwd(),"environments","cuda"))",cuda_cmd)
+    @test occursin(joinpath("src","jacc","single.jl"),jacc_cmd)
+    @test occursin("--project=$(joinpath(pwd(),"environments","jacc"))",jacc_cmd)
+    @test occursin(joinpath("src","dagger","single.jl"),dagger_cmd)
+    @test occursin("--project=$(joinpath(pwd(),"environments","dagger"))",dagger_cmd)
+
+    @test selected_cuda_visibility(2;env=Dict{String,String}()) == "0,1"
+    scheduler_env = Dict("CUDA_VISIBLE_DEVICES"=>"GPU-a, MIG-b, 7")
+    @test selected_cuda_visibility(2;env=scheduler_env) == "GPU-a,MIG-b"
+    @test_throws ErrorException selected_cuda_visibility(
+        2;env=Dict("CUDA_VISIBLE_DEVICES"=>"GPU-a"),
+    )
+    @test_throws ErrorException selected_cuda_visibility(
+        1;env=Dict("CUDA_VISIBLE_DEVICES"=>""),
+    )
+
+    cunumeric_project = read(
+        joinpath(@__DIR__,"..","environments","cunumeric","Project.toml"),String,
+    )
+    cuda_project = read(
+        joinpath(@__DIR__,"..","environments","cuda","Project.toml"),String,
+    )
+    @test occursin("cuNumeric =",cunumeric_project)
+    @test !occursin("JACC =",cunumeric_project)
+    @test !occursin("Dagger =",cunumeric_project)
+    @test occursin("CUDA =",cuda_project)
+    @test !occursin("cuNumeric =",cuda_project)
+    @test !occursin("JACC =",cuda_project)
+    @test !occursin("Dagger =",cuda_project)
+
+    jacc_manifest = read(joinpath(@__DIR__,"..","environments","jacc","Manifest.toml"),String)
+    dagger_manifest = read(joinpath(@__DIR__,"..","environments","dagger","Manifest.toml"),String)
+    @test occursin("[[deps.JACC]]",jacc_manifest)
+    @test !occursin("[[deps.Dagger]]",jacc_manifest)
+    @test !occursin("[[deps.cuNumeric]]",jacc_manifest)
+    @test occursin("[[deps.Dagger]]",dagger_manifest)
+    @test !occursin("[[deps.JACC]]",dagger_manifest)
+    @test !occursin("[[deps.cuNumeric]]",dagger_manifest)
+
+    runner = joinpath(@__DIR__,"..","run_benchmark.sh")
+    ok = `bash $runner --model=jacc --gpus=1 --cpus=0 -- bash -c $("test \"\$CUNUMERIC_BENCH_ACTIVE_MODEL\" = jacc")`
+    nested = addenv(`bash $runner --model=jacc --gpus=1 --cpus=0 -- true`,
+        "CUNUMERIC_BENCH_ACTIVE_MODEL"=>"cunumeric")
+    @test success(pipeline(ok;stdout=devnull,stderr=devnull))
+    @test !success(pipeline(nested;stdout=devnull,stderr=devnull))
+end
+
 @testset "Memory dispatch matrix" begin
-    for T in (Float32,Float64), fusion in (false,true), backend in (:cunumeric,:cudajl,:cupynumeric)
-        c = MemoryContext(;backend,fusion,workspace_bytes=0)
+    for T in (Float32,Float64), fusion in (false,true), model in (:cunumeric,:cudajl,:cupynumeric)
+        c = MemoryContext(;model,fusion,workspace_bytes=0)
         for (name,B) in BENCHMARKS
-            endswith(name,"_accelerated") && backend != :cunumeric && continue
+            endswith(name,"_accelerated") && model != :cunumeric && continue
             m = B <: AbstractDMD ? 16 : B <: AbstractGrayScott || B <: GEMM ? 64 : 1
             b = build_benchmark(B,T,64,m)
             estimate = memory_estimate(b,c)
@@ -92,18 +169,19 @@ end
     end
     b = MonteCarloIntegration{Float32}(;n_samples=1024)
     @test peak_bytes(memory_estimate(b,MemoryContext())) == 8192
-    @test peak_bytes(memory_estimate(b,MemoryContext(;backend=:cupynumeric))) == 12288
+    @test peak_bytes(memory_estimate(b,MemoryContext(;model=:cupynumeric))) == 12288
     @test peak_bytes(memory_estimate(b,MemoryContext(;fusion=false))) == 16384
     @test_throws ErrorException memory_estimate(GEMM{Float32}(;N=64,M=64),MemoryContext())
-    @test_throws ErrorException memory_estimate(b,MemoryContext(;backend=:cudajl,gpus=2))
+    @test_throws ErrorException memory_estimate(b,MemoryContext(;model=:cudajl,gpus=2))
     d = DMDBaseline{Float32}(;N=1024,M=16)
     @test peak_bytes(memory_estimate(d,MemoryContext(;gpus=1,workspace_bytes=0))) ==
         peak_bytes(memory_estimate(d,MemoryContext(;gpus=8,workspace_bytes=0)))
 end
 
 @testset "Shared sweep planning" begin
-    gs = GlobalSettings(;n_warmup=2,n_iter=5,cupynumeric=true)
-    ss = [spec("montecarlo";gpus=p,fusion=f,cuda=true) for p in (1,2,4,8) for f in (true,false)]
+    gs = GlobalSettings(;n_warmup=2,n_iter=5)
+    all_models = [:cunumeric,:cudajl,:cupynumeric]
+    ss = [spec("montecarlo";gpus=p,fusion=f,models=all_models) for p in (1,2,4,8) for f in (true,false)]
     runs = plan_runs(ss,gs,RAW,GROUPS,1_000_000)
     @test length(runs)==8+4+1
     for p in (1,2,4,8)
@@ -111,10 +189,10 @@ end
     end
     @test all(peak_bytes(r.memory)<=1_000_000 for r in runs)
     @test maximum(r.N for r in runs)==8minimum(r.N for r in runs)
-    fused = plan_runs([spec("montecarlo")],gs,RAW,GROUPS,1_000_000)
+    fused = plan_runs([spec("montecarlo";models=all_models)],gs,RAW,GROUPS,1_000_000)
     @test first(fused).N >= first(runs).N
-    onlyoff = plan_runs([spec("montecarlo";fusion=false)],gs,RAW,GROUPS,1_000_000)
-    @test any(r.backend==:cupynumeric for r in onlyoff)
+    onlyoff = plan_runs([spec("montecarlo";fusion=false,models=all_models)],gs,RAW,GROUPS,1_000_000)
+    @test any(r.model==:cupynumeric for r in onlyoff)
     @test_throws ErrorException plan_runs([spec("montecarlo";N=1000000,M=1,auto=false)],gs,RAW,GROUPS,100)
     @test_throws ErrorException plan_runs([spec("montecarlo";N=8,M=1,auto=false),spec("montecarlo";N=16,M=1,auto=false)],gs,RAW,GROUPS,100000)
     @test_throws ErrorException plan_runs([spec("montecarlo";gpus=0)],gs,RAW,GROUPS,100000)
@@ -156,7 +234,7 @@ end
     @test estimate_scaling(GEMM{Float32}(;N=64,M=32),8)==(128,64)
     @test estimate_scaling(baseline,4)==(128,64)
     @test_throws ErrorException memory_estimate(baseline,MemoryContext(;steps=0))
-    @test_throws ErrorException memory_estimate(accelerated,MemoryContext(;backend=:cupynumeric))
+    @test_throws ErrorException memory_estimate(accelerated,MemoryContext(;model=:cupynumeric))
     gs = GlobalSettings(;n_warmup=1,n_iter=1)
     ss = [spec(n;gpus=p,fusion=f) for n in ("grayscott_baseline","grayscott_function_accelerated") for p in (1,4) for f in (false,true)]
     runs = plan_runs(ss,gs,RAW,GROUPS,10_000_000)
@@ -172,7 +250,10 @@ end
     mktempdir() do dir
         calls = Cmd[]
         launch(cmd) = (push!(calls,cmd); nothing)
-        @test execute_plan(runs,gs,opts,1_000_000,RAW;launch,prepare=(f,v)->nothing,results_root=dir)==0
+        @test execute_plan(
+            runs,gs,opts,1_000_000,RAW;launch,prepare=(f,v)->nothing,
+            results_root=dir,preflight=runs->nothing,
+        )==0
         @test length(calls)==4 # two workers and one plot per dtype
         run_dir = only(readdir(dir;join=true))
         manifest = TOML.parsefile(joinpath(run_dir,"manifest.toml"))
@@ -188,7 +269,10 @@ end
             calls[] += 1
             calls[] == 1 && error("simulated worker failure")
         end
-        @test execute_plan(runs,gs,opts,1_000_000,RAW;launch=fail_first,prepare=(f,v)->nothing,results_root=dir)==1
+        @test execute_plan(
+            runs,gs,opts,1_000_000,RAW;launch=fail_first,
+            prepare=(f,v)->nothing,results_root=dir,preflight=runs->nothing,
+        )==1
         @test calls[]==4 # no retry, later worker and plots still run
         manifest = TOML.parsefile(joinpath(only(readdir(dir;join=true)),"manifest.toml"))
         @test manifest["status"]=="incomplete"
