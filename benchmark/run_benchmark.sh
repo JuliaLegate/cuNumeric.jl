@@ -1,85 +1,71 @@
 #!/bin/bash
 
-if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 <filename.jl> [--gpus <num_gpus>] [--cpus <num_cpus>] [extra_args...]"
-    exit 1
-fi
+set -euo pipefail
 
-# Parse arguments
-FILENAME=$1
-shift
-
-GPUS=0
-CPUS=1
-PYENV=""
+MODEL=""
+GPUS=""
+CPUS=""
 VERBOSE=0
 
 while [[ $# -gt 0 ]]; do
-    case $1 in
-        --gpus)
-            GPUS=$2
-            shift 2
+    case "$1" in
+        --model=*)
+            MODEL=${1#*=}
+            shift
             ;;
-        --cpus)
-            CPUS=$2
-            shift 2
+        --gpus=*)
+            GPUS=${1#*=}
+            shift
             ;;
-        --pyenv)
-            PYENV=$2
-            shift 2
+        --cpus=*)
+            CPUS=${1#*=}
+            shift
             ;;
         --verbose)
             VERBOSE=1
             shift
             ;;
-        *)
-            # Collect all other arguments as extra arguments
-            EXTRA_ARGS+=("$1")
+        --)
             shift
+            break
+            ;;
+        *)
+            echo "Error: unknown runner option '$1'." >&2
+            exit 2
             ;;
     esac
 done
 
-# Validate the filename exists
-if [[ ! -f $FILENAME ]]; then
-    echo "Error: File $FILENAME does not exist."
-    exit 1
+if [[ -z $MODEL || -z $GPUS || -z $CPUS || $# -eq 0 ]]; then
+    echo "Usage: $0 --model=<name> --gpus=<n> --cpus=<n> [--verbose] -- <command> [args...]" >&2
+    exit 2
 fi
 
-# Inform user of the configuration
-if [[ $GPUS -lt 0 ]]; then
-    echo "GPUs invalid, using gpus = 0"
-    exit
+if ! [[ $GPUS =~ ^[1-9][0-9]*$ ]]; then
+    echo "Error: GPUs must be a positive integer; got '$GPUS'." >&2
+    exit 2
 fi
 
-if [[ $CPUS -lt 0 ]]; then
-    echo "CPUs invalid, using cpus = 1"
-    exit
+if ! [[ $CPUS =~ ^[0-9]+$ ]]; then
+    echo "Error: CPUs must be a nonnegative integer; got '$CPUS'." >&2
+    exit 2
 fi
 
-export LEGATE_AUTO_CONFIG=1
-export LEGATE_CONFIG="--cpus=$CPUS --gpus=$GPUS"
-if [[ -n ${CUNUMERIC_BENCH_FBMEM_MB:-} ]]; then
-    export LEGATE_CONFIG="$LEGATE_CONFIG --fbmem=$CUNUMERIC_BENCH_FBMEM_MB"
+# A worker process has exactly one execution-model identity. Reject nested or
+# accidentally reused launch environments instead of allowing a worker to load
+# a second model under a misleading result label.
+if [[ -n ${CUNUMERIC_BENCH_ACTIVE_MODEL:-} && $CUNUMERIC_BENCH_ACTIVE_MODEL != "$MODEL" ]]; then
+    echo "Error: refusing to launch model '$MODEL' inside model '$CUNUMERIC_BENCH_ACTIVE_MODEL'." >&2
+    exit 2
 fi
-export LEGATE_SHOW_CONFIG=$VERBOSE
+export CUNUMERIC_BENCH_ACTIVE_MODEL=$MODEL
+export CUNUMERIC_BENCH_GPUS=$GPUS
+export CUNUMERIC_BENCH_CPUS=$CPUS
 
-export LD_LIBRARY_PATH=""
-
-[[ $VERBOSE == 1 ]] && echo "Running $FILENAME with $CPUS CPUs and $GPUS GPUs"
-
-# Python (cupynumeric) workers run in the conda env built by install_cupynumeric.sh;
-# Julia (cuNumeric) workers run against the local project.
-if [[ $FILENAME == *.py ]]; then
-    if [[ -z $PYENV ]]; then
-        echo "Error: running a .py worker requires --pyenv <conda-env> (run install_cupynumeric.sh first)."
-        exit 1
-    fi
-    CMD=("${CUNUMERIC_BENCH_CONDA:-${CONDA_EXE:-conda}}" run --no-capture-output -n "$PYENV" python "$FILENAME" "$GPUS" "${EXTRA_ARGS[@]}")
-else
-    CMD=("${CUNUMERIC_BENCH_JULIA:-julia}" --project "$FILENAME" "$GPUS" "${EXTRA_ARGS[@]}")
+if [[ $VERBOSE == 1 ]]; then
+    printf 'Running [%s]:' "$MODEL"
+    printf ' %q' "$@"
+    printf '\n'
 fi
 
-[[ $VERBOSE == 1 ]] && printf "Running: %q " "${CMD[@]}"
-[[ $VERBOSE == 1 ]] && printf '\n'
-"${CMD[@]}"
+exec "$@"

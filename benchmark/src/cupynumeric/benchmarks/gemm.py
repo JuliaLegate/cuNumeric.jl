@@ -1,3 +1,4 @@
+# cuPyNumeric implementation.
 import cupynumeric as np
 
 from core import register_benchmark, rand_array, zeros_array
