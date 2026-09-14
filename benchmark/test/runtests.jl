@@ -10,6 +10,7 @@ include("../src/result_rows.jl")
 include("timing.jl")
 
 const CONFIG = joinpath(@__DIR__, "..", "benchmarks.toml")
+const SMOKE_CONFIG = joinpath(@__DIR__, "..", "benchmarks_smoke.toml")
 const RAW = TOML.parsefile(CONFIG)
 const GROUPS = parse_plot_groups(CONFIG)
 
@@ -84,6 +85,14 @@ end
     @test main(["--only=montecarlo", "--dry-run"];
         budget_provider=(f, p)->(1_000_000, f),
         executor=(args...)->error("dry-run launched workers"))==0
+end
+
+@testset "Smoke configuration" begin
+    gs, specs = parse_config(SMOKE_CONFIG)
+    @test gs.models == [:cunumeric, :cupynumeric, :cudajl, :jacc, :dagger]
+    @test length(specs) == 1
+    @test only(specs).name == "montecarlo"
+    @test only(specs).models == gs.models
 end
 
 @testset "Execution model registry and isolation" begin

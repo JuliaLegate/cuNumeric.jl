@@ -84,11 +84,13 @@ in particular, the optional cuNumeric correctness oracle uses CUDA.jl on one
 small problem. Instantiate the projects once:
 
 ```bash
-julia --project=environments/cunumeric -e 'using Pkg; Pkg.instantiate()'
-julia --project=environments/cuda -e 'using Pkg; Pkg.instantiate()'
-julia --project=environments/jacc -e 'using Pkg; Pkg.instantiate()'
-julia --project=environments/dagger -e 'using Pkg; Pkg.instantiate()'
+./instantiate_projects.sh
 ```
+
+The script develops cuNumeric from `../` and CNPreferences from
+`../lib/CNPreferences` into the isolated cuNumeric environment before
+instantiating it. Set `CUNUMERIC_BENCH_JULIA` to use a Julia executable other
+than `julia`.
 
 `src/cunumeric/`, `src/cuda/`, `src/jacc/`, `src/dagger/` and
 `src/cupynumeric/` contain the model implementations. cuNumeric and CUDA.jl
