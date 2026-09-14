@@ -38,16 +38,20 @@ using cunumeric_jl_wrapper_jll
 
 import Base: axes, convert, copy, copyto!, inv, isfinite, sqrt, -, +, *, ==, !=,
     isapprox, read, view, maximum, minimum, prod, sum, getindex, setindex!,
-    sum, prod
+    sum, prod, argmax, argmin
 
 using LinearAlgebra
 import LinearAlgebra: mul!
 
+import AbstractFFTs: fft, ifft, fft!, ifft!
+
 using Random
-import Random: rand!
+import Random: rand!, randn!, randexp!
+
+using StaticArrays: SVector
 
 using StatsBase
-import StatsBase: var, mean
+import StatsBase: var, mean, std
 
 include(joinpath(@__DIR__, "../deps/version.jl"))
 include("utilities/preference.jl")
@@ -56,6 +60,10 @@ const HAS_CUDA = LegatePreferences.has_cuda_gpu()
 if !HAS_CUDA
     @warn "We couldn't find a CUDA-enabled GPU. If you have an NVIDIA GPU something might be wrong."
 end
+
+# `HAS_CUDA` describes the machine. A CPU-only Legate configuration on a GPU
+# machine must still avoid registering or launching GPU tasks.
+@inline _has_gpu_target() = HAS_CUDA && Int(Legate.num_gpus()) > 0
 
 const DEFAULT_FLOAT = Float32
 const DEFAULT_INT = Int32
@@ -72,6 +80,8 @@ const SUPPORTED_NUMERIC_TYPES = Union{
 const SUPPORTED_SOLVE_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
 const SUPPORTED_SVD_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
 const SUPPORTED_QR_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
+const SUPPORTED_CHOLESKY_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
+const SUPPORTED_EIG_TYPES = Union{SUPPORTED_FLOAT_TYPES,SUPPORTED_COMPLEX_TYPES}
 const SUPPORTED_ARRAY_TYPES = Union{Bool,SUPPORTED_NUMERIC_TYPES}
 const SUPPORTED_TYPES = Union{SUPPORTED_ARRAY_TYPES,String}
 
@@ -149,9 +159,28 @@ include("warnings.jl")
 # Compile-time so task scope instrumentation is fully elided when disabled.
 const TASK_SCOPE_NAMES = CNPreferences.TASK_SCOPE_NAMES
 
+# Loaded at compile time; change through CNPreferences and restart Julia.
+const MIN_SOLVE_MATRIX_SIZE = load_preference(CNPreferences, "MIN_SOLVE_MATRIX_SIZE", 2048)
+const MIN_SOLVE_TILE_SIZE = load_preference(CNPreferences, "MIN_SOLVE_TILE_SIZE", 512)
+const MIN_CHOLESKY_MATRIX_SIZE = load_preference(CNPreferences, "MIN_CHOLESKY_MATRIX_SIZE", 8192)
+const MIN_CHOLESKY_TILE_SIZE = load_preference(CNPreferences, "MIN_CHOLESKY_TILE_SIZE", 2048)
+const MIN_QR_MATRIX_SIZE = load_preference(CNPreferences, "MIN_QR_MATRIX_SIZE", 1048576)
+const QR_TILE_SIZE = load_preference(CNPreferences, "QR_TILE_SIZE", 128)
+const MAX_CHOLESKY_TILES_PER_PROC = load_preference(CNPreferences, "MAX_CHOLESKY_TILES_PER_PROC", 4)
+
+for key in (
+    :MIN_SOLVE_MATRIX_SIZE, :MIN_SOLVE_TILE_SIZE, :MIN_CHOLESKY_MATRIX_SIZE,
+    :MIN_CHOLESKY_TILE_SIZE, :MIN_QR_MATRIX_SIZE, :QR_TILE_SIZE, :MAX_CHOLESKY_TILES_PER_PROC,
+)
+    value = getfield(@__MODULE__, key)
+    value isa Int && value > 0 || throw(ArgumentError("$key must be a positive Int"))
+end
+
 # NDArray internal
 include("ndarray/detail/ndarray.jl")
+include("ndarray/detail/distributed_linalg.jl")
 include("ndarray/detail/linalg.jl")
+include("ndarray/detail/fft.jl")
 
 # Utilities
 include("cuda/strided_device_array.jl")
@@ -166,14 +195,22 @@ const FUSE_BROADCAST_EXPRS = CNPreferences.FUSE_BROADCAST
 const FUSE_BROADCAST_MIN_OPS = CNPreferences.FUSE_BROADCAST_MIN_OPS
 
 # Functionality
+include("ndarray/diagonal.jl")
 include("ndarray/promotion.jl")
 include("cuda/cuda_ptx_task.jl")
 include("ndarray/broadcast_fusion.jl")
 include("ndarray/broadcast.jl")
 include("ndarray/ndarray.jl")
+include("ndarray/random/bitgenerator.jl")
+include("ndarray/random/generator.jl")
+include("ndarray/random/random.jl")
 include("ndarray/unary.jl")
 include("ndarray/binary.jl")
 include("ndarray/linalg.jl")
+include("ndarray/sort.jl")
+include("ndarray/batched_linalg.jl")
+include("ndarray/contract.jl")
+include("ndarray/fft.jl")
 include("scoping/scoping.jl")
 
 # From https://github.com/JuliaGraphics/QML.jl/blob/dca239404135d85fe5d4afe34ed3dc5f61736c63/src/QML.jl#L147
@@ -194,8 +231,6 @@ function my_on_exit()
     return drain_pending_frees!()   # flush before Legate tears down
 end
 
-global cuNumeric_config_str::String = ""
-
 ### These functions guard against a user trying
 ### to start multiple runtimes and also to allow
 ## package extensions which always try to re-load
@@ -214,6 +249,10 @@ function _start_runtime()
     AA = ArgcArgv(String[])
     # AA = ArgcArgv([Base.julia_cmd()[1]])
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
+
+    _LINALG_RUNTIME[] = _LinalgRuntime(
+        cusolvermp_available(), Int(Legate.num_gpus()), Int(Legate.num_procs())
+    )
 
     _init_deferred_free!()   # record launch thread for deferred frees (memory.jl)
 
@@ -253,8 +292,6 @@ function __init__()
     @initcxx
 
     _is_precompiling() && return nothing
-
-    _register_scoping_error_hint!()
 
     # Cannot set LEGATE_CONFIG on CI machines used
     # to register packages. So we will just skip starting

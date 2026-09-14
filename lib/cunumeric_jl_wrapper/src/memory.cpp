@@ -27,6 +27,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstdlib>
+#include <set>
 
 #include "ndarray_c_api.h"
 
@@ -40,6 +41,7 @@ static inline uint64_t query_machine_config_common(
     Realm::Processor::Kind proc_kind, Realm::Memory::Kind mem_kind) {
   Machine legion_machine{Machine::get_machine()};
   uint64_t total_mem = 0;
+  std::set<Realm::Memory> seen;  // Processors on one node share memory-query results.
 
   Machine::ProcessorQuery procs =
       Machine::ProcessorQuery(legion_machine).only_kind(proc_kind);
@@ -57,7 +59,7 @@ static inline uint64_t query_machine_config_common(
          ++mit) {
       auto mem = *mit;
       assert(mem.kind() == mem_kind);
-      total_mem += mem.capacity();
+      if (seen.insert(mem).second) total_mem += mem.capacity();
     }
   }
 
@@ -73,6 +75,7 @@ static inline uint64_t query_allocated_bytes_common(
   auto ctx = Legion::Runtime::get_context();
 
   uint64_t current_bytes = 0;
+  std::set<Realm::Memory> seen;  // Count each physical memory once, not per processor.
 
   Machine::ProcessorQuery procs =
       Machine::ProcessorQuery(legion_machine).only_kind(proc_kind);
@@ -91,6 +94,7 @@ static inline uint64_t query_allocated_bytes_common(
       auto mem = *mit;
       assert(mem.kind() == mem_kind);
 
+      if (!seen.insert(mem).second) continue;
       size_t available = legion_runtime->query_available_memory(ctx, mem);
       size_t capacity = mem.capacity();
       current_bytes += (capacity - available);

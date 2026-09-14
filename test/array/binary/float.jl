@@ -25,3 +25,4 @@ run_binary_ops_tests(
         Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES),
     ),
 )
+run_array_equal_tests()

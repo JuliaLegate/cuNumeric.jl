@@ -27,11 +27,11 @@ ENV JULIA_NUM_THREADS=auto
 ARG CUNUMERIC_VERSION=25.10.00
 ARG PACKAGE_SPEC_CUDA=CUDA
 LABEL org.opencontainers.image.authors="David Krasowska <krasow@u.northwestern.edu>, Ethan Meitz <emeitz@andrew.cmu.edu>" \
-      org.opencontainers.image.description="A cuNumeric.jl container with CUDA ${CUDA_VERSION_MAJOR_MINOR}, Julia ${JULIA_VERSION}, and cuNumeric ${CUNUMERIC_VERSION}" \
-      org.opencontainers.image.title="cuNumeric.jl" \
+    org.opencontainers.image.description="A cuNumeric.jl container with CUDA ${CUDA_VERSION_MAJOR_MINOR}, Julia ${JULIA_VERSION}, and cuNumeric ${CUNUMERIC_VERSION}" \
+    org.opencontainers.image.title="cuNumeric.jl" \
     #   org.opencontainers.image.url="https://juliagpu.org/cuda/" \
-      org.opencontainers.image.source="https://github.com/JuliaLegate/cuNumeric.jl" \
-      org.opencontainers.image.licenses="MIT"
+    org.opencontainers.image.source="https://github.com/JuliaLegate/cuNumeric.jl" \
+    org.opencontainers.image.licenses="MIT"
 
 COPY scripts/test_container.sh /workspace/test_container.sh
 RUN chmod +x /workspace/test_container.sh
@@ -39,8 +39,8 @@ RUN cat /workspace/test_container.sh
 
 # # system-wide packages
 RUN apt-get update && apt-get install -y \
-    wget curl git build-essential && \
-    rm -rf /var/lib/apt/lists/*
+    wget curl git build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 
 ENV JULIA_DEPOT_PATH=/usr/local/share/julia
@@ -65,9 +65,10 @@ RUN source /etc/.env && source /etc/.env && julia --color=yes -e ' \
     using Pkg; \
     Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = ENV["REF"])) \
 '
-RUN #= remove useless stuff =# \
-    cd /usr/local/share/julia && \
-    rm -rf registries scratchspaces logs
+RUN \
+    #= remove useless stuff =# \
+    cd /usr/local/share/julia \
+    && rm -rf registries scratchspaces logs
 
 # user environment
 
@@ -98,8 +99,8 @@ end
 pushfirst!(DEPOT_PATH, "/depot")
 EOF
 
-RUN apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+RUN apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV LEGATE_AUTO_CONFIG=1
 

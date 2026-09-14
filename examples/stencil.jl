@@ -1,4 +1,3 @@
-
 using cuNumeric: cuNumeric
 
 function initialize(N)
@@ -13,7 +12,6 @@ end
 
 function run_stencil(N, I, warmup)
     grid = initialize(N)
-
     println("Running Jacobi stencil...")
 
     center = grid[2:(N + 1), 2:(N + 1)]
@@ -22,11 +20,14 @@ function run_stencil(N, I, warmup)
     west = grid[2:(N + 1), 1:N]
     south = grid[3:(N + 2), 2:(N + 1)]
 
-    for i in 1:(I + warmup)
+    for _ in 1:(I + warmup)
         average = center .+ north .+ east .+ west .+ south
         work = 0.2 .* average
-        center = work
+        center .= work
     end
+    return grid
 end
 
-run_stencil(1000, 100, 5)
+if abspath(PROGRAM_FILE) == @__FILE__
+    run_stencil(1000, 100, 5)
+end

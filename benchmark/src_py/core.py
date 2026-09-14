@@ -2,10 +2,11 @@ import os
 import math
 
 import cupynumeric as np
+from legate.core import get_legate_runtime
 from legate.timing import time  # blocks on preceding legate ops; returns microseconds
 
 MOD = "cupynumeric"
-RESULTS_DIR = os.path.join(os.path.dirname(__file__), "..", "results")
+RESULTS_DIR = os.environ.get("CUNUMERIC_BENCH_RESULTS_DIR", os.path.join(os.path.dirname(__file__), "..", "results"))
 
 DTYPES = {"Float32": np.float32, "Float64": np.float64}
 
@@ -16,6 +17,24 @@ def parse_type(s):
     return DTYPES[s]
 
 
+def _shape(shape):
+    if isinstance(shape, int):
+        return (shape,)
+    return tuple(shape)
+
+
+def rand_array(shape, dtype):
+    return np.random.rand(*_shape(shape)).astype(dtype)
+
+
+def zeros_array(shape, dtype):
+    return np.zeros(_shape(shape), dtype=dtype)
+
+
+def ones_array(shape, dtype):
+    return np.ones(_shape(shape), dtype=dtype)
+
+
 BENCHMARKS = {}
 
 
@@ -23,17 +42,21 @@ def register_benchmark(key, cls):
     BENCHMARKS[key] = cls
 
 
-def trial(bench, n_warmup, n_iter):
+def trial(bench, n_warmup, n_iter, flops):
     state = bench.initialize()
+    fence_each = getattr(bench, "fence_each_iteration", True)
+    synchronize = get_legate_runtime().issue_execution_fence
     start = None
     for idx in range(n_warmup + n_iter):
         if idx == n_warmup:
             start = time()
         bench.run(state)
+        if fence_each:
+            synchronize(block=True)
     total_us = time() - start
 
     mean_time_ms = total_us / (n_iter * 1e3)
-    gflops = bench.total_flops() / (mean_time_ms * 1e6)
+    gflops = flops / (mean_time_ms * 1e6)
     return mean_time_ms, gflops
 
 
@@ -48,10 +71,10 @@ def _std(x):
     return math.sqrt(sum((v - m) ** 2 for v in x) / (len(x) - 1))
 
 
-def save_result(name, dims, gpus, times_ms, gflops):
+def save_result(name, dims, gpus, times_ms, gflops, correctness="skipped"):
     os.makedirs(RESULTS_DIR, exist_ok=True)
     N, M = dims
     path = os.path.join(RESULTS_DIR, f"{name}_{MOD}.csv")
     with open(path, "a") as io:
         for i, (t, g) in enumerate(zip(times_ms, gflops), start=1):
-            io.write(f"{MOD},{gpus},{N},{M},{i},{t:.6f},{g:.6f},skipped\n")
+            io.write(f"{MOD},{gpus},{N},{M},{i},{t:.6f},{g:.6f},{correctness}\n")
