@@ -61,14 +61,15 @@ function include_benchmarks()
     return nothing
 end
 
-total_space(b::AbstractBenchmark) =
-    error("total_space not defined for $(typeof(b)); add a method in its benchmark file")
+function total_space(b::AbstractBenchmark)
+    return error("total_space not defined for $(typeof(b)); add a method in its benchmark file")
+end
 
 function estimate_scaling(b::AbstractBenchmark, P::Integer)
     P < 1 && throw(ArgumentError("P must be ≥ 1, got $P"))
     P == 1 && return map(Int, dims(b))
     return error(
-        "estimate_scaling not defined for $(typeof(b)); add a method in its benchmark file",
+        "estimate_scaling not defined for $(typeof(b)); add a method in its benchmark file"
     )
 end
 
@@ -280,11 +281,14 @@ function run_benchmark(
         push!(times_ms, t)
         push!(gflops, g)
         # Update only after _trial has stopped its clock; never inside the kernel loop.
-        ProgressMeter.next!(progress; showvalues=[
-            ("Completed trials", "$(trial)/$(gs.n_trial)"),
-            ("Last trial mean (ms/iteration)", t),
-            ("Last trial GFLOP/s", g),
-        ])
+        ProgressMeter.next!(
+            progress;
+            showvalues=[
+                ("Completed trials", "$(trial)/$(gs.n_trial)"),
+                ("Last trial mean (ms/iteration)", t),
+                ("Last trial GFLOP/s", g),
+            ],
+        )
     end
     return BenchmarkResult(times_ms, gflops, b, correctness)
 end

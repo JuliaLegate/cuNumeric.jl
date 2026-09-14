@@ -118,9 +118,9 @@ struct CuStridedDeviceArray {
         std::cerr << "[RunPTXBroadcastTask] " #MODE                            \
                   << " accessor byte strides: " << acc.accessor.strides        \
                   << std::endl;);                                              \
-    /* Preserve 64-bit coordinates; Realm::Point<D> defaults to int. */       \
-    void *dev_ptr = const_cast<void *>(                                        \
-        static_cast<const void *>(acc.ptr(shp.lo)));                          \
+    /* Preserve 64-bit coordinates; Realm::Point<D> defaults to int. */        \
+    void *dev_ptr =                                                            \
+        const_cast<void *>(static_cast<const void *>(acc.ptr(shp.lo)));        \
     auto extents = shp.hi - shp.lo + legate::Point<D>::ONES();                 \
     CuStridedDeviceArray<D> desc;                                              \
     desc.ptr = dev_ptr;                                                        \
@@ -310,7 +310,8 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
   const std::uint32_t budget = std::max(lp.tx, 1u);
   const int dim = out.dim();
   // Cap before narrowing; Julia grid-stride loops cover the remaining elements.
-  const auto blocks = [](std::uint64_t n, std::uint32_t t, std::uint64_t limit) {
+  const auto blocks = [](std::uint64_t n, std::uint32_t t,
+                         std::uint64_t limit) {
     return static_cast<std::uint32_t>(std::min((n - 1) / t + 1, limit));
   };
 

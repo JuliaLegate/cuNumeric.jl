@@ -31,9 +31,9 @@ function parse_model_worker_args(args)
     T = get(Dict("Float32" => Float32, "Float64" => Float64), T_name, nothing)
     T === nothing && error("Unsupported element type '$T_name'; known: Float32, Float64")
     config = ModelWorkerConfig(
-        parse(Int, args[1]),args[2],T,T_name,parse(Int,args[4]),parse(Int,args[5]),
-        parse(Int,args[6]),parse(Int,args[7]),parse(Int,args[8]),parse(Bool,args[9]),
-        parse(Int,args[10]),parse(Float64,args[11]),
+        parse(Int, args[1]), args[2], T, T_name, parse(Int, args[4]), parse(Int, args[5]),
+        parse(Int, args[6]), parse(Int, args[7]), parse(Int, args[8]), parse(Bool, args[9]),
+        parse(Int, args[10]), parse(Float64, args[11]),
     )
     config.gpus > 0 || error("gpus must be positive")
     config.n_iter > 0 && config.n_trial > 0 && config.n_warmup >= 0 ||
@@ -77,8 +77,8 @@ function save_model_results(config, model::Symbol, times_ms, gflops)
     open(path, "a") do io
         for trial in eachindex(times_ms)
             @printf(
-                io,"%s,%d,%d,%d,%d,%.6f,%.6f,skipped\n",
-                model,config.gpus,config.N,config.M,trial,times_ms[trial],gflops[trial],
+                io, "%s,%d,%d,%d,%d,%.6f,%.6f,skipped\n",
+                model, config.gpus, config.N, config.M, trial, times_ms[trial], gflops[trial],
             )
         end
     end
@@ -106,11 +106,21 @@ function run_model_worker(model::Symbol, label::String, args=ARGS)
         push!(gflops, throughput)
         @printf(
             "[%s] Trial %d/%d: %.5f ms, %.5f GFLOPS\n",
-            label,trial,config.n_trial,time_ms,throughput,
+            label, trial, config.n_trial, time_ms, throughput,
         )
     end
-    @printf("[%s] Mean Run Time: %.5f ± %.5f ms\n",label,mean(times_ms),length(times_ms)>1 ? std(times_ms) : 0.0)
-    @printf("[%s] FLOPS: %.5f ± %.5f GFLOPS\n",label,mean(gflops),length(gflops)>1 ? std(gflops) : 0.0)
+    @printf(
+        "[%s] Mean Run Time: %.5f ± %.5f ms\n",
+        label,
+        mean(times_ms),
+        length(times_ms)>1 ? std(times_ms) : 0.0
+    )
+    @printf(
+        "[%s] FLOPS: %.5f ± %.5f GFLOPS\n",
+        label,
+        mean(gflops),
+        length(gflops)>1 ? std(gflops) : 0.0
+    )
     println("[$label] Correctness: skipped")
-    return save_model_results(config,model,times_ms,gflops)
+    return save_model_results(config, model, times_ms, gflops)
 end

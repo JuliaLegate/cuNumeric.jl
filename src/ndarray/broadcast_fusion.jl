@@ -210,7 +210,9 @@ function make_cartesian_kernel_3d(
                     @inbounds args_modified = _materialize_broadcast_args(
                         arg_plan, runtime_args, static_args, I
                     )
-                    @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+                    @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(
+                        f, args_modified...
+                    )
                     I += CartesianIndex(_broadcast_grid_stride(:z), 0, 0)
                 end
                 I = CartesianIndex(start[1], I[2] + _broadcast_grid_stride(:y), I[3])

@@ -18,17 +18,17 @@ function stage(f, label)
 end
 
 x = stage("Float32 random generation") do
-    cuNumeric.rand(Float32, N)
+    return cuNumeric.rand(Float32, N)
 end
 x = stage("scale samples") do
-    10.0f0 .* x
+    return 10.0f0 .* x
 end
 y = stage("fused square / negate / exponential") do
-    exp.(.-(x .^ 2))
+    return exp.(.-(x .^ 2))
 end
 s = stage("sum reduction") do
-    sum(y)
+    return sum(y)
 end
 stage("scale reduction result") do
-    (10.0f0 / N) * s
+    return (10.0f0 / N) * s
 end
