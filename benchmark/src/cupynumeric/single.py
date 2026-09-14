@@ -32,6 +32,7 @@ def main():
             "<n_trial> <check> <n_correctness_iter> <flops>"
         )
     flops = float(sys.argv[11])
+    check_correctness = sys.argv[9].lower() == "true"
 
     if name not in BENCHMARKS:
         raise ValueError(
@@ -39,6 +40,7 @@ def main():
         )
     T = parse_type(T_str)
     bench = BENCHMARKS[name](T, N, M)
+    correctness = bench.check_correctness() if check_correctness else "skipped"
 
     print(
         f"[{MOD}] {name} benchmark ({T_str}) on {N}x{M} for {n_iter} "
@@ -55,9 +57,9 @@ def main():
 
     print(f"[{MOD}] Mean Run Time: {_mean(times_ms):.5f} ± {_std(times_ms):.5f} ms")
     print(f"[{MOD}] FLOPS: {_mean(gflops):.5f} ± {_std(gflops):.5f} GFLOPS")
-    print(f"[{MOD}] Correctness: skipped")
+    print(f"[{MOD}] Correctness: {correctness}")
 
-    save_result(bench.name, bench.dims(), gpus, times_ms, gflops, "skipped")
+    save_result(bench.name, bench.dims(), gpus, times_ms, gflops, correctness)
 
 
 if __name__ == "__main__":

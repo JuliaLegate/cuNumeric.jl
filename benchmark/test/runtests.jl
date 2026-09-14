@@ -90,6 +90,7 @@ end
 @testset "Smoke configuration" begin
     gs, specs = parse_config(SMOKE_CONFIG)
     @test gs.models == [:cunumeric, :cupynumeric, :cudajl, :jacc, :dagger]
+    @test gs.check_correctness
     @test length(specs) == 1
     @test only(specs).name == "montecarlo"
     @test only(specs).models == gs.models

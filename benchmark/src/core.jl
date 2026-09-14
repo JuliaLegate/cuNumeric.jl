@@ -126,12 +126,11 @@ end
 # CUDA.jl 6: the worker may pass `CUDA` or `CUDACore` as `mod`.
 is_cuda_backend(mod) = nameof(mod) === :CUDA || nameof(mod) === :CUDACore
 
-# Timed CUDA.jl is never the thing we check. Oracle compare is cuNumeric vs CUDA
-# on a single GPU (the cuNumeric worker loads CUDA for the tiny problem).
 function correctness_applies(gs::GlobalSettings, mod)
-    is_cuda_backend(mod) && return false
     return gs.n_gpu == 1
 end
+
+correctness_reference_label(mod) = is_cuda_backend(mod) ? "CPU" : "CUDA.jl"
 
 function cuda_backend()
     for (id, mod) in Base.loaded_modules
@@ -206,8 +205,8 @@ function check_benchmark_correctness(
     seed = initialize(tiny; mod=Base)
     atol, rtol = correctness_atol_rtol(b, T)
     nstep = correctness_iters(tiny, gs)
-    return check_vs_cuda(T; atol, rtol) do backend
-        kernel = backend === cuNumeric ? tiny : cuda_runnable(tiny)
+    reference = is_cuda_backend(mod) ? Base : cuda_backend()
+    run_on(backend, kernel) = begin
         state = to_backend_state(backend, seed)
         out = nothing
         for _ in 1:nstep
@@ -215,6 +214,10 @@ function check_benchmark_correctness(
         end
         return correctness_result(kernel, state, out)
     end
+    got = run_on(mod, tiny)
+    reference_kernel = reference === Base ? tiny : cuda_runnable(tiny)
+    expected = run_on(reference, reference_kernel)
+    return _all_approx(got, expected, T; atol, rtol) ? "pass" : "fail"
 end
 
 # `f(mod)` runs the tiny problem on one backend and returns the value(s) to compare.
@@ -257,7 +260,10 @@ function run_benchmark(
     correctness = "skipped"
     if gs.check_correctness
         if correctness_applies(gs, mod)
-            println("Checking correctness against CUDA.jl on a small problem...")
+            println(
+                "Checking correctness against $(correctness_reference_label(mod)) " *
+                "on a small problem...",
+            )
             flush(stdout)
             correctness = check_benchmark_correctness(b, gs; mod=mod)
         else
