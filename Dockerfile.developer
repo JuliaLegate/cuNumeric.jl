@@ -21,15 +21,13 @@ ENV LEGATE_AUTO_CONFIG=0
 ARG JULIA_CPU_TARGET=native
 ENV JULIA_CPU_TARGET=${JULIA_CPU_TARGET}
 
-# necessary - we are building in this container until we get the jlls for cunumeric
 ENV JULIA_NUM_THREADS=auto
 
 ARG CUNUMERIC_VERSION=25.10.00
 ARG PACKAGE_SPEC_CUDA=CUDA
 LABEL org.opencontainers.image.authors="David Krasowska <krasow@u.northwestern.edu>, Ethan Meitz <emeitz@andrew.cmu.edu>" \
-    org.opencontainers.image.description="A cuNumeric.jl container with CUDA ${CUDA_VERSION_MAJOR_MINOR}, Julia ${JULIA_VERSION}, and cuNumeric ${CUNUMERIC_VERSION}" \
+    org.opencontainers.image.description="A cuNumeric.jl developer container with CUDA ${CUDA_VERSION_MAJOR_MINOR}, Julia ${JULIA_VERSION}, and cuNumeric ${CUNUMERIC_VERSION}" \
     org.opencontainers.image.title="cuNumeric.jl" \
-    #   org.opencontainers.image.url="https://juliagpu.org/cuda/" \
     org.opencontainers.image.source="https://github.com/JuliaLegate/cuNumeric.jl" \
     org.opencontainers.image.licenses="MIT"
 
@@ -37,11 +35,18 @@ COPY scripts/test_container.sh /workspace/test_container.sh
 RUN chmod +x /workspace/test_container.sh
 RUN cat /workspace/test_container.sh
 
-# # system-wide packages
+# system-wide packages
 RUN apt-get update && apt-get install -y \
     wget curl git build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+# Developer mode needs the same CMake version used by developer CI.
+ARG CMAKE_VERSION=3.30.7
+RUN wget --no-verbose \
+    "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.sh" \
+    -O /tmp/cmake-installer.sh \
+    && sh /tmp/cmake-installer.sh --skip-license --prefix=/usr/local \
+    && rm /tmp/cmake-installer.sh
 
 ENV JULIA_DEPOT_PATH=/usr/local/share/julia
 ENV PATH="/usr/local/.juliaup/bin:/usr/local/bin:$PATH"
@@ -53,17 +58,31 @@ RUN echo "export LD_LIBRARY_PATH=\$(julia -e 'print(Sys.BINDIR * \"/../lib\")'):
 RUN chmod +x /etc/.env
 RUN cat /etc/.env
 
-
-RUN echo "Install Legate and cuNumeric.jl"
-# Install Legate.jl and cuNumeric.jl
-RUN source /etc/.env && source /etc/.env && julia --color=yes -e ' \
+RUN echo "Install Legate and cuNumeric.jl with the in-tree wrapper"
+RUN source /etc/.env && julia --color=yes -e ' \
     using Pkg; \
     Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")) \
 '
 
-RUN source /etc/.env && source /etc/.env && julia --color=yes -e ' \
+# The workflow checks out the requested ref before starting the Docker build,
+# so this source tree is the exact package revision represented by the image.
+COPY Project.toml /opt/cuNumeric.jl/Project.toml
+COPY deps /opt/cuNumeric.jl/deps
+COPY ext /opt/cuNumeric.jl/ext
+COPY lib /opt/cuNumeric.jl/lib
+COPY scripts /opt/cuNumeric.jl/scripts
+COPY src /opt/cuNumeric.jl/src
+COPY test /opt/cuNumeric.jl/test
+
+RUN source /etc/.env && julia --color=yes -e ' \
     using Pkg; \
-    Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = ENV["REF"])) \
+    ENV["JULIA_PKG_PRECOMPILE_AUTO"] = "0"; \
+    Pkg.develop(PackageSpec(path = "/opt/cuNumeric.jl/lib/CNPreferences")); \
+    Pkg.develop(PackageSpec(path = "/opt/cuNumeric.jl")); \
+    using CNPreferences; \
+    CNPreferences.use_developer_mode(); \
+    Pkg.build("cuNumeric"); \
+    Pkg.precompile() \
 '
 RUN \
     #= remove useless stuff =# \
