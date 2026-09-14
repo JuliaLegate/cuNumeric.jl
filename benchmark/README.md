@@ -3,7 +3,7 @@
 Benchmarks are declared in `benchmarks.toml`. `run.jl` parses it.
 
 Each independent iteration completes before the next is submitted, including
-warmups, for cuNumeric, CUDA.jl, and cuPyNumeric. Blocking synchronization is
+warmups, for each execution model. Blocking synchronization is
 included in timed iterations. Gray–Scott is the exception: its timesteps form
 one trajectory, so all variants retain batch synchronization at timing boundaries.
 Initialization remains outside timing. Earlier non-Gray–Scott results used batch
@@ -17,20 +17,22 @@ Run a complete selected sweep and plot it without editing other TOML blocks:
 julia --project=. run.jl --only=montecarlo
 julia --project=. run.jl --only=grayscott
 julia --project=. run.jl --only=grayscott --fusion=both
+julia --project=. run.jl --only=montecarlo --models=jacc,dagger
 julia --project=. run.jl --only=grayscott --dry-run
 ```
 
 `--only` accepts benchmark or plot-group names (comma-separated). `--fusion=on`,
 `off`, or `both` overrides the selected blocks. `--config=path` selects another
-configuration. The shipped configuration uses fusion enabled. Positional
+configuration. `--models=` temporarily replaces the configured model list. The
+shipped configuration uses fusion enabled. Positional
 single-run arguments remain supported and do not plot automatically.
 
 Automatic sizing shares one baseline per comparison group and dtype, accounting
-for every selected backend, fusion setting and GPU count. Incompatible pinned
-constraints fail preflight. Comparison backends run once even if only unfused
-Julia configurations are selected. Read [memory accounting](MEMORY.md) before
-running native-library benchmarks: verified workspace bounds are required where
-the harness cannot infer them. Unexpected failures are reported, not retried.
+for every selected model, fusion setting and GPU count. Incompatible pinned
+constraints fail preflight. Models without fusion run once even if only unfused
+Julia configurations are selected. Native-library benchmarks require verified
+workspace bounds where the harness cannot infer them. Unexpected failures are
+reported, not retried.
 
 Each invocation writes `results/<run-id>/<dtype>/` plus a `manifest.toml` with
 resolved dimensions, memory estimates, package versions and worker statuses.
@@ -41,26 +43,64 @@ Different sizes at the same GPU count cannot be silently merged into a plot.
 julia --project=. run.jl   # runs whatever benchmarks.toml configures
 ```
 
-`run.jl` runs each (benchmark, backend) pair in its own process via
-`run_benchmark.sh`, so backends never share a GPU/runtime within a measurement.
+`run.jl` runs each (benchmark, model) pair in its own process via
+`run_benchmark.sh`. The generic shell launcher receives a complete worker
+command; language, project, environment and worker selection live in the model
+registry in `src/models.jl`. Each Julia model has its own entrypoint and project.
 Julia workers log correctness checking and show a trial progress meter with the
 latest trial's mean time and GFLOP/s. The meter advances only after a trial
 finishes, outside the timed loop; initialization and warmup can also take time
 before the next update.
-cuNumeric always runs; extra comparison backends are toggled in `[Global]`:
+Select models explicitly in `[Global]` or on an individual benchmark:
 
-- `cuda = true` → also run under CUDA.jl (single-GPU configs only; CUDA.jl is
-  single-device). Every kernel has a `CuArray` implementation.
-- `cupynumeric = true` → also run under cupynumeric (see below).
+```toml
+[Global]
+models = ["cunumeric", "cupynumeric", "cudajl", "jacc", "dagger"]
+
+[[montecarlo]]
+models = ["cunumeric", "jacc", "dagger"] # optional per-block override
+```
+
+cuNumeric implements every registered benchmark. CUDA.jl and cuPyNumeric
+implement the non-accelerated array baselines. JACC and Dagger currently have
+native Monte Carlo implementations; unsupported pairs are omitted when another
+selected model supports the run, and rejected if a configuration would have no
+worker at all. CUDA.jl remains single-device.
 
 On a single GPU, the cuNumeric worker also compares a tiny problem against
 CUDA.jl (`pass` / `fail` in the CSV). The timed CUDA.jl run still happens;
 its correctness column is `skipped`. Multi-GPU and cupynumeric skip the check.
 
-Individual `[[benchmark]]` blocks may override `cuda`, `n_warmup`, `n_iter`,
-and `n_trial`. Unspecified values inherit from `[Global]`. This is useful for
-enabling a single-GPU CUDA comparison only for compatible benchmarks or reducing
-the iteration count for expensive kernels.
+Individual `[[benchmark]]` blocks may override `models`, `n_warmup`, `n_iter`,
+and `n_trial`. Unspecified values inherit from `[Global]`. The legacy global
+`cuda` and `cupynumeric` booleans remain readable for older config files.
+
+### Isolated Julia model environments
+
+cuNumeric, CUDA.jl, JACC and Dagger use separate Julia projects. A selected model
+can therefore never import a competing programming model accidentally. CUDA is
+still a dependency of GPU programming models where it is their device backend;
+in particular, the optional cuNumeric correctness oracle uses CUDA.jl on one
+small problem. Instantiate the projects once:
+
+```bash
+julia --project=environments/cunumeric -e 'using Pkg; Pkg.instantiate()'
+julia --project=environments/cuda -e 'using Pkg; Pkg.instantiate()'
+julia --project=environments/jacc -e 'using Pkg; Pkg.instantiate()'
+julia --project=environments/dagger -e 'using Pkg; Pkg.instantiate()'
+```
+
+`src/cunumeric/`, `src/cuda/`, `src/jacc/`, `src/dagger/` and
+`src/cupynumeric/` contain the model implementations. cuNumeric and CUDA.jl
+share the model-neutral array harness in `src/array_worker.jl`; JACC and Dagger
+have native model-specific kernels. `src/jacc/` uses
+`JACC.Multi.parallel_reduce`; `src/dagger/` uses a GPU-scoped
+`DArray` reduction. New model kernels must be registered by
+`supports_benchmark` in `src/models.jl` only after they exist.
+
+For smaller JACC or Dagger runs inside a larger allocation, worker environments
+retain the scheduler's `CUDA_VISIBLE_DEVICES` ordering and expose only the
+requested prefix, because JACC otherwise initializes every visible GPU.
 
 ### Comparing against cupynumeric
 
@@ -87,6 +127,7 @@ n_iter   = 1000
 n_trial  = 5
 auto_size = true
 mem_frac  = 0.5   # fraction of the smallest visible GPU's total RAM
+models = ["cunumeric", "jacc", "dagger"]
 
 [[gemm]]            # name registered under src/benchmarks/
 T    = "Float32"     # element type
@@ -114,13 +155,14 @@ then maps to `P` GPUs. Pin an explicit `N` list to keep paper sizes. `mem_frac`
 is the fraction of the *smallest* visible GPU's total RAM (`CUNUMERIC_BENCH_MEM_FRAC`
 overrides it). DMD keeps `M` as the intensity knob; Poisson holds grid `N` across
 the GPU sweep and scales batch `M`.
-Peak estimates are now backend- and variant-aware. Monte Carlo's fused
+Peak estimates are model- and variant-aware. Monte Carlo's fused
 iteration needs the samples and broadcast output, but the planner also accounts
-for outputs that may await Julia GC across a trial. See [memory accounting](MEMORY.md)
-for the supported bounds and native-library workspace configuration.
+for outputs that may await Julia GC across a trial. Configure verified per-GPU
+native scratch bounds under `[workspace.<benchmark>]`; missing bounds fail
+preflight rather than triggering an OOM retry.
 
 `fusion` toggles cuNumeric broadcast fusion (`true`/`false` or `"on"`/`"off"`,
-default `true`); it only affects cuNumeric, so comparison backends run once, not
+default `true`); it only affects cuNumeric, so other models run once, not
 per variant.
 
 Benchmark names are defined by the registered benchmark implementations. A
@@ -154,7 +196,7 @@ to a specific size, use separate `[[name]]` blocks.
 ## Tensor contractions
 
 Two direct TensorOperations benchmarks compare the same mathematical kernel
-across cuNumeric.jl, cuPyNumeric, and—when `cuda = true` on a one-GPU
+across cuNumeric.jl, cuPyNumeric, and—when `cudajl` is selected on a one-GPU
 entry—TensorOperations.jl's cuTENSOR backend:
 
 - `tensor_projection3` computes
@@ -186,9 +228,9 @@ julia --project=. plot_results.jl
 `[plot.groups]` in `benchmarks.toml` puts related kernels on one figure.
 Gray-Scott's baseline and `@accelerate` forms share `grayscott`; DMD baseline
 and accelerated share `dmd`. Every other `[[benchmark]]` table is its own
-figure. Each figure overlays CUDA.jl (1 GPU) and cupynumeric from that
+figure. Each figure overlays CUDA.jl (1 GPU), cuPyNumeric, JACC and Dagger from that
 group's baseline CSV (`*_baseline`, else the only / first name). Accelerated
-kernels have no CUDA.jl or Python CSVs; the overlay still comes from the
+kernels have no comparison-model CSVs; the overlay still comes from the
 baseline.
 
 cuNumeric fused vs unfused uses the same color with solid vs dashed lines.

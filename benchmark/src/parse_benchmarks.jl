@@ -12,7 +12,7 @@ struct BenchmarkSpec
     gpus::Int
     cpus::Int
     fusion::Bool
-    cuda::Bool
+    models::Vector{Symbol}
     n_warmup::Int
     n_iter::Int
     n_trial::Int
@@ -73,14 +73,22 @@ function size_field(raw)
     return (:pinned, Int[Int(v) for v in vals])
 end
 
-function parse_config(path; only=nothing, fusion_override=nothing)
+function parse_config(path; only=nothing, fusion_override=nothing, models_override=nothing)
     raw = TOML.parsefile(path)
 
     g = raw["Global"]
+    global_models = if haskey(g, "models")
+        parse_models(g["models"])
+    else
+        # Compatibility with configurations written before models were a list.
+        ids = Symbol[:cunumeric]
+        get(g, "cupynumeric", false) && push!(ids, :cupynumeric)
+        get(g, "cuda", false) && push!(ids, :cudajl)
+        ids
+    end
     global_settings = GlobalSettings(;
         n_warmup=g["n_warmup"], n_iter=g["n_iter"], n_trial=get(g, "n_trial", 1),
-        cupynumeric=get(g, "cupynumeric", false),
-        cuda=get(g, "cuda", false),
+        models=global_models,
         check_correctness=get(g, "check_correctness", false),
         n_correctness_iter=get(g, "n_correctness_iter", 5),
         auto_size=get(g, "auto_size", false),
@@ -106,7 +114,19 @@ function parse_config(path; only=nothing, fusion_override=nothing)
             fusion = aslist(fusion_override === nothing ? get(e, "fusion", true) : fusion_override)
             nmode, nvals = size_field(get(e, "N", nothing))
             mmode, mvals = size_field(get(e, "M", nothing))
-            cuda = get(e, "cuda", global_settings.cuda)
+            models = if models_override !== nothing
+                models_override
+            elseif haskey(e, "models")
+                parse_models(e["models"])
+            else
+                copy(global_settings.models)
+            end
+            # Preserve the old per-block CUDA toggle while old config files
+            # migrate to `models = [...]`.
+            if models_override === nothing && !haskey(e, "models") && haskey(e, "cuda")
+                filter!(!=(:cudajl), models)
+                e["cuda"] && push!(models, :cudajl)
+            end
             n_warmup = get(e, "n_warmup", global_settings.n_warmup)
             n_iter = get(e, "n_iter", global_settings.n_iter)
             n_trial = get(e, "n_trial", global_settings.n_trial)
@@ -147,7 +167,7 @@ function parse_config(path; only=nothing, fusion_override=nothing)
                         Int(sweep_value(gpus, i)),
                         Int(sweep_value(cpus, i)),
                         parse_fusion(fuse),
-                        cuda,
+                        models,
                         n_warmup,
                         n_iter,
                         n_trial,

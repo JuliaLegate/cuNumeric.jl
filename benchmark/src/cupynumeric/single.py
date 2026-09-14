@@ -1,9 +1,14 @@
-# cupynumeric worker, run by run_benchmark.sh which sets LEGATE_CONFIG first.
+# cuPyNumeric worker; the model adapter sets LEGATE_CONFIG before launch.
 # Args: <gpus> <name> <T> <N> <M> <n_iter> <n_warmup> <n_trial>
 #       [check_correctness] [n_correctness_iter] [flops]
 # flops comes from the Julia orchestrator (same total_flops as the kernel file).
 import os
 import sys
+
+if os.environ.get("CUNUMERIC_BENCH_ACTIVE_MODEL") != "cupynumeric":
+    raise RuntimeError(
+        "single.py must be launched by run_benchmark.sh with --model=cupynumeric"
+    )
 
 # Make `core` and the `benchmarks` package importable when run as a script.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

@@ -2,8 +2,9 @@
 n_warmup = 2
 n_iter = 250
 n_trial = 5
-cupynumeric = true # (needs install_cupynumeric.sh)
-cuda = true         # also run CUDA.jl (single-GPU configs only)
+models = ["cunumeric", "cupynumeric", "cudajl", "jacc", "dagger"]
+# JACC and Dagger currently implement the native Monte Carlo benchmark. Models
+# without an implementation for a selected benchmark are omitted from that run.
 # When gpus == 1, cuNumeric compares a tiny problem against CUDA.jl.
 # CUDA.jl is still timed; its CSV correctness column is skipped.
 check_correctness = true
@@ -171,4 +172,3 @@ gpus = [1, 2, 4, 8]
 cpus = 8
 n_warmup = 2
 n_iter = 5
-

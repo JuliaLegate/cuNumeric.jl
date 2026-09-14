@@ -4,6 +4,7 @@ function cli_options(args)
     config = joinpath(@__DIR__,"..","benchmarks.toml")
     only = nothing
     fusion = nothing
+    models = nothing
     dry = false
     verbose = false
     positional = String[]
@@ -15,6 +16,8 @@ function cli_options(args)
         elseif startswith(arg,"--fusion=")
             value = split(arg,'=';limit=2)[2]
             fusion = value == "both" ? [true,false] : [parse_fusion(value)]
+        elseif startswith(arg,"--models=")
+            models = parse_models(split(split(arg,'=';limit=2)[2], ','))
         elseif arg == "--dry-run"
             dry = true
         elseif arg in ("-v","--verbose")
@@ -25,7 +28,7 @@ function cli_options(args)
             push!(positional,arg)
         end
     end
-    return (;config,only,fusion,dry,verbose,positional)
+    return (;config,only,fusion,models,dry,verbose,positional)
 end
 
 function positional_spec(p,gs)
@@ -34,16 +37,18 @@ function positional_spec(p,gs)
     m = is_auto_size(p[6]) ? nothing : parse(Int,p[6])
     auto = n === nothing || m === nothing
     return BenchmarkSpec(p[3],p[4],parse(Int,p[1]),parse(Int,p[2]),
-        length(p)>=10 ? parse_fusion(p[10]) : true,gs.cuda,
+        length(p)>=10 ? parse_fusion(p[10]) : true,copy(gs.models),
         parse(Int,p[8]),parse(Int,p[7]),parse(Int,p[9]),
         auto ? [0,0] : [n,m],auto,n,m)
 end
 
 function plan_manifest(runs,budget,raw)
+    root = normpath(joinpath(@__DIR__,".."))
     versions = Dict(info.name=>string(info.version) for info in values(Pkg.dependencies()) if info.version !== nothing)
     return Dict("status"=>"running","budget_bytes"=>budget,"julia"=>string(VERSION),
-        "versions"=>versions,"config"=>raw,"runs"=>[Dict{String,Any}(
-            "name"=>r.spec.name,"T"=>r.spec.T,"backend"=>string(r.backend),
+        "versions"=>versions,"model_environments"=>isolated_model_versions(runs,root),
+        "config"=>raw,"runs"=>[Dict{String,Any}(
+            "name"=>r.spec.name,"T"=>r.spec.T,"model"=>string(r.model),
             "fusion"=>r.spec.fusion,"gpus"=>r.spec.gpus,"cpus"=>r.spec.cpus,
             "N"=>r.N,"M"=>r.M,"n_iter"=>r.spec.n_iter,"n_warmup"=>r.spec.n_warmup,
             "n_trial"=>r.spec.n_trial,"initialization_bytes"=>string(r.memory.initialization),
@@ -53,32 +58,20 @@ end
 
 function prepare_backend(fusion,verbose)
     println("Setting fusion=$fusion and precompiling cuNumeric...")
-    CNPreferences.set_broadcast_fusion!(fusion)
-    Pkg.precompile("cuNumeric";io=verbose ? stderr : devnull)
-end
-
-function preflight_backends(runs;env=ENV,which=Sys.which,check=success)
-    any(r.backend==:cupynumeric for r in runs) || return nothing
-    conda = get(env,"CUNUMERIC_BENCH_CONDA",get(env,"CONDA_EXE","conda"))
-    executable = which(conda)
-    executable === nothing && error(
-        "cuPyNumeric is enabled, but conda is not available to the worker. " *
-        "Add conda to PATH or set CUNUMERIC_BENCH_CONDA to its executable path; " *
-        "then run bash install_cupynumeric.sh. No benchmarks have been started.",
+    root = normpath(joinpath(@__DIR__,".."))
+    project = model_project(execution_model(:cunumeric),root)
+    julia = get(
+        ENV,"CUNUMERIC_BENCH_JULIA",joinpath(Sys.BINDIR,Base.julia_exename()),
     )
-    name = get(env,"CUPYNUMERIC_ENV",nothing)
-    name === nothing && (name = cupynumeric_env_name())
-    code = "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('cupynumeric') else 1)"
-    check(`$executable run --no-capture-output -n $name python -c $code`) || error(
-        "Conda environment '$name' is unavailable or lacks cupynumeric. " *
-        "Run bash install_cupynumeric.sh, or set CUPYNUMERIC_ENV to an existing environment. " *
-        "No benchmarks have been started.",
-    )
-    return nothing
+    code = "using CNPreferences, Pkg; " *
+        "CNPreferences.set_broadcast_fusion!($(repr(fusion))); " *
+        "Pkg.precompile(\"cuNumeric\")"
+    cmd = `$julia --project=$project -e $code`
+    return verbose ? run(cmd) : run(pipeline(cmd;stdout=devnull,stderr=devnull))
 end
 
 function execute_plan(runs,gs,opts,budget,raw;launch=run,prepare=prepare_backend,
-    results_root=normpath(joinpath(@__DIR__,"..","results")),preflight=preflight_backends)
+    results_root=normpath(joinpath(@__DIR__,"..","results")),preflight=preflight_models)
     preflight(runs)
     root = normpath(joinpath(@__DIR__,".."))
     mkpath(results_root)
@@ -87,34 +80,31 @@ function execute_plan(runs,gs,opts,budget,raw;launch=run,prepare=prepare_backend
     manifest_path = joinpath(dir,"manifest.toml")
     save_manifest() = open(io->TOML.print(io,manifest),manifest_path,"w")
     save_manifest()
-    last_fusion = nothing
+    prepared = Dict{Symbol,Any}()
     failed = false
     for (i,r) in enumerate(runs)
         s = r.spec
-        println("\n[$i/$(length(runs))] $(s.name) / $(r.backend), $(s.gpus) GPUs, $(r.N) × $(r.M)")
+        println("\n[$i/$(length(runs))] $(s.name) / $(r.model), $(s.gpus) GPUs, $(r.N) × $(r.M)")
         try
-            if r.backend == :cunumeric && last_fusion != s.fusion
-                prepare(s.fusion,opts.verbose)
-                last_fusion = s.fusion
+            model = execution_model(r.model)
+            key = preparation_key(model,r)
+            if key !== nothing && get(prepared,r.model,nothing) != key
+                prepare_model(model,r,opts.verbose;prepare_cunumeric=prepare)
+                prepared[r.model] = key
             end
             b = build_benchmark(BENCHMARKS[s.name],parse_bench_type(s.T),r.N,r.M)
             p = opts.positional
             correctness = length(p)>=11 ? parse(Bool,p[11]) : gs.check_correctness
             correct_iters = length(p)>=12 ? parse(Int,p[12]) : gs.n_correctness_iter
-            args = `--gpus $(s.gpus) --cpus $(s.cpus) $(s.name) $(s.T) $(r.N) $(r.M) $(s.n_iter) $(s.n_warmup) $(s.n_trial)`
-            corr = `$correctness $correct_iters $(total_flops(b))`
-            runner = joinpath(root,"run_benchmark.sh")
-            verbose = opts.verbose ? `--verbose` : ``
-            cmd = if r.backend == :cupynumeric
-                worker = joinpath(root,"src_py","single.py")
-                `bash $runner $worker $verbose --pyenv $(cupynumeric_env_name()) $args $corr`
-            else
-                worker = joinpath(root,"src","single.jl")
-                `bash $runner $worker $verbose $args $(string(r.backend)) $corr`
-            end
+            request = WorkerRequest(
+                s.gpus,s.cpus,s.name,s.T,r.N,r.M,s.n_iter,s.n_warmup,s.n_trial,
+                correctness,correct_iters,Float64(total_flops(b)),
+            )
+            cmd = wrapped_worker_command(model,request,root;verbose=opts.verbose)
             results = joinpath(dir,s.T)
-            launch(addenv(Cmd(cmd;dir=root),"CUNUMERIC_BENCH_RESULTS_DIR"=>results,
-                "CUNUMERIC_BENCH_JULIA"=>joinpath(Sys.BINDIR,Base.julia_exename())))
+            model_env = model_environment(model,request,opts.verbose)
+            model_env["CUNUMERIC_BENCH_RESULTS_DIR"] = results
+            launch(addenv(Cmd(cmd;dir=root), model_env))
             manifest["runs"][i]["status"] = "complete"
         catch e
             failed = true
@@ -151,9 +141,11 @@ end
 
 function main(args=ARGS;budget_provider=selected_gpu_budget,executor=execute_plan)
     opts = cli_options(args)
-    gs,specs = parse_config(opts.config;only=opts.only,fusion_override=opts.fusion)
+    gs,specs = parse_config(opts.config;only=opts.only,fusion_override=opts.fusion,
+        models_override=opts.models)
     if !isempty(opts.positional)
-        opts.only === nothing && opts.fusion === nothing || error("Do not mix positional runs with sweep filters")
+        opts.only === nothing && opts.fusion === nothing && opts.models === nothing ||
+            error("Do not mix positional runs with sweep filters")
         specs = [positional_spec(opts.positional,gs)]
     end
     isempty(specs) && error("No benchmarks selected")
