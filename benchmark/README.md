@@ -100,8 +100,9 @@ than `julia`.
 share the model-neutral array harness in `src/array_worker.jl`; JACC and Dagger
 have native model-specific kernels. `src/jacc/` uses
 `JACC.Multi.parallel_reduce`; `src/dagger/` uses a GPU-scoped
-`DArray` reduction. New model kernels must be registered by
-`supports_benchmark` in `src/models.jl` only after they exist.
+`DArray` with one chunk-local map-reduction task per GPU. New model kernels
+must be registered by `supports_benchmark` in `src/models.jl` only after they
+exist.
 
 For smaller JACC or Dagger runs inside a larger allocation, worker environments
 retain the scheduler's `CUDA_VISIBLE_DEVICES` ordering and expose only the
