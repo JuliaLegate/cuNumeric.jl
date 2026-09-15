@@ -108,9 +108,7 @@ end
 
 # Shared syntax tree keeps every Gray-Scott variant on the exact same workload.
 const GRAYSCOTT_STEP_BODY = quote
-    # currently we don't have NDArray^x working yet. every operator is dotted
-    # so each rhs fuses into a single broadcast kernel rather than shattering
-    # into bare +/-/* binary tasks.
+    # Dot every operator so each RHS can fuse.
     F_u = (
         (
             .-u[2:(end - 1), 2:(end - 1)] .*
@@ -162,16 +160,10 @@ const GRAYSCOTT_STEP_BODY = quote
     v_new[end, :] = v[2, :]
 end
 
-# "grayscott" is the @accelerate function form on cuNumeric, plain elsewhere;
-# "grayscott_plain" is always the plain baseline.
+# cuNumeric replaces this plain fallback in its worker.
 let body = deepcopy(GRAYSCOTT_STEP_BODY)
     @eval _gs_step!(b::GrayScottBaseline, u, v, u_new, v_new, args::GSParams) = $body
-    if CUNUMERIC_BENCH_RUNTIME
-        definition = _define_accelerated_definition(
-            :(_gs_step!(b::GrayScottAccelerated, u, v, u_new, v_new, args::GSParams)), body
-        )
-        @eval $definition
-    else
+    if !CUNUMERIC_BENCH_RUNTIME
         @eval _gs_step!(b::GrayScottAccelerated, u, v, u_new, v_new, args::GSParams) = $body
     end
 end
