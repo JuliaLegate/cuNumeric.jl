@@ -25,6 +25,8 @@ if abspath(PROGRAM_FILE) == abspath(@__FILE__)
     ensure_project_ready()
     include("src/core.jl")
     include_benchmarks()
+    # cuNumeric-only accelerated variants; orchestrator needs the types for planning.
+    include("src/cunumeric/benchmarks/grayscott_accelerate_forms.jl")
     include("src/models.jl")
     include("src/parse_benchmarks.jl")
     include("src/memory.jl")
