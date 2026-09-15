@@ -30,7 +30,8 @@ end
 @testset "Fused mapped reductions" begin
     @allowpromotion begin
         for T in (Bool, Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64, Float32, Float64)
-            input = reshape(T.(mod.(0:104, 2)), 7, 3, 5)
+            # A typed comprehension keeps Bool inputs byte-addressable, unlike broadcast.
+            input = reshape(T[mod(i, 2) for i in 0:104], 7, 3, 5)
             for op in (+, *, min, max), dims in (:, 1, 2, (1, 3), (3, 1), (1, 1), (), 4)
                 _check_mapped_reduction(identity, op, input; dims)
             end
