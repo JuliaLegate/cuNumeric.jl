@@ -51,7 +51,7 @@ function memory_estimate(b::MonteCarloIntegration{T}, c::MemoryContext) where {T
     validate_memory_context(b, c)
     e = cld(big(b.n_samples), c.gpus)
     bytes = e * sizeof(T)
-    if c.model in (:jacc, :dagger)
+    if c.model in (:cudajl, :jacc, :dagger)
         return MemoryEstimate(
             2bytes, 2bytes, 0,
             "partitioned samples plus conservative per-device reduction workspace; " *
@@ -64,7 +64,7 @@ function memory_estimate(b::MonteCarloIntegration{T}, c::MemoryContext) where {T
     arrays = if c.model == :cupynumeric
         3
     else
-        c.model == :cudajl || c.fusion ? 2 : 4
+        c.fusion ? 2 : 4
     end
     # Julia has tracing GC, not Python's reference counting. The returned
     # broadcast output is not explicitly destroyed by this baseline kernel.
@@ -73,7 +73,7 @@ function memory_estimate(b::MonteCarloIntegration{T}, c::MemoryContext) where {T
     # an undotted operation would instead escape that cleanup and need its own
     # per-iteration retention allowance.
     # Bound its retention over the complete trial instead of assuming a GC.
-    retained = c.model == :cunumeric || c.model == :cudajl ? c.steps-1 : 0
+    retained = c.model == :cunumeric ? c.steps-1 : 0
     return MemoryEstimate(init, (arrays + retained)*bytes, 0,
         "samples + broadcast output; unfused temporaries; up to $retained prior Julia outputs awaiting GC; random dtype conversion",
     )

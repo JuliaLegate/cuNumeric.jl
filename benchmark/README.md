@@ -97,9 +97,10 @@ than `julia`.
 
 `src/cunumeric/`, `src/cuda/`, `src/jacc/`, `src/dagger/` and
 `src/cupynumeric/` contain the model implementations. cuNumeric and CUDA.jl
-share the model-neutral array harness in `src/array_worker.jl`; JACC and Dagger
-have native model-specific kernels. `src/jacc/` uses
-`JACC.Multi.parallel_reduce`; `src/dagger/` uses a GPU-scoped
+share the model-neutral array harness in `src/array_worker.jl`; CUDA.jl
+specializes Monte Carlo with its `mapreduce` API, while JACC and Dagger have
+native model-specific kernels. `src/jacc/` uses `JACC.Multi.parallel_reduce`;
+`src/dagger/` uses a GPU-scoped
 `DArray` with one chunk-local map-reduction task per GPU. New model kernels
 must be registered by `supports_benchmark` in `src/models.jl` only after they
 exist.
