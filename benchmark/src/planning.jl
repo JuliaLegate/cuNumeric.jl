@@ -5,7 +5,12 @@ struct PlannedRun
     N::Int
     M::Int
     memory::MemoryEstimate
+    budget::Int
 end
+
+# Budget may be a single value applied to every spec or a per-spec lookup.
+run_budget(budget::Integer, spec) = Int(budget)
+run_budget(budget::AbstractDict, spec) = budget[spec]
 
 function workspace_bound(raw, name, model)
     entry = get(get(raw, "workspace", Dict()), name, Dict())
@@ -65,7 +70,7 @@ function baseline_shape(s, k)
     end
 end
 
-function candidate_runs(specs, gs, raw, baseline)
+function candidate_runs(specs, gs, raw, baseline, budget)
     runs = PlannedRun[]
     seen = Set{Any}()
     for s in specs
@@ -78,7 +83,7 @@ function candidate_runs(specs, gs, raw, baseline)
                 s.n_iter, s.n_warmup, s.n_trial)
             key in seen && continue
             push!(seen, key)
-            push!(runs, PlannedRun(s, c.model, n, m, memory_estimate(b, c)))
+            push!(runs, PlannedRun(s, c.model, n, m, memory_estimate(b, c), run_budget(budget, s)))
         end
     end
     # Multiple explicit blocks must not create misleading overlays.
@@ -92,7 +97,7 @@ function candidate_runs(specs, gs, raw, baseline)
     return runs
 end
 
-function plan_runs(specs, gs, raw, groups, budget::Integer)
+function plan_runs(specs, gs, raw, groups, budget)
     isempty(specs) && error("No benchmarks selected")
     foreach(validate_spec, specs)
     group_for = Dict(member=>group for (group, members) in groups for member in members)
@@ -111,8 +116,8 @@ function plan_runs(specs, gs, raw, groups, budget::Integer)
         members = buckets[key]
         autos = filter(s->s.autosize, members)
         if isempty(autos)
-            runs = candidate_runs(members, gs, raw, nothing)
-            all(r->peak_bytes(r.memory)<=budget, runs) ||
+            runs = candidate_runs(members, gs, raw, nothing, budget)
+            all(r->peak_bytes(r.memory)<=r.budget, runs) ||
                 error("Pinned size exceeds memory budget in $(key[1])")
             append!(planned, runs)
             continue
@@ -139,16 +144,16 @@ function plan_runs(specs, gs, raw, groups, budget::Integer)
             lo,
             Int(
                 min(
-                    budget÷sizeof(parse_bench_type(s.T)),
+                    maximum(run_budget(budget, m) for m in members)÷sizeof(parse_bench_type(s.T)),
                     typemax(Int)÷(8maximum(x.gpus for x in members)),
                 ),
             )÷quantum,
         )
-        make(k) = candidate_runs(members, gs, raw, baseline_shape(s, k*quantum))
+        make(k) = candidate_runs(members, gs, raw, baseline_shape(s, k*quantum), budget)
         # Evaluate once before search to surface unsupported model errors.
-        all(r->peak_bytes(r.memory)<=budget, make(lo)) ||
+        all(r->peak_bytes(r.memory)<=r.budget, make(lo)) ||
             error("Minimum problem does not fit in $(key[1])")
-        best = largest_feasible(lo, hi, k->all(r->peak_bytes(r.memory)<=budget, make(k)))
+        best = largest_feasible(lo, hi, k->all(r->peak_bytes(r.memory)<=r.budget, make(k)))
         best === nothing && error("No feasible size for $(key[1])")
         append!(planned, make(best))
     end
@@ -156,14 +161,14 @@ function plan_runs(specs, gs, raw, groups, budget::Integer)
 end
 
 function print_plan(runs, budget)
-    println("Per-GPU budget: $budget bytes; sizes are shared within each comparison group.")
+    println("Per-GPU budget shown per run; sizes are shared within each comparison group.")
     for r in runs
         m = r.memory
         println(
             "$(r.spec.name) / $(r.model) / $(r.spec.T) fusion=$(r.spec.fusion) GPUs=$(r.spec.gpus) N=$(r.N) M=$(r.M)"
         )
         println(
-            "  initialization=$(m.initialization), iteration=$(m.iteration), workspace=$(m.workspace), peak=$(peak_bytes(m)) bytes"
+            "  initialization=$(m.initialization), iteration=$(m.iteration), workspace=$(m.workspace), peak=$(peak_bytes(m)) bytes; budget=$(r.budget) (mem_frac=$(r.spec.mem_frac))"
         )
         println("  $(m.explanation)")
     end

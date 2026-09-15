@@ -41,7 +41,7 @@ function positional_spec(p, gs)
     return BenchmarkSpec(p[3], p[4], parse(Int, p[1]), parse(Int, p[2]),
         length(p)>=10 ? parse_fusion(p[10]) : true, copy(gs.models),
         parse(Int, p[8]), parse(Int, p[7]), parse(Int, p[9]),
-        auto ? [0, 0] : [n, m], auto, n, m)
+        auto ? [0, 0] : [n, m], auto, n, m, gs.mem_frac)
 end
 
 function plan_manifest(runs, budget, raw)
@@ -61,6 +61,7 @@ function plan_manifest(runs, budget, raw)
                 "n_trial"=>r.spec.n_trial, "initialization_bytes"=>string(r.memory.initialization),
                 "iteration_bytes"=>string(r.memory.iteration),
                 "workspace_bytes"=>string(r.memory.workspace),
+                "budget_bytes"=>r.budget, "mem_frac"=>r.spec.mem_frac,
                 "memory_explanation"=>r.memory.explanation, "status"=>"pending") for r in runs
         ])
 end
@@ -165,8 +166,10 @@ function main(args=ARGS; budget_provider=selected_gpu_budget, executor=execute_p
     end
     isempty(specs) && error("No benchmarks selected")
     raw = TOML.parsefile(opts.config)
-    budget, _ = budget_provider(gs.mem_frac, maximum(s.gpus for s in specs))
-    runs = plan_runs(specs, gs, raw, parse_plot_groups(opts.config), budget)
+    # Each block's mem_frac (falling back to the global) sets its own budget.
+    budgets = Dict(s => first(budget_provider(s.mem_frac, s.gpus)) for s in unique(specs))
+    budget = maximum(values(budgets))
+    runs = plan_runs(specs, gs, raw, parse_plot_groups(opts.config), budgets)
     opts.dry && print_plan(runs, budget)
     opts.dry && return 0
     return executor(runs, gs, opts, budget, raw)

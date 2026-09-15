@@ -20,6 +20,14 @@ struct BenchmarkSpec
     autosize::Bool
     N_hint::Union{Int,Nothing}
     M_hint::Union{Int,Nothing}
+    mem_frac::Float64
+end
+
+# Back-compat: callers predating the per-block mem_frac override.
+function BenchmarkSpec(name, T, gpus, cpus, fusion, models, n_warmup, n_iter, n_trial,
+    args, autosize, N_hint, M_hint)
+    return BenchmarkSpec(name, T, gpus, cpus, fusion, models, n_warmup, n_iter, n_trial,
+        args, autosize, N_hint, M_hint, 0.5)
 end
 
 # A field may be a scalar or a list.
@@ -130,6 +138,7 @@ function parse_config(path; only=nothing, fusion_override=nothing, models_overri
             n_warmup = get(e, "n_warmup", global_settings.n_warmup)
             n_iter = get(e, "n_iter", global_settings.n_iter)
             n_trial = get(e, "n_trial", global_settings.n_trial)
+            mem_frac = Float64(get(e, "mem_frac", global_settings.mem_frac))
             block_auto = get(e, "auto_size", global_settings.auto_size)
 
             n_auto = nmode == :omitted || nmode == :auto
@@ -179,6 +188,7 @@ function parse_config(path; only=nothing, fusion_override=nothing, models_overri
                         use_auto,
                         N_hint,
                         M_hint,
+                        mem_frac,
                     ),
                 )
             end
