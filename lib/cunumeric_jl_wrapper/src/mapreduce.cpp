@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "legate/data/buffer.h"
-#include "legate/redop/base.h"
+#include "legate/redop/redop.h"
 
 extern std::size_t padded_bytes_kernel_state;
 
@@ -144,7 +144,9 @@ struct ReduceDispatch {
       using T = legate::type_of<C>;
       auto op = static_cast<MapReduceOp>(ctx.scalar(3).value<MapReduceOpValue>());
       if (op == MapReduceOp::ADD) return run_reduction<legate::SumReduction<T>, D>(ctx, kernel);
-      if (op == MapReduceOp::MUL) return run_reduction<legate::ProdReduction<T>, D>(ctx, kernel);
+      if constexpr (C != legate::Type::Code::COMPLEX128) {
+        if (op == MapReduceOp::MUL) return run_reduction<legate::ProdReduction<T>, D>(ctx, kernel);
+      }
       if constexpr (C != legate::Type::Code::COMPLEX64 && C != legate::Type::Code::COMPLEX128) {
         if (op == MapReduceOp::MIN) return run_reduction<legate::MinReduction<T>, D>(ctx, kernel);
         if (op == MapReduceOp::MAX) return run_reduction<legate::MaxReduction<T>, D>(ctx, kernel);

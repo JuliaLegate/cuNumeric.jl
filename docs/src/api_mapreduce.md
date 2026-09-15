@@ -61,7 +61,10 @@ apply Base's zero/one seed, which can matter for signed zeros and complex infini
   mutable captures, dynamic dispatch, and GPU-incompatible mapping functions are not.
 - Mapping results must infer one concrete supported scalar type: Bool, the existing
   signed/unsigned integer widths, Float32/Float64, or ComplexF32/ComplexF64.
-  Complex mapped values support addition/product only. Float16, strings, tuple
+  Complex mapped values support addition/product only, except that ComplexF64
+  product accumulators are unsupported because Legate has no built-in reducer
+  for them. This also applies when dimensional `init` selects ComplexF64 storage.
+  Float16, strings, tuple
   accumulators, and union-valued results are unsupported.
 - Parallel reassociation changes floating-point rounding, overflow behavior, and
   potentially signed zeros in arithmetic reductions. Bitwise agreement with Base

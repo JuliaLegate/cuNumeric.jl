@@ -36,6 +36,16 @@ end
             end
         end
         for T in (ComplexF32, ComplexF64), op in (+, *)
+            if T === ComplexF64 && op === (*)
+                A = cuNumeric.ones(T, 7, 9)
+                try
+                    @test_throws ArgumentError mapreduce(identity, op, A; dims=1)
+                    @test_throws ArgumentError prod(identity, A)
+                finally
+                    cuNumeric.destroy!(A)
+                end
+                continue
+            end
             _check_mapped_reduction(identity, op, fill(T(1 + 0im), 7, 9); dims=1)
             _check_mapped_reduction(abs2, +, fill(T(1 + 2im), 7, 9))
         end

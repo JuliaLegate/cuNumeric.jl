@@ -25,6 +25,10 @@ end
         @test CN._mr_decode(op, Bool, encoded) === op(a, b)
     end
     @test_throws ArgumentError CN._mr_accumulator(min, ComplexF32)
+    for op in (*, Base.mul_prod)
+        @test_throws ArgumentError CN._mr_accumulator(op, ComplexF64)
+        @test_throws ArgumentError CN._mr_accumulator(op, ComplexF32, one(ComplexF64), 1)
+    end
     @test_throws ArgumentError CN._mr_accumulator(+, Float64, 0f0, 1)
     @test_throws ArgumentError CN._mr_accumulator(min, Float32, ComplexF32(0), 1)
     @test_throws ArgumentError CN._mr_mapped_type(ReductionPointerNumber(Ptr{Float32}(0)), Float32)

@@ -73,11 +73,15 @@ function _mr_mapped_type(f::F, ::Type{T}) where {F,T}
     return M
 end
 
+_mr_supported_accumulator(op, ::Type{R}) where {R} = R
+_mr_supported_accumulator(::_MR_MUL, ::Type{ComplexF64}) =
+    throw(ArgumentError("ComplexF64 product accumulators are unsupported: Legate has no corresponding built-in reducer"))
+
 function _mr_accumulator(op::_MR_OP, ::Type{M}) where {M}
     op isa _MR_EXTREMA && M <: Complex && throw(ArgumentError("min/max mapreduce does not support complex mapped values"))
     R = Base.promote_op(Base.reduce_first, typeof(op), M)
     isconcretetype(R) && R <: SUPPORTED_ARRAY_TYPES || throw(ArgumentError("unsupported mapreduce accumulator type $R"))
-    return R
+    return _mr_supported_accumulator(op, R)
 end
 _mr_accumulator(op, M, ::NoReductionInit, dims::_MR_DIMS) = _mr_accumulator(op, M)
 _mr_accumulator(op, M, init, ::Colon) = _mr_accumulator(op, M)
@@ -86,7 +90,7 @@ function _mr_accumulator(op, M, init::I, dims::_MR_DIMS) where {I}
     R = _mr_accumulator(op, M)
     op isa _MR_EXTREMA && I <: Complex && throw(ArgumentError("min/max mapreduce does not support complex init"))
     Base.promote_op(_mr_combine(op), I, R) === I || throw(ArgumentError("dimensional mapreduce requires init's type to hold the accumulator without narrowing; use init::$R"))
-    return I
+    return _mr_supported_accumulator(op, I)
 end
 
 _mr_finish(op, x, ::NoReductionInit) = x
@@ -117,7 +121,8 @@ widening rules, subject to `allowpromotion`.
 
 Requires an active GPU target and a type-stable GPU-compilable callable with only
 isbits scalar captures. One input array is supported; complex results support
-only addition/product. Narrowing dimensional `init` types are unsupported.
+only addition/product; ComplexF64 product accumulators are unsupported by Legate.
+Narrowing dimensional `init` types are unsupported.
 Floating-point results may differ in rounding with partitioning; extrema preserve
 NaNs and signed zeros, but not NaN payloads. See the mapped-reductions documentation.
 """
