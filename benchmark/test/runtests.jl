@@ -52,6 +52,23 @@ end
     end
 end
 
+@testset "CPU correctness inputs" begin
+    mc = MonteCarloIntegration{Float32}(; n_samples=2048)
+    mc_check = correctness_problem(mc)
+    @test correctness_uses_cpu(mc)
+    @test dims(mc_check) == (1024, 1)
+    @test only(correctness_seed(mc_check)) ==
+        Float32.(range(0.0f0, 10.0f0; length=1024))
+
+    gemm = GEMM{Float32}(; N=16, M=12)
+    gemm_check = correctness_problem(gemm)
+    C, A, B = correctness_seed(gemm_check)
+    @test correctness_uses_cpu(gemm)
+    @test dims(gemm_check) == (8, 8)
+    @test C == zeros(Float32, 8, 8)
+    @test run!(gemm_check, C, A, B) ≈ A * B
+end
+
 @testset "cuPyNumeric preflight" begin
     gs = GlobalSettings(; n_warmup=1, n_iter=1, models=[:cunumeric, :cupynumeric])
     s = BenchmarkSpec(
@@ -92,16 +109,16 @@ end
     gs, specs = parse_config(SMOKE_CONFIG)
     @test gs.models == [:cunumeric, :cupynumeric, :cudajl, :jacc, :dagger]
     @test gs.check_correctness
-    @test length(specs) == 1
-    @test only(specs).name == "montecarlo"
-    @test only(specs).models == gs.models
+    @test Set(spec.name for spec in specs) == Set(("montecarlo", "gemm"))
+    @test all(spec.models == gs.models for spec in specs)
 end
 
 @testset "Execution model registry and isolation" begin
     @test parse_models(["cuNumeric", "CUDA.jl", "JACC", "Dagger.jl"]) ==
         [:cunumeric, :cudajl, :jacc, :dagger]
     @test supports_benchmark(execution_model(:jacc), "montecarlo")
-    @test !supports_benchmark(execution_model(:jacc), "gemm")
+    @test supports_benchmark(execution_model(:jacc), "gemm")
+    @test supports_benchmark(execution_model(:dagger), "gemm")
     @test !supports_gpu_count(execution_model(:cudajl), 2)
 
     gs, specs = parse_config(CONFIG; only="montecarlo", models_override=[:jacc, :dagger])

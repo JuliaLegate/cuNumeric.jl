@@ -44,27 +44,9 @@ _domain_volume(mci::MonteCarloIntegration{T}) where {T} = T(10) / mci.n_samples
 # the surrounding exponential from sharing one broadcast with the square.
 _montecarlo_integrand(x) = exp.(.-(x .^ 2))
 
-let body = quote
-        # Keep the nested broadcast behind a helper: @accelerate's lifetime
-        # pass can then release the materialized integrand after `sum` without
-        # splitting the pointwise exp/negation/power broadcast tree.
-        integrand = _montecarlo_integrand(x)
-        return _domain_volume(mci) * sum(integrand)
-    end
-    if CUNUMERIC_BENCH_RUNTIME
-        # The cuNumeric benchmark path should exercise the recommended
-        # acceleration scope by default. Other array models share this source
-        # file and receive the ordinary Julia definition below; the CUDA.jl
-        # worker installs a CuArray map-reduce specialization after inclusion.
-        definition = _define_accelerated_definition(
-            :(run!(mci::MonteCarloIntegration, x)), body
-        )
-        @eval $definition
-    else
-        @eval function run!(mci::MonteCarloIntegration, x)
-            $body
-        end
-    end
+function run!(mci::MonteCarloIntegration, x)
+    integrand = _montecarlo_integrand(x)
+    return _domain_volume(mci) * sum(integrand)
 end
 
 # n_samples comes in as N; M is unused.
@@ -75,6 +57,9 @@ end
 function correctness_problem(b::MonteCarloIntegration{T}) where {T}
     return MonteCarloIntegration{T}(; n_samples=min(b.n_samples, 1024))
 end
-cuda_correctness_supported(::MonteCarloIntegration) = true
+function correctness_seed(b::MonteCarloIntegration{T}) where {T}
+    return (T.(range(T(0), T(10); length=b.n_samples)),)
+end
+correctness_uses_cpu(::MonteCarloIntegration) = true
 
 register_benchmark("montecarlo", MonteCarloIntegration)

@@ -3,9 +3,6 @@ n_warmup = 2
 n_iter = 250
 n_trial = 5
 models = ["cunumeric", "cupynumeric", "cudajl", "jacc", "dagger"]
-# JACC and Dagger currently implement the native Monte Carlo benchmark. Models
-# without an implementation for a selected benchmark are omitted from that run.
-# When gpus == 1, cuNumeric compares a tiny problem against CUDA.jl.
 # CUDA.jl is still timed; its CSV correctness column is skipped.
 check_correctness = true
 n_correctness_iter = 5

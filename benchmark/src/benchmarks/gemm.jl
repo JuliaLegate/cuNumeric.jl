@@ -47,5 +47,11 @@ end
 run!(::GEMM, C, A, B) = mul!(C, A, B)
 
 correctness_problem(b::GEMM{T}) where {T} = GEMM{T}(; N=min(b.N, 8), M=min(b.M, 8))
+function correctness_seed(b::GEMM{T}) where {T}
+    A = reshape(T.(1:(b.N * b.M)), b.N, b.M) ./ T(b.N*b.M)
+    B = reshape(T.(1:(b.M * b.N)), b.M, b.N) ./ T(b.M*b.N)
+    return zeros(T, b.N, b.N), A, B
+end
+correctness_uses_cpu(::GEMM) = true
 
 register_benchmark("gemm", GEMM)
