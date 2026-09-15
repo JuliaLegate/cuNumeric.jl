@@ -225,13 +225,6 @@ function check_benchmark_correctness(
     return _all_approx(got, expected, T; atol, rtol) ? "pass" : "fail"
 end
 
-# `f(mod)` runs the reduced correctness problem and returns the value(s) to compare.
-function check_vs_cuda(f, ::Type{T}; atol=nothing, rtol=nothing) where {T}
-    got = f(cuNumeric)
-    ref = f(cuda_backend())
-    return _all_approx(got, ref, T; atol, rtol) ? "pass" : "fail"
-end
-
 # One timed trial: warmup, then time `n_iter` iterations of `run!`.
 function _trial(
     b::AbstractBenchmark, gs::GlobalSettings;
