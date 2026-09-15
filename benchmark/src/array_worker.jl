@@ -1,6 +1,7 @@
-# Shared protocol for the cuNumeric and CUDA.jl array workers. The model
-# entrypoint imports exactly its own packages and defines `array_backend_entry`
-# before including this file.
+# Shared protocol for the cuNumeric and CUDA.jl array workers. Before including
+# this file, the model entrypoint imports its packages, loads `core.jl` and the
+# shared benchmarks, loads any model-specific benchmark methods, and defines
+# `array_backend_entry`.
 
 length(ARGS) == 11 || error(
     "array worker args: <gpus> <name> <T> <N> <M> <n_iter> <n_warmup> " *
@@ -9,9 +10,6 @@ length(ARGS) == 11 || error(
 
 using Printf
 using Statistics
-
-include(joinpath(@__DIR__, "core.jl"))
-include_benchmarks()
 
 parse_worker_type(s) = get(Dict("Float32"=>Float32, "Float64"=>Float64), s) do
     return error("Unsupported element type '$s'; known: Float32, Float64")

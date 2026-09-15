@@ -20,4 +20,7 @@ function array_backend_entry()
     )
 end
 
+include(joinpath(@__DIR__, "..", "core.jl"))
+include_benchmarks()
+include(joinpath(@__DIR__, "benchmarks", "montecarlo.jl"))
 include(joinpath(@__DIR__, "..", "array_worker.jl"))
