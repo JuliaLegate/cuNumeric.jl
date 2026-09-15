@@ -26,8 +26,8 @@ Base.@kwdef struct GrayScottAccelerated{T} <: AbstractGrayScott{T}
     M::Int
 end
 
-name(::GrayScottBaseline) = "grayscott"
-name(::GrayScottAccelerated) = "grayscott_accelerated"
+name(::GrayScottBaseline) = "grayscott_plain"
+name(::GrayScottAccelerated) = "grayscott"
 dims(b::AbstractGrayScott) = (b.N, b.M)
 data(b::AbstractGrayScott{T}) where {T} = "GrayScott with T=$(T), N=$(b.N), M=$(b.M)"
 allowed_types(::Type{AbstractGrayScott}) = cuNumeric.SUPPORTED_FLOAT_TYPES
@@ -100,8 +100,8 @@ function correctness_problem(b::AbstractGrayScott{T}) where {T}
 end
 correctness_iters(::AbstractGrayScott, gs::GlobalSettings) = gs.n_correctness_iter
 correctness_result(::AbstractGrayScott, state, _) = (only(state).u, only(state).v)
-# CPU reference so CUDA.jl gets a non-circular check (accelerated forms stay CUDA).
-correctness_uses_cpu(::GrayScottBaseline) = true
+# CPU reference so CUDA.jl gets a non-circular check (the forms stay CUDA).
+correctness_uses_cpu(::Union{GrayScottBaseline,GrayScottAccelerated}) = true
 function cuda_runnable(b::GrayScottAccelerated{T}) where {T}
     return GrayScottBaseline{T}(; N=b.N, M=b.M)
 end
@@ -162,7 +162,8 @@ const GRAYSCOTT_STEP_BODY = quote
     v_new[end, :] = v[2, :]
 end
 
-# Original baseline and recommended function-form benchmark.
+# "grayscott" is the @accelerate function form on cuNumeric, plain elsewhere;
+# "grayscott_plain" is always the plain baseline.
 let body = deepcopy(GRAYSCOTT_STEP_BODY)
     @eval _gs_step!(b::GrayScottBaseline, u, v, u_new, v_new, args::GSParams) = $body
     if CUNUMERIC_BENCH_RUNTIME
@@ -170,6 +171,8 @@ let body = deepcopy(GRAYSCOTT_STEP_BODY)
             :(_gs_step!(b::GrayScottAccelerated, u, v, u_new, v_new, args::GSParams)), body
         )
         @eval $definition
+    else
+        @eval _gs_step!(b::GrayScottAccelerated, u, v, u_new, v_new, args::GSParams) = $body
     end
 end
 
@@ -181,5 +184,5 @@ function run!(b::AbstractGrayScott, st::GrayScottState)
     return nothing
 end
 
-register_benchmark("grayscott", GrayScottBaseline)
-register_benchmark("grayscott_accelerated", GrayScottAccelerated)
+register_benchmark("grayscott", GrayScottAccelerated)
+register_benchmark("grayscott_plain", GrayScottBaseline)
