@@ -17,14 +17,27 @@ struct MemoryEstimate
 end
 peak_bytes(m::MemoryEstimate) = max(m.initialization, m.iteration) + m.workspace
 
+# Per-GPU cuBLAS scratch; must match the deployed CUBLAS_WORKSPACE_CONFIG.
+const CUBLAS_WORKSPACE_PER_GPU = 4 * 1024 * 1024
+# Verified per-GPU native bounds by (benchmark, model); TOML overrides these.
+const DEFAULT_WORKSPACE = Dict{Tuple{String,Symbol},Int}(
+    ("gemm", :jacc) => 0, # custom parallel_for kernel, no cuBLAS
+    ("gemm", :dagger) => CUBLAS_WORKSPACE_PER_GPU,
+    ("gemm", :cudajl) => CUBLAS_WORKSPACE_PER_GPU,
+    ("gemm", :cunumeric) => CUBLAS_WORKSPACE_PER_GPU,
+    ("gemm", :cupynumeric) => CUBLAS_WORKSPACE_PER_GPU,
+)
+
 function library_workspace(b, c)
-    c.workspace_bytes === nothing && error(
+    bytes = c.workspace_bytes
+    bytes === nothing && (bytes = get(DEFAULT_WORKSPACE, (name(b), c.model), nothing))
+    bytes === nothing && error(
         "$(name(b)) / $(c.model): native workspace bound is unknown. " *
         "Set workspace_bytes to a verified per-GPU upper bound for this backend/library " *
         "configuration; autosizing will not guess or probe after an OOM.",
     )
-    c.workspace_bytes >= 0 || error("workspace_bytes must be nonnegative")
-    return big(c.workspace_bytes)
+    bytes >= 0 || error("workspace_bytes must be nonnegative")
+    return big(bytes)
 end
 
 function validate_memory_context(b::AbstractBenchmark{T}, c) where {T}

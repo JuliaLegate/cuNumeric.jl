@@ -77,13 +77,14 @@ end
 
 # Model-specific benchmark code is opt-in.  cuNumeric owns the accelerated
 # variants; the other existing array baselines use only the non-accelerated
-# definitions.  JACC and Dagger currently have native Monte Carlo workers.
+# definitions. JACC and Dagger have native Monte Carlo and GEMM workers.
 supports_benchmark(::CuNumericModel, ::AbstractString) = true
 function supports_benchmark(::Union{CuPyNumericModel,CUDAJLModel}, name::AbstractString)
     return !endswith(name, "_accelerated")
 end
-supports_benchmark(::Union{JACCModel,DaggerModel}, name::AbstractString) =
-    name == "montecarlo"
+function supports_benchmark(::Union{JACCModel,DaggerModel}, name::AbstractString)
+    return name in ("gemm", "montecarlo")
+end
 
 supports_gpu_count(::ExecutionModel, gpus::Integer) = gpus > 0
 supports_gpu_count(::CUDAJLModel, gpus::Integer) = gpus == 1
