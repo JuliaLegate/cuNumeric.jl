@@ -78,13 +78,12 @@ function rewrite_broadcast_lifetimes(scope)
         broadcast_assignment = _broadcast_assignment(expr)
         if !isnothing(broadcast_assignment)
             (; lhs, rhs) = broadcast_assignment
-            # NDArray slices are writable views. Hoist the destination slice so
-            # the fused broadcast writes through it, then destroy its handle.
+            # Hoist a writable view; plain Array indexing would copy.
             lhs_reference = _reference(lhs)
             if isnothing(lhs_reference)
                 new_lhs, lhs_temps = rewrite_materialized(lhs)
             else
-                new_lhs, lhs_temps = fresh_tmp(lhs)
+                new_lhs, lhs_temps = fresh_tmp(:(Base.@view $lhs))
             end
             new_rhs, rhs_temps = rewrite_lazy_broadcast(rhs, Dict{Any,Symbol}())
             return Expr(:(.=), new_lhs, new_rhs), vcat(lhs_temps, rhs_temps)
