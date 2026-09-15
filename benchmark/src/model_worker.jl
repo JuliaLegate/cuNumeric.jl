@@ -60,9 +60,7 @@ function montecarlo_correctness_status(actual, expected, ::Type{T}) where {T}
     return isapprox(actual, expected; atol=tolerance, rtol=tolerance) ? "pass" : "fail"
 end
 
-# Shared Gray-Scott reference for native workers (JACC, Dagger). Every native
-# model runs the same fully-periodic forward-Euler scheme and checks itself
-# against this host implementation. Defaults match GSParams in benchmarks/grayscott.jl.
+# Shared host Gray-Scott reference (fully-periodic forward-Euler) for JACC/Dagger.
 function grayscott_gs_params(::Type{T}) where {T}
     dx = T(1)
     return (dt=T(dx / 5), dx2=dx * dx, cu=T(1.0), cv=T(0.3), f=T(0.03), k=T(0.06))

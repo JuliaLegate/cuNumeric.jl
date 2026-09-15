@@ -63,8 +63,7 @@ function model_initialize(b::DaggerGrayScott{T}) where {T}
     return dagger_grayscott_state(b, u_host, v_host)
 end
 
-# Fully-periodic forward-Euler step; @stencil gathers cross-block halos and Wrap
-# supplies the periodic boundary. Double-buffered: write Un/Vn, then copy back.
+# @stencil handles cross-block halos; Wrap gives periodic BC. Double-buffered.
 function model_run!(b::DaggerGrayScott, s::DaggerGrayScottState)
     dt, dx2, cu, cv, f, k = b.dt, b.dx2, b.cu, b.cv, b.f, b.k
     U, V, Un, Vn = s.U, s.V, s.Un, s.Vn
