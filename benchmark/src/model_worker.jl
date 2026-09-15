@@ -60,6 +60,59 @@ function montecarlo_correctness_status(actual, expected, ::Type{T}) where {T}
     return isapprox(actual, expected; atol=tolerance, rtol=tolerance) ? "pass" : "fail"
 end
 
+# Shared Gray-Scott reference for native workers (JACC, Dagger). Every native
+# model runs the same fully-periodic forward-Euler scheme and checks itself
+# against this host implementation. Defaults match GSParams in benchmarks/grayscott.jl.
+function grayscott_gs_params(::Type{T}) where {T}
+    dx = T(1)
+    return (dt=T(dx / 5), dx2=dx * dx, cu=T(1.0), cv=T(0.3), f=T(0.03), k=T(0.06))
+end
+
+function grayscott_host_init(::Type{T}, N, M; deterministic=false) where {T}
+    u = ones(T, N, M)
+    v = zeros(T, N, M)
+    seed = min(150, N, M)
+    if deterministic
+        for j in 1:seed, i in 1:seed
+            u[i, j] = T(0.5) + T(0.5) * sin(T(i)) * cos(T(j))
+            v[i, j] = T(0.25) + T(0.25) * cos(T(i)) * sin(T(j))
+        end
+    else
+        u[1:seed, 1:seed] = rand(T, seed, seed)
+        v[1:seed, 1:seed] = rand(T, seed, seed)
+    end
+    return u, v
+end
+
+function grayscott_cpu_steps(::Type{T}, u0, v0, steps, p) where {T}
+    N, M = size(u0)
+    u, v = copy(u0), copy(v0)
+    un, vn = similar(u), similar(v)
+    for _ in 1:steps
+        @inbounds for j in 1:M, i in 1:N
+            up, vp = u[i, j], v[i, j]
+            im = i == 1 ? N : i - 1
+            ip = i == N ? 1 : i + 1
+            jm = j == 1 ? M : j - 1
+            jp = j == M ? 1 : j + 1
+            lu = (u[ip, j] - 2up + u[im, j]) / p.dx2 + (u[i, jp] - 2up + u[i, jm]) / p.dx2
+            lv = (v[ip, j] - 2vp + v[im, j]) / p.dx2 + (v[i, jp] - 2vp + v[i, jm]) / p.dx2
+            uvv = up * vp * vp
+            un[i, j] = up + p.dt * (p.cu * lu - uvv + p.f * (one(T) - up))
+            vn[i, j] = vp + p.dt * (p.cv * lv + uvv - (p.f + p.k) * vp)
+        end
+        u, un = un, u
+        v, vn = vn, v
+    end
+    return u, v
+end
+
+function grayscott_correctness_status(gu, gv, cu, cv, ::Type{T}) where {T}
+    tol = T <: Float32 ? 1.0f-3 : 1e-10
+    ok = isapprox(gu, cu; atol=tol, rtol=tol) && isapprox(gv, cv; atol=tol, rtol=tol)
+    return ok ? "pass" : "fail"
+end
+
 function model_trial(benchmark, config; clock=time_ns)
     GC.gc(true)
     state = model_initialize(benchmark)

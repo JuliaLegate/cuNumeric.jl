@@ -26,7 +26,7 @@ Base.@kwdef struct GrayScottAccelerated{T} <: AbstractGrayScott{T}
     M::Int
 end
 
-name(::GrayScottBaseline) = "grayscott_baseline"
+name(::GrayScottBaseline) = "grayscott"
 name(::GrayScottAccelerated) = "grayscott_accelerated"
 dims(b::AbstractGrayScott) = (b.N, b.M)
 data(b::AbstractGrayScott{T}) where {T} = "GrayScott with T=$(T), N=$(b.N), M=$(b.M)"
@@ -179,5 +179,5 @@ function run!(b::AbstractGrayScott, st::GrayScottState)
     return nothing
 end
 
-register_benchmark("grayscott_baseline", GrayScottBaseline)
+register_benchmark("grayscott", GrayScottBaseline)
 register_benchmark("grayscott_accelerated", GrayScottAccelerated)
