@@ -10,13 +10,19 @@ check_correctness = true
 auto_size = true
 mem_frac = 0.75
 
-[[gemm]]
+[[grayscott]]
 T = "Float32"
 gpus = 1
 cpus = 1
-mem_frac = 0.25
+mem_frac = 0.75
 
-[[montecarlo]]
-T = "Float32"
-gpus = 1
-cpus = 1
+#[[gemm]]
+#T = "Float32"
+#gpus = 1
+#cpus = 1
+#mem_frac = 0.25
+
+#[[montecarlo]]
+#T = "Float32"
+#gpus = 1
+#cpus = 1
