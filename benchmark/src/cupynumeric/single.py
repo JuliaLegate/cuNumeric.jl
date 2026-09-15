@@ -60,6 +60,7 @@ def main():
         )
     T = parse_type(T_str)
     bench = BENCHMARKS[name](T, N, M)
+    bench.n_correctness_iter = int(sys.argv[10])
     verbose = os.environ.get("CUNUMERIC_BENCH_VERBOSE", "0") == "1"
     supports_correctness = hasattr(bench, "check_correctness")
     if verbose and check_correctness and supports_correctness:

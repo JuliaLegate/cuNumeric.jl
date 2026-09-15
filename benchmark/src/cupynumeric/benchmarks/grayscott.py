@@ -1,5 +1,6 @@
 # cuPyNumeric implementation.
 import cupynumeric as np
+import numpy as host_np
 
 from core import register_benchmark, rand_array, zeros_array, ones_array
 
@@ -32,6 +33,9 @@ class GrayScott:
 
     def run(self, state):
         u, v, u_new, v_new = state
+        # Copy: slice views alias the ping-pong buffers under deferred execution.
+        u = u.copy()
+        v = v.copy()
         ui = u[1:-1, 1:-1]
         vi = v[1:-1, 1:-1]
 
@@ -64,6 +68,36 @@ class GrayScott:
         # swap references rather than copy
         state[0], state[2] = u_new, u
         state[1], state[3] = v_new, v
+
+    def correctness_dims(self):
+        n = min(32, self.N, self.M)
+        return n, n
+
+    def check_correctness(self):
+        # run() is array-generic; drive both backends from one host IC.
+        n, _ = self.correctness_dims()
+        steps = getattr(self, "n_correctness_iter", 5)
+        # Smooth deterministic IC; an iid-random grid is FP-sensitive here.
+        seed = min(150, n)
+        i = host_np.arange(1, seed + 1, dtype=self.T)
+        I, J = host_np.meshgrid(i, i, indexing="ij")
+        u0 = host_np.ones((n, n), dtype=self.T)
+        v0 = host_np.zeros((n, n), dtype=self.T)
+        u0[:seed, :seed] = (0.5 + 0.5 * host_np.sin(I) * host_np.cos(J)).astype(self.T)
+        v0[:seed, :seed] = (0.25 + 0.25 * host_np.cos(I) * host_np.sin(J)).astype(self.T)
+
+        def evolve(xp, u, v):
+            state = [u, v, xp.zeros((n, n), dtype=self.T), xp.zeros((n, n), dtype=self.T)]
+            for _ in range(steps):
+                self.run(state)
+            return state[0], state[1]
+
+        au, av = evolve(np, np.asarray(u0), np.asarray(v0))
+        eu, ev = evolve(host_np, u0.copy(), v0.copy())
+        tol = 1e-3 if self.T is np.float32 else 1e-10
+        ok = host_np.allclose(host_np.asarray(au), eu, rtol=tol, atol=tol) and \
+            host_np.allclose(host_np.asarray(av), ev, rtol=tol, atol=tol)
+        return "pass" if ok else "fail"
 
 
 register_benchmark("grayscott", GrayScott)

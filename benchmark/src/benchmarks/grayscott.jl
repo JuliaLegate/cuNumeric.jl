@@ -100,6 +100,8 @@ function correctness_problem(b::AbstractGrayScott{T}) where {T}
 end
 correctness_iters(::AbstractGrayScott, gs::GlobalSettings) = gs.n_correctness_iter
 correctness_result(::AbstractGrayScott, state, _) = (only(state).u, only(state).v)
+# CPU reference so CUDA.jl gets a non-circular check (accelerated forms stay CUDA).
+correctness_uses_cpu(::GrayScottBaseline) = true
 function cuda_runnable(b::GrayScottAccelerated{T}) where {T}
     return GrayScottBaseline{T}(; N=b.N, M=b.M)
 end
