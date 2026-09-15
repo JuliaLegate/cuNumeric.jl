@@ -7,6 +7,15 @@ struct ReductionAffine
 end
 (f::ReductionAffine)(x) = f.scale * x + f.offset + f.sign
 
+function _mapped_reduction_tolerances(f, input; dims=:)
+    T = Base.promote_op(f, eltype(input))
+    region = dims isa Integer ? (dims,) : dims
+    n = prod(size(input, d) for d in 1:ndims(input) if dims isa Colon || d in region)
+    # Use mapped magnitudes so cancellation and type-changing maps are covered.
+    scale = maximum(x -> abs(f(x)), input; init=zero(real(T)))
+    return (; rtol=reduction_rtol(T, max(n, 1)), atol=reduction_atol(T, max(n, 1), scale))
+end
+
 function _check_mapped_reduction(f, op, input; kwargs...)
     A = @allowscalar NDArray(input)
     result = nothing
@@ -16,10 +25,11 @@ function _check_mapped_reduction(f, op, input; kwargs...)
         @test size(result) == size(expected)
         @test eltype(result) === (expected isa AbstractArray ? eltype(expected) : typeof(expected))
         actual = _mapped_reduction_host(result)
-        if op === min || op === max || eltype(input) <: Integer
+        if op === min || op === max || eltype(result) <: Integer
             @test isequal(actual, expected)
         else
-            @test actual ≈ expected rtol=5e-5 atol=5e-6
+            tolerances = _mapped_reduction_tolerances(f, input; dims=get(kwargs, :dims, :))
+            @test isapprox(actual, expected; tolerances...)
         end
     finally
         cuNumeric.destroy!(A)
@@ -120,7 +130,8 @@ end
                     x -> abs2(x - alpha)
                 end
                 r = mapreduce(f, +, A)
-                @test _mapped_reduction_host(r) ≈ mapreduce(f, +, input) rtol=5e-5
+                tolerances = _mapped_reduction_tolerances(f, input)
+                @test isapprox(_mapped_reduction_host(r), mapreduce(f, +, input); tolerances...)
                 cuNumeric.destroy!(r)
                 current_size = length(cuNumeric._MR_PTX_CACHE)
                 isnothing(cache_size) || (@test current_size == cache_size)

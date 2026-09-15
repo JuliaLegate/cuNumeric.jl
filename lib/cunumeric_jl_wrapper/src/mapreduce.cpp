@@ -4,10 +4,13 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
 #include "legate/data/buffer.h"
+#include "legate/mapping/mapping.h"
 #include "legate/redop/redop.h"
 
 extern std::size_t padded_bytes_kernel_state;
@@ -16,6 +19,26 @@ namespace ufi {
 namespace {
 constexpr int THREADS = 256;
 constexpr int64_t MAX_PARTIALS = 4096;
+
+// These tasks need their own mapper: cuPyNumeric's mapper cannot account for
+// scratch allocated by tasks registered outside its built-in task table.
+class MapReduceMapper : public legate::mapping::Mapper {
+ public:
+  std::vector<legate::mapping::StoreMapping> store_mappings(
+      const legate::mapping::Task&,
+      const std::vector<legate::mapping::StoreTarget>&) override { return {}; }
+
+  std::optional<std::size_t> allocation_pool_size(
+      const legate::mapping::Task&, legate::mapping::StoreTarget target) override {
+    // One partial buffer; ComplexF64 is the largest supported accumulator.
+    return target == legate::mapping::StoreTarget::FBMEM
+        ? MAX_PARTIALS * sizeof(legate::type_of<legate::Type::Code::COMPLEX128>) : 0;
+  }
+
+  legate::Scalar tunable_value(legate::TunableID) override {
+    throw std::invalid_argument("mapreduce has no tunables");
+  }
+};
 
 template <int D>
 using ArrayArg = CuStridedDeviceArray<D>;
@@ -172,6 +195,17 @@ struct FinishDispatch {
   }
 };
 }  // namespace
+
+legate::Library get_mapreduce_library() {
+  return legate::Runtime::get_runtime()->find_library("cuNumeric_mapreduce");
+}
+
+void register_mapreduce_tasks() {
+  auto library = legate::Runtime::get_runtime()->create_library(
+      "cuNumeric_mapreduce", legate::ResourceConfig{}, std::make_unique<MapReduceMapper>());
+  RunPTXMapReduceTask::register_variants(library);
+  RunPTXReduceFinishTask::register_variants(library);
+}
 
 void RunPTXMapReduceTask::gpu_variant(legate::TaskContext context) {
   auto kernel = lookup_ptx(context.scalar(0).value<std::string>(), context.get_task_stream());

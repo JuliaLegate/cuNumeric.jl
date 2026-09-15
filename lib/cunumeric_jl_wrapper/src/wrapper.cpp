@@ -76,8 +76,7 @@ void register_tasks() {
   ufi::LoadPTXTask::register_variants(library);
   ufi::RunPTXTask::register_variants(library);
   ufi::RunPTXBroadcastTask::register_variants(library);
-  ufi::RunPTXMapReduceTask::register_variants(library);
-  ufi::RunPTXReduceFinishTask::register_variants(library);
+  ufi::register_mapreduce_tasks();
 }
 
 static legate::Scalar mapreduce_payload(const void* ptr, size_t size) {
@@ -93,7 +92,7 @@ static void submit_mapreduce(CN_NDArray* input, CN_NDArray* accumulator,
                              const void* mapper, size_t mapper_size,
                              const void* finish, size_t finish_size) {
   auto* rt = legate::Runtime::get_runtime();
-  auto library = get_lib();
+  auto library = ufi::get_mapreduce_library();
   auto src = input->obj.get_store();
   auto acc = accumulator->obj.get_store();
   // Physical descriptors and reduction accessors use at least one dimension.
