@@ -11,8 +11,9 @@ JACC.@init_backend
 assert_models_not_loaded(("cuNumeric", "Dagger"))
 include(joinpath(@__DIR__, "benchmarks", "montecarlo.jl"))
 include(joinpath(@__DIR__, "benchmarks", "gemm.jl"))
+include(joinpath(@__DIR__, "benchmarks", "grayscott.jl"))
 
-const SUPPORTED_BENCHMARKS = ["montecarlo", "gemm"]
+const SUPPORTED_BENCHMARKS = ["montecarlo", "gemm", "grayscott"]
 
 function model_build_benchmark(config::ModelWorkerConfig)
     config.name in SUPPORTED_BENCHMARKS || error(
@@ -24,6 +25,8 @@ function model_build_benchmark(config::ModelWorkerConfig)
         return model_build_montecarlo(config)
     elseif config.name == "gemm"
         return model_build_gemm(config)
+    elseif config.name == "grayscott"
+        return model_build_grayscott(config)
     end
 end
 

@@ -16,7 +16,7 @@ mem_frac = 0.75
 # group's baseline member (`*_baseline`, else the only / first name).
 [plot.groups]
 grayscott = [
-    "grayscott_baseline",
+    "grayscott",
     "grayscott_function_accelerated",
     "grayscott_begin_accelerated",
     "grayscott_let_accelerated",
@@ -49,7 +49,7 @@ n_iter = 50
 # Paper: N = [24000, 33944, 48000, 67888]
 #################################
 
-[[grayscott_baseline]]
+[[grayscott]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 8

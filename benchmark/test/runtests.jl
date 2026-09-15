@@ -318,7 +318,7 @@ end
     @test_throws ErrorException memory_estimate(accelerated, MemoryContext(; model=:cupynumeric))
     gs = GlobalSettings(; n_warmup=1, n_iter=1)
     ss = [
-        spec(n; gpus=p, fusion=f) for n in ("grayscott_baseline", "grayscott_function_accelerated")
+        spec(n; gpus=p, fusion=f) for n in ("grayscott", "grayscott_function_accelerated")
         for p in (1, 4) for f in (false, true)
     ]
     runs = plan_runs(ss, gs, RAW, GROUPS, 10_000_000)
