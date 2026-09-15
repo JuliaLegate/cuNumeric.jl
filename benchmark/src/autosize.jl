@@ -96,22 +96,3 @@ end
 function parse_bench_type(T_str::AbstractString)
     return getfield(Base, Symbol(T_str))::DataType
 end
-
-function resolve_autosize(
-    name::AbstractString, T_str::AbstractString, P::Integer;
-    mem_frac::Real, N_hint, M_hint,
-)
-    haskey(BENCHMARKS, name) || error(
-        "No benchmark registered for '$(name)'. Known: $(join(sort(collect(keys(BENCHMARKS))), ", "))"
-    )
-    B = BENCHMARKS[name]
-    T = parse_bench_type(T_str)
-    budget, frac = autosize_budget(mem_frac)
-    N1, M1 = fit_one_gpu(B, T; budget, N_hint, M_hint)
-    scaled = estimate_scaling(build_benchmark(B, T, N1, M1), P)
-    if scaled === nothing
-        return nothing
-    end
-    N, M = scaled
-    return (; N, M, N1, M1, budget, frac)
-end
