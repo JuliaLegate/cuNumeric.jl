@@ -94,6 +94,8 @@ end
 @testset "Configuration and CLI" begin
     gs, ss = parse_config(CONFIG; only="grayscott", fusion_override=[true, false])
     @test all(startswith(s.name, "grayscott") for s in ss)
+    @test BENCHMARKS["grayscott"] === GrayScottAccelerated
+    @test BENCHMARKS["grayscott_plain"] === GrayScottBaseline
     @test Set(s.fusion for s in ss)==Set([true, false])
     @test_throws ErrorException parse_config(CONFIG; only="missing")
     o = cli_options(["--only=montecarlo", "--fusion=both", "--dry-run"])
@@ -308,10 +310,13 @@ end
 
 @testset "Variant lifetimes and rectangular constraints" begin
     baseline = GrayScottBaseline{Float32}(; N=64, M=32)
+    default_accelerated = GrayScottAccelerated{Float32}(; N=64, M=32)
     accelerated = GrayScottFunctionAccelerated{Float32}(; N=64, M=32)
     for f in (true, false)
         c = MemoryContext(; fusion=f, steps=10)
         @test peak_bytes(memory_estimate(accelerated, c)) < peak_bytes(memory_estimate(baseline, c))
+        @test peak_bytes(memory_estimate(default_accelerated, c)) ==
+            peak_bytes(memory_estimate(accelerated, c))
     end
     @test peak_bytes(memory_estimate(baseline, MemoryContext(; fusion=true))) <
         peak_bytes(memory_estimate(baseline, MemoryContext(; fusion=false)))
