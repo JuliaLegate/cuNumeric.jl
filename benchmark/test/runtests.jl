@@ -1,4 +1,4 @@
-using Test, Statistics, TOML
+using Test, Statistics, TOML, LinearAlgebra
 include("../src/core.jl")
 include_benchmarks()
 include("../src/models.jl")
@@ -220,7 +220,12 @@ end
     @test peak_bytes(memory_estimate(b, MemoryContext())) == 8192
     @test peak_bytes(memory_estimate(b, MemoryContext(; model=:cupynumeric))) == 12288
     @test peak_bytes(memory_estimate(b, MemoryContext(; fusion=false))) == 16384
-    @test_throws ErrorException memory_estimate(GEMM{Float32}(; N=64, M=64), MemoryContext())
+    # GEMM resolves to a source default; jacc's kernel needs no cuBLAS scratch.
+    @test memory_estimate(GEMM{Float32}(; N=64, M=64), MemoryContext()).workspace ==
+        CUBLAS_WORKSPACE_PER_GPU
+    @test memory_estimate(GEMM{Float32}(; N=64, M=64), MemoryContext(; model=:jacc)).workspace == 0
+    # A native benchmark without a source default still requires an explicit bound.
+    @test_throws ErrorException memory_estimate(DMDBaseline{Float32}(; N=64, M=16), MemoryContext())
     @test_throws ErrorException memory_estimate(b, MemoryContext(; model=:cudajl, gpus=2))
     d = DMDBaseline{Float32}(; N=1024, M=16)
     @test peak_bytes(memory_estimate(d, MemoryContext(; gpus=1, workspace_bytes=0))) ==
