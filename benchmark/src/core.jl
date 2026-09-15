@@ -12,8 +12,8 @@ using Statistics
     standard deviations/errors.
 - `n_gpu::Int` : The number of GPUs used by legate. Set through the LEGATE_CONFIG,
     this value is just bookkeeping.
-- `check_correctness::Bool` : If true and `n_gpu == 1`, compare a tiny cuNumeric
-    result against CUDA.jl before timing. CUDA.jl / multi-GPU / Python skip.
+- `check_correctness::Bool` : If true and `n_gpu == 1`, compare the model result
+    against a reference on benchmark-defined dimensions before timing.
 - `n_correctness_iter::Int` : Steps to run for that single correctness check.
 """
 Base.@kwdef struct GlobalSettings
@@ -104,12 +104,14 @@ function build_benchmark(::Type{B}, ::Type{T}, N, M) where {B<:AbstractBenchmark
     return B{T}(; N=N, M=M)
 end
 
-# Optional hooks for the generic CUDA.jl check (initialize + run!).
+# Optional hooks for the generic correctness check (initialize + run!).
 correctness_problem(b::AbstractBenchmark) = b
+correctness_seed(b::AbstractBenchmark) = initialize(b; mod=Base)
 correctness_iters(::AbstractBenchmark, gs::GlobalSettings) = 1
 cuda_runnable(b::AbstractBenchmark) = b
 correctness_result(::AbstractBenchmark, state, out) = out === nothing ? state : out
 correctness_atol_rtol(::AbstractBenchmark, ::Type{T}) where {T} = ref_atol_rtol(T)
+correctness_uses_cpu(::AbstractBenchmark) = false
 
 #########################################
 
@@ -126,14 +128,14 @@ end
 # CUDA.jl 6: the worker may pass `CUDA` or `CUDACore` as `mod`.
 is_cuda_backend(mod) = nameof(mod) === :CUDA || nameof(mod) === :CUDACore
 
-cuda_correctness_supported(::AbstractBenchmark) = false
-
 function correctness_applies(gs::GlobalSettings, mod, benchmark)
     gs.n_gpu == 1 || return false
-    return !is_cuda_backend(mod) || cuda_correctness_supported(benchmark)
+    return !is_cuda_backend(mod) || correctness_uses_cpu(benchmark)
 end
 
-correctness_reference_label(mod) = is_cuda_backend(mod) ? "CPU" : "CUDA.jl"
+function correctness_reference_label(mod, benchmark)
+    return is_cuda_backend(mod) || correctness_uses_cpu(benchmark) ? "CPU" : "CUDA.jl"
+end
 
 function cuda_backend()
     for (id, mod) in Base.loaded_modules
@@ -204,11 +206,11 @@ end
 function check_benchmark_correctness(
     b::AbstractBenchmark{T}, gs::GlobalSettings; mod=cuNumeric
 ) where {T}
-    tiny = correctness_problem(b)
-    seed = initialize(tiny; mod=Base)
+    check_problem = correctness_problem(b)
+    seed = correctness_seed(check_problem)
     atol, rtol = correctness_atol_rtol(b, T)
-    nstep = correctness_iters(tiny, gs)
-    reference = is_cuda_backend(mod) ? Base : cuda_backend()
+    nstep = correctness_iters(check_problem, gs)
+    reference = correctness_uses_cpu(check_problem) ? Base : cuda_backend()
     run_on(backend, kernel) = begin
         state = to_backend_state(backend, seed)
         out = nothing
@@ -217,13 +219,13 @@ function check_benchmark_correctness(
         end
         return correctness_result(kernel, state, out)
     end
-    got = run_on(mod, tiny)
-    reference_kernel = reference === Base ? tiny : cuda_runnable(tiny)
+    got = run_on(mod, check_problem)
+    reference_kernel = reference === Base ? check_problem : cuda_runnable(check_problem)
     expected = run_on(reference, reference_kernel)
     return _all_approx(got, expected, T; atol, rtol) ? "pass" : "fail"
 end
 
-# `f(mod)` runs the tiny problem on one backend and returns the value(s) to compare.
+# `f(mod)` runs the reduced correctness problem and returns the value(s) to compare.
 function check_vs_cuda(f, ::Type{T}; atol=nothing, rtol=nothing) where {T}
     got = f(cuNumeric)
     ref = f(cuda_backend())
@@ -267,7 +269,7 @@ function run_benchmark(
             if verbose
                 check_dims = join(dims(correctness_problem(b)), '×')
                 println(
-                    "Correctness check: reference=$(correctness_reference_label(mod)), " *
+                    "Correctness check: reference=$(correctness_reference_label(mod, b)), " *
                     "dimensions=$check_dims",
                 )
                 flush(stdout)

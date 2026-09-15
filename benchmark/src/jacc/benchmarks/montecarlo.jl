@@ -3,10 +3,7 @@ struct JACCMonteCarlo{T}
     gpus::Int
 end
 
-function model_build_benchmark(config::ModelWorkerConfig)
-    config.name == "montecarlo" || error(
-        "JACC benchmark '$(config.name)' is not implemented; known: montecarlo"
-    )
+function model_build_montecarlo(config::ModelWorkerConfig)
     config.N % config.gpus == 0 || error(
         "JACC.Multi currently requires montecarlo N to be divisible by the GPU count"
     )

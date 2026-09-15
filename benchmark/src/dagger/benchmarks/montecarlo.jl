@@ -11,10 +11,7 @@ struct DaggerMonteCarloState{A,C,S}
     scopes::S
 end
 
-function model_build_benchmark(config::ModelWorkerConfig)
-    config.name == "montecarlo" || error(
-        "Dagger benchmark '$(config.name)' is not implemented; known: montecarlo"
-    )
+function model_build_montecarlo(config::ModelWorkerConfig)
     available = length(collect(CUDA.devices()))
     available == config.gpus || error(
         "Dagger sees $available GPU(s), but this run was planned for $(config.gpus). " *
@@ -29,11 +26,6 @@ function model_build_benchmark(config::ModelWorkerConfig)
     return DaggerMonteCarlo{config.T,typeof(scope),typeof(processors)}(
         config.N, config.gpus, scope, processors
     )
-end
-
-function wait_for_darray(array)
-    foreach(wait, array.chunks)
-    return array
 end
 
 function dagger_montecarlo_state(samples, expected_gpus)
