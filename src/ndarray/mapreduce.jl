@@ -98,7 +98,12 @@ _mr_empty(f, op, T, M, ::NoReductionInit, ::Colon) = Base.mapreduce_empty(f, op,
 _mr_empty(f, op, T, M, init, dims) = init
 _mr_empty(f, op::_MR_ADD, T, M, ::NoReductionInit, dims::_MR_DIMS) = zero(_mr_accumulator(op, M))
 _mr_empty(f, op::_MR_MUL, T, M, ::NoReductionInit, dims::_MR_DIMS) = one(_mr_accumulator(op, M))
-_mr_empty(f, op::_MR_EXTREMA, T, M, ::NoReductionInit, dims::_MR_DIMS) = Base.mapreduce_empty(f, op, T)
+# Base rejects empty reduced axes before scalar reduction dispatch (which can
+# throw MethodError on Julia 1.10). abs/abs2 maxima have a separate zero seed.
+_mr_empty(f, op::_MR_EXTREMA, T, M, ::NoReductionInit, dims::_MR_DIMS) =
+    throw(ArgumentError("reducing over an empty collection is not allowed"))
+_mr_empty(f::Union{typeof(abs),typeof(abs2)}, op::typeof(max), T, M, ::NoReductionInit, dims::_MR_DIMS) =
+    Base.mapreduce_empty(f, op, T)
 
 """
     mapreduce(f, op, A::NDArray; dims=:, init)

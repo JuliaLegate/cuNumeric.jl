@@ -31,7 +31,8 @@ end
         op in (+, *, Base.add_sum, Base.mul_prod)
         @test CN._mr_accumulator(op, T) === typeof(Base.reduce_first(op, one(T)))
     end
-    for f in (identity, abs, abs2, x -> x*x), op in (+, *, min, max), dims in (:, 1)
+    @testset "Empty reduction f=$f op=$op dims=$dims" for
+        f in (identity, abs, abs2, x -> x*x), op in (+, *, min, max), dims in (:, 1, (1,))
         reference = try
             mapreduce(f, op, Float32[]; dims)
         catch e
