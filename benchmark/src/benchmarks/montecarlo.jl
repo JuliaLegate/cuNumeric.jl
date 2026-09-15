@@ -54,7 +54,8 @@ let body = quote
     if CUNUMERIC_BENCH_RUNTIME
         # The cuNumeric benchmark path should exercise the recommended
         # acceleration scope by default. Other array models share this source
-        # file but receive the ordinary Julia definition below.
+        # file and receive the ordinary Julia definition below; the CUDA.jl
+        # worker installs a CuArray map-reduce specialization after inclusion.
         definition = _define_accelerated_definition(
             :(run!(mci::MonteCarloIntegration, x)), body
         )
