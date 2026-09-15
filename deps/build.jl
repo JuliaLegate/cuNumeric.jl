@@ -19,6 +19,7 @@
 
 using Pkg
 using Preferences
+using Libdl: dlext
 
 # The build only needs Legate's paths/tooling, not a running runtime.
 # Setting this env prevents a segfault on Julia 1.12
@@ -69,6 +70,10 @@ function build_deps(pkg_root, cupynumeric_root, blas_root; cuda_root=nothing, cu
         install_lib;
         cuda_root, cuda_enabled,
     )
+    for name in ("cunumeric_jl_wrapper", "cunumeric_c_wrapper")
+        library = joinpath(install_lib, "lib", "lib$name.$dlext")
+        isfile(library) || error("Wrapper build did not produce $library; see deps/cpp_wrapper.err. JLL override was not updated.")
+    end
     return BuildTools.set_jll_artifact_override(:cunumeric_jl_wrapper_jll, install_lib)
 end
 

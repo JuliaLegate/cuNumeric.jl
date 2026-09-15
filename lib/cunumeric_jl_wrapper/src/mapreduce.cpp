@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "legate/data/buffer.h"
+#include "legate/redop/base.h"
 
 extern std::size_t padded_bytes_kernel_state;
 
