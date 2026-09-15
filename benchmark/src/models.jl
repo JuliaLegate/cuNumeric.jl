@@ -4,7 +4,7 @@
 # `using Dagger`.  Model packages belong to their dedicated worker processes;
 # the orchestrator only needs enough metadata to plan and launch those workers.
 
-using TOML
+using TOML, SHA
 
 abstract type ExecutionModel end
 
@@ -80,11 +80,13 @@ end
 # definitions. JACC and Dagger have native Monte Carlo and GEMM workers.
 supports_benchmark(::CuNumericModel, ::AbstractString) = true
 function supports_benchmark(::Union{CuPyNumericModel,CUDAJLModel}, name::AbstractString)
-    return !endswith(name, "_accelerated")
+    return name != "cg" && !endswith(name, "_accelerated")
 end
 function supports_benchmark(::Union{JACCModel,DaggerModel}, name::AbstractString)
     return name in ("gemm", "montecarlo", "grayscott")
 end
+
+supports_benchmark(::JACCModel, name::AbstractString) = name in ("gemm", "montecarlo", "grayscott", "cg")
 
 supports_gpu_count(::ExecutionModel, gpus::Integer) = gpus > 0
 supports_gpu_count(::CUDAJLModel, gpus::Integer) = gpus == 1
@@ -121,10 +123,16 @@ struct WorkerRequest
     check_correctness::Bool
     n_correctness_iter::Int
     flops::Float64
+    kwargs::Dict{Symbol,Any}
 end
 
+WorkerRequest(args::Vararg{Any,12}) = WorkerRequest(args..., Dict{Symbol,Any}())
+kwargs_toml(kwargs) = sprint(io -> TOML.print(io, Dict(string(k)=>v for (k,v) in kwargs); sorted=true))
+results_subdir(s) = isempty(s.kwargs) ? s.T : s.T * "-" * bytes2hex(sha1(kwargs_toml(s.kwargs)))[1:12]
+
 function common_worker_args(r::WorkerRequest)
-    return `$(r.gpus) $(r.name) $(r.T) $(r.N) $(r.M) $(r.n_iter) $(r.n_warmup) $(r.n_trial) $(r.check_correctness) $(r.n_correctness_iter) $(r.flops)`
+    args = `$(r.gpus) $(r.name) $(r.T) $(r.N) $(r.M) $(r.n_iter) $(r.n_warmup) $(r.n_trial) $(r.check_correctness) $(r.n_correctness_iter) $(r.flops)`
+    return isempty(r.kwargs) ? args : `$args $(kwargs_toml(r.kwargs))`
 end
 
 function julia_worker_command(model::ExecutionModel, request::WorkerRequest, root)
@@ -286,4 +294,11 @@ function isolated_model_versions(runs, root)
         )
     end
     return result
+end
+
+# Native adapters must explicitly consume options; never silently ignore them.
+validate_model_kwargs(::ExecutionModel, name, kwargs) = nothing
+function validate_model_kwargs(model::Union{JACCModel,DaggerModel,CuPyNumericModel}, name, kwargs)
+    isempty(kwargs) || (model isa JACCModel && name == "cg") ||
+        error("$(model_id(model)) $name does not yet accept constructor kwargs")
 end

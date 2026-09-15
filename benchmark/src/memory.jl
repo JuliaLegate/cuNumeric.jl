@@ -179,3 +179,15 @@ function memory_estimate(b::AbstractTensorContraction{T}, c::MemoryContext) wher
         "full contraction inputs/outputs and pairwise intermediates; native packing/workspace counted separately",
     )
 end
+
+function memory_estimate(b::ConjugateGradientBenchmark{T},c::MemoryContext) where {T}
+    validate_memory_context(b,c)
+    b.N>=2 && b.M==1 || error("CG requires N ≥ 2 and M=1")
+    b.check_every>0 && b.max_iter>0 || error("CG check_every and max_iter must be positive")
+    c.model==:jacc && b.N % c.gpus!=0 && error("JACC CG requires N divisible by GPUs")
+    v=big(b.N)*sizeof(T)
+    # Synchronization need not collect Julia wrappers for completed temporaries.
+    retained = c.model == :cunumeric ? big(b.max_iter)*c.steps : 1
+    return MemoryEstimate(16v,(24+24retained)*v,0,
+        "CG bands/workspace and conservative retained iteration temporaries")
+end

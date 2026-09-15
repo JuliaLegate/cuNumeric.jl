@@ -2,7 +2,7 @@
 # Model packages are imported by their entrypoint before `run_model_worker` is
 # called; this file never imports an execution model itself.
 
-using Printf
+using Printf, TOML
 using ProgressMeter: ProgressMeter
 using Statistics
 
@@ -21,12 +21,15 @@ struct ModelWorkerConfig
     check_correctness::Bool
     n_correctness_iter::Int
     flops::Float64
+    kwargs::Dict{Symbol,Any}
 end
 
+ModelWorkerConfig(args::Vararg{Any,12}) = ModelWorkerConfig(args..., Dict{Symbol,Any}())
+
 function parse_model_worker_args(args)
-    length(args) == 11 || error(
+    length(args) in (11,12) || error(
         "worker args: <gpus> <name> <T> <N> <M> <n_iter> <n_warmup> " *
-        "<n_trial> <check_correctness> <n_correctness_iter> <flops>",
+        "<n_trial> <check_correctness> <n_correctness_iter> <flops> [kwargs TOML]",
     )
     T_name = args[3]
     T = get(Dict("Float32" => Float32, "Float64" => Float64), T_name, nothing)
@@ -35,6 +38,7 @@ function parse_model_worker_args(args)
         parse(Int, args[1]), args[2], T, T_name, parse(Int, args[4]), parse(Int, args[5]),
         parse(Int, args[6]), parse(Int, args[7]), parse(Int, args[8]), parse(Bool, args[9]),
         parse(Int, args[10]), parse(Float64, args[11]),
+        length(args)==12 ? Dict{Symbol,Any}(Symbol(k)=>v for (k,v) in TOML.parse(args[12])) : Dict{Symbol,Any}(),
     )
     config.gpus > 0 || error("gpus must be positive")
     config.n_iter > 0 && config.n_trial > 0 && config.n_warmup >= 0 ||

@@ -101,3 +101,48 @@ To plot existing CSV files:
 ```bash
 julia --project=. plot_results.jl results/<run-id>
 ```
+
+### Conjugate gradient
+
+CG is implemented in `src/cunumeric/benchmarks/cg.jl` and
+`src/jacc/benchmarks/cg.jl`, using the regular workers and CSV/plot pipeline:
+
+```bash
+julia --project=. run.jl --config=benchmarks_cg.toml
+```
+
+Set constructor options per entry, for example
+`kwargs = { check_every = 10, max_iter = 1000 }` in `[[cg]]`.
+Options are passed to Julia benchmark constructors during planning and execution.
+Native backend adapters must explicitly support them (currently JACC CG).
+Runs with different kwargs use separate result/plot folders; the manifest records
+both the kwargs and the result folder. Entries without kwargs keep their existing paths.
+
+Both use `tridiag(1,4,1)`, b=1/2, and x=0. The JACC artifact's apparent
+coefficient-placement typo is corrected identically for both backends. CG
+reuses the previous squared residual (two reductions per iteration); this is
+not a literal reproduction of the artifact's copies/five-reduction sequence.
+JACC uses `Multi` arrays, exchanges search-direction halos before each multiply,
+and reduces over all devices. N must be divisible by the GPU count.
+Only cuNumeric and JACC implement this comparison.
+
+Run `julia --project=environments/jacc test/jacc_cg.jl` with the selected GPUs
+visible to validate partition boundaries and the distributed solve.
+
+`n_iter` counts complete solves per trial. Each solve includes zeroing x and
+residual initialization; allocations for persistent inputs/workspace are outside
+timing. The zero-start solver checks only when `k % check_every == 0` or
+`k == max_iter`. Convergence and finite-residual checks are inside that checkpoint.
+cuNumeric leaves coefficients in reduction stores between checks; JACC reads
+coefficients on the host. JACC Multi also synchronizes each operation; its current
+CUDA halo exchange stages data through the host. The existing harness synchronizes between complete
+solves, not between their internal iterations.
+
+Use `kwargs = { check_every = 10, max_iter = 1 }` for a single-update comparison. Longer runs must converge
+(relative tolerance 1e-8 for Float64, 1e-5 for Float32) or fail. Compare elapsed
+time: the CSV's GFLOP/s field is zero because convergence determines the work.
+The manifest records both CG controls. Keep N fixed when comparing check
+intervals; automatic memory sizing conservatively depends on max_iter and trial
+repetitions. The supplied config pins N=65,536; set N=100,000,000 for the
+paper-sized workload when memory permits. The docs example remains a general
+CG implementation, separate from this benchmark problem.

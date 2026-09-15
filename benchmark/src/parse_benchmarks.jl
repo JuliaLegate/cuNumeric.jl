@@ -21,7 +21,10 @@ struct BenchmarkSpec
     N_hint::Union{Int,Nothing}
     M_hint::Union{Int,Nothing}
     mem_frac::Float64
+    kwargs::Dict{Symbol,Any}
 end
+
+BenchmarkSpec(args::Vararg{Any,14}) = BenchmarkSpec(args..., Dict{Symbol,Any}())
 
 # Back-compat: callers predating the per-block mem_frac override.
 function BenchmarkSpec(name, T, gpus, cpus, fusion, models, n_warmup, n_iter, n_trial,
@@ -116,6 +119,10 @@ function parse_config(path; only=nothing, fusion_override=nothing, models_overri
         entries = raw[name]
         entries isa AbstractVector || continue
         for e in entries
+            kwargs = get(e, "kwargs", Dict())
+            kwargs isa AbstractDict || error("$name.kwargs must be a TOML table")
+            any(k->k in ("N", "M", "n_samples"), keys(kwargs)) &&
+                error("$name.kwargs cannot override dimensions; use N and M")
             types = aslist(get(e, "T", "Float32"))
             gpus = aslist(e["gpus"])
             cpus = aslist(e["cpus"])
@@ -189,6 +196,7 @@ function parse_config(path; only=nothing, fusion_override=nothing, models_overri
                         N_hint,
                         M_hint,
                         mem_frac,
+                        Dict{Symbol,Any}(Symbol(k)=>v for (k,v) in kwargs),
                     ),
                 )
             end
