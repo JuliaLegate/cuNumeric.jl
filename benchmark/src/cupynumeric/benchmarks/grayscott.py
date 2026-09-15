@@ -5,7 +5,7 @@ from core import register_benchmark, rand_array, zeros_array, ones_array
 
 
 class GrayScott:
-    name = "grayscott_baseline"
+    name = "grayscott"
     fence_each_iteration = False  # Timesteps belong to one trajectory.
 
     # dt = dx/5; c_u, c_v, f, k as in grayscott.jl's GSParams defaults.
@@ -66,4 +66,4 @@ class GrayScott:
         state[1], state[3] = v_new, v
 
 
-register_benchmark("grayscott_baseline", GrayScott)
+register_benchmark("grayscott", GrayScott)

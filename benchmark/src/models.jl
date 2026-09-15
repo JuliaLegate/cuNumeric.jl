@@ -83,14 +83,19 @@ function supports_benchmark(::Union{CuPyNumericModel,CUDAJLModel}, name::Abstrac
     return !endswith(name, "_accelerated")
 end
 function supports_benchmark(::Union{JACCModel,DaggerModel}, name::AbstractString)
-    return name in ("gemm", "montecarlo")
+    return name in ("gemm", "montecarlo", "grayscott")
 end
 
 supports_gpu_count(::ExecutionModel, gpus::Integer) = gpus > 0
 supports_gpu_count(::CUDAJLModel, gpus::Integer) = gpus == 1
 
 function supports_run(model::ExecutionModel, name::AbstractString, gpus::Integer)
-    return supports_benchmark(model, name) && supports_gpu_count(model, gpus)
+    supports_benchmark(model, name) || return false
+    # JACC and Dagger run grayscott single-GPU only for now (JACC's 2D ghost path
+    # is broken upstream; Dagger's @stencil multi-GPU still needs validation).
+    model isa Union{JACCModel,DaggerModel} && startswith(name, "grayscott") && gpus != 1 &&
+        return false
+    return supports_gpu_count(model, gpus)
 end
 
 model_project(::CuNumericModel, root) = joinpath(root, "environments", "cunumeric")
