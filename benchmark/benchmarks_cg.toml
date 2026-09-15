@@ -6,7 +6,19 @@ n_trial = 5
 check_correctness = true
 auto_size = false
 
+[plot.groups]
+cg = ["cg", "cg_accelerated"]
+
 [[cg]]
+T = "Float64"
+N = 65536
+M = 1
+gpus = 1
+cpus = 8
+kwargs = { check_every = 10, max_iter = 1000 }
+
+[[cg_accelerated]]
+models = ["cunumeric"]
 T = "Float64"
 N = 65536
 M = 1

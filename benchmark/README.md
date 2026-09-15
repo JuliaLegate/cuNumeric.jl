@@ -114,6 +114,9 @@ julia --project=. run.jl --config=benchmarks_cg.toml
 Set constructor options per entry, for example
 `kwargs = { check_every = 10, max_iter = 1000 }` in `[[cg]]`.
 Options are passed to Julia benchmark constructors during planning and execution.
+The config also includes `cg_accelerated`, a cuNumeric-only variant that applies
+`@accelerate` to each CG update. The convergence check stays outside that scope;
+plain cuNumeric, accelerated cuNumeric, and JACC share the CG plot.
 Native backend adapters must explicitly support them (currently JACC CG).
 Runs with different kwargs use separate result/plot folders; the manifest records
 both the kwargs and the result folder. Entries without kwargs keep their existing paths.

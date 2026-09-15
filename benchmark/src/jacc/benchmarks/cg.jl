@@ -12,9 +12,16 @@ function model_build_cg(c::ModelWorkerConfig)
 end
 function model_initialize(b::JACCCG{T}) where {T}
     JACC.Multi.ndev()==b.gpus || error("JACC visible device count differs from requested GPUs")
-    A = (JACC.Multi.array(ones(T,b.N)), JACC.Multi.array(fill(T(4),b.N)), JACC.Multi.array(ones(T,b.N)))
-    return (; A, x=JACC.Multi.array(zeros(T,b.N)),
-        work=ntuple(i -> JACC.Multi.array(zeros(T,b.N);ghost_dims=(i==2 ? 1 : 0)),3))
+    lower = JACC.Multi.array(ones(T, b.N))
+    diagonal = JACC.Multi.array(fill(T(4), b.N))
+    upper = JACC.Multi.array(ones(T, b.N))
+    x = JACC.Multi.array(zeros(T, b.N))
+    r = JACC.Multi.array(zeros(T, b.N))
+    # Only the search direction needs neighboring values for the stencil.
+    p = JACC.Multi.array(zeros(T, b.N); ghost_dims=1)
+    Ap = JACC.Multi.array(zeros(T, b.N))
+
+    return (; A=(lower, diagonal, upper), x, work=(r, p, Ap))
 end
 model_synchronize(::JACCCG) = nothing # Multi operations synchronize all devices.
 

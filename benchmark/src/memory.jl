@@ -180,7 +180,7 @@ function memory_estimate(b::AbstractTensorContraction{T}, c::MemoryContext) wher
     )
 end
 
-function memory_estimate(b::ConjugateGradientBenchmark{T},c::MemoryContext) where {T}
+function memory_estimate(b::AbstractConjugateGradient{T},c::MemoryContext) where {T}
     validate_memory_context(b,c)
     b.N>=2 && b.M==1 || error("CG requires N ≥ 2 and M=1")
     b.check_every>0 && b.max_iter>0 || error("CG check_every and max_iter must be positive")

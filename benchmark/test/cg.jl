@@ -1,7 +1,7 @@
 include("../src/cunumeric/benchmarks/cg.jl")
 @testset "CG periodic checks and harness integration" begin
-    for T in (Float32,Float64), every in (1,4,30)
-        b=ConjugateGradientBenchmark{T}(;N=17,check_every=every,max_iter=60)
+    for B in (ConjugateGradientBenchmark,ConjugateGradientAccelerated), T in (Float32,Float64), every in (1,4,30)
+        b=B{T}(;N=17,check_every=every,max_iter=60)
         s=only(initialize(b;mod=Base))
         @test run!(b,s) % every==0
         A=Tridiagonal(ones(T,16),fill(T(4),17),ones(T,16))
@@ -18,9 +18,11 @@ include("../src/cunumeric/benchmarks/cg.jl")
     config=joinpath(@__DIR__,"../benchmarks_cg.toml")
     gs,specs=parse_config(config)
     raw=TOML.parsefile(config)
-    @test only(specs).kwargs==Dict(:check_every=>10,:max_iter=>1000)
-    runs=plan_runs(specs,gs,raw,Dict(),10^12)
+    @test first(specs).kwargs==Dict(:check_every=>10,:max_iter=>1000)
+    runs=plan_runs(specs,gs,raw,parse_plot_groups(config),10^12)
     @test Set(r.model for r in runs)==Set((:cunumeric,:jacc))
+    @test Set((r.spec.name,r.model) for r in runs)==Set([
+        ("cg",:cunumeric),("cg",:jacc),("cg_accelerated",:cunumeric)])
     @test length(unique((r.N,r.M) for r in runs))==1
     @test plan_manifest(runs,10^12,raw)["runs"][1]["kwargs"]==raw["cg"][1]["kwargs"]
     b=build_benchmark(ConjugateGradientBenchmark,Float64,17,1;check_every=4,max_iter=40)
@@ -38,9 +40,10 @@ include("../src/cunumeric/benchmarks/cg.jl")
         gs,specs=parse_config(path)
         runs=plan_runs(specs,gs,raw,Dict(),10^12)
         @test count(r->r.model==:jacc,runs)==2 # one per kwargs, despite fusion sweep
-        @test count(r->r.model==:cunumeric,runs)==4
+        @test count(r->r.model==:cunumeric && r.spec.name=="cg",runs)==4
         @test length(unique(results_subdir(r.spec) for r in runs))==2
     end
+    @test !supports_benchmark(JACCModel(),"cg_accelerated")
     @test supports_run(JACCModel(),"cg",2)
     @test_throws ErrorException memory_estimate(
         ConjugateGradientBenchmark{Float64}(;N=17),MemoryContext(;model=:jacc,gpus=2))
