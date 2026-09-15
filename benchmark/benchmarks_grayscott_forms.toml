@@ -13,14 +13,14 @@ mem_frac = 0.75
 
 [plot.groups]
 grayscott = [
-    "grayscott",
+    "grayscott_plain",
     "grayscott_function_accelerated",
     "grayscott_begin_accelerated",
     "grayscott_let_accelerated",
     "grayscott_expression_accelerated",
 ]
 
-[[grayscott]]
+[[grayscott_plain]]
 T = "Float32"
 gpus = [1, 2, 4, 8]
 cpus = 8
