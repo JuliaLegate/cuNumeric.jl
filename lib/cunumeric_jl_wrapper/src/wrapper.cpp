@@ -36,6 +36,7 @@
 #include "realm.h"
 #include "types.h"
 #include "ufi.h"
+#include "mapreduce.h"
 
 struct WrapCppOptional {
   template <typename TypeWrapperT>
@@ -75,6 +76,68 @@ void register_tasks() {
   ufi::LoadPTXTask::register_variants(library);
   ufi::RunPTXTask::register_variants(library);
   ufi::RunPTXBroadcastTask::register_variants(library);
+  ufi::RunPTXMapReduceTask::register_variants(library);
+  ufi::RunPTXReduceFinishTask::register_variants(library);
+}
+
+static legate::Scalar mapreduce_payload(const void* ptr, size_t size) {
+  auto bytes = static_cast<const uint8_t*>(ptr);
+  return legate::Scalar(std::vector<uint8_t>(bytes, bytes + size));
+}
+
+static void submit_mapreduce(CN_NDArray* input, CN_NDArray* accumulator,
+                             CN_NDArray* output, uint64_t axes, bool full, bool single,
+                             ufi::MapReduceOp op, const std::string& kernel,
+                             const std::string& contribute_kernel,
+                             const std::string& finish_kernel,
+                             const void* mapper, size_t mapper_size,
+                             const void* finish, size_t finish_size) {
+  auto* rt = legate::Runtime::get_runtime();
+  auto library = get_lib();
+  auto src = input->obj.get_store();
+  auto acc = accumulator->obj.get_store();
+  // Physical descriptors and reduction accessors use at least one dimension.
+  if (src.dim() == 0) src = src.promote(0, 1);
+  if (src.dim() > 64) throw std::invalid_argument("mapreduce rank exceeds axis mask");
+  auto red = acc;
+  if (full) {
+    if (red.dim() == 0) red = red.promote(0, 1);
+  } else {
+    // Project from high to low, then promote from low to high: axis numbers
+    // refer to the original input throughout both transformations.
+    for (int d = red.dim() - 1; d >= 0; --d)
+      if ((axes >> d) & 1) red = red.project(d, 0);
+    for (int d = 0; d < src.dim(); ++d)
+      if ((axes >> d) & 1) red = red.promote(d, src.shape()[d]);
+    if (red.dim() == 0) red = red.promote(0, 1);
+  }
+  auto task = rt->create_task(library, ufi::RunPTXMapReduceTask::TASK_CONFIG.task_id());
+  auto p_src = task.add_input(src);
+  // A singleton has no reduction arithmetic: even multiplying complex Inf by
+  // an identity can introduce NaNs. Give it an ordinary output privilege.
+  auto p_red = single ? task.add_output(red)
+                      : task.add_reduction(red, static_cast<legate::ReductionOpKind>(op));
+  if (!full) task.add_constraint(legate::align(p_src, p_red));
+  task.add_scalar_arg(legate::Scalar(kernel));
+  task.add_scalar_arg(legate::Scalar(axes));
+  task.add_scalar_arg(legate::Scalar(full));
+  task.add_scalar_arg(legate::Scalar(static_cast<ufi::MapReduceOpValue>(op)));
+  task.add_scalar_arg(mapreduce_payload(mapper, mapper_size));
+  task.add_scalar_arg(legate::Scalar(contribute_kernel));
+  task.add_scalar_arg(legate::Scalar(single));
+  rt->submit(std::move(task));
+
+  if (finish_kernel.empty()) return;
+  auto dst = output->obj.get_store();
+  if (acc.dim() == 0) acc = acc.promote(0, 1);
+  if (dst.dim() == 0) dst = dst.promote(0, 1);
+  auto final = rt->create_task(library, ufi::RunPTXReduceFinishTask::TASK_CONFIG.task_id());
+  auto p_acc = final.add_input(acc);
+  auto p_dst = final.add_output(dst);
+  final.add_constraint(legate::align(p_acc, p_dst));
+  final.add_scalar_arg(legate::Scalar(finish_kernel));
+  final.add_scalar_arg(mapreduce_payload(finish, finish_size));
+  rt->submit(std::move(final));
 }
 #endif
 
@@ -85,6 +148,14 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   wrap_linalg_ops(mod);
   wrap_fft_ops(mod);
   wrap_bitgenerator_ops(mod);
+
+  mod.add_bits<ufi::MapReduceOp>("MapReduceOp", jlcxx::julia_type("CppEnum"));
+  mod.set_const("MAPREDUCE_ADD", ufi::MapReduceOp::ADD);
+  mod.set_const("MAPREDUCE_MUL", ufi::MapReduceOp::MUL);
+  mod.set_const("MAPREDUCE_MIN", ufi::MapReduceOp::MIN);
+  mod.set_const("MAPREDUCE_MAX", ufi::MapReduceOp::MAX);
+  mod.set_const("MAPREDUCE_AND", ufi::MapReduceOp::AND);
+  mod.set_const("MAPREDUCE_OR", ufi::MapReduceOp::OR);
 
   using jlcxx::ParameterList;
   using jlcxx::Parametric;
@@ -221,6 +292,7 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
 
 #if LEGATE_DEFINED(LEGATE_USE_CUDA)
   mod.method("register_tasks", &register_tasks);
+  mod.method("submit_mapreduce", &submit_mapreduce);
   wrap_cuda_methods(mod);
 #endif
 }
