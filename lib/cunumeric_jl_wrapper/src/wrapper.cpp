@@ -154,8 +154,6 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   mod.set_const("MAPREDUCE_MUL", ufi::MapReduceOp::MUL);
   mod.set_const("MAPREDUCE_MIN", ufi::MapReduceOp::MIN);
   mod.set_const("MAPREDUCE_MAX", ufi::MapReduceOp::MAX);
-  mod.set_const("MAPREDUCE_AND", ufi::MapReduceOp::AND);
-  mod.set_const("MAPREDUCE_OR", ufi::MapReduceOp::OR);
 
   using jlcxx::ParameterList;
   using jlcxx::Parametric;

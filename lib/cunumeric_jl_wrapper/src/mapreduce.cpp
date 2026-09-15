@@ -140,19 +140,14 @@ void run_reduction(legate::TaskContext& context, CUfunction kernel) {
 struct ReduceDispatch {
   template <legate::Type::Code C, int D>
   void operator()(legate::TaskContext& ctx, CUfunction kernel) const {
-    if constexpr (supported<C>) {
+    if constexpr (supported<C> && C != legate::Type::Code::BOOL) {
       using T = legate::type_of<C>;
       auto op = static_cast<MapReduceOp>(ctx.scalar(3).value<MapReduceOpValue>());
-      if constexpr (C == legate::Type::Code::BOOL) {
-        if (op == MapReduceOp::AND) return run_reduction<legate::AndReduction<T>, D>(ctx, kernel);
-        if (op == MapReduceOp::OR) return run_reduction<legate::OrReduction<T>, D>(ctx, kernel);
-      } else {
-        if (op == MapReduceOp::ADD) return run_reduction<legate::SumReduction<T>, D>(ctx, kernel);
-        if (op == MapReduceOp::MUL) return run_reduction<legate::ProdReduction<T>, D>(ctx, kernel);
-        if constexpr (C != legate::Type::Code::COMPLEX64 && C != legate::Type::Code::COMPLEX128) {
-          if (op == MapReduceOp::MIN) return run_reduction<legate::MinReduction<T>, D>(ctx, kernel);
-          if (op == MapReduceOp::MAX) return run_reduction<legate::MaxReduction<T>, D>(ctx, kernel);
-        }
+      if (op == MapReduceOp::ADD) return run_reduction<legate::SumReduction<T>, D>(ctx, kernel);
+      if (op == MapReduceOp::MUL) return run_reduction<legate::ProdReduction<T>, D>(ctx, kernel);
+      if constexpr (C != legate::Type::Code::COMPLEX64 && C != legate::Type::Code::COMPLEX128) {
+        if (op == MapReduceOp::MIN) return run_reduction<legate::MinReduction<T>, D>(ctx, kernel);
+        if (op == MapReduceOp::MAX) return run_reduction<legate::MaxReduction<T>, D>(ctx, kernel);
       }
     }
     throw std::invalid_argument("mapreduce: unsupported reduction/type combination");

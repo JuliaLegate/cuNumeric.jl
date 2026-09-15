@@ -11,7 +11,7 @@
 
 namespace ufi {
 // ABI matches Julia CuStridedDeviceArray; strides count elements, not bytes.
-template <size_t D>
+template <int D>
 struct CuStridedDeviceArray {
   void* ptr;
   int64_t maxsize;

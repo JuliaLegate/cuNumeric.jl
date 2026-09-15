@@ -13,8 +13,6 @@ enum class MapReduceOp : int32_t {
   MUL = static_cast<int32_t>(legate::ReductionOpKind::MUL),
   MIN = static_cast<int32_t>(legate::ReductionOpKind::MIN),
   MAX = static_cast<int32_t>(legate::ReductionOpKind::MAX),
-  AND = static_cast<int32_t>(legate::ReductionOpKind::AND),
-  OR = static_cast<int32_t>(legate::ReductionOpKind::OR),
 };
 using MapReduceOpValue = std::underlying_type_t<MapReduceOp>;
 

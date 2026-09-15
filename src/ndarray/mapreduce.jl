@@ -16,14 +16,15 @@ _mr_redop(::_MR_ADD, ::Type) = MAPREDUCE_ADD
 _mr_redop(::_MR_MUL, ::Type) = MAPREDUCE_MUL
 _mr_redop(::typeof(min), ::Type) = MAPREDUCE_MIN
 _mr_redop(::typeof(max), ::Type) = MAPREDUCE_MAX
-_mr_redop(::_MR_MUL, ::Type{Bool}) = MAPREDUCE_AND
-_mr_redop(::typeof(min), ::Type{Bool}) = MAPREDUCE_AND
-_mr_redop(::typeof(max), ::Type{Bool}) = MAPREDUCE_OR
 
 _mr_storage(::_MR_OP, ::Type{T}) where {T} = T
+# Legate's bitwise reducers do not provide Bool specializations. Product and
+# extrema on 0/1 bytes preserve the Boolean operations without custom reducers.
+_mr_storage(::Union{_MR_MUL,_MR_EXTREMA}, ::Type{Bool}) = UInt8
 _mr_storage(::_MR_EXTREMA, ::Type{Float32}) = UInt32
 _mr_storage(::_MR_EXTREMA, ::Type{Float64}) = UInt64
 _mr_encode(::_MR_OP, x) = x
+_mr_encode(::Union{_MR_MUL,_MR_EXTREMA}, x::Bool) = UInt8(x)
 _mr_nan_key(::typeof(min), ::Type{U}) where {U} = zero(U)
 _mr_nan_key(::typeof(max), ::Type{U}) where {U} = typemax(U)
 @inline function _mr_encode(op::_MR_EXTREMA, x::T) where {T<:Union{Float32,Float64}}
@@ -33,6 +34,7 @@ _mr_nan_key(::typeof(max), ::Type{U}) where {U} = typemax(U)
     return isnan(x) ? _mr_nan_key(op, U) : (bits & sign == 0 ? bits ⊻ sign : ~bits)
 end
 _mr_decode(::_MR_OP, ::Type{T}, x) where {T} = x
+_mr_decode(::Union{_MR_MUL,_MR_EXTREMA}, ::Type{Bool}, x) = !iszero(x)
 @inline function _mr_decode(op::_MR_EXTREMA, ::Type{T}, x::U) where {T<:Union{Float32,Float64},U<:Unsigned}
     x == _mr_nan_key(op, U) && return T(NaN)
     sign = one(U) << (8sizeof(U) - 1)

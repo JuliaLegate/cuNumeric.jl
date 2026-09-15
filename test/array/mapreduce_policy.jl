@@ -19,9 +19,11 @@ end
     @test CN._mr_redop(Base.mul_prod, Int64) == CN.MAPREDUCE_MUL
     @test CN._mr_redop(min, UInt32) == CN.MAPREDUCE_MIN
     @test CN._mr_redop(max, UInt64) == CN.MAPREDUCE_MAX
-    @test CN._mr_redop(*, Bool) == CN.MAPREDUCE_AND
-    @test CN._mr_redop(min, Bool) == CN.MAPREDUCE_AND
-    @test CN._mr_redop(max, Bool) == CN.MAPREDUCE_OR
+    for op in (*, Base.mul_prod, min, max), a in (false, true), b in (false, true)
+        @test CN._mr_storage(op, Bool) === UInt8
+        encoded = CN._mr_combine(op)(CN._mr_encode(op, a), CN._mr_encode(op, b))
+        @test CN._mr_decode(op, Bool, encoded) === op(a, b)
+    end
     @test_throws ArgumentError CN._mr_accumulator(min, ComplexF32)
     @test_throws ArgumentError CN._mr_accumulator(+, Float64, 0f0, 1)
     @test_throws ArgumentError CN._mr_accumulator(min, Float32, ComplexF32(0), 1)
