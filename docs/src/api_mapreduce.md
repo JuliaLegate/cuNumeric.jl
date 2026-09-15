@@ -71,8 +71,6 @@ apply Base's zero/one seed, which can matter for signed zeros and complex infini
   rely on host side effects, allocation, or a particular evaluation order.
 - PTX targets the Julia CUDA device used for compilation; every participating GPU
   must support that target. Heterogeneous GPU target selection is not implemented.
-- This implementation requires the rebuilt `cunumeric_jl_wrapper` version 26.6.3.
-  Use developer mode until the corresponding JLL artifact is available.
 
 ## Execution model
 
