@@ -20,6 +20,7 @@ end
 include(joinpath(@__DIR__, "..", "core.jl"))
 include_benchmarks()
 include(joinpath(@__DIR__, "benchmarks", "montecarlo.jl"))
+include(joinpath(@__DIR__, "benchmarks", "grayscott_accelerate_forms.jl"))
 
 function needs_cuda_correctness_oracle(args)
     length(args) >= 9 || return false

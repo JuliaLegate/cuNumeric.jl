@@ -1,6 +1,7 @@
 using Test, Statistics, TOML, LinearAlgebra
 include("../src/core.jl")
 include_benchmarks()
+include("../src/cunumeric/benchmarks/grayscott_accelerate_forms.jl")
 include("../src/models.jl")
 include("../src/parse_benchmarks.jl")
 include("../src/memory.jl")
@@ -12,8 +13,10 @@ include("timing.jl")
 
 const CONFIG = joinpath(@__DIR__, "..", "benchmarks.toml")
 const SMOKE_CONFIG = joinpath(@__DIR__, "..", "benchmarks_smoke.toml")
+const FORMS_CONFIG = joinpath(@__DIR__, "..", "benchmarks_grayscott_forms.toml")
 const RAW = TOML.parsefile(CONFIG)
 const GROUPS = parse_plot_groups(CONFIG)
+const FORMS_GROUPS = parse_plot_groups(FORMS_CONFIG)
 
 # A CPU array that counts materialized arrays, exercising Julia's actual
 # broadcast lowering rather than checking the kernel's source spelling.
@@ -321,7 +324,7 @@ end
         spec(n; gpus=p, fusion=f) for n in ("grayscott", "grayscott_function_accelerated")
         for p in (1, 4) for f in (false, true)
     ]
-    runs = plan_runs(ss, gs, RAW, GROUPS, 10_000_000)
+    runs = plan_runs(ss, gs, RAW, FORMS_GROUPS, 10_000_000)
     for p in (1, 4)
         @test length(unique((r.N, r.M) for r in runs if r.spec.gpus==p))==1
     end
