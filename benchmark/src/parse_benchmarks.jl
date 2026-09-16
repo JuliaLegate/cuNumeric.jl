@@ -12,7 +12,7 @@ struct BenchmarkSpec
     gpus::Int
     cpus::Int
     fusion::Bool
-    cuda::Bool
+    models::Vector{Symbol}
     n_warmup::Int
     n_iter::Int
     n_trial::Int
@@ -20,6 +20,17 @@ struct BenchmarkSpec
     autosize::Bool
     N_hint::Union{Int,Nothing}
     M_hint::Union{Int,Nothing}
+    mem_frac::Float64
+    kwargs::Dict{Symbol,Any}
+end
+
+BenchmarkSpec(args::Vararg{Any,14}) = BenchmarkSpec(args..., Dict{Symbol,Any}())
+
+# Back-compat: callers predating the per-block mem_frac override.
+function BenchmarkSpec(name, T, gpus, cpus, fusion, models, n_warmup, n_iter, n_trial,
+    args, autosize, N_hint, M_hint)
+    return BenchmarkSpec(name, T, gpus, cpus, fusion, models, n_warmup, n_iter, n_trial,
+        args, autosize, N_hint, M_hint, 0.5)
 end
 
 # A field may be a scalar or a list.
@@ -73,14 +84,22 @@ function size_field(raw)
     return (:pinned, Int[Int(v) for v in vals])
 end
 
-function parse_config(path; only=nothing, fusion_override=nothing)
+function parse_config(path; only=nothing, fusion_override=nothing, models_override=nothing)
     raw = TOML.parsefile(path)
 
     g = raw["Global"]
+    global_models = if haskey(g, "models")
+        parse_models(g["models"])
+    else
+        # Compatibility with configurations written before models were a list.
+        ids = Symbol[:cunumeric]
+        get(g, "cupynumeric", false) && push!(ids, :cupynumeric)
+        get(g, "cuda", false) && push!(ids, :cudajl)
+        ids
+    end
     global_settings = GlobalSettings(;
         n_warmup=g["n_warmup"], n_iter=g["n_iter"], n_trial=get(g, "n_trial", 1),
-        cupynumeric=get(g, "cupynumeric", false),
-        cuda=get(g, "cuda", false),
+        models=global_models,
         check_correctness=get(g, "check_correctness", false),
         n_correctness_iter=get(g, "n_correctness_iter", 5),
         auto_size=get(g, "auto_size", false),
@@ -100,36 +119,57 @@ function parse_config(path; only=nothing, fusion_override=nothing)
         entries = raw[name]
         entries isa AbstractVector || continue
         for e in entries
+            kwargs = get(e, "kwargs", Dict())
+            kwargs isa AbstractDict || error("$name.kwargs must be a TOML table")
+            any(k->k in ("N", "M", "n_samples"), keys(kwargs)) &&
+                error("$name.kwargs cannot override dimensions; use N and M")
             types = aslist(get(e, "T", "Float32"))
             gpus = aslist(e["gpus"])
             cpus = aslist(e["cpus"])
             fusion = aslist(fusion_override === nothing ? get(e, "fusion", true) : fusion_override)
             nmode, nvals = size_field(get(e, "N", nothing))
             mmode, mvals = size_field(get(e, "M", nothing))
-            cuda = get(e, "cuda", global_settings.cuda)
+            models = if models_override !== nothing
+                models_override
+            elseif haskey(e, "models")
+                parse_models(e["models"])
+            else
+                copy(global_settings.models)
+            end
+            # Preserve the old per-block CUDA toggle while old config files
+            # migrate to `models = [...]`.
+            if models_override === nothing && !haskey(e, "models") && haskey(e, "cuda")
+                filter!(!=(:cudajl), models)
+                e["cuda"] && push!(models, :cudajl)
+            end
             n_warmup = get(e, "n_warmup", global_settings.n_warmup)
             n_iter = get(e, "n_iter", global_settings.n_iter)
             n_trial = get(e, "n_trial", global_settings.n_trial)
+            mem_frac = Float64(get(e, "mem_frac", global_settings.mem_frac))
             block_auto = get(e, "auto_size", global_settings.auto_size)
 
             n_auto = nmode == :omitted || nmode == :auto
             m_auto = mmode == :auto
             use_auto = block_auto && (n_auto || m_auto)
             if use_auto
-                nmode == :pinned && length(nvals) != 1 && error(
-                    "benchmark '$(name)': autosize with pinned N requires a scalar N",
-                )
-                mmode == :pinned && length(mvals) != 1 && error(
-                    "benchmark '$(name)': autosize with pinned M requires a scalar M",
-                )
+                nmode == :pinned && length(nvals) != 1 &&
+                    error(
+                        "benchmark '$(name)': autosize with pinned N requires a scalar N"
+                    )
+                mmode == :pinned && length(mvals) != 1 &&
+                    error(
+                        "benchmark '$(name)': autosize with pinned M requires a scalar M"
+                    )
                 N_hint = nmode == :pinned ? nvals[1] : nothing
                 M_hint = mmode == :pinned ? mvals[1] : nothing
                 n = sweep_length(name, ["gpus" => gpus, "cpus" => cpus])
             else
-                nmode == :auto && error("benchmark '$(name)': N = \"auto\" requires auto_size = true")
-                mmode == :auto && error("benchmark '$(name)': M = \"auto\" requires auto_size = true")
+                nmode == :auto &&
+                    error("benchmark '$(name)': N = \"auto\" requires auto_size = true")
+                mmode == :auto &&
+                    error("benchmark '$(name)': M = \"auto\" requires auto_size = true")
                 nmode == :omitted && error(
-                    "benchmark '$(name)' is missing N (set N or enable auto_size)",
+                    "benchmark '$(name)' is missing N (set N or enable auto_size)"
                 )
                 mmode == :omitted && (mvals = [1])
                 N_hint = nothing
@@ -147,7 +187,7 @@ function parse_config(path; only=nothing, fusion_override=nothing)
                         Int(sweep_value(gpus, i)),
                         Int(sweep_value(cpus, i)),
                         parse_fusion(fuse),
-                        cuda,
+                        models,
                         n_warmup,
                         n_iter,
                         n_trial,
@@ -155,6 +195,8 @@ function parse_config(path; only=nothing, fusion_override=nothing)
                         use_auto,
                         N_hint,
                         M_hint,
+                        mem_frac,
+                        Dict{Symbol,Any}(Symbol(k)=>v for (k,v) in kwargs),
                     ),
                 )
             end

@@ -1,3 +1,4 @@
+# Shared cuPyNumeric benchmark protocol.
 import os
 import math
 

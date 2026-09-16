@@ -30,7 +30,8 @@
 #include "legion.h"
 
 // Match Legate coordinates; large scalar indices must never narrow to int.
-static_assert(sizeof(legate::coord_t) >= 8, "NDArray accessors require 64-bit coordinates");
+static_assert(sizeof(legate::coord_t) >= 8,
+              "NDArray accessors require 64-bit coordinates");
 
 // To auto-magically generate templated classes and their
 // respective member functions you must define a `BuildParameterList`

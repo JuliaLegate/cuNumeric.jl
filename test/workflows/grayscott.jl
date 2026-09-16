@@ -356,7 +356,9 @@ function test_scoping_rewrite_pipeline()
             stmts = utils._flatten_statements(rewritten)
 
             @test assigned == Set([:tmp1, :tmp2, :tmp3])
-            @test utils._assignment(stmts[1]).lhs == :tmp1
+            destination = utils._assignment(stmts[1])
+            @test destination.lhs == :tmp1
+            @test occursin("@view", sprint(Base.show_unquoted, destination.rhs))
             @test utils._assignment(stmts[2]) ==
                 (lhs=:tmp2, rhs=:(A[2:(end - 1), 2:(end - 1)]))
             @test utils._assignment(stmts[3]) ==
@@ -373,6 +375,27 @@ function test_scoping_rewrite_pipeline()
         finally
             cuNumeric.counter[] = 0
         end
+    end
+
+    @testset "Indexed destination preserves Array semantics" begin
+        source = quote
+            tmp = A[2:(end - 1), 2:(end - 1)] .+ 1
+            C[2:(end - 1), 2:(end - 1)] = tmp .* 2
+        end
+        accelerated = cuNumeric._accelerate_expand(
+            :(function _accelerated_indexed_destination_array!(A, C)
+                $source
+            end),
+            @__MODULE__,
+        )
+        Core.eval(@__MODULE__, accelerated)
+
+        A = reshape(collect(1.0:25.0), 5, 5)
+        C = zeros(5, 5)
+        Base.invokelatest(_accelerated_indexed_destination_array!, A, C)
+        @test C[2:4, 2:4] == 2 .* (A[2:4, 2:4] .+ 1)
+        @test all(iszero, C[[1, 5], :])
+        @test all(iszero, C[:, [1, 5]])
     end
 
     @testset "Scalar arithmetic stays inline" begin

@@ -26,8 +26,8 @@ Base.@kwdef struct GrayScottAccelerated{T} <: AbstractGrayScott{T}
     M::Int
 end
 
-name(::GrayScottBaseline) = "grayscott_baseline"
-name(::GrayScottAccelerated) = "grayscott_accelerated"
+name(::GrayScottBaseline) = "grayscott_plain"
+name(::GrayScottAccelerated) = "grayscott"
 dims(b::AbstractGrayScott) = (b.N, b.M)
 data(b::AbstractGrayScott{T}) where {T} = "GrayScott with T=$(T), N=$(b.N), M=$(b.M)"
 allowed_types(::Type{AbstractGrayScott}) = cuNumeric.SUPPORTED_FLOAT_TYPES
@@ -52,8 +52,8 @@ function fit_one_gpu(
     return (n, n)
 end
 
-function build_benchmark(::Type{A}, ::Type{T}, N, M) where {A<:AbstractGrayScott,T}
-    return A{T}(; N=N, M=M)
+function build_benchmark(::Type{A}, ::Type{T}, N, M; kwargs...) where {A<:AbstractGrayScott,T}
+    return A{T}(; kwargs..., N=N, M=M)
 end
 
 mutable struct GrayScottState{A,P}
@@ -100,15 +100,15 @@ function correctness_problem(b::AbstractGrayScott{T}) where {T}
 end
 correctness_iters(::AbstractGrayScott, gs::GlobalSettings) = gs.n_correctness_iter
 correctness_result(::AbstractGrayScott, state, _) = (only(state).u, only(state).v)
+# CPU reference so CUDA.jl gets a non-circular check (the forms stay CUDA).
+correctness_uses_cpu(::Union{GrayScottBaseline,GrayScottAccelerated}) = true
 function cuda_runnable(b::GrayScottAccelerated{T}) where {T}
     return GrayScottBaseline{T}(; N=b.N, M=b.M)
 end
 
 # Shared syntax tree keeps every Gray-Scott variant on the exact same workload.
 const GRAYSCOTT_STEP_BODY = quote
-    # currently we don't have NDArray^x working yet. every operator is dotted
-    # so each rhs fuses into a single broadcast kernel rather than shattering
-    # into bare +/-/* binary tasks.
+    # Dot every operator so each RHS can fuse.
     F_u = (
         (
             .-u[2:(end - 1), 2:(end - 1)] .*
@@ -160,14 +160,11 @@ const GRAYSCOTT_STEP_BODY = quote
     v_new[end, :] = v[2, :]
 end
 
-# Original baseline and recommended function-form benchmark.
+# cuNumeric replaces this plain fallback in its worker.
 let body = deepcopy(GRAYSCOTT_STEP_BODY)
     @eval _gs_step!(b::GrayScottBaseline, u, v, u_new, v_new, args::GSParams) = $body
-    if CUNUMERIC_BENCH_RUNTIME
-        definition = _define_accelerated_definition(
-            :(_gs_step!(b::GrayScottAccelerated, u, v, u_new, v_new, args::GSParams)), body
-        )
-        @eval $definition
+    if !CUNUMERIC_BENCH_RUNTIME
+        @eval _gs_step!(b::GrayScottAccelerated, u, v, u_new, v_new, args::GSParams) = $body
     end
 end
 
@@ -179,5 +176,5 @@ function run!(b::AbstractGrayScott, st::GrayScottState)
     return nothing
 end
 
-register_benchmark("grayscott_baseline", GrayScottBaseline)
-register_benchmark("grayscott_accelerated", GrayScottAccelerated)
+register_benchmark("grayscott", GrayScottAccelerated)
+register_benchmark("grayscott_plain", GrayScottBaseline)

@@ -42,15 +42,24 @@ end
 _domain_volume(mci::MonteCarloIntegration{T}) where {T} = T(10) / mci.n_samples
 # Dot the negation too: plain `-` materializes the squared array and prevents
 # the surrounding exponential from sharing one broadcast with the square.
-run!(mci::MonteCarloIntegration, x) = _domain_volume(mci) * sum(exp.(.-(x .^ 2)))
+_montecarlo_integrand(x) = exp.(.-(x .^ 2))
+
+function run!(mci::MonteCarloIntegration, x)
+    integrand = _montecarlo_integrand(x)
+    return _domain_volume(mci) * sum(integrand)
+end
 
 # n_samples comes in as N; M is unused.
-function build_benchmark(::Type{MonteCarloIntegration}, ::Type{T}, N, M) where {T}
-    return MonteCarloIntegration{T}(; n_samples=N)
+function build_benchmark(::Type{MonteCarloIntegration}, ::Type{T}, N, M; kwargs...) where {T}
+    return MonteCarloIntegration{T}(; kwargs..., n_samples=N)
 end
 
 function correctness_problem(b::MonteCarloIntegration{T}) where {T}
     return MonteCarloIntegration{T}(; n_samples=min(b.n_samples, 1024))
 end
+function correctness_seed(b::MonteCarloIntegration{T}) where {T}
+    return (T.(range(T(0), T(10); length=b.n_samples)),)
+end
+correctness_uses_cpu(::MonteCarloIntegration) = true
 
 register_benchmark("montecarlo", MonteCarloIntegration)

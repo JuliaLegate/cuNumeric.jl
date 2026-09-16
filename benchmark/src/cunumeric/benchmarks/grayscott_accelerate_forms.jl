@@ -1,5 +1,4 @@
-# Compare the four scope contracts of `@accelerate` on one shared Gray-Scott step.
-# Each type has a distinct result name so benchmark runs produce separate CSVs.
+# Compare the four `@accelerate` scopes on one shared step.
 
 abstract type AbstractGrayScottAccelerateForm{T} <: AbstractGrayScott{T} end
 
@@ -34,44 +33,24 @@ function cuda_runnable(b::AbstractGrayScottAccelerateForm{T}) where {T}
     return GrayScottBaseline{T}(; N=b.N, M=b.M)
 end
 
-# Function form is the reusable default: arguments and the return value survive,
-# while non-returned locals may fuse across statements or die after their last use.
+function _define_grayscott_accelerated_step(type, form=:function)
+    body = deepcopy(GRAYSCOTT_STEP_BODY)
+    signature = :(_gs_step!(b::$type, u, v, u_new, v_new, args::GSParams))
+    return Core.eval(@__MODULE__, _define_accelerated_definition(signature, body, form))
+end
+
 if CUNUMERIC_BENCH_RUNTIME
-    let body = deepcopy(GRAYSCOTT_STEP_BODY)
-        definition = _define_accelerated_definition(
-            :(_gs_step!(b::GrayScottFunctionAccelerated, u, v, u_new, v_new, args::GSParams)),
-            body,
-            :function,
-        )
-        @eval $definition
-    end
-
-    # `begin` adds no scope. Every named local remains visible, so it measures the
-    # multi-output/materialized path rather than eliminating named intermediates.
-    let body = deepcopy(GRAYSCOTT_STEP_BODY)
-        definition = _define_accelerated_definition(
-            :(_gs_step!(b::GrayScottBeginAccelerated, u, v, u_new, v_new, args::GSParams)),
-            body,
-            :begin,
-        )
-        @eval $definition
-    end
-
-    # `let` is a hard one-off scope. Only its result escapes, allowing aggressive
-    # inter-statement fusion and last-use cleanup for all other local temporaries.
-    let body = deepcopy(GRAYSCOTT_STEP_BODY)
-        definition = _define_accelerated_definition(
-            :(_gs_step!(b::GrayScottLetAccelerated, u, v, u_new, v_new, args::GSParams)),
-            body,
-            :let,
-        )
-        @eval $definition
+    for (type, form) in (
+        (GrayScottAccelerated, :function),
+        (GrayScottFunctionAccelerated, :function),
+        (GrayScottBeginAccelerated, :begin),
+        (GrayScottLetAccelerated, :let),
+    )
+        _define_grayscott_accelerated_step(type, form)
     end
 end
 
-# Expression form has no multi-statement scope. Accelerating each RHS preserves
-# fusion inside that expression but deliberately materializes statement results,
-# isolating intra-expression fusion from the inter-statement rewrite cases above.
+# Expression form accelerates each assignment independently.
 function accelerate_grayscott_rhs(body::Expr)
     statements = Any[]
     for statement in body.args

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-SOURCE = Path(__file__).resolve().parents[1] / "src_py"
+SOURCE = Path(__file__).resolve().parents[1] / "src" / "cupynumeric"
 
 
 def load(path):
