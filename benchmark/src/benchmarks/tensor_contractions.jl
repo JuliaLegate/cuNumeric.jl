@@ -62,15 +62,15 @@ function fit_one_gpu(
 end
 
 function build_benchmark(
-    ::Type{TensorProjection3}, ::Type{T}, N, M
+    ::Type{TensorProjection3}, ::Type{T}, N, M; kwargs...
 ) where {T}
-    return TensorProjection3{T}(; N=N)
+    return TensorProjection3{T}(; kwargs..., N=N)
 end
 
 function build_benchmark(
-    ::Type{TensorContract4}, ::Type{T}, N, M
+    ::Type{TensorContract4}, ::Type{T}, N, M; kwargs...
 ) where {T}
-    return TensorContract4{T}(; N=N)
+    return TensorContract4{T}(; kwargs..., N=N)
 end
 
 function initialize(b::TensorProjection3{T}; mod=cuNumeric) where {T}

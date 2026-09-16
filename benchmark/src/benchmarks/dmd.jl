@@ -24,8 +24,8 @@ dims(b::AbstractDMD) = (b.N, b.M)
 data(b::AbstractDMD{T}) where {T} = "DMD with T=$(T), N=$(b.N), M=$(b.M)"
 allowed_types(::Type{<:AbstractDMD}) = cuNumeric.SUPPORTED_FLOAT_TYPES
 
-function build_benchmark(::Type{A}, ::Type{T}, N, M) where {A<:AbstractDMD,T}
-    return A{T}(; N=N, M=M)
+function build_benchmark(::Type{A}, ::Type{T}, N, M; kwargs...) where {A<:AbstractDMD,T}
+    return A{T}(; kwargs..., N=N, M=M)
 end
 
 _dmd_rank(b::AbstractDMD) = min(20, b.M - 1)

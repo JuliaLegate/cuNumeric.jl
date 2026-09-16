@@ -4,7 +4,7 @@
 # `using Dagger`.  Model packages belong to their dedicated worker processes;
 # the orchestrator only needs enough metadata to plan and launch those workers.
 
-using TOML
+using TOML, SHA
 
 abstract type ExecutionModel end
 
@@ -76,14 +76,18 @@ function prepare_model(::CuNumericModel, run, verbose; prepare_cunumeric)
 end
 
 # Model-specific benchmark code is opt-in.  cuNumeric owns the accelerated
-# variants; the other existing array baselines use only the non-accelerated
-# definitions. JACC and Dagger have native Monte Carlo and GEMM workers.
+# variants; the other array baselines share the same generic kernels. JACC and
+# Dagger have native Monte Carlo, GEMM, Gray-Scott, and CG workers.
 supports_benchmark(::CuNumericModel, ::AbstractString) = true
-function supports_benchmark(::Union{CuPyNumericModel,CUDAJLModel}, name::AbstractString)
-    return !endswith(name, "_accelerated")
+# The CUDA.jl array worker runs every generic kernel, including "cg"/"cg_plain";
+# only cuNumeric owns the `@accelerate` grayscott forms.
+supports_benchmark(::CUDAJLModel, name::AbstractString) = !endswith(name, "_accelerated")
+# cuPyNumeric reimplements the default "cg" (its solver needs no accelerate macro).
+function supports_benchmark(::CuPyNumericModel, name::AbstractString)
+    return name != "cg_plain" && !endswith(name, "_accelerated")
 end
 function supports_benchmark(::Union{JACCModel,DaggerModel}, name::AbstractString)
-    return name in ("gemm", "montecarlo", "grayscott")
+    return name in ("gemm", "montecarlo", "grayscott", "cg")
 end
 
 supports_gpu_count(::ExecutionModel, gpus::Integer) = gpus > 0
@@ -91,9 +95,10 @@ supports_gpu_count(::CUDAJLModel, gpus::Integer) = gpus == 1
 
 function supports_run(model::ExecutionModel, name::AbstractString, gpus::Integer)
     supports_benchmark(model, name) || return false
-    # JACC/Dagger grayscott is single-GPU for now.
+    # JACC/Dagger grayscott is single-GPU for now, as is Dagger CG.
     model isa Union{JACCModel,DaggerModel} && startswith(name, "grayscott") && gpus != 1 &&
         return false
+    model isa DaggerModel && startswith(name, "cg") && gpus != 1 && return false
     return supports_gpu_count(model, gpus)
 end
 
@@ -121,10 +126,20 @@ struct WorkerRequest
     check_correctness::Bool
     n_correctness_iter::Int
     flops::Float64
+    kwargs::Dict{Symbol,Any}
+end
+
+WorkerRequest(args::Vararg{Any,12}) = WorkerRequest(args..., Dict{Symbol,Any}())
+function kwargs_toml(kwargs)
+    return sprint(io -> TOML.print(io, Dict(string(k)=>v for (k, v) in kwargs); sorted=true))
+end
+function results_subdir(s)
+    return isempty(s.kwargs) ? s.T : s.T * "-" * bytes2hex(sha1(kwargs_toml(s.kwargs)))[1:12]
 end
 
 function common_worker_args(r::WorkerRequest)
-    return `$(r.gpus) $(r.name) $(r.T) $(r.N) $(r.M) $(r.n_iter) $(r.n_warmup) $(r.n_trial) $(r.check_correctness) $(r.n_correctness_iter) $(r.flops)`
+    args = `$(r.gpus) $(r.name) $(r.T) $(r.N) $(r.M) $(r.n_iter) $(r.n_warmup) $(r.n_trial) $(r.check_correctness) $(r.n_correctness_iter) $(r.flops)`
+    return isempty(r.kwargs) ? args : `$args $(kwargs_toml(r.kwargs))`
 end
 
 function julia_worker_command(model::ExecutionModel, request::WorkerRequest, root)
@@ -286,4 +301,11 @@ function isolated_model_versions(runs, root)
         )
     end
     return result
+end
+
+# Native adapters must explicitly consume options; never silently ignore them.
+validate_model_kwargs(::ExecutionModel, name, kwargs) = nothing
+function validate_model_kwargs(model::Union{JACCModel,DaggerModel,CuPyNumericModel}, name, kwargs)
+    return isempty(kwargs) || name == "cg" ||
+           error("$(model_id(model)) $name does not yet accept constructor kwargs")
 end

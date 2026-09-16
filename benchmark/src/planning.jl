@@ -50,7 +50,7 @@ end
 function dimensions_at(s, baseline)
     !s.autosize && return Tuple(s.args)
     n, m = baseline
-    b = build_benchmark(BENCHMARKS[s.name], parse_bench_type(s.T), n, m)
+    b = build_benchmark(BENCHMARKS[s.name], parse_bench_type(s.T), n, m; s.kwargs...)
     result = estimate_scaling(b, s.gpus)
     result === nothing && error("$(s.name) cannot scale this baseline to $(s.gpus) GPUs")
     return result
@@ -62,7 +62,7 @@ function baseline_shape(s, k)
         return (something(s.N_hint, k), something(s.M_hint, DEFAULT_DMD_M))
     elseif B <: PoissonFFT
         return s.N_hint === nothing ? (k, something(s.M_hint, 1)) : (s.N_hint, k)
-    elseif B <: MonteCarloIntegration || B <: AbstractTensorContraction
+    elseif B <: MonteCarloIntegration || B <: AbstractTensorContraction || B <: AbstractConjugateGradient
         s.M_hint === nothing || s.M_hint == 1 || error("$(s.name) requires M=1")
         return (something(s.N_hint, k), 1)
     else
@@ -75,12 +75,13 @@ function candidate_runs(specs, gs, raw, baseline, budget)
     seen = Set{Any}()
     for s in specs
         n, m = dimensions_at(s, baseline)
-        b = build_benchmark(BENCHMARKS[s.name], parse_bench_type(s.T), n, m)
+        b = build_benchmark(BENCHMARKS[s.name], parse_bench_type(s.T), n, m; s.kwargs...)
         for c in contexts(s, gs, raw)
             # Models without a fusion setting run only once.
+            validate_model_kwargs(execution_model(c.model), s.name, s.kwargs)
             key = (s.name, s.T, s.gpus, s.cpus, n, m, c.model,
                 uses_fusion(execution_model(c.model)) ? s.fusion : nothing,
-                s.n_iter, s.n_warmup, s.n_trial)
+                s.n_iter, s.n_warmup, s.n_trial, s.kwargs)
             key in seen && continue
             push!(seen, key)
             push!(runs, PlannedRun(s, c.model, n, m, memory_estimate(b, c), run_budget(budget, s)))
