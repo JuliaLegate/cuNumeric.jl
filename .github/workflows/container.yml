@@ -53,6 +53,11 @@ jobs:
           ref: ${{ inputs.tag || github.event.release.tag_name || github.sha }}
           fetch-depth: 0
 
+      - name: Select build scope
+        id: scope
+        run: |
+          echo "benchmark=${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[benchmark-container]') }}" >> "$GITHUB_OUTPUT"
+
       - name: Select wrapper build
         id: wrapper-build
         env:
@@ -158,6 +163,7 @@ jobs:
 
       - name: Extract benchmark image metadata
         id: benchmark-meta
+        if: steps.scope.outputs.benchmark == 'true'
         uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository }}
@@ -241,7 +247,13 @@ jobs:
             docker push "$image"
           done <<< "$IMAGE_TAGS"
 
+      - name: Update base layer cache
+        run: |
+          rm -rf /tmp/.buildx-cache/base
+          mv /tmp/.buildx-cache/base-new /tmp/.buildx-cache/base
+
       - name: Build benchmark image
+        if: steps.scope.outputs.benchmark == 'true'
         uses: docker/build-push-action@v6
         with:
           file: docker/Dockerfile.benchmark
@@ -255,20 +267,22 @@ jobs:
           cache-to: type=local,dest=/tmp/.buildx-cache/benchmark-new,mode=max
           build-args: |
             BASE_IMAGE=${{ steps.image-tags.outputs.base }}
+            DEPENDENCY_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
 
-      - name: Update Docker layer cache
+      - name: Update benchmark layer cache
+        if: steps.scope.outputs.benchmark == 'true'
         run: |
-          rm -rf /tmp/.buildx-cache/base /tmp/.buildx-cache/benchmark
-          mv /tmp/.buildx-cache/base-new /tmp/.buildx-cache/base
+          rm -rf /tmp/.buildx-cache/benchmark
           mv /tmp/.buildx-cache/benchmark-new /tmp/.buildx-cache/benchmark
 
       - name: Test benchmark harness
+        if: steps.scope.outputs.benchmark == 'true'
         run: |
           docker run --rm ${{ steps.image-tags.outputs.benchmark }} \
             julia --project=. test/runtests.jl
 
       - name: Push benchmark image
-        if: success()
+        if: steps.scope.outputs.benchmark == 'true' && success()
         env:
           BASE_TAGS: ${{ steps.meta.outputs.tags }}
           BENCHMARK_TAGS: ${{ steps.benchmark-meta.outputs.tags }}
