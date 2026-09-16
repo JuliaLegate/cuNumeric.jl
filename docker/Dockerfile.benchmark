@@ -24,7 +24,7 @@ COPY benchmark/instantiate_projects.sh benchmark/install_cupynumeric.sh ./
 ARG DEPENDENCY_REFRESH=0
 RUN echo "Benchmark dependency refresh: ${DEPENDENCY_REFRESH}" \
     && julia -e 'using Pkg; Pkg.Registry.add("General")' \
-    && ./instantiate_projects.sh \
+    && JULIA_PKG_PRECOMPILE_AUTO=0 ./instantiate_projects.sh \
     && rm -rf /depot/registries /depot/scratchspaces /depot/logs
 
 # Docker builds do not expose the host NVIDIA driver, so Conda cannot discover
@@ -37,8 +37,11 @@ RUN CONDA_OVERRIDE_CUDA="${CUDA_VERSION_MAJOR_MINOR}" ./install_cupynumeric.sh \
 # precompiling. The driver stub is available through the base image's env file;
 # runtime startup itself must remain disabled because builds have no GPU.
 RUN source /etc/.env \
+    && for project in . environments/cuda environments/dagger; do \
+        julia --project="$project" -e 'using Pkg; Pkg.precompile()'; \
+    done \
     && julia --project=environments/jacc \
-        -e 'import JACC; JACC.@init_backend' \
+        -e 'using Pkg; Pkg.precompile(); import JACC; JACC.@init_backend' \
     && LEGATE_SKIP_RUNTIME=true julia --project=environments/cunumeric \
         -e 'using Pkg; Pkg.precompile()' \
     && rm -rf /depot/registries /depot/scratchspaces /depot/logs
