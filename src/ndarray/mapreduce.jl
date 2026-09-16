@@ -139,7 +139,7 @@ function Base.mapreduce(f, op, A::NDArray{T}; dims=:, init=NoReductionInit()) wh
     is_wider_type(M, T) && assertpromotion(f, T, M)
     is_wider_type(R, M) && assertpromotion(op, M, R)
     is_wider_type(O, R) && assertpromotion(op, R, O)
-    nreduce = prod(d -> mask[d] ? size(A, d) : 1, 1:ndims(A))
+    nreduce = prod(d -> mask[d] ? size(A, d) : 1, 1:ndims(A); init=1)
     if nreduce == 0
         value = _mr_empty(f, op, T, M, init, dims)
         return nda_full_array(shape, value)

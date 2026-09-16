@@ -24,8 +24,6 @@ steps:
           - "deps/*.log"
           - "deps/*.err"
           - "*.log"
-          - "test/**/*.log"
-          - "test/**/*.err"
         agents:
           queue: "cuda"
         timeout_in_minutes: 90
@@ -37,9 +35,6 @@ steps:
           LEGATE_SKIP_RUNTIME: "true"
           LEGATE_CONFIG: "--cpus 1 --gpus 1 --utility 1 --fbmem 250 --logging legate=info,level=2 --log-to-file 1"
           CUNUMERIC_FUSION: "{{matrix.fusion}}"
-          # TEMPORARY: locate the mapreduce CI segfault; remove after diagnosis.
-          CUNUMERIC_MAPREDUCE_TRACE: "1"
-          CUNUMERIC_MAPREDUCE_SYNC: "1"
         matrix:
           setup:
             julia:
