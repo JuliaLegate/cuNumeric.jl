@@ -3,12 +3,12 @@
 # shared benchmarks, loads any model-specific benchmark methods, and defines
 # `array_backend_entry`.
 
-length(ARGS) == 11 || error(
+length(ARGS) in (11,12) || error(
     "array worker args: <gpus> <name> <T> <N> <M> <n_iter> <n_warmup> " *
-    "<n_trial> <check_correctness> <n_correctness_iter> <flops>",
+    "<n_trial> <check_correctness> <n_correctness_iter> <flops> [kwargs TOML]",
 )
 
-using Printf
+using Printf, TOML
 using Statistics
 
 parse_worker_type(s) = get(Dict("Float32"=>Float32, "Float64"=>Float64), s) do
@@ -34,7 +34,8 @@ function run_array_worker(args=ARGS)
 
     backend = array_backend_entry()
     T = parse_worker_type(T_name)
-    benchmark = build_benchmark(BENCHMARKS[name], T, N, M)
+    kwargs = length(args)==12 ? Dict(Symbol(k)=>v for (k,v) in TOML.parse(args[12])) : Dict()
+    benchmark = build_benchmark(BENCHMARKS[name], T, N, M; kwargs...)
     fused = backend.fused()
     default_save_as = fused ? backend.save_as : "$(backend.save_as)_nofusion"
     default_label = fused ? backend.label : "$(backend.label) (no fusion)"

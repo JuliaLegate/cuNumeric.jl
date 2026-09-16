@@ -207,7 +207,7 @@ end
 
         c = MemoryContext(; model, fusion, workspace_bytes=0)
         for (name, B) in BENCHMARKS
-            endswith(name, "_accelerated") && model != :cunumeric && continue
+            supports_benchmark(execution_model(model), name) || continue
             m = if B <: AbstractDMD
                 16
             elseif B <: AbstractGrayScott || B <: GEMM
@@ -374,3 +374,5 @@ end
         @test manifest["runs"][2]["status"]=="complete"
     end
 end
+
+include("cg.jl")

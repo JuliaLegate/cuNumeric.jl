@@ -13,8 +13,9 @@ include(joinpath(@__DIR__, "common.jl"))
 include(joinpath(@__DIR__, "benchmarks", "montecarlo.jl"))
 include(joinpath(@__DIR__, "benchmarks", "gemm.jl"))
 include(joinpath(@__DIR__, "benchmarks", "grayscott.jl"))
+include(joinpath(@__DIR__, "benchmarks", "cg.jl"))
 
-const SUPPORTED_BENCHMARKS = ["montecarlo", "gemm", "grayscott"]
+const SUPPORTED_BENCHMARKS = ["montecarlo", "gemm", "grayscott", "cg"]
 
 function model_build_benchmark(config::ModelWorkerConfig)
     config.name in SUPPORTED_BENCHMARKS || error(
@@ -28,6 +29,8 @@ function model_build_benchmark(config::ModelWorkerConfig)
         return model_build_gemm(config)
     elseif config.name == "grayscott"
         return model_build_grayscott(config)
+    elseif config.name == "cg"
+        return model_build_cg(config)
     end
 end
 
