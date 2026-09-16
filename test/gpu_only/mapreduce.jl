@@ -1,5 +1,11 @@
 _mapped_reduction_host(A) = @allowscalar ndims(A) == 0 ? cuNumeric.unwrap(A) : Array(A)
 
+function _mapreduce_checkpoint(stage; details...)
+    get(ENV, "CUNUMERIC_MAPREDUCE_TRACE", "0") == "1" || return
+    @info "mapreduce checkpoint" stage details...
+    flush(stderr)
+end
+
 struct ReductionAffine
     scale::Float32
     offset::Float64
@@ -17,14 +23,25 @@ function _mapped_reduction_tolerances(f, input; dims=:)
 end
 
 function _check_mapped_reduction(f, op, input; kwargs...)
+    _mapreduce_checkpoint("construct input"; f, op, type=eltype(input), shape=size(input), kwargs...)
     A = @allowscalar NDArray(input)
     result = nothing
     try
+        _mapreduce_checkpoint("Base reference")
         expected = mapreduce(f, op, input; kwargs...)
+        _mapreduce_checkpoint("submit reduction")
         result = mapreduce(f, op, A; kwargs...)
+        _mapreduce_checkpoint("submission returned")
+        if get(ENV, "CUNUMERIC_MAPREDUCE_SYNC", "0") == "1"
+            _mapreduce_checkpoint("execution fence")
+            cuNumeric.issue_execution_fence(; block=true)
+            _mapreduce_checkpoint("execution fence returned")
+        end
         @test size(result) == size(expected)
         @test eltype(result) === (expected isa AbstractArray ? eltype(expected) : typeof(expected))
+        _mapreduce_checkpoint("read result")
         actual = _mapped_reduction_host(result)
+        _mapreduce_checkpoint("result read")
         if op === min || op === max || eltype(result) <: Integer
             @test isequal(actual, expected)
         else
@@ -32,8 +49,11 @@ function _check_mapped_reduction(f, op, input; kwargs...)
             @test isapprox(actual, expected; rtol=tolerances.rtol, atol=tolerances.atol)
         end
     finally
+        _mapreduce_checkpoint("destroy input")
         cuNumeric.destroy!(A)
+        _mapreduce_checkpoint("destroy result")
         isnothing(result) || cuNumeric.destroy!(result)
+        _mapreduce_checkpoint("case complete")
     end
 end
 

@@ -34,3 +34,12 @@ Submission copies capture bytes into task-owned scalars. Temporary NDArray
 handles are explicitly released after submission; native store handles use C++
 scope ownership. Warm calls neither extract host results nor insert execution
 fences. Kernel registration uses the shared PTX loader on cache misses.
+
+## Diagnosing CI crashes
+
+Run the `gpu_only/mapreduce` test with `CUNUMERIC_MAPREDUCE_TRACE=1` to log and
+flush each comparison case and its construction, submission, result-access, and
+cleanup stages. Add `CUNUMERIC_MAPREDUCE_SYNC=1` to fence after submission when
+separating asynchronous task failures from host-side failures. These switches
+only affect the tests. Preserve the full stderr and Legate log files from the
+test directory; an unsymbolized signal backtrace alone may not identify the call.
