@@ -1,0 +1,53 @@
+ARG BASE_IMAGE=ghcr.io/julialegate/cunumeric.jl:dev
+FROM ${BASE_IMAGE} AS benchmark-deps
+
+ARG MINIFORGE_VERSION=25.3.1-0
+ENV CONDA_DIR=/opt/conda
+ENV PATH="${CONDA_DIR}/bin:${PATH}"
+ENV CUNUMERIC_BENCH_CONDA="${CONDA_DIR}/bin/conda"
+
+RUN wget --no-verbose \
+    "https://github.com/conda-forge/miniforge/releases/download/${MINIFORGE_VERSION}/Miniforge3-${MINIFORGE_VERSION}-Linux-x86_64.sh" \
+    -O /tmp/miniforge.sh \
+    && bash /tmp/miniforge.sh -b -p "${CONDA_DIR}" \
+    && rm /tmp/miniforge.sh \
+    && conda clean --all --yes
+
+WORKDIR /opt/cuNumeric.jl/benchmark
+COPY benchmark/Project.toml ./Project.toml
+COPY benchmark/environments/cuda/Project.toml environments/cuda/Project.toml
+COPY benchmark/environments/cunumeric/Project.toml environments/cunumeric/Project.toml
+COPY benchmark/environments/dagger/Project.toml environments/dagger/Project.toml
+COPY benchmark/environments/jacc/Project.toml environments/jacc/Project.toml
+COPY benchmark/instantiate_projects.sh benchmark/install_cupynumeric.sh ./
+
+ARG DEPENDENCY_REFRESH=0
+RUN echo "Benchmark dependency refresh: ${DEPENDENCY_REFRESH}" \
+    && julia -e 'using Pkg; Pkg.Registry.add("General")' \
+    && ./instantiate_projects.sh \
+    && rm -rf /depot/registries /depot/scratchspaces /depot/logs
+
+# Docker builds do not expose the host NVIDIA driver, so Conda cannot discover
+# its __cuda virtual package. Solve against the same CUDA version as the base
+# image instead of pretending CUDA is unavailable.
+RUN CONDA_OVERRIDE_CUDA="${CUDA_VERSION_MAJOR_MINOR}" ./install_cupynumeric.sh \
+    && conda clean --all --yes
+
+# The cuNumeric TensorOperations extension links the CUDA Legate library while
+# precompiling. The driver stub is available through the base image's env file;
+# runtime startup itself must remain disabled because builds have no GPU.
+RUN source /etc/.env \
+    && julia --project=environments/jacc \
+        -e 'import JACC; JACC.@init_backend' \
+    && LEGATE_SKIP_RUNTIME=true julia --project=environments/cunumeric \
+        -e 'using Pkg; Pkg.precompile()' \
+    && rm -rf /depot/registries /depot/scratchspaces /depot/logs
+
+FROM benchmark-deps AS benchmark
+
+COPY benchmark/ /opt/cuNumeric.jl/benchmark/
+
+LABEL org.opencontainers.image.title="cuNumeric.jl benchmark suite" \
+    org.opencontainers.image.description="Benchmark-ready cuNumeric.jl image with CUDA.jl, JACC.jl, Dagger.jl, and cuPyNumeric"
+
+WORKDIR /opt/cuNumeric.jl/benchmark

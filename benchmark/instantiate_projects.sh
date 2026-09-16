@@ -6,6 +6,9 @@ julia_bin="${CUNUMERIC_BENCH_JULIA:-julia}"
 
 cd "$benchmark_dir"
 
+echo "Instantiating the benchmark orchestrator"
+"$julia_bin" --project=. -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
+
 for environment in cuda jacc dagger; do
     echo "Instantiating environments/$environment"
     "$julia_bin" --project="environments/$environment" \
