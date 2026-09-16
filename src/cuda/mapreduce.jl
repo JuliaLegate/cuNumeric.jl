@@ -83,6 +83,22 @@ MapReduceFinish(op::OP, ::Type{R}, init::I) where {OP,R,I} = MapReduceFinish{OP,
 @inline function (finish::MapReduceFinish{OP,R})(x) where {OP,R}
     return _mr_finish(_mr_combine(finish.op), _mr_decode(finish.op, R, x), finish.init)
 end
+
+struct MapReduceSingleton{F,OP,R,O,I}
+    f::F
+    op::OP
+    init::I
+end
+function MapReduceSingleton(
+    f::F, op::OP, ::Type{R}, ::Type{O}, init::I,
+) where {F,OP,R,O,I}
+    return MapReduceSingleton{F,OP,R,O,I}(f, op, init)
+end
+@inline function (finish::MapReduceSingleton{F,OP,R,O})(x) where {F,OP,R,O}
+    mapped = convert(R, finish.f(x))
+    value = _mr_finish(_mr_combine(finish.op), mapped, finish.init)
+    return convert(O, value)
+end
 function _mr_finish_kernel(src, dest, finish)
     i = (Int(CUDACore.blockIdx().x) - 1) * Int(CUDACore.blockDim().x) + Int(CUDACore.threadIdx().x)
     step = Int(CUDACore.gridDim().x) * Int(CUDACore.blockDim().x)
@@ -125,11 +141,13 @@ function _mr_launch(f, op, A::NDArray{T,N}, ::Type{R}, ::Type{O}, mask, shape, i
     contribute_name = _mr_kernel_name(_mr_contribute_kernel, (
         scratch_type, CuStridedDeviceArray{S,RD,CUDACore.AS.Global}, typeof(op), Bool, Int, Int, Int,
     ))
-    finish = MapReduceFinish(op, R, _mr_dim_seed(op, R, init, dims))
+    singleton = single && !(dims isa Colon)
+    finish = singleton ? MapReduceSingleton(f, op, R, O, _mr_dim_seed(op, R, init, dims)) :
+                         MapReduceFinish(op, R, _mr_dim_seed(op, R, init, dims))
     OD = max(length(shape), 1)
-    needs_finish = S !== O || !(finish.init isa NoReductionInit)
+    needs_finish = singleton || S !== O || !(finish.init isa NoReductionInit)
     finish_name = needs_finish ? _mr_kernel_name(_mr_finish_kernel, (
-        CuStridedDeviceArray{S,OD,CUDACore.AS.Global},
+        CuStridedDeviceArray{singleton ? T : S,OD,CUDACore.AS.Global},
         CuStridedDeviceArray{O,OD,CUDACore.AS.Global}, typeof(finish),
     )) : ""
     accumulator = nda_full_array(shape, _mr_identity(op, S))
