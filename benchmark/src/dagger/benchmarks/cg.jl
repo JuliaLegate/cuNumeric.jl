@@ -9,11 +9,14 @@ struct DaggerCG{T,S,P}
     processors::P
 end
 
-struct DaggerCGState{A}
-    x::A
-    r::A
-    p::A
-    Ap::A
+# Mutable GPU buffers held on the Dagger processor; datadeps sequences the tasks
+# that mutate them in place.
+struct DaggerCGState{X,R}
+    x::X
+    r::X
+    p::X
+    Ap::X
+    rho::R
 end
 
 function dagger_cg(::Type{T}, N, gpus, check_every, max_iter, scope, processors) where {T}
@@ -42,61 +45,73 @@ end
 
 function dagger_cg_state(b::DaggerCG{T}) where {T}
     N = b.N
-    blocks = Dagger.Blocks(cld(N, b.gpus))
-    assignment = reshape(copy(b.processors), b.gpus)
-    return Dagger.with_options(; scope=b.scope) do
-        st = DaggerCGState(
-            Dagger.DArray(zeros(T, N), blocks, assignment),
-            Dagger.DArray(zeros(T, N), blocks, assignment),
-            Dagger.DArray(zeros(T, N), blocks, assignment),
-            Dagger.DArray(zeros(T, N), blocks, assignment),
-        )
-        foreach(wait_for_darray, (st.x, st.r, st.p, st.Ap))
-        return st
-    end
+    # Bind to the GPU processor (not just the scope) so the mutable chunk is
+    # tagged on-device; a scope-only @mutable leaves proc=OSProc and datadeps
+    # then tries to move the CuArray to the host.
+    proc = first(b.processors)
+    x = Dagger.@mutable processor = proc CUDA.zeros(T, N)
+    r = Dagger.@mutable processor = proc CUDA.zeros(T, N)
+    p = Dagger.@mutable processor = proc CUDA.zeros(T, N)
+    Ap = Dagger.@mutable processor = proc CUDA.zeros(T, N)
+    rho = Dagger.@mutable processor = proc CUDA.zeros(T, 1)
+    return DaggerCGState(x, r, p, Ap, rho)
 end
 
-function model_initialize(b::DaggerCG)
-    return dagger_cg_state(b)
+model_initialize(b::DaggerCG) = dagger_cg_state(b)
+
+# One coarse task per iteration: the whole tridiag(1,4,1) CG step runs on the GPU
+# buffer, keeping alpha/beta/residual as device 1-element arrays. Reductions use
+# an explicit init so CUDA's device mapreduce stays off the _InitialValue path.
+function cg_reset!(x, r, p, rho, ::Type{T}) where {T}
+    x .= zero(T)
+    r .= T(0.5)
+    p .= r
+    rho .= sum(r .* r; dims=1, init=zero(T))
+    return nothing
 end
 
-# Solve tridiag(1,4,1)*x = 1/2 from zero. @stencil applies the matvec with a zero
-# pad so the fixed band matrix is honored at the domain boundaries. Reductions use
-# `dims=1` so the scalars stay device-resident 1-element DArrays (which broadcast
-# back over the vectors); the residual only reaches the host at `check_every`,
-# matching cuNumeric and avoiding a per-iteration host sync.
+function cg_step_chunk!(x, r, p, Ap, rho, fmin, ::Type{T}) where {T}
+    N = length(p)
+    @views Ap .= T(4) .* p
+    @views Ap[2:N] .+= p[1:(N - 1)]
+    @views Ap[1:(N - 1)] .+= p[2:N]
+    alpha = rho ./ max.(sum(p .* Ap; dims=1, init=zero(T)), fmin)
+    x .+= alpha .* p
+    r .-= alpha .* Ap
+    next = sum(r .* r; dims=1, init=zero(T))
+    p .= r .+ (next ./ max.(rho, fmin)) .* p
+    rho .= next
+    return nothing
+end
+
+# Solve tridiag(1,4,1)*x = 1/2 from zero. Each datadeps region runs `check_every`
+# iterations as a serial chain, then the residual reaches the host once per check.
 function model_run!(b::DaggerCG{T}, s::DaggerCGState) where {T}
-    x, r, p, Ap = s.x, s.r, s.p, s.Ap
     fmin = floatmin(T)
-    # An explicit init keeps CUDA's device mapreduce off the _InitialValue path.
-    ddot(a, c) = sum(a .* c; dims=1, init=zero(T))
-    rho = Dagger.with_options(; scope=b.scope) do
-        x .= zero(T)
-        r .= T(0.5)
-        p .= r
-        return ddot(r, r)
+    x, r, p, Ap, rho = s.x, s.r, s.p, s.Ap, s.rho
+    Dagger.with_options(; scope=b.scope) do
+        Dagger.spawn_datadeps() do
+            Dagger.@spawn cg_reset!(Dagger.Out(x), Dagger.Out(r), Dagger.Out(p), Dagger.Out(rho), T)
+        end
     end
     target = (T==Float32 ? 1e-5 : 1e-8)^2 * b.N/4
-    for k in 1:b.max_iter
-        rho = Dagger.with_options(; scope=b.scope) do
-            @stencil begin
-                Ap[idx] = begin
-                    np = @neighbors(p[idx], 1, Pad(zero(T)))
-                    T(4) * np[2] + np[1] + np[3]
+    k = 0
+    while k < b.max_iter
+        block = min(b.check_every, b.max_iter - k)
+        Dagger.with_options(; scope=b.scope) do
+            Dagger.spawn_datadeps() do
+                for _ in 1:block
+                    Dagger.@spawn cg_step_chunk!(
+                        Dagger.InOut(x), Dagger.InOut(r), Dagger.InOut(p), Dagger.InOut(Ap),
+                        Dagger.InOut(rho), fmin, T,
+                    )
                 end
             end
-            alpha = rho ./ max.(ddot(p, Ap), fmin)
-            x .= x .+ alpha .* p
-            r .= r .- alpha .* Ap
-            next = ddot(r, r)
-            p .= r .+ (next ./ max.(rho, fmin)) .* p
-            return next
         end
-        if k % b.check_every == 0 || k == b.max_iter
-            rr = only(collect(rho))
-            isfinite(rr) || error("CG produced a nonfinite residual")
-            (rr <= target || b.max_iter == 1) && return k
-        end
+        k += block
+        rr = only(Array(fetch(rho)))
+        isfinite(rr) || error("CG produced a nonfinite residual")
+        (rr <= target || b.max_iter == 1) && return k
     end
     return error("CG did not converge within max_iter")
 end
@@ -114,7 +129,7 @@ function model_check_correctness(b::DaggerCG{T}, config) where {T}
     s = dagger_cg_state(small)
     model_run!(small, s)
     model_synchronize(small)
-    x = collect(s.x)
+    x = Array(fetch(s.x))
     A = Tridiagonal(ones(T, n-1), fill(T(4), n), ones(T, n-1))
     err = b.max_iter==1 ? x .- T(n/(12n-4)) : A*x .- T(0.5)
     return norm(err) <= (T==Float32 ? 2e-5 : 2e-8)*sqrt(n)/2 ? "pass" : "fail"

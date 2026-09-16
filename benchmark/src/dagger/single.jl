@@ -5,7 +5,7 @@ assert_active_model(:dagger)
 
 using CUDA: CUDA
 using Dagger: Dagger
-import Dagger: @stencil, Wrap, Pad
+import Dagger: @stencil, Wrap
 using LinearAlgebra
 
 assert_models_not_loaded(("cuNumeric", "JACC"))
