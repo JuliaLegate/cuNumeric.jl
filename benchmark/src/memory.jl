@@ -106,10 +106,13 @@ end
 function memory_estimate(b::AbstractGrayScott{T}, c::MemoryContext) where {T}
     validate_memory_context(b, c)
     b.N >= 3 && b.M >= 3 || error("Gray-Scott requires N and M >= 3")
-    # Count full grids until the mapper's halo/replication contract is bounded.
-    # Local expressions can retain parents; never treat a slice as a free copy.
-    grid = big(b.N) * b.M * sizeof(T)
-    interior = big(max(b.N-2, 0)) * max(b.M-2, 0) * sizeof(T)
+    # cuNumeric tiles the 2D grid across GPUs, so memory is per-GPU: a row-block
+    # slab is a conservative bound on any balanced tiling. Add a five-point
+    # stencil halo (two ghost rows) once partitioned. Local expressions can
+    # retain parents; never treat a slice as a free copy.
+    halo = (c.gpus > 1 ? 2 : 0) * big(b.M)
+    grid = (slab(b.N, b.M, c.gpus) + halo) * sizeof(T)
+    interior = slab(max(b.N-2, 0), max(b.M-2, 0), c.gpus) * sizeof(T)
     init = 4grid + random_peak(big(min(150, b.N, b.M))^2, T, c.model)
     # Four named RHS results plus an assignment output. Hard-scope acceleration
     # may eliminate these, but this remains a valid upper bound for every form.
@@ -125,7 +128,7 @@ function memory_estimate(b::AbstractGrayScott{T}, c::MemoryContext) where {T}
     # off. Baseline/begin/expression leave the named results for tracing GC.
     retained = c.model == :cunumeric && hard_scope || c.model == :cupynumeric ? 0 : 6*(c.steps-1)
     return MemoryEstimate(init, 4grid + (temps+retained)*interior, 0,
-        "$variant: four persistent grids + $temps active interior buffers + $retained prior buffers awaiting GC; full-parent bound; fusion=$(c.fusion)",
+        "$variant: four persistent grids + $temps active interior buffers + $retained prior buffers awaiting GC; per-GPU row-block slab + stencil halo over $(c.gpus) GPU(s); fusion=$(c.fusion)",
     )
 end
 
@@ -180,14 +183,14 @@ function memory_estimate(b::AbstractTensorContraction{T}, c::MemoryContext) wher
     )
 end
 
-function memory_estimate(b::AbstractConjugateGradient{T},c::MemoryContext) where {T}
-    validate_memory_context(b,c)
+function memory_estimate(b::AbstractConjugateGradient{T}, c::MemoryContext) where {T}
+    validate_memory_context(b, c)
     b.N>=2 && b.M==1 || error("CG requires N ≥ 2 and M=1")
     b.check_every>0 && b.max_iter>0 || error("CG check_every and max_iter must be positive")
     c.model==:jacc && b.N % c.gpus!=0 && error("JACC CG requires N divisible by GPUs")
     v=big(b.N)*sizeof(T)
     # Synchronization need not collect Julia wrappers for completed temporaries.
     retained = c.model == :cunumeric ? big(b.max_iter)*c.steps : 1
-    return MemoryEstimate(16v,(24+24retained)*v,0,
+    return MemoryEstimate(16v, (24+24retained)*v, 0,
         "CG bands/workspace and conservative retained iteration temporaries")
 end

@@ -62,7 +62,8 @@ function baseline_shape(s, k)
         return (something(s.N_hint, k), something(s.M_hint, DEFAULT_DMD_M))
     elseif B <: PoissonFFT
         return s.N_hint === nothing ? (k, something(s.M_hint, 1)) : (s.N_hint, k)
-    elseif B <: MonteCarloIntegration || B <: AbstractTensorContraction || B <: AbstractConjugateGradient
+    elseif B <: MonteCarloIntegration || B <: AbstractTensorContraction ||
+        B <: AbstractConjugateGradient
         s.M_hint === nothing || s.M_hint == 1 || error("$(s.name) requires M=1")
         return (something(s.N_hint, k), 1)
     else
@@ -102,6 +103,7 @@ function plan_runs(specs, gs, raw, groups, budget)
     isempty(specs) && error("No benchmarks selected")
     foreach(validate_spec, specs)
     group_for = Dict(member=>group for (group, members) in groups for member in members)
+    group_members = Dict(groups)
     buckets = Dict{Any,Vector{BenchmarkSpec}}()
     order = Any[]
     for s in specs
@@ -117,9 +119,15 @@ function plan_runs(specs, gs, raw, groups, budget)
         members = buckets[key]
         autos = filter(s->s.autosize, members)
         if isempty(autos)
+            # A user who pins a size gets it; the run is kept and allowed to OOM
+            # at runtime rather than blocked here on a conservative estimate.
             runs = candidate_runs(members, gs, raw, nothing, budget)
-            all(r->peak_bytes(r.memory)<=r.budget, runs) ||
-                error("Pinned size exceeds memory budget in $(key[1])")
+            for r in runs
+                peak_bytes(r.memory) <= r.budget || @warn(
+                    "Pinned size may exhaust GPU memory; run kept and allowed to OOM at runtime",
+                    benchmark=r.spec.name, model=r.model, N=r.N, M=r.M,
+                    peak=peak_bytes(r.memory), budget=r.budget)
+            end
             append!(planned, runs)
             continue
         end
@@ -150,11 +158,18 @@ function plan_runs(specs, gs, raw, groups, budget)
                 ),
             )÷quantum,
         )
+        # The comparison baseline exhausts memory before the accelerated forms;
+        # size the group by the accelerated members and let the baseline OOM at
+        # runtime instead of shrinking everyone to fit its conservative estimate.
+        distinct = unique(sp.name for sp in members)
+        base = plot_baseline(get(group_members, key[1], distinct))
+        exempt = length(distinct) > 1 && base in distinct
+        gates(r) = !(exempt && r.spec.name == base)
         make(k) = candidate_runs(members, gs, raw, baseline_shape(s, k*quantum), budget)
+        fits(k) = all(r->peak_bytes(r.memory)<=r.budget, Iterators.filter(gates, make(k)))
         # Evaluate once before search to surface unsupported model errors.
-        all(r->peak_bytes(r.memory)<=r.budget, make(lo)) ||
-            error("Minimum problem does not fit in $(key[1])")
-        best = largest_feasible(lo, hi, k->all(r->peak_bytes(r.memory)<=r.budget, make(k)))
+        fits(lo) || error("Minimum problem does not fit in $(key[1])")
+        best = largest_feasible(lo, hi, fits)
         best === nothing && error("No feasible size for $(key[1])")
         append!(planned, make(best))
     end
