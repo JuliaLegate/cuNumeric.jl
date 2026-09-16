@@ -12,6 +12,10 @@ for environment in cuda jacc dagger; do
         -e 'using Pkg; Pkg.resolve(); Pkg.instantiate()'
 done
 
+echo "Setting JACC backend to cuda"
+"$julia_bin" --project="environments/jacc" \
+    -e 'import Pkg; using JACC; JACC.set_backend("cuda")' # restart julia
+
 echo "Developing local packages and instantiating environments/cunumeric"
 "$julia_bin" --project="environments/cunumeric" \
     -e 'using Pkg; Pkg.develop(path=ARGS[1]); Pkg.develop(path=ARGS[2]); Pkg.instantiate()' \
