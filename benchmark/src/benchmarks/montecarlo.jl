@@ -50,8 +50,8 @@ function run!(mci::MonteCarloIntegration, x)
 end
 
 # n_samples comes in as N; M is unused.
-function build_benchmark(::Type{MonteCarloIntegration}, ::Type{T}, N, M) where {T}
-    return MonteCarloIntegration{T}(; n_samples=N)
+function build_benchmark(::Type{MonteCarloIntegration}, ::Type{T}, N, M; kwargs...) where {T}
+    return MonteCarloIntegration{T}(; kwargs..., n_samples=N)
 end
 
 function correctness_problem(b::MonteCarloIntegration{T}) where {T}

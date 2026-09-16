@@ -100,8 +100,8 @@ end
 benchmark_backend_label(::AbstractBenchmark, backend::String, default::String) = default
 benchmark_backend_save_as(::AbstractBenchmark, backend::String, default::String) = default
 
-function build_benchmark(::Type{B}, ::Type{T}, N, M) where {B<:AbstractBenchmark,T}
-    return B{T}(; N=N, M=M)
+function build_benchmark(::Type{B}, ::Type{T}, N, M; kwargs...) where {B<:AbstractBenchmark,T}
+    return B{T}(; kwargs..., N=N, M=M)
 end
 
 # Optional hooks for the generic correctness check (initialize + run!).

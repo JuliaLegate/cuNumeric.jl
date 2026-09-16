@@ -82,9 +82,9 @@ zipped by position. A benchmark block may override `models`, `n_warmup`,
 Native-library benchmarks such as GEMM require verified per-model scratch-space
 bounds under `[workspace.<benchmark>]`; the planner reports any missing bound.
 
-cuNumeric supports every registered benchmark. cuPyNumeric and CUDA.jl support
-the non-accelerated array benchmarks; CUDA.jl is single-GPU. JACC and Dagger
-currently support `montecarlo` and `gemm`.
+cuNumeric supports every registered benchmark. CUDA.jl and cuPyNumeric run the
+non-accelerated array benchmarks (CUDA.jl is single-GPU). JACC and Dagger have
+native `montecarlo`, `gemm`, `grayscott`, and `cg`.
 
 ## Results
 
@@ -100,4 +100,32 @@ To plot existing CSV files:
 
 ```bash
 julia --project=. plot_results.jl results/<run-id>
+```
+
+### Conjugate gradient
+
+`cg` is the default variant and runs on every model; on cuNumeric it applies
+`@accelerate` to each update. `cg_plain` is the cuNumeric variant without
+`@accelerate`, for the accelerate comparison. The generic solver is shared by the
+array workers (`src/benchmarks/cg.jl`); JACC and Dagger have native versions.
+
+```bash
+julia --project=. run.jl --config=benchmarks_cg.toml
+```
+
+Set solver controls per entry, e.g. `kwargs = { check_every = 10, max_iter = 1000 }`.
+The problem is `tridiag(1,4,1) x = 1/2` from `x = 0`. Each solve checks convergence
+(and syncs the residual to the host) only when `k % check_every == 0` or
+`k == max_iter`, and fails if it does not converge (relative tolerance 1e-8 for
+Float64, 1e-5 for Float32); use `max_iter = 1` for a single-update comparison.
+
+`n_iter` counts complete solves per trial. Convergence determines the work, so
+compare elapsed time — the CSV's GFLOP/s field is zero. Auto-sizing depends on
+`max_iter`, so keep N fixed when comparing check intervals. The config pins
+N=65,536 (set N=100,000,000 for the paper-sized workload); JACC additionally
+requires N divisible by the GPU count. Validate the JACC partition kernels with
+the selected GPUs visible:
+
+```bash
+julia --project=environments/jacc test/jacc_cg.jl
 ```

@@ -56,6 +56,7 @@ function plan_manifest(runs, budget, raw)
         "runs"=>[
             Dict{String,Any}(
                 "name"=>r.spec.name, "T"=>r.spec.T, "model"=>string(r.model),
+                "kwargs"=>Dict(string(k)=>v for (k,v) in r.spec.kwargs), "results_subdir"=>results_subdir(r.spec),
                 "fusion"=>r.spec.fusion, "gpus"=>r.spec.gpus, "cpus"=>r.spec.cpus,
                 "N"=>r.N, "M"=>r.M, "n_iter"=>r.spec.n_iter, "n_warmup"=>r.spec.n_warmup,
                 "n_trial"=>r.spec.n_trial, "initialization_bytes"=>string(r.memory.initialization),
@@ -103,16 +104,16 @@ function execute_plan(runs, gs, opts, budget, raw; launch=run, prepare=prepare_b
                 prepare_model(model, r, opts.verbose; prepare_cunumeric=prepare)
                 prepared[r.model] = key
             end
-            b = build_benchmark(BENCHMARKS[s.name], parse_bench_type(s.T), r.N, r.M)
+            b = build_benchmark(BENCHMARKS[s.name], parse_bench_type(s.T), r.N, r.M; s.kwargs...)
             p = opts.positional
             correctness = length(p)>=11 ? parse(Bool, p[11]) : gs.check_correctness
             correct_iters = length(p)>=12 ? parse(Int, p[12]) : gs.n_correctness_iter
             request = WorkerRequest(
                 s.gpus, s.cpus, s.name, s.T, r.N, r.M, s.n_iter, s.n_warmup, s.n_trial,
-                correctness, correct_iters, Float64(total_flops(b)),
+                correctness, correct_iters, Float64(total_flops(b)), s.kwargs,
             )
             cmd = wrapped_worker_command(model, request, root; verbose=opts.verbose)
-            results = joinpath(dir, s.T)
+            results = joinpath(dir, results_subdir(s))
             model_env = model_environment(model, request, opts.verbose)
             model_env["CUNUMERIC_BENCH_RESULTS_DIR"] = results
             launch(addenv(Cmd(cmd; dir=root), model_env))
@@ -134,7 +135,7 @@ function execute_plan(runs, gs, opts, budget, raw; launch=run, prepare=prepare_b
     end
     manifest["status"] = failed ? "incomplete" : "complete"
     if isempty(opts.positional)
-        for T in unique(r.spec.T for r in runs)
+        for T in unique(results_subdir(r.spec) for r in runs)
             try
                 plotter = joinpath(root, "plot_results.jl")
                 results = joinpath(dir, T)

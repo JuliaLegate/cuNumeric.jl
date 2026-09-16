@@ -52,8 +52,8 @@ function fit_one_gpu(
     return (n, n)
 end
 
-function build_benchmark(::Type{A}, ::Type{T}, N, M) where {A<:AbstractGrayScott,T}
-    return A{T}(; N=N, M=M)
+function build_benchmark(::Type{A}, ::Type{T}, N, M; kwargs...) where {A<:AbstractGrayScott,T}
+    return A{T}(; kwargs..., N=N, M=M)
 end
 
 mutable struct GrayScottState{A,P}
