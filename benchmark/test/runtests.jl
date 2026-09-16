@@ -257,9 +257,12 @@ end
         [spec("montecarlo"; fusion=false, models=all_models)], gs, RAW, GROUPS, 1_000_000
     )
     @test any(r.model==:cupynumeric for r in onlyoff)
-    @test_throws ErrorException plan_runs(
+    # A pinned oversize is respected (kept, warns) so the user can force an OOM.
+    oversize = @test_logs (:warn,) match_mode=:any plan_runs(
         [spec("montecarlo"; N=1000000, M=1, auto=false)], gs, RAW, GROUPS, 100
     )
+    @test only(oversize).N == 1000000
+    @test peak_bytes(only(oversize).memory) > 100
     @test_throws ErrorException plan_runs(
         [spec("montecarlo"; N=8, M=1, auto=false), spec("montecarlo"; N=16, M=1, auto=false)],
         gs,
@@ -320,6 +323,15 @@ end
     end
     @test peak_bytes(memory_estimate(baseline, MemoryContext(; fusion=true))) <
         peak_bytes(memory_estimate(baseline, MemoryContext(; fusion=false)))
+    # The grid is tiled per GPU: more GPUs at fixed N means less memory per GPU,
+    # and a weak-scaled aligned (N, GPUs) pair holds per-GPU memory ~constant.
+    big1 = GrayScottFunctionAccelerated{Float32}(; N=4096, M=4096)
+    @test peak_bytes(memory_estimate(big1, MemoryContext(; gpus=4))) <
+        peak_bytes(memory_estimate(big1, MemoryContext(; gpus=1)))
+    p1 = peak_bytes(memory_estimate(big1, MemoryContext(; gpus=1)))
+    big4 = GrayScottFunctionAccelerated{Float32}(; N=8192, M=8192) # N*2 for 4 GPUs (2D)
+    p4 = peak_bytes(memory_estimate(big4, MemoryContext(; gpus=4)))
+    @test 0.9 < Float64(p4)/Float64(p1) < 1.1
     @test estimate_scaling(GEMM{Float32}(; N=64, M=32), 8)==(128, 64)
     @test estimate_scaling(baseline, 4)==(128, 64)
     @test_throws ErrorException memory_estimate(baseline, MemoryContext(; steps=0))
@@ -333,6 +345,16 @@ end
     for p in (1, 4)
         @test length(unique((r.N, r.M) for r in runs if r.spec.gpus==p))==1
     end
+    # The group is sized by the accelerated form; the exempt baseline is kept at
+    # that shared size and is allowed to exceed the budget (OOM at runtime).
+    gsx = GlobalSettings(; n_warmup=1, n_iter=20)
+    sx = [spec(n; gpus=1) for n in ("grayscott_plain", "grayscott_function_accelerated")]
+    rx = plan_runs(sx, gsx, RAW, FORMS_GROUPS, 10_000_000)
+    @test length(unique((r.N, r.M) for r in rx))==1
+    accel = only(r for r in rx if r.spec.name=="grayscott_function_accelerated")
+    base = only(r for r in rx if r.spec.name=="grayscott_plain")
+    @test peak_bytes(accel.memory) <= accel.budget
+    @test peak_bytes(base.memory) > base.budget
 end
 
 @testset "Execution isolation and failure status" begin
