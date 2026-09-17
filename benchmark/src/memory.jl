@@ -121,14 +121,8 @@ function memory_estimate(b::AbstractGrayScott{T}, c::MemoryContext) where {T}
     # Unfused Laplacian: first branch survives evaluation of second branch;
     # include outer destination and intermediate binary operands.
     temps = fused ? 5 : 8
-    variant = name(b)
-    hard_scope =
-        b isa Union{GrayScottAccelerated,GrayScottFunctionAccelerated,GrayScottLetAccelerated}
-    # Hard scopes insert explicit last-use destruction whether fusion is on or
-    # off. Baseline/begin/expression leave the named results for tracing GC.
-    retained = c.model == :cunumeric && hard_scope || c.model == :cupynumeric ? 0 : 6*(c.steps-1)
-    return MemoryEstimate(init, 4grid + (temps+retained)*interior, 0,
-        "$variant: four persistent grids + $temps active interior buffers + $retained prior buffers awaiting GC; per-GPU row-block slab + stencil halo over $(c.gpus) GPU(s); fusion=$(c.fusion)",
+    return MemoryEstimate(init, 4grid + temps*interior, 0,
+        "$(name(b)): four persistent grids + $temps active interior buffers; per-GPU row-block slab + stencil halo over $(c.gpus) GPU(s); fusion=$(c.fusion)",
     )
 end
 
@@ -188,9 +182,7 @@ function memory_estimate(b::AbstractConjugateGradient{T}, c::MemoryContext) wher
     b.N>=2 && b.M==1 || error("CG requires N ≥ 2 and M=1")
     b.check_every>0 && b.max_iter>0 || error("CG check_every and max_iter must be positive")
     c.model==:jacc && b.N % c.gpus!=0 && error("JACC CG requires N divisible by GPUs")
-    v=big(b.N)*sizeof(T)
-    # Synchronization need not collect Julia wrappers for completed temporaries.
-    retained = c.model == :cunumeric ? big(b.max_iter)*c.steps : 1
-    return MemoryEstimate(16v, (24+24retained)*v, 0,
-        "CG bands/workspace and conservative retained iteration temporaries")
+    v=cld(big(b.N), c.gpus)*sizeof(T)
+    return MemoryEstimate(16v, 24v, 0,
+        "partitioned CG bands/workspace plus active iteration temporaries")
 end

@@ -95,9 +95,9 @@ supports_gpu_count(::CUDAJLModel, gpus::Integer) = gpus == 1
 
 function supports_run(model::ExecutionModel, name::AbstractString, gpus::Integer)
     supports_benchmark(model, name) || return false
-    # JACC/Dagger grayscott is single-GPU for now, as is Dagger CG.
-    model isa Union{JACCModel,DaggerModel} && startswith(name, "grayscott") && gpus != 1 &&
-        return false
+    # JACC Gray-Scott is single-GPU pending its 2D ghost fix; Dagger uses
+    # distributed @stencil halos. Dagger CG remains single-GPU.
+    model isa JACCModel && startswith(name, "grayscott") && gpus != 1 && return false
     model isa DaggerModel && startswith(name, "cg") && gpus != 1 && return false
     return supports_gpu_count(model, gpus)
 end
@@ -164,31 +164,6 @@ end
 
 function model_environment(::ExecutionModel, request::WorkerRequest, verbose)
     return Dict{String,String}()
-end
-
-# JACC.Multi initializes every CUDA device visible to its process. Dagger can
-# scope work to a subset, but using the same visibility rule keeps discovery,
-# validation, and synchronization aligned with the planned GPU count. Preserve
-# scheduler-provided identifiers (including UUIDs/MIG IDs) and select a prefix;
-# use CUDA's logical integer identifiers only when no mask was supplied.
-function selected_cuda_visibility(gpus::Integer; env=ENV)
-    gpus > 0 || error("GPU count must be positive")
-    visibility = get(env, "CUDA_VISIBLE_DEVICES", nothing)
-    visibility === nothing && return join(0:(gpus - 1), ',')
-    tokens = strip.(split(visibility, ','))
-    any(isempty, tokens) && error("CUDA_VISIBLE_DEVICES contains an empty device identifier")
-    length(unique(tokens)) == length(tokens) ||
-        error("CUDA_VISIBLE_DEVICES contains duplicate device identifiers")
-    length(tokens) >= gpus || error(
-        "Requested $gpus GPUs, but CUDA_VISIBLE_DEVICES contains only $(length(tokens))"
-    )
-    return join(tokens[1:gpus], ',')
-end
-
-function model_environment(
-    ::Union{JACCModel,DaggerModel}, request::WorkerRequest, verbose
-)
-    return Dict("CUDA_VISIBLE_DEVICES" => selected_cuda_visibility(request.gpus))
 end
 
 function model_environment(
