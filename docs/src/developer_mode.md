@@ -47,7 +47,9 @@ If the build fails, check CMake / g++ (C++20) / CUDA toolkit availability as des
 Recreating or moving the repository can leave a libcxxwrap CMake export in the
 Julia depot pointing at deleted headers. `Pkg.build("cuNumeric")` checks the
 exported header and library paths before reusing that build and rebuilds it when
-stale. No manual checkout or depot cleanup is needed. The installer retains your
+stale. It also records the Julia version and executable path: changing either
+forces a rebuild. Older builds without this Julia marker are rebuilt once.
+No manual checkout or depot cleanup is needed. The installer retains your
 manifest and developed JLL checkout, recreating only its generated `override/`
 directory. Check `deps/libcxxwrap_check.log`, `deps/libcxxwrap.log`, and
 `deps/libcxxwrap.err` if this repair fails.
