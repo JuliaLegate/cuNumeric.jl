@@ -75,6 +75,35 @@ function _mr_contribute_kernel(scratch, dest, op, single::Bool, start::Int, coun
     return nothing
 end
 
+# A full reduction has one output. Cooperate across a block instead of making
+# a single thread serially combine every partial. Invalid lanes never enter the
+# tree: an extra identity operation can change signed zeros or complex infinities.
+function _mr_contribute_full_kernel(scratch::CuStridedDeviceArray{S,1}, dest, op,
+                                    single::Bool, start::Int, count::Int, chunks::Int) where {S}
+    tid = Int(CUDACore.threadIdx().x)
+    shared = CUDACore.CuStaticSharedArray(S, _MR_THREADS)
+    active = min(chunks, _MR_THREADS)
+    if tid <= active
+        @inbounds value = scratch[tid]
+        for c in (tid + _MR_THREADS):_MR_THREADS:chunks
+            @inbounds value = _mr_combine(op)(value, scratch[c])
+        end
+        @inbounds shared[tid] = value
+    end
+    stride = _MR_THREADS ÷ 2
+    while stride > 0
+        CUDACore.sync_threads()
+        if tid <= stride && tid + stride <= active
+            @inbounds shared[tid] = _mr_combine(op)(shared[tid], shared[tid + stride])
+        end
+        stride >>= 1
+    end
+    if tid == 1
+        @inbounds dest[start + 1] = single ? shared[1] : _mr_combine(op)(dest[start + 1], shared[1])
+    end
+    return nothing
+end
+
 struct MapReduceFinish{OP,R,I}
     op::OP
     init::I
@@ -138,7 +167,8 @@ function _mr_launch(f, op, A::NDArray{T,N}, ::Type{R}, ::Type{O}, mask, shape, i
     single = all(d -> !mask[d] || size(A, d) == 1, 1:N)
     name = _mr_kernel_name(_mr_partial_kernel, (input_type, scratch_type, typeof(mapper), Int, Int))
     RD = dims isa Colon ? 1 : D
-    contribute_name = _mr_kernel_name(_mr_contribute_kernel, (
+    contribute_kernel = dims isa Colon ? _mr_contribute_full_kernel : _mr_contribute_kernel
+    contribute_name = _mr_kernel_name(contribute_kernel, (
         scratch_type, CuStridedDeviceArray{S,RD,CUDACore.AS.Global}, typeof(op), Bool, Int, Int, Int,
     ))
     singleton = single && !(dims isa Colon)
