@@ -27,9 +27,6 @@ function dagger_grayscott(::Type{T}, N, M, gpus, scope, processors) where {T}
 end
 
 function model_build_grayscott(config::ModelWorkerConfig)
-    config.gpus == 1 || error(
-        "Dagger grayscott is single-GPU for now; @stencil multi-GPU awaits validation"
-    )
     available = length(collect(CUDA.devices()))
     available == config.gpus || error(
         "Dagger sees $available GPU(s), but this run was planned for $(config.gpus). " *

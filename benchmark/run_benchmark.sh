@@ -51,6 +51,15 @@ if ! [[ $CPUS =~ ^[0-9]+$ ]]; then
     exit 2
 fi
 
+if [[ $MODEL == jacc || $MODEL == dagger ]]; then
+    if [[ -z ${CUDA_VISIBLE_DEVICES:-} ]]; then
+        CUDA_VISIBLE_DEVICES=$(seq -s, 0 $((GPUS - 1)))
+    else
+        CUDA_VISIBLE_DEVICES=$(cut -d, -f1-"$GPUS" <<< "$CUDA_VISIBLE_DEVICES")
+    fi
+    export CUDA_VISIBLE_DEVICES
+fi
+
 # A worker process has exactly one execution-model identity. Reject nested or
 # accidentally reused launch environments instead of allowing a worker to load
 # a second model under a misleading result label.
