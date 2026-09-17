@@ -129,6 +129,15 @@ using InteractiveUtils: code_typed
             end
         ))
 
+        # Compound dotted assignments must remain one broadcast tree. Hoisting
+        # their RHS would add a full-size temporary and a second GPU launch.
+        compound = string(expand(:(function update!(x, alpha, p)
+            x .+= alpha .* p
+            x
+        end)))
+        @test occursin("x .+= alpha .* p", compound)
+        @test !occursin(r"tmp\d+ = alpha \.\* p", compound)
+
         if cuNumeric.FUSE_BROADCAST_EXPRS && cuNumeric.HAS_CUDA
             # A same-shape chain fuses into one multi-output launch and still
             # frees the hoisted slice temporaries.

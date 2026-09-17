@@ -282,6 +282,8 @@ function test_scoping_rewrite_pipeline()
     @testset "Syntax helpers" begin
         @test utils._assignment(:(x = y)) == (lhs=:x, rhs=:y)
         @test utils._broadcast_assignment(:(A[:] .= x)).rhs == :x
+        @test utils._broadcast_assignment(:(A[:] .+= x)).rhs == :x
+        @test utils._broadcast_assignment(:(A[:] .-= x)).rhs == :x
         @test utils._call(:(f(x, y))) == (f=:f, args=Any[:x, :y])
         @test utils._dotcall(:(f.(x, y))) == (f=:f, args=Any[:x, :y])
         @test utils._reference(:(A[i, j])) == (array=:A, indices=Any[:i, :j])
@@ -372,6 +374,32 @@ function test_scoping_rewrite_pipeline()
             @test freed == assigned
         finally
             cuNumeric.counter[] = 0
+        end
+    end
+
+    @testset "Compound broadcast assignments stay fused" begin
+        source = quote
+            x .+= alpha .* p
+            @views Ap[2:end] .-= lower[2:end] .* p[1:(end - 1)]
+        end
+
+        for rewrite in (
+            cuNumeric.rewrite_broadcast_lifetimes, cuNumeric.rewrite_eager_lifetimes
+        )
+            cuNumeric.counter[] = 0
+            try
+                rewritten, assigned = rewrite(source)
+                rendered = sprint(Base.show_unquoted, utils._strip_lines(rewritten))
+
+                @test occursin("x .+= alpha .* p", rendered)
+                @test occursin(".-=", rendered)
+                @test count(line -> occursin(".*", line), eachline(IOBuffer(rendered))) == 2
+                @test !occursin(r"tmp\d+ = alpha \.\* p", rendered)
+                @test !occursin(r"tmp\d+ = .*lower.* \.\* .*p", rendered)
+                @test !isempty(assigned) # slice views are still lifetime-managed
+            finally
+                cuNumeric.counter[] = 0
+            end
         end
     end
 
