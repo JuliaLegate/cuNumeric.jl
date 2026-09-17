@@ -33,24 +33,15 @@ function cuda_runnable(b::AbstractGrayScottAccelerateForm{T}) where {T}
     return GrayScottBaseline{T}(; N=b.N, M=b.M)
 end
 
-function _define_grayscott_accelerated_step(type, form=:function; barrier=false)
+function _define_grayscott_accelerated_step(type, form=:function)
     body = deepcopy(GRAYSCOTT_STEP_BODY)
-    if barrier
-        # A plain statement blocks fusion into the indexed updates.
-        is_indexed_assignment(x) =
-            x isa Expr && x.head === :(=) &&
-            x.args[1] isa Expr && x.args[1].head === :ref
-        first_update = something(findfirst(is_indexed_assignment, body.args))
-        insert!(body.args, first_update, :nothing)
-    end
     signature = :(_gs_step!(b::$type, u, v, u_new, v_new, args::GSParams))
     return Core.eval(@__MODULE__, _define_accelerated_definition(signature, body, form))
 end
 
-# Only the production default gets the correctness barrier.
 if CUNUMERIC_BENCH_RUNTIME
-    _define_grayscott_accelerated_step(GrayScottAccelerated; barrier=true)
     for (type, form) in (
+        (GrayScottAccelerated, :function),
         (GrayScottFunctionAccelerated, :function),
         (GrayScottBeginAccelerated, :begin),
         (GrayScottLetAccelerated, :let),
