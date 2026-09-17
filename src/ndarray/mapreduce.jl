@@ -126,7 +126,7 @@ Narrowing dimensional `init` types are unsupported.
 Floating-point results may differ in rounding with partitioning; extrema preserve
 NaNs and signed zeros, but not NaN payloads. See the mapped-reductions documentation.
 """
-function Base.mapreduce(f, op, A::NDArray{T}; dims=:, init=NoReductionInit()) where {T}
+function Base.mapreduce(f::F, op::OP, A::NDArray{T}; dims=:, init=NoReductionInit()) where {F,OP,T}
     op = _mr_operator(op)
     input_shape = size(A)
     mask, shape = _mr_dims(input_shape, dims)
