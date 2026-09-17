@@ -8,6 +8,11 @@ struct MapReduceMap{F,OP,R,MASK}
 end
 MapReduceMap(f::F, op::OP, ::Type{R}, mask) where {F,OP,R} = MapReduceMap{F,OP,R,mask}(f, op)
 
+# The reduction loop already bounds red by the only extent. Preserve the
+# physical stride without computing a redundant remainder for every element.
+@inline _mr_offset(A::CuStridedDeviceArray{T,1}, other::Int, red::Int, ::Val{(true,)}) where {T} =
+    red * A.strides[1]
+
 # Indices are relative to the PhysicalStore's lower bound, already reflected in
 # the descriptor pointer. Unchecked unsigned division avoids device exceptions.
 @inline function _mr_offset(A::CuStridedDeviceArray{T,N}, other::Int, red::Int, ::Val{MASK}) where {T,N,MASK}

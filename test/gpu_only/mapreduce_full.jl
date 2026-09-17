@@ -1,6 +1,38 @@
 using Test
 import CUDACore
 
+function _test_strided_partial(parent, scratch, mapper, origin, stride, n, chunks)
+    T = eltype(parent)
+    src = cuNumeric.CuStridedDeviceArray{T,1,CUDACore.AS.Global}(
+        pointer(parent, origin + 1), (length(parent) - origin) * sizeof(T), (n,), (stride,), n,
+    )
+    dst = cuNumeric.CuStridedDeviceArray{T,1,CUDACore.AS.Global}(
+        pointer(scratch), length(scratch) * sizeof(T), (length(scratch),), (1,), length(scratch),
+    )
+    cuNumeric._mr_partial_kernel(src, dst, mapper, 0, chunks)
+    return nothing
+end
+
+@testset "1D reduction offsets" begin
+    mapper = cuNumeric.MapReduceMap(identity, +, Int32, (true,))
+    for n in (1, 31, 256, 257, 1025, 4097), origin in (0, 3), stride in (1, 2, 3)
+        host = Int32[mod(i, 7) - 3 for i in 1:(3n + 7)]
+        chunks = cld(n, 1024)
+        parent, scratch = CUDACore.CuArray(host), CUDACore.zeros(Int32, chunks)
+        try
+            CUDACore.@cuda threads=256 blocks=chunks _test_strided_partial(
+                parent, scratch, mapper, origin, stride, n, chunks,
+            )
+            expected = sum(host[(origin + 1):stride:(origin + 1 + (n - 1)*stride)])
+            @test sum(Array(scratch)) == expected
+        finally
+            CUDACore.synchronize()
+            CUDACore.unsafe_free!(parent)
+            CUDACore.unsafe_free!(scratch)
+        end
+    end
+end
+
 function _check_full_reduction(input, op; kwargs...)
     A = @allowscalar cuNumeric.NDArray(input)
     result = nothing
