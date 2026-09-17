@@ -75,5 +75,5 @@
     @test !supports_benchmark(CuPyNumericModel(), "cg_plain")
     @test supports_benchmark(DaggerModel(), "cg")
     @test supports_run(DaggerModel(), "cg", 1)
-    @test !supports_run(DaggerModel(), "cg", 2)
+    @test supports_run(DaggerModel(), "cg", 2)
 end

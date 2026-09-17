@@ -131,8 +131,8 @@ For the 9-million-elements-per-GPU weak-scaling run:
 julia --project=. run.jl --config=benchmarks_cg_multigpu.toml
 ```
 
-Dagger currently contributes only its 1-GPU baseline because its CG vectors
-are not distributed across processors yet.
+Dagger CG uses distributed arrays and its native stencil, broadcast, and
+reduction operations across all selected GPUs.
 
 Set solver controls per entry, e.g. `kwargs = { check_every = 10, max_iter = 1000 }`.
 The problem is `tridiag(1,4,1) x = 1/2` from `x = 0`. Each solve checks convergence
