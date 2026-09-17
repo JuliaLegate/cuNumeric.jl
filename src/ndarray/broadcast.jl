@@ -67,13 +67,18 @@ function Base.similar(bc::Broadcasted{NDArrayStyle{N}}, ::Type{ElType}) where {N
 end
 
 function __broadcast(f::Function, _, args...)
-    #! WITH FUSION I THINK WE CAN SUPPORT THIS BY JUST CALLING MAP or MAP!
     return error(
-        """
-        Tried to broadcast $(f). cuNumeric.jl does not support broadcasting user-defined functions yet. Please re-define \
-        functions to match supported patterns. For example g(x) = x + 1 could be re-defined as \
-        broadcast_g(x::NDArray) = x .+ 1. This can make the intention of code opaque to the reader, \
-        but it is necessary until support is added.""",
+        "Broadcasting $(f) is not supported by cuNumeric's unfused broadcast path.\n" *
+        "Single-operation broadcasts skip fusion when FUSE_BROADCAST_MIN_OPS > 1 " *
+        "(current: $(FUSE_BROADCAST_MIN_OPS); fusion enabled: $(FUSE_BROADCAST_EXPRS)).\n" *
+        "To enable GPU fusion for eligible single-operation broadcasts, set the " *
+        "FUSE_BROADCAST_MIN_OPS preference to 1:\n" *
+        "    using CNPreferences\n" *
+        "    CNPreferences.enable_broadcast_fusion!()\n" *
+        "    CNPreferences.set_broadcast_fusion_min_ops!(1)\n" *
+        "Then restart Julia and retry. This is a preference, not an environment variable.\n" *
+        "Fusion requires an active GPU, compatible array shapes, and a GPU-compilable function. " *
+        "Otherwise, rewrite the expression using supported broadcast operations.",
     )
 end
 
