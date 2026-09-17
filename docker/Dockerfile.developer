@@ -121,6 +121,7 @@ RUN apt-get clean \
 
 ENV LEGATE_AUTO_CONFIG=1
 
+COPY docker/profile.sh /etc/profile.d/cunumeric.sh
 COPY docker/entrypoint.sh /usr/local/bin/cunumeric-entrypoint
 RUN chmod +x /usr/local/bin/cunumeric-entrypoint
 ENTRYPOINT ["/usr/local/bin/cunumeric-entrypoint"]

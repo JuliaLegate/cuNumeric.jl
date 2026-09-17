@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -e
 
-source /etc/.env
+# shellcheck disable=SC1091
+source /etc/profile.d/cunumeric.sh
 
 if [[ $# -eq 0 ]]; then
     set -- /bin/bash
