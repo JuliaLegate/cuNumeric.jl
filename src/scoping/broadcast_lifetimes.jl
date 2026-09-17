@@ -74,10 +74,11 @@ function rewrite_broadcast_lifetimes(scope)
             return :($lhs = $new_rhs), temps
         end
 
-        # A `.=` RHS is a broadcast tree: only its slices are hoisted.
+        # A dotted-assignment RHS is a broadcast tree: only its slices are hoisted.
         broadcast_assignment = _broadcast_assignment(expr)
         if !isnothing(broadcast_assignment)
             (; lhs, rhs) = broadcast_assignment
+            op = expr.head
             # NDArray slices are writable views. Hoist the destination slice so
             # the fused broadcast writes through it, then destroy its handle.
             lhs_reference = _reference(lhs)
@@ -87,7 +88,7 @@ function rewrite_broadcast_lifetimes(scope)
                 new_lhs, lhs_temps = fresh_tmp(lhs)
             end
             new_rhs, rhs_temps = rewrite_lazy_broadcast(rhs, Dict{Any,Symbol}())
-            return Expr(:(.=), new_lhs, new_rhs), vcat(lhs_temps, rhs_temps)
+            return Expr(op, new_lhs, new_rhs), vcat(lhs_temps, rhs_temps)
         end
 
         reference = _reference(expr)
