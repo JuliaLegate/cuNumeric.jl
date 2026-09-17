@@ -5,6 +5,7 @@ assert_active_model(:dagger)
 
 using CUDA: CUDA
 using Dagger: Dagger
+using AbstractFFTs
 import Dagger: @stencil, Pad, Wrap
 using LinearAlgebra
 
@@ -14,8 +15,9 @@ include(joinpath(@__DIR__, "benchmarks", "montecarlo.jl"))
 include(joinpath(@__DIR__, "benchmarks", "gemm.jl"))
 include(joinpath(@__DIR__, "benchmarks", "grayscott.jl"))
 include(joinpath(@__DIR__, "benchmarks", "cg.jl"))
+include(joinpath(@__DIR__, "benchmarks", "nas", "ft.jl"))
 
-const SUPPORTED_BENCHMARKS = ["montecarlo", "gemm", "grayscott", "cg"]
+const SUPPORTED_BENCHMARKS = ["montecarlo", "gemm", "grayscott", "cg", "nas_ft"]
 
 function model_build_benchmark(config::ModelWorkerConfig)
     config.name in SUPPORTED_BENCHMARKS || error(
@@ -23,7 +25,9 @@ function model_build_benchmark(config::ModelWorkerConfig)
         join(SUPPORTED_BENCHMARKS, ", "),
     )
 
-    if config.name == "montecarlo"
+    if config.name == "nas_ft"
+        return model_build_nas_ft(config)
+    elseif config.name == "montecarlo"
         return model_build_montecarlo(config)
     elseif config.name == "gemm"
         return model_build_gemm(config)

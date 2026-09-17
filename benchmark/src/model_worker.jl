@@ -27,7 +27,7 @@ end
 ModelWorkerConfig(args::Vararg{Any,12}) = ModelWorkerConfig(args..., Dict{Symbol,Any}())
 
 function parse_model_worker_args(args)
-    length(args) in (11,12) || error(
+    length(args) in (11, 12) || error(
         "worker args: <gpus> <name> <T> <N> <M> <n_iter> <n_warmup> " *
         "<n_trial> <check_correctness> <n_correctness_iter> <flops> [kwargs TOML]",
     )
@@ -38,7 +38,11 @@ function parse_model_worker_args(args)
         parse(Int, args[1]), args[2], T, T_name, parse(Int, args[4]), parse(Int, args[5]),
         parse(Int, args[6]), parse(Int, args[7]), parse(Int, args[8]), parse(Bool, args[9]),
         parse(Int, args[10]), parse(Float64, args[11]),
-        length(args)==12 ? Dict{Symbol,Any}(Symbol(k)=>v for (k,v) in TOML.parse(args[12])) : Dict{Symbol,Any}(),
+        if length(args)==12
+            Dict{Symbol,Any}(Symbol(k)=>v for (k, v) in TOML.parse(args[12]))
+        else
+            Dict{Symbol,Any}()
+        end,
     )
     config.gpus > 0 || error("gpus must be positive")
     config.n_iter > 0 && config.n_trial > 0 && config.n_warmup >= 0 ||
@@ -48,6 +52,8 @@ end
 
 model_fence_each_iteration(benchmark) = true
 model_synchronize(benchmark) = nothing
+# Native-worker counterpart of reset!; true means the reset needs a fence.
+model_reset!(benchmark, state) = false
 model_check_correctness(benchmark, config) = "skipped"
 model_correctness_context(benchmark, config) = nothing
 
@@ -121,11 +127,13 @@ function model_trial(benchmark, config; clock=time_ns)
     fence_each = model_fence_each_iteration(benchmark)
 
     for _ in 1:config.n_warmup
+        model_reset!(benchmark, state)
         model_run!(benchmark, state)
         fence_each && model_synchronize(benchmark)
     end
     # Initialization and warmup work must be complete before starting the CPU
     # clock, including for models whose operations build asynchronous graphs.
+    model_reset!(benchmark, state)
     model_synchronize(benchmark)
 
     start = clock()

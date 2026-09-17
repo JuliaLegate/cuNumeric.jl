@@ -10,6 +10,7 @@ include("../src/runner.jl")
 include("../src/result_rows.jl")
 include("../src/model_worker.jl")
 include("timing.jl")
+include("nas.jl")
 
 const CONFIG = joinpath(@__DIR__, "..", "benchmarks.toml")
 const SMOKE_CONFIG = joinpath(@__DIR__, "..", "benchmarks_smoke.toml")
@@ -223,6 +224,7 @@ end
         c = MemoryContext(; model, fusion, workspace_bytes=0)
         for (name, B) in BENCHMARKS
             supports_benchmark(execution_model(model), name) || continue
+            B <: NASFourierTransform && continue
             m = if B <: AbstractDMD
                 16
             elseif B <: AbstractGrayScott || B <: GEMM

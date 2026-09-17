@@ -47,10 +47,19 @@ def trial(bench, n_warmup, n_iter, flops):
     state = bench.initialize()
     fence_each = getattr(bench, "fence_each_iteration", True)
     synchronize = get_legate_runtime().issue_execution_fence
-    start = None
-    for idx in range(n_warmup + n_iter):
-        if idx == n_warmup:
-            start = time()
+    reset = getattr(bench, "reset", None)
+    for _ in range(n_warmup):
+        if reset is not None:
+            reset(state)
+        bench.run(state)
+        if fence_each:
+            synchronize(block=True)
+    if reset is not None:
+        reset(state)
+        synchronize(block=True)
+
+    start = time()
+    for _ in range(n_iter):
         bench.run(state)
         if fence_each:
             synchronize(block=True)

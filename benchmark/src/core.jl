@@ -50,12 +50,19 @@ function allowed_types end
 function total_flops end
 function initialize end
 function run! end
+# Optional untimed reset before warmup and measurement. Return true when the
+# reset submitted asynchronous work that must complete before the clock starts.
+reset!(::AbstractBenchmark, state...) = false
 
 include("autosize.jl")
 
 function include_benchmarks()
     dir = joinpath(@__DIR__, "benchmarks")
-    for file in sort(filter(f -> endswith(f, ".jl"), readdir(dir; join=true)))
+    files = String[]
+    for (root, _, names) in walkdir(dir), name in names
+        endswith(name, ".jl") && push!(files, joinpath(root, name))
+    end
+    for file in sort!(files)
         Base.include(@__MODULE__, file)
     end
     return nothing
@@ -234,11 +241,15 @@ function _trial(
     state = initialize(b; mod=mod)
     fence_each = fence_each_iteration(b)
 
-    start_time = nothing
-    for idx in 1:(gs.n_warmup + gs.n_iter)
-        if idx == gs.n_warmup + 1
-            start_time = clock()
-        end
+    for _ in 1:gs.n_warmup
+        reset!(b, state...)
+        run!(b, state...)
+        fence_each && synchronize()
+    end
+    reset!(b, state...) && synchronize()
+
+    start_time = clock()
+    for _ in 1:gs.n_iter
         run!(b, state...)
         fence_each && synchronize()
     end
