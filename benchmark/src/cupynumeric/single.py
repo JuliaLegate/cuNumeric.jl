@@ -5,6 +5,7 @@
 import os
 import sys
 import time as walltime
+import tomllib
 
 if os.environ.get("CUNUMERIC_BENCH_ACTIVE_MODEL") != "cupynumeric":
     raise RuntimeError(
@@ -59,7 +60,8 @@ def main():
             f"No benchmark registered for '{name}'. Known: {', '.join(sorted(BENCHMARKS))}"
         )
     T = parse_type(T_str)
-    bench = BENCHMARKS[name](T, N, M)
+    kwargs = tomllib.loads(sys.argv[12]) if len(sys.argv) == 13 else {}
+    bench = BENCHMARKS[name](T, N, M, **kwargs)
     bench.n_correctness_iter = int(sys.argv[10])
     verbose = os.environ.get("CUNUMERIC_BENCH_VERBOSE", "0") == "1"
     supports_correctness = hasattr(bench, "check_correctness")

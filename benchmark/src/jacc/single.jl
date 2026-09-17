@@ -7,6 +7,8 @@ get(ENV, "CUNUMERIC_BENCH_VERBOSE", "0") == "1" ||
     global_logger(ConsoleLogger(stderr, Logging.Warn))
 using JACC: JACC
 JACC.@init_backend
+using CUDA
+using AbstractFFTs
 
 assert_models_not_loaded(("cuNumeric", "Dagger"))
 include(joinpath(@__DIR__, "benchmarks", "montecarlo.jl"))
@@ -14,8 +16,9 @@ include(joinpath(@__DIR__, "benchmarks", "gemm.jl"))
 include(joinpath(@__DIR__, "benchmarks", "grayscott.jl"))
 
 include(joinpath(@__DIR__, "benchmarks", "cg.jl"))
+include(joinpath(@__DIR__, "benchmarks", "nas", "ft.jl"))
 
-const SUPPORTED_BENCHMARKS = ["montecarlo", "gemm", "grayscott", "cg"]
+const SUPPORTED_BENCHMARKS = ["montecarlo", "gemm", "grayscott", "cg", "nas_ft"]
 
 function model_build_benchmark(config::ModelWorkerConfig)
     config.name in SUPPORTED_BENCHMARKS || error(
@@ -23,7 +26,9 @@ function model_build_benchmark(config::ModelWorkerConfig)
         join(SUPPORTED_BENCHMARKS, ", "),
     )
 
-    if config.name == "cg"
+    if config.name == "nas_ft"
+        return model_build_nas_ft(config)
+    elseif config.name == "cg"
         return model_build_cg(config)
     elseif config.name == "montecarlo"
         return model_build_montecarlo(config)

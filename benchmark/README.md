@@ -94,9 +94,36 @@ when no mask is provided.
 Native-library benchmarks such as GEMM require verified per-model scratch-space
 bounds under `[workspace.<benchmark>]`; the planner reports any missing bound.
 
-cuNumeric supports every registered benchmark. CUDA.jl and cuPyNumeric run the
-non-accelerated array benchmarks (CUDA.jl is single-GPU). JACC and Dagger have
-native `montecarlo`, `gemm`, `grayscott`, and `cg`.
+The model registry only schedules benchmark/model pairs with a runnable native
+implementation. CUDA.jl is single-GPU; the other models may support multiple
+GPUs depending on the workload.
+
+### Benchmark support
+
+Each cell shows **1 GPU / multiple GPUs**. ✅ is supported, ⚠ is supported with
+a known limitation, and — is not supported by the harness.
+
+| Benchmark | cuNumeric.jl | cuPyNumeric | CUDA.jl | JACC | Dagger.jl |
+|---|---:|---:|---:|---:|---:|
+| Monte Carlo | ✅ / ✅ | ✅ / ✅ | ✅ / — | ✅ / ✅ | ✅ / ✅ |
+| GEMM | ✅ / ✅ | ✅ / ✅ | ✅ / — | ✅ / ✅ | ✅ / ✅ |
+| 2D Gray–Scott | ✅ / ✅ | ✅ / ✅ | ✅ / — | ✅ / — | ✅ / ⚠ |
+| Conjugate gradient | ✅ / ✅ | ✅ / ✅ | ✅ / — | ✅ / ✅ | ✅ / ⚠ |
+| NAS Fourier transform | ⚠ / ⚠ | ⚠ / ⚠ | ✅ / — | ⚠ / — | ⚠ / ⚠ |
+
+The Dagger Gray–Scott implementation is correct on multiple GPUs, but Dagger's
+current fused stencil path transfers whole neighboring chunks before slicing
+their halos, causing poor scaling. Dagger CG uses the high-level distributed
+array API and has passed distributed CPU correctness testing; its multi-GPU CUDA
+path still needs validation in the benchmark container. JACC Gray–Scott remains
+single-GPU pending working two-dimensional ghost exchange. The table covers the
+default benchmark forms; cuNumeric-specific accelerated forms and `cg_plain`
+are comparison variants rather than separate workloads.
+
+NAS FT runs a complete official class per timed sample. cuNumeric and
+cuPyNumeric submit the full 3-D FFT as native Legate auto tasks, which the
+runtime can distribute across the available GPUs. See `nas/README.md` for the
+initialization and checksum fallbacks used by each model.
 
 ## Results
 
@@ -104,7 +131,9 @@ Each run writes CSV files and a manifest to `results/<run-id>/`, then writes
 plots to `plots/<run-id>/`. The manifest records resolved dimensions, memory
 estimates, package versions, and worker status.
 
-Timed iterations include synchronization but exclude initialization and warmup.
+Timed iterations include synchronization but exclude harness initialization and
+warmup. NAS FT's specified RNG/index-map setup occurs inside `run!` and is
+therefore timed as part of each complete FT sample.
 Each trial reports its mean milliseconds per iteration and GFLOP/s; the final
 summary reports the mean and standard deviation across trials.
 

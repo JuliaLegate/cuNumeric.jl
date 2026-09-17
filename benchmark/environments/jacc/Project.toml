@@ -1,4 +1,5 @@
 [deps]
+AbstractFFTs = "621f4979-c628-5d54-868e-fcf4e3e8185c"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 JACC = "0979c8fe-16a4-4796-9b82-89a9f10403ea"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"

@@ -186,3 +186,20 @@ function memory_estimate(b::AbstractConjugateGradient{T}, c::MemoryContext) wher
     return MemoryEstimate(16v, 24v, 0,
         "partitioned CG bands/workspace plus active iteration temporaries")
 end
+
+function memory_estimate(b::NASFourierTransform{T}, c::MemoryContext) where {T}
+    validate_memory_context(b, c)
+    p = validate_nas_ft(b)
+    n = big(p.nx)*p.ny*p.nz
+    complex_grid = n*sizeof(ComplexF64)
+    real_grid = n*sizeof(Float64)
+    # FFT libraries and distributed transposes have backend-dependent temporary
+    # layouts. Keep a conservative full-volume bound until measured per-backend
+    # workspace limits are available.
+    return MemoryEstimate(
+        3complex_grid + 2real_grid,
+        6complex_grid + 2real_grid,
+        0,
+        "NAS FT grids, checksum mask, and conservative native/distributed FFT transpose buffers",
+    )
+end
