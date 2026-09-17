@@ -98,6 +98,21 @@ static void submit_mapreduce(CN_NDArray* input, CN_NDArray* accumulator,
   // Physical descriptors and reduction accessors use at least one dimension.
   if (src.dim() == 0) src = src.promote(0, 1);
   if (src.dim() > 64) throw std::invalid_argument("mapreduce rank exceeds axis mask");
+  // A dimensional singleton reduction is elementwise. Reuse the finish task
+  // to map and seed each value without constructing reduction privileges.
+  if (single && !full) {
+    auto dst = output->obj.get_store();
+    if (dst.dim() == 0) dst = dst.promote(0, 1);
+    auto final = rt->create_task(
+        library, ufi::RunPTXReduceFinishTask::TASK_CONFIG.task_id());
+    auto p_src = final.add_input(src);
+    auto p_dst = final.add_output(dst);
+    final.add_constraint(legate::align(p_src, p_dst));
+    final.add_scalar_arg(legate::Scalar(finish_kernel));
+    final.add_scalar_arg(mapreduce_payload(finish, finish_size));
+    rt->submit(std::move(final));
+    return;
+  }
   auto red = acc;
   if (full) {
     if (red.dim() == 0) red = red.promote(0, 1);
