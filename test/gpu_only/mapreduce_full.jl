@@ -1,6 +1,54 @@
 using Test
 import CUDACore
 
+# One block for each possible nonempty prefix, so every warp boundary and tail
+# is checked in a single launch. Invalid lanes deliberately contain nonidentity
+# values to detect accidental participation in either level of the reduction.
+function _test_block_reduction(src, dest, op)
+    tid = Int(CUDACore.threadIdx().x)
+    active = Int(CUDACore.blockIdx().x)
+    @inbounds value = src[tid, active]
+    value = cuNumeric._mr_reduce_block(op, value, active)
+    tid == 1 && (@inbounds dest[active] = value)
+    return nothing
+end
+
+function _check_block_prefixes(op, values::Vector{T}) where {T}
+    host = fill(T(3), 256, 256)
+    for active in 1:256
+        host[1:active, active] .= values[1:active]
+    end
+    src, dest = CUDACore.CuArray(host), CUDACore.zeros(T, 256)
+    try
+        CUDACore.@cuda threads=256 blocks=256 _test_block_reduction(src, dest, op)
+        expected = [foldl(op, @view(values[1:n])) for n in 1:256]
+        @test isequal(Array(dest), expected)
+    finally
+        CUDACore.synchronize()
+        CUDACore.unsafe_free!(src)
+        CUDACore.unsafe_free!(dest)
+    end
+end
+
+@testset "Block reduction valid prefixes" begin
+    for T in (Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64,
+              Float32, Float64, ComplexF32, ComplexF64)
+        ops = T <: Complex ? (T === ComplexF64 ? (+,) : (+, *)) : (+, *, min, max)
+        for op in ops
+            values = op === (*) ? fill(one(T), 256) :
+                     op === min ? fill(T(5), 256) : T[isodd(i) for i in 1:256]
+            _check_block_prefixes(op, values)
+        end
+    end
+    for T in (Float32, Float64), op in (+, *, min, max),
+        value in (-zero(T), zero(T), T(NaN), T(Inf), -T(Inf))
+        _check_block_prefixes(op, fill(value, 256))
+    end
+    for value in (ComplexF32(Inf, 0), ComplexF64(0, Inf))
+        _check_block_prefixes(+, fill(value, 256))
+    end
+end
+
 @testset "Runtime reduction axes" begin
     for (shape, strides) in (((5,), (2,)), ((2, 3), (2, 7)), ((2, 2, 3), (2, 7, 19)))
         N = length(shape)
@@ -130,7 +178,8 @@ end
     for S in (Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64,
               Float32, Float64, ComplexF32, ComplexF64)
         ops = S <: Complex ? (S === ComplexF64 ? (+,) : (+, *)) : (+, *, min, max)
-        for op in ops, n in (1, 31, 32, 33, 255, 256, 257, 1024, 4096), single in (false, true)
+        for op in ops, n in (1, 31, 32, 33, 63, 65, 255, 256, 257, 511, 513,
+                            1023, 1024, 1025, 4095, 4096), single in (false, true)
             host = S[isodd(i) for i in 1:n]
             seed = S(3)
             expected = foldl(op, host)
@@ -145,6 +194,41 @@ end
                 CUDACore.unsafe_free!(dest)
             end
         end
+    end
+end
+
+struct ReductionSingletonOnly
+    offset::Float32
+end
+(f::ReductionSingletonOnly)(x) = x + f.offset
+
+@testset "Singleton preparation and asynchronous output ownership" begin
+    A = cuNumeric.ones(Float32, 1, 33)
+    results = Any[]
+    try
+        before = Set(keys(cuNumeric._MR_PTX_CACHE))
+        push!(results, mapreduce(ReductionSingletonOnly(2f0), +, A; dims=1))
+        added = setdiff(Set(keys(cuNumeric._MR_PTX_CACHE)), before)
+        @test !isempty(added)
+        @test all(key -> key[1] === cuNumeric._mr_finish_kernel, added)
+        # Queue multiple freshly allocated outputs, including decode/seed
+        # finishers. Their input and temporary handles may die before execution.
+        for _ in 1:8
+            push!(results, mapreduce(identity, min, A; dims=2))
+            push!(results, @allowpromotion mapreduce(abs2, +, A; init=2.0))
+            push!(results, mapreduce(identity, *, A; dims=()))
+        end
+        cuNumeric.destroy!(A)
+        @test (@allowscalar Array(results[1])) == fill(3f0, 1, 33)
+        for i in 2:3:length(results)
+            @test (@allowscalar Array(results[i])) == fill(1f0, 1, 1)
+            @test (@allowscalar cuNumeric.unwrap(results[i + 1])) === 35.0
+            @test (@allowscalar Array(results[i + 2])) == fill(1f0, 1, 33)
+        end
+    finally
+        cuNumeric.destroy!(A)
+        foreach(cuNumeric.destroy!, results)
+        cuNumeric.issue_execution_fence(; block=true)
     end
 end
 

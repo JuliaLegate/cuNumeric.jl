@@ -79,9 +79,9 @@ struct PackArray {
 };
 
 static void launch(CUfunction kernel, int blocks, cudaStream_t stream,
-                   std::vector<void*>& args) {
+                   void** args) {
   auto status = cuLaunchKernel(kernel, blocks, 1, 1, THREADS, 1, 1, 0,
-                               reinterpret_cast<CUstream>(stream), args.data(), nullptr);
+                               reinterpret_cast<CUstream>(stream), args, nullptr);
   if (status != CUDA_SUCCESS) {
     const char* message = nullptr;
     cuGetErrorString(status, &message);
@@ -113,8 +113,8 @@ template <int D>
 void contribute(CUfunction kernel, cudaStream_t stream, void* state,
                  ArrayArg<1>& scratch, ArrayArg<D>& dest,
                  bool single, int64_t start, int64_t count, int64_t chunks) {
-  std::vector<void*> args{state, &scratch, &dest, &single, &start, &count, &chunks};
-  launch(kernel, static_cast<int>((count + THREADS - 1) / THREADS), stream, args);
+  std::array<void*, 7> args{state, &scratch, &dest, &single, &start, &count, &chunks};
+  launch(kernel, static_cast<int>((count + THREADS - 1) / THREADS), stream, args.data());
 }
 
 template <class OP, int D>
@@ -143,12 +143,13 @@ void run_reduction(legate::TaskContext& context, CUfunction kernel) {
   for (int64_t start = 0; start < retained;) {
     int64_t count = std::min(MAX_PARTIALS, retained - start);
     int64_t chunks = std::min(MAX_PARTIALS / count, 1 + (reduced - 1) / 1024);
-    std::vector<void*> args{state.data(), &src, &scratch};
+    std::array<void*, 6> args{state.data(), &src, &scratch};
+    std::size_t nargs = 3;
     // Zero-size Julia singleton arguments are absent from the PTX signature.
-    if (context.scalar(4).size()) args.push_back(const_cast<void*>(context.scalar(4).ptr()));
-    args.push_back(&start);
-    args.push_back(&chunks);
-    launch(kernel, static_cast<int>(count * chunks), stream, args);
+    if (context.scalar(4).size()) args[nargs++] = const_cast<void*>(context.scalar(4).ptr());
+    args[nargs++] = &start;
+    args[nargs++] = &chunks;
+    launch(kernel, static_cast<int>(count * chunks), stream, args.data());
     if (full) {
       auto dest = reduction_arg<OP, 1>(red, red.shape<1>(), 1, single);
       contribute(combine, stream, state.data(), scratch, dest, single, start, count, chunks);
@@ -188,10 +189,10 @@ struct FinishDispatch {
     auto src = legate::type_dispatch(input.type().code(), PackArray<D, false>{}, input);
     auto dst = legate::type_dispatch(output.type().code(), PackArray<D, true>{}, output);
     std::vector<uint8_t> state(padded_bytes_kernel_state, 0);
-    std::vector<void*> args{state.data(), &src, &dst};
-    if (ctx.scalar(1).size()) args.push_back(const_cast<void*>(ctx.scalar(1).ptr()));
+    std::array<void*, 4> args{state.data(), &src, &dst};
+    if (ctx.scalar(1).size()) args[3] = const_cast<void*>(ctx.scalar(1).ptr());
     auto blocks = static_cast<int>(std::min(MAX_PARTIALS, 1 + (dst.length - 1) / THREADS));
-    launch(kernel, blocks, ctx.get_task_stream(), args);
+    launch(kernel, blocks, ctx.get_task_stream(), args.data());
   }
 };
 }  // namespace

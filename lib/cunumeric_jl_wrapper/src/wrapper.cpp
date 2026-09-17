@@ -94,7 +94,6 @@ static void submit_mapreduce(CN_NDArray* input, CN_NDArray* accumulator,
   auto* rt = legate::Runtime::get_runtime();
   auto library = ufi::get_mapreduce_library();
   auto src = input->obj.get_store();
-  auto acc = accumulator->obj.get_store();
   // Physical descriptors and reduction accessors use at least one dimension.
   if (src.dim() == 0) src = src.promote(0, 1);
   if (src.dim() > 64) throw std::invalid_argument("mapreduce rank exceeds axis mask");
@@ -113,6 +112,7 @@ static void submit_mapreduce(CN_NDArray* input, CN_NDArray* accumulator,
     rt->submit(std::move(final));
     return;
   }
+  auto acc = accumulator->obj.get_store();
   auto red = acc;
   if (full) {
     if (red.dim() == 0) red = red.promote(0, 1);

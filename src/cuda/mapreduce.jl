@@ -11,6 +11,41 @@ end
 MapReduceMap(f::F, op::OP, ::Type{R}, mask::NTuple{N,Bool}) where {F,OP,R,N} =
     MapReduceMap{F,OP,R,N}(f, op, mask)
 
+# All 32 lanes execute each shuffle, including lanes without input. Only valid
+# sources enter the arithmetic: padding with an identity changes signed zeros
+# and can turn complex infinities into NaNs.
+@inline function _mr_reduce_warp(op, value, lane, active)
+    offset = 16
+    while offset > 0
+        other = CUDACore.shfl_down_sync(0xffffffff, value, offset)
+        if lane + offset <= active
+            value = op(value, other)
+        end
+        offset >>= 1
+    end
+    return value
+end
+
+# The result is defined on thread 1. Both callers launch exactly _MR_THREADS
+# threads and supply a contiguous prefix of valid thread-local accumulators.
+@inline function _mr_reduce_block(op, value::S, active) where {S}
+    tid = Int(CUDACore.threadIdx().x)
+    lane = ((tid - 1) & 31) + 1
+    warp = ((tid - 1) >> 5) + 1
+    value = _mr_reduce_warp(op, value, lane, min(32, active - (warp - 1) * 32))
+    shared = CUDACore.CuStaticSharedArray(S, _MR_THREADS ÷ 32)
+    lane == 1 && (@inbounds shared[warp] = value)
+    CUDACore.sync_threads()
+    if warp == 1
+        warps = (active + 31) >> 5
+        if lane <= warps
+            @inbounds value = shared[lane]
+        end
+        value = _mr_reduce_warp(op, value, lane, warps)
+    end
+    return value
+end
+
 # In one dimension the selected index is already bounded by the only extent.
 # Preserve the physical stride without computing a remainder for every element.
 @inline _mr_offset(A::CuStridedDeviceArray{T,1}, other::Int, red::Int, mask::NTuple{1,Bool}) where {T} =
@@ -54,17 +89,9 @@ function _mr_partial_kernel(A, scratch::CuStridedDeviceArray{S,1}, mapper::MapRe
         first = false
         i += chunks * _MR_THREADS
     end
-    shared = CUDACore.CuStaticSharedArray(S, _MR_THREADS)
-    @inbounds shared[tid] = value
-    stride = _MR_THREADS ÷ 2
-    while stride > 0
-        CUDACore.sync_threads()
-        if tid <= stride && tid + stride <= min(_MR_THREADS, nred - chunk * _MR_THREADS)
-            @inbounds shared[tid] = _mr_combine(mapper.op)(shared[tid], shared[tid + stride])
-        end
-        stride >>= 1
-    end
-    tid == 1 && (@inbounds scratch[block + 1] = shared[1])
+    active = min(_MR_THREADS, nred - chunk * _MR_THREADS)
+    value = _mr_reduce_block(_mr_combine(mapper.op), value, active)
+    tid == 1 && (@inbounds scratch[block + 1] = value)
     return nothing
 end
 
@@ -89,25 +116,17 @@ end
 function _mr_contribute_full_kernel(scratch::CuStridedDeviceArray{S,1}, dest, op,
                                     single::Bool, start::Int, count::Int, chunks::Int) where {S}
     tid = Int(CUDACore.threadIdx().x)
-    shared = CUDACore.CuStaticSharedArray(S, _MR_THREADS)
     active = min(chunks, _MR_THREADS)
+    value = _mr_identity(op, S)
     if tid <= active
         @inbounds value = scratch[tid]
         for c in (tid + _MR_THREADS):_MR_THREADS:chunks
             @inbounds value = _mr_combine(op)(value, scratch[c])
         end
-        @inbounds shared[tid] = value
     end
-    stride = _MR_THREADS ÷ 2
-    while stride > 0
-        CUDACore.sync_threads()
-        if tid <= stride && tid + stride <= active
-            @inbounds shared[tid] = _mr_combine(op)(shared[tid], shared[tid + stride])
-        end
-        stride >>= 1
-    end
+    value = _mr_reduce_block(_mr_combine(op), value, active)
     if tid == 1
-        @inbounds dest[start + 1] = single ? shared[1] : _mr_combine(op)(dest[start + 1], shared[1])
+        @inbounds dest[start + 1] = single ? value : _mr_combine(op)(dest[start + 1], value)
     end
     return nothing
 end
@@ -166,11 +185,6 @@ _mr_dim_seed(op::_MR_OP, ::Type{R}, init, dims) where {R} = init
 _mr_dim_seed(op::_MR_ADD, ::Type{R}, ::NoReductionInit, dims::_MR_DIMS) where {R} = zero(R)
 _mr_dim_seed(op::_MR_MUL, ::Type{R}, ::NoReductionInit, dims::_MR_DIMS) where {R} = one(R)
 
-# Singleton finishers read raw inputs; ordinary finishers read reduction storage.
-_mr_finish_name(finish::MapReduceSingleton, ::Type{T}, ::Type{S}, ::Type{O}, dims::Val) where {T,S,O} =
-    _mr_finish_name(finish, T, O, dims)
-_mr_finish_name(finish::MapReduceFinish, ::Type{T}, ::Type{S}, ::Type{O}, dims::Val) where {T,S,O} =
-    _mr_finish_name(finish, S, O, dims)
 function _mr_finish_name(finish::F, ::Type{T}, ::Type{O}, ::Val{D}) where {F,T,O,D}
     return _mr_kernel_name(_mr_finish_kernel, (
         CuStridedDeviceArray{T,D,CUDACore.AS.Global},
@@ -178,45 +192,63 @@ function _mr_finish_name(finish::F, ::Type{T}, ::Type{O}, ::Val{D}) where {F,T,O
     ))
 end
 
-function _mr_launch(f, op, A::NDArray{T,N}, ::Type{R}, ::Type{O}, mask, shape, init, dims) where {T,N,R,O}
+function _mr_submit(A, accumulator, result, mask, full, single, redop,
+                    name, contribute_name, finish_name, mapper, finish)
+    axis_bits = sum(d -> UInt64(mask[d]) << (d - 1), 1:length(mask))
+    mapper_ref, finish_ref = Ref(mapper), Ref(finish)
+    @task_scope "mapreduce" begin
+        # Submission copies these bytes into task-owned scalars. Borrowing
+        # Refs avoids Julia-owned CxxWrap vector handles on every call.
+        GC.@preserve A accumulator result mapper_ref finish_ref begin
+            submit_mapreduce(
+                CxxWrap.CxxPtr{CN_NDArray}(A.ptr),
+                CxxWrap.CxxPtr{CN_NDArray}(accumulator.ptr),
+                CxxWrap.CxxPtr{CN_NDArray}(result.ptr),
+                axis_bits, full, single, redop, name, contribute_name, finish_name,
+                Base.unsafe_convert(Ptr{Cvoid}, mapper_ref), sizeof(mapper),
+                Base.unsafe_convert(Ptr{Cvoid}, finish_ref), sizeof(finish),
+            )
+        end
+    end
+    return result
+end
+
+function _mr_launch(f, op, A::NDArray{T,N}, ::Type{R}, ::Type{O}, mask, shape, init, dims, single::Bool) where {T,N,R,O}
     S = _mr_storage(op, R)
     D = max(N, 1)
+    OD = max(length(shape), 1)
+    seed = _mr_dim_seed(op, R, init, dims)
+    if single && !(dims isa Colon)
+        finish = MapReduceSingleton(f, op, R, O, seed)
+        finish_name = _mr_finish_name(finish, T, O, Val(OD))
+        result = nda_empty_array(shape, O)
+        try
+            # The singleton submission never uses the accumulator or mapper.
+            return _mr_submit(A, result, result, mask, false, true, _mr_redop(op, S),
+                              "", "", finish_name, nothing, finish)
+        catch
+            destroy!(result)
+            rethrow()
+        end
+    end
     input_type = CuStridedDeviceArray{T,D,CUDACore.AS.Global}
     scratch_type = CuStridedDeviceArray{S,1,CUDACore.AS.Global}
     mapper = MapReduceMap(f, op, R, mask)
-    single = all(d -> !mask[d] || size(A, d) == 1, 1:N)
     name = _mr_kernel_name(_mr_partial_kernel, (input_type, scratch_type, typeof(mapper), Int, Int))
     RD = dims isa Colon ? 1 : D
     contribute_kernel = dims isa Colon ? _mr_contribute_full_kernel : _mr_contribute_kernel
     contribute_name = _mr_kernel_name(contribute_kernel, (
         scratch_type, CuStridedDeviceArray{S,RD,CUDACore.AS.Global}, typeof(op), Bool, Int, Int, Int,
     ))
-    singleton = single && !(dims isa Colon)
-    finish = singleton ? MapReduceSingleton(f, op, R, O, _mr_dim_seed(op, R, init, dims)) :
-                         MapReduceFinish(op, R, _mr_dim_seed(op, R, init, dims))
-    OD = max(length(shape), 1)
-    needs_finish = singleton || S !== O || !(finish.init isa NoReductionInit)
-    finish_name = needs_finish ? _mr_finish_name(finish, T, S, O, Val(OD)) : ""
-    accumulator = nda_full_array(shape, _mr_identity(op, S))
+    finish = MapReduceFinish(op, R, seed)
+    needs_finish = S !== O || !(finish.init isa NoReductionInit)
+    finish_name = needs_finish ? _mr_finish_name(finish, S, O, Val(OD)) : ""
+    accumulator = single ? nda_empty_array(shape, S) : nda_full_array(shape, _mr_identity(op, S))
     result = nothing
     try
-        result = needs_finish ? nda_zeros_array(shape, O) : accumulator
-        axis_bits = sum(d -> UInt64(mask[d]) << (d - 1), 1:length(mask))
-        mapper_ref, finish_ref = Ref(mapper), Ref(finish)
-        @task_scope "mapreduce" begin
-            # Submission copies these bytes into task-owned scalars. Borrowing
-            # Refs avoids Julia-owned CxxWrap vector handles on every call.
-            GC.@preserve A accumulator result mapper_ref finish_ref begin
-                submit_mapreduce(
-                    CxxWrap.CxxPtr{CN_NDArray}(A.ptr),
-                    CxxWrap.CxxPtr{CN_NDArray}(accumulator.ptr),
-                    CxxWrap.CxxPtr{CN_NDArray}(result.ptr),
-                    axis_bits, dims isa Colon, single, _mr_redop(op, S), name, contribute_name, finish_name,
-                    Base.unsafe_convert(Ptr{Cvoid}, mapper_ref), sizeof(mapper),
-                    Base.unsafe_convert(Ptr{Cvoid}, finish_ref), sizeof(finish),
-                )
-            end
-        end
+        result = needs_finish ? nda_empty_array(shape, O) : accumulator
+        _mr_submit(A, accumulator, result, mask, dims isa Colon, single, _mr_redop(op, S),
+                   name, contribute_name, finish_name, mapper, finish)
     catch
         isnothing(result) || destroy!(result)
         rethrow()

@@ -128,7 +128,8 @@ NaNs and signed zeros, but not NaN payloads. See the mapped-reductions documenta
 """
 function Base.mapreduce(f, op, A::NDArray{T}; dims=:, init=NoReductionInit()) where {T}
     op = _mr_operator(op)
-    mask, shape = _mr_dims(size(A), dims)
+    input_shape = size(A)
+    mask, shape = _mr_dims(input_shape, dims)
     _has_gpu_target() || throw(ArgumentError("mapped reductions currently require a Legate GPU target"))
     mapper = _mr_callable(f)
     M = _mr_mapped_type(mapper, T)
@@ -139,13 +140,13 @@ function Base.mapreduce(f, op, A::NDArray{T}; dims=:, init=NoReductionInit()) wh
     is_wider_type(M, T) && assertpromotion(f, T, M)
     is_wider_type(R, M) && assertpromotion(op, M, R)
     is_wider_type(O, R) && assertpromotion(op, R, O)
-    nreduce = prod(d -> mask[d] ? size(A, d) : 1, 1:ndims(A); init=1)
+    nreduce = prod(d -> mask[d] ? input_shape[d] : 1, 1:ndims(A); init=1)
     if nreduce == 0
         value = _mr_empty(f, op, T, M, init, dims)
         return nda_full_array(shape, value)
     end
-    isempty(A) && return nda_zeros_array(shape, O)
-    return _mr_launch(mapper, op, A, R, O, mask, shape, init, dims)
+    any(iszero, input_shape) && return nda_zeros_array(shape, O)
+    return _mr_launch(mapper, op, A, R, O, mask, shape, init, dims, nreduce == 1)
 end
 
 Base.mapreduce(f, op, A::NDArray, B::AbstractArray, rest::AbstractArray...; kwargs...) =
