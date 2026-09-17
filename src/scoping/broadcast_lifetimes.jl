@@ -85,7 +85,7 @@ function rewrite_broadcast_lifetimes(scope)
             if isnothing(lhs_reference)
                 new_lhs, lhs_temps = rewrite_materialized(lhs)
             else
-                new_lhs, lhs_temps = fresh_tmp(lhs)
+                new_lhs, lhs_temps = fresh_tmp(:(Base.@view $lhs))
             end
             new_rhs, rhs_temps = rewrite_lazy_broadcast(rhs, Dict{Any,Symbol}())
             return Expr(op, new_lhs, new_rhs), vcat(lhs_temps, rhs_temps)
