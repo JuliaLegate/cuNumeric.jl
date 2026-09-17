@@ -36,6 +36,7 @@ using OpenBLAS32_jll: OpenBLAS32_jll
 const BuildTools = Legate.BuildTools
 
 include("version.jl")
+include("cxxwrap.jl")
 
 function build_cpp_wrapper(
     repo_root, cupynumeric_loc, legate_loc, blas_loc, install_root;
@@ -61,9 +62,9 @@ function build_deps(pkg_root, cupynumeric_root, blas_root; cuda_root=nothing, cu
         )
     end
 
-    BuildTools.build_jlcxxwrap(
+    ensure_cxxwrap(
         pkg_root, get_cupynumeric_version(cupynumeric_root);
-        log_dir=@__DIR__, is_compatible=is_supported_version,
+        log_dir=@__DIR__,
     )
     build_cpp_wrapper(
         pkg_root, cupynumeric_root, up_dir(legate_lib), blas_root,

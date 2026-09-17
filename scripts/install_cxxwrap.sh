@@ -33,8 +33,8 @@ if [[ ! -d "$CUNUMERIC_ROOT_DIR" ]]; then
     exit 1
 fi
 
-JULIA='julia'
-JULIA_PATH=$(which $JULIA)
+JULIA=${JULIA:-julia}
+JULIA_PATH=$(command -v "$JULIA")
 
 if [ -z "$JULIA_PATH" ]; then
   echo "Error: $JULIA is not installed or not in PATH."
@@ -48,40 +48,38 @@ COMMIT_HASH="89e4699837bfa0929610c9e330889fb2df925b47" #(v14.2)
 JULIA_CXXWRAP_SRC=$CUNUMERIC_ROOT_DIR/lib/libcxxwrap-julia
 
 if [ ! -d "$JULIA_CXXWRAP_SRC" ]; then
-    cd $CUNUMERIC_ROOT_DIR/lib
-    git clone $GIT_REPO
+    mkdir -p "$CUNUMERIC_ROOT_DIR/lib"
+    git clone "$GIT_REPO" "$JULIA_CXXWRAP_SRC"
 fi
 
-cd $JULIA_CXXWRAP_SRC
+cd "$JULIA_CXXWRAP_SRC"
 git fetch --tags
 git checkout $COMMIT_HASH
 
 # find julia dependency path
-JULIA_DEP_PATH=$($JULIA -e 'println(DEPOT_PATH[1])')
+JULIA_DEP_PATH=$("$JULIA_PATH" --startup-file=no -e 'print(DEPOT_PATH[1])')
 
 # https://github.com/JuliaInterop/libcxxwrap-julia/tree/v0.13.3?tab=readme-ov-file#configuring-and-building
 JULIA_CXXWRAP_DEV=$JULIA_DEP_PATH/dev/libcxxwrap_julia_jll
 JULIA_CXXWRAP=$JULIA_CXXWRAP_DEV/override
 
-# Clean up whatever env is there right now and
-# build default version of CxxWrap / libcxxwrap_julia
-#* THIS COULD BREAK SOME USERS CODE IF THEY ALREADY OVERRIDE THIS PKG
-cd $CUNUMERIC_ROOT_DIR
-[ -f Manifest.toml ] && rm Manifest.toml
-rm -rf $JULIA_CXXWRAP_DEV
-julia -e 'using Pkg; Pkg.activate("."); Pkg.add("Legate")'
-julia -e 'using Pkg; Pkg.activate("."); Pkg.precompile(["CxxWrap"])'
+# Keep the resolved environment and developed JLL checkout. Only its generated
+# override is disposable. Avoid importing/precompiling a possibly broken JLL
+# before its replacement libraries have been built.
+cd "$CUNUMERIC_ROOT_DIR"
+JULIA_PKG_PRECOMPILE_AUTO=0 "$JULIA_PATH" --startup-file=no --project="$CUNUMERIC_ROOT_DIR" -e '
+    using Pkg
+    checkout = joinpath(DEPOT_PATH[1], "dev", "libcxxwrap_julia_jll")
+    if isdir(checkout)
+        Pkg.develop(path=checkout)
+    else
+        Pkg.develop(PackageSpec(name="libcxxwrap_julia_jll"); shared=true)
+    end
+'
 
-# https://github.com/JuliaInterop/libcxxwrap-julia/tree/v0.13.3?tab=readme-ov-file#preparing-the-install-location
-# this command will download https://github.com/JuliaBinaryWrappers/libcxxwrap_julia_jll.jl and install it in JULIA_DEP_PATH
-julia -e 'using Pkg; Pkg.activate("."); Pkg.develop(PackageSpec(name="libcxxwrap_julia_jll")); import libcxxwrap_julia_jll; libcxxwrap_julia_jll.dev_jll()'
+rm -rf "$JULIA_CXXWRAP"
+mkdir -p "$JULIA_CXXWRAP"
 
-
-# JULIA_CXXWRAP_OVERRIDE=$JULIA_CXXWRAP/override/
-# Delete the default JLL installation of cxxwrap_julia
-rm -rf $JULIA_CXXWRAP
-mkdir $JULIA_CXXWRAP
-
-cmake -S $JULIA_CXXWRAP_SRC -B $JULIA_CXXWRAP -DJulia_EXECUTABLE=$JULIA_PATH -DCMAKE_BUILD_TYPE=Release
-cd $JULIA_CXXWRAP
-make -j 16
+cmake -S "$JULIA_CXXWRAP_SRC" -B "$JULIA_CXXWRAP" \
+    -DJulia_EXECUTABLE="$JULIA_PATH" -DCMAKE_BUILD_TYPE=Release
+cmake --build "$JULIA_CXXWRAP" --parallel 16

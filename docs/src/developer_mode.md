@@ -44,6 +44,14 @@ Then restart Julia (or at least reload cuNumeric) so the new shared library is p
 
 If the build fails, check CMake / g++ (C++20) / CUDA toolkit availability as described on [Build Modes](./install.md). Build logs from the helper scripts are written under `deps/`.
 
+Recreating or moving the repository can leave a libcxxwrap CMake export in the
+Julia depot pointing at deleted headers. `Pkg.build("cuNumeric")` checks the
+exported header and library paths before reusing that build and rebuilds it when
+stale. No manual checkout or depot cleanup is needed. The installer retains your
+manifest and developed JLL checkout, recreating only its generated `override/`
+directory. Check `deps/libcxxwrap_check.log`, `deps/libcxxwrap.log`, and
+`deps/libcxxwrap.err` if this repair fails.
+
 ### Typical edit loop
 
 ```text
