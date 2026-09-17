@@ -56,8 +56,22 @@ function dagger_grayscott_state(b::DaggerGrayScott{T}, u_host, v_host) where {T}
 end
 
 function model_initialize(b::DaggerGrayScott{T}) where {T}
-    u_host, v_host = grayscott_host_init(T, b.N, b.M)
-    return dagger_grayscott_state(b, u_host, v_host)
+    blocks = Dagger.Blocks(b.N, cld(b.M, b.gpus))
+    assignment = reshape(copy(b.processors), 1, b.gpus)
+    seed = min(150, b.N, b.M)
+    seed_blocks = Dagger.Blocks(seed, seed)
+    seed_assignment = reshape(b.processors[1:1], 1, 1)
+    return Dagger.with_options(; scope=b.scope) do
+        U = ones(blocks, T, b.N, b.M; assignment)
+        V = zeros(blocks, T, b.N, b.M; assignment)
+        Un = zeros(blocks, T, b.N, b.M; assignment)
+        Vn = zeros(blocks, T, b.N, b.M; assignment)
+        U[1:seed, 1:seed] = rand(seed_blocks, T, seed, seed; assignment=seed_assignment)
+        V[1:seed, 1:seed] = rand(seed_blocks, T, seed, seed; assignment=seed_assignment)
+        st = DaggerGrayScottState(U, V, Un, Vn)
+        foreach(wait_for_darray, (st.U, st.V, st.Un, st.Vn))
+        return st
+    end
 end
 
 # @stencil handles cross-block halos; Wrap gives periodic BC. Double-buffered.
