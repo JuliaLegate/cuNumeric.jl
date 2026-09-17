@@ -150,8 +150,18 @@ end
 
         empty = cuNumeric.zeros(Float32, 0)
         try
-            @test_throws ArgumentError mapreduce(x -> x*x, +, empty)
-            @test_throws ArgumentError minimum(identity, empty)
+            # Full empty reductions delegate to Base.mapreduce_empty. Base
+            # throws MethodError on Julia 1.10 and ArgumentError on 1.11+.
+            # Require the exact host exception rather than accepting either.
+            for reduce_empty in (a -> mapreduce(x -> x*x, +, a), a -> minimum(identity, a))
+                expected_error = try
+                    reduce_empty(Float32[])
+                catch err
+                    err
+                end
+                @test expected_error isa Exception
+                @test_throws typeof(expected_error) reduce_empty(empty)
+            end
             @test_throws ArgumentError maximum(identity, empty; dims=1)
         finally
             cuNumeric.destroy!(empty)
