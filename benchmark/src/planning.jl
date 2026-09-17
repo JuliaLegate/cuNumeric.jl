@@ -158,15 +158,8 @@ function plan_runs(specs, gs, raw, groups, budget)
                 ),
             )÷quantum,
         )
-        # The comparison baseline exhausts memory before the accelerated forms;
-        # size the group by the accelerated members and let the baseline OOM at
-        # runtime instead of shrinking everyone to fit its conservative estimate.
-        distinct = unique(sp.name for sp in members)
-        base = plot_baseline(get(group_members, key[1], distinct))
-        exempt = length(distinct) > 1 && base in distinct
-        gates(r) = !(exempt && r.spec.name == base)
         make(k) = candidate_runs(members, gs, raw, baseline_shape(s, k*quantum), budget)
-        fits(k) = all(r->peak_bytes(r.memory)<=r.budget, Iterators.filter(gates, make(k)))
+        fits(k) = all(r->peak_bytes(r.memory)<=r.budget, make(k))
         # Evaluate once before search to surface unsupported model errors.
         fits(lo) || error("Minimum problem does not fit in $(key[1])")
         best = largest_feasible(lo, hi, fits)

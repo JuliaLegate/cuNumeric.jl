@@ -1,0 +1,15 @@
+.git
+**/.git
+
+**/Manifest.toml
+**/LocalPreferences.toml
+**/__pycache__
+**/*.pyc
+**/*.log
+**/*.prof
+
+benchmark/results
+benchmark/plots
+docs/node_modules
+lib/cunumeric_jl_wrapper/build
+deps/cupynumeric-*

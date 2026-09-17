@@ -13,6 +13,7 @@ include("timing.jl")
 
 const CONFIG = joinpath(@__DIR__, "..", "benchmarks.toml")
 const SMOKE_CONFIG = joinpath(@__DIR__, "..", "benchmarks_smoke.toml")
+const GRAYSCOTT_MULTIGPU_CONFIG = joinpath(@__DIR__, "..", "benchmarks_grayscott_multigpu.toml")
 const FORMS_CONFIG = joinpath(@__DIR__, "..", "benchmarks_grayscott_forms.toml")
 const RAW = TOML.parsefile(CONFIG)
 const GROUPS = parse_plot_groups(CONFIG)
@@ -125,6 +126,20 @@ end
     @test supports_benchmark(execution_model(:jacc), "gemm")
     @test supports_benchmark(execution_model(:dagger), "gemm")
     @test !supports_gpu_count(execution_model(:cudajl), 2)
+    @test !supports_run(execution_model(:jacc), "grayscott", 2)
+    @test supports_run(execution_model(:dagger), "grayscott", 2)
+
+    gs_gray, specs_gray = parse_config(GRAYSCOTT_MULTIGPU_CONFIG)
+    runs_gray = plan_runs(
+        specs_gray, gs_gray, TOML.parsefile(GRAYSCOTT_MULTIGPU_CONFIG), Dict(), 10^12
+    )
+    @test Set(r.model for r in runs_gray) == Set((:cunumeric, :cupynumeric, :dagger))
+    @test Set(r.spec.gpus for r in runs_gray) == Set((1, 2, 4, 8))
+    gray_sizes = Dict(1=>24000, 2=>33944, 4=>48000, 8=>67888)
+    @test all(
+        (r.N, r.M) == (gray_sizes[r.spec.gpus], gray_sizes[r.spec.gpus]) for
+        r in runs_gray
+    )
 
     gs, specs = parse_config(CONFIG; only="montecarlo", models_override=[:jacc, :dagger])
     runs = plan_runs(specs, gs, RAW, GROUPS, 1_000_000)
@@ -151,16 +166,6 @@ end
     @test occursin("--project=$(joinpath(pwd(),"environments","jacc"))", jacc_cmd)
     @test occursin(joinpath("src", "dagger", "single.jl"), dagger_cmd)
     @test occursin("--project=$(joinpath(pwd(),"environments","dagger"))", dagger_cmd)
-
-    @test selected_cuda_visibility(2; env=Dict{String,String}()) == "0,1"
-    scheduler_env = Dict("CUDA_VISIBLE_DEVICES"=>"GPU-a, MIG-b, 7")
-    @test selected_cuda_visibility(2; env=scheduler_env) == "GPU-a,MIG-b"
-    @test_throws ErrorException selected_cuda_visibility(
-        2; env=Dict("CUDA_VISIBLE_DEVICES"=>"GPU-a")
-    )
-    @test_throws ErrorException selected_cuda_visibility(
-        1; env=Dict("CUDA_VISIBLE_DEVICES"=>"")
-    )
 
     cunumeric_project = read(
         joinpath(@__DIR__, "..", "environments", "cunumeric", "Project.toml"), String
@@ -198,6 +203,16 @@ end
     @test success(pipeline(ok; stdout=devnull, stderr=devnull))
     @test !success(pipeline(nested; stdout=devnull, stderr=devnull))
     @test success(pipeline(clean_library_path; stdout=devnull, stderr=devnull))
+
+    visibility_probe = `bash -c $("printf %s \"\$CUDA_VISIBLE_DEVICES\"")`
+    default_visibility = `env -u CUDA_VISIBLE_DEVICES bash $runner \
+        --model=dagger --gpus=2 --cpus=0 -- $visibility_probe`
+    scheduler_visibility = addenv(
+        `bash $runner --model=dagger --gpus=2 --cpus=0 -- $visibility_probe`,
+        "CUDA_VISIBLE_DEVICES"=>"GPU-a,MIG-b,7",
+    )
+    @test read(default_visibility, String) == "0,1"
+    @test read(scheduler_visibility, String) == "GPU-a,MIG-b"
 end
 
 @testset "Memory dispatch matrix" begin
@@ -235,6 +250,12 @@ end
     d = DMDBaseline{Float32}(; N=1024, M=16)
     @test peak_bytes(memory_estimate(d, MemoryContext(; gpus=1, workspace_bytes=0))) ==
         peak_bytes(memory_estimate(d, MemoryContext(; gpus=8, workspace_bytes=0)))
+    cg = ConjugateGradientAccelerated{Float64}(; N=9_000_000)
+    cg1 = peak_bytes(memory_estimate(cg, MemoryContext(; steps=1)))
+    @test cg1 == 24 * 9_000_000 * sizeof(Float64)
+    @test peak_bytes(memory_estimate(cg, MemoryContext(; steps=1001))) == cg1
+    cg2 = ConjugateGradientAccelerated{Float64}(; N=18_000_000)
+    @test peak_bytes(memory_estimate(cg2, MemoryContext(; gpus=2))) == cg1
 end
 
 @testset "Shared sweep planning" begin
@@ -317,10 +338,13 @@ end
     accelerated = GrayScottFunctionAccelerated{Float32}(; N=64, M=32)
     for f in (true, false)
         c = MemoryContext(; fusion=f, steps=10)
-        @test peak_bytes(memory_estimate(accelerated, c)) < peak_bytes(memory_estimate(baseline, c))
+        @test peak_bytes(memory_estimate(accelerated, c)) ==
+            peak_bytes(memory_estimate(baseline, c))
         @test peak_bytes(memory_estimate(default_accelerated, c)) ==
             peak_bytes(memory_estimate(accelerated, c))
     end
+    @test peak_bytes(memory_estimate(baseline, MemoryContext(; steps=100))) ==
+        peak_bytes(memory_estimate(baseline, MemoryContext(; steps=1)))
     @test peak_bytes(memory_estimate(baseline, MemoryContext(; fusion=true))) <
         peak_bytes(memory_estimate(baseline, MemoryContext(; fusion=false)))
     # The grid is tiled per GPU: more GPUs at fixed N means less memory per GPU,
@@ -345,8 +369,6 @@ end
     for p in (1, 4)
         @test length(unique((r.N, r.M) for r in runs if r.spec.gpus==p))==1
     end
-    # The group is sized by the accelerated form; the exempt baseline is kept at
-    # that shared size and is allowed to exceed the budget (OOM at runtime).
     gsx = GlobalSettings(; n_warmup=1, n_iter=20)
     sx = [spec(n; gpus=1) for n in ("grayscott_plain", "grayscott_function_accelerated")]
     rx = plan_runs(sx, gsx, RAW, FORMS_GROUPS, 10_000_000)
@@ -354,7 +376,7 @@ end
     accel = only(r for r in rx if r.spec.name=="grayscott_function_accelerated")
     base = only(r for r in rx if r.spec.name=="grayscott_plain")
     @test peak_bytes(accel.memory) <= accel.budget
-    @test peak_bytes(base.memory) > base.budget
+    @test peak_bytes(base.memory) <= base.budget
 end
 
 @testset "Execution isolation and failure status" begin

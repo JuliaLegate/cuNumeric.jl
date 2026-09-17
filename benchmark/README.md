@@ -52,6 +52,13 @@ julia --project=. run.jl --only=montecarlo --dry-run
 `--only` and `--models` accept comma-separated values. `--fusion` accepts
 `on`, `off`, or `both`. Use `--verbose` for backend details.
 
+Run the focused cuNumeric, cuPyNumeric, and Dagger Gray-Scott weak-scaling
+check on 1, 2, 4, and 8 GPUs with:
+
+```bash
+julia --project=. run.jl --config=benchmarks_grayscott_multigpu.toml --verbose
+```
+
 ## Configure
 
 Benchmarks are declared in `benchmarks.toml`. Global values are inherited by
@@ -78,6 +85,11 @@ omitted dimension is selected from `mem_frac` of the smallest visible GPU.
 `T` and `fusion` form independent sweeps; `gpus`, `cpus`, `N`, and `M` are
 zipped by position. A benchmark block may override `models`, `n_warmup`,
 `n_iter`, or `n_trial`.
+
+For JACC and Dagger, `run_benchmark.sh` restricts each worker to the requested
+GPU count. It selects the first `gpus` entries from an existing
+`CUDA_VISIBLE_DEVICES` scheduler mask, or uses logical devices starting at zero
+when no mask is provided.
 
 Native-library benchmarks such as GEMM require verified per-model scratch-space
 bounds under `[workspace.<benchmark>]`; the planner reports any missing bound.
@@ -112,6 +124,15 @@ array workers (`src/benchmarks/cg.jl`); JACC and Dagger have native versions.
 ```bash
 julia --project=. run.jl --config=benchmarks_cg.toml
 ```
+
+For the 9-million-elements-per-GPU weak-scaling run:
+
+```bash
+julia --project=. run.jl --config=benchmarks_cg_multigpu.toml
+```
+
+Dagger currently contributes only its 1-GPU baseline because its CG vectors
+are not distributed across processors yet.
 
 Set solver controls per entry, e.g. `kwargs = { check_every = 10, max_iter = 1000 }`.
 The problem is `tridiag(1,4,1) x = 1/2` from `x = 0`. Each solve checks convergence
