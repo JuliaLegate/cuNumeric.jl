@@ -2,25 +2,28 @@ const _MR_THREADS = 256
 const _MR_PTX_CACHE = Dict{Any,String}()
 const _MR_PTX_LOCK = ReentrantLock()
 
-struct MapReduceMap{F,OP,R,MASK}
+struct MapReduceMap{F,OP,R,N}
     f::F
     op::OP
+    # Axes are runtime data; changing dims does not change the mapper/kernel type.
+    mask::NTuple{N,Bool}
 end
-MapReduceMap(f::F, op::OP, ::Type{R}, mask) where {F,OP,R} = MapReduceMap{F,OP,R,mask}(f, op)
+MapReduceMap(f::F, op::OP, ::Type{R}, mask::NTuple{N,Bool}) where {F,OP,R,N} =
+    MapReduceMap{F,OP,R,N}(f, op, mask)
 
-# The reduction loop already bounds red by the only extent. Preserve the
-# physical stride without computing a redundant remainder for every element.
-@inline _mr_offset(A::CuStridedDeviceArray{T,1}, other::Int, red::Int, ::Val{(true,)}) where {T} =
-    red * A.strides[1]
+# In one dimension the selected index is already bounded by the only extent.
+# Preserve the physical stride without computing a remainder for every element.
+@inline _mr_offset(A::CuStridedDeviceArray{T,1}, other::Int, red::Int, mask::NTuple{1,Bool}) where {T} =
+    (mask[1] ? red : other) * A.strides[1]
 
 # Indices are relative to the PhysicalStore's lower bound, already reflected in
 # the descriptor pointer. Unchecked unsigned division avoids device exceptions.
-@inline function _mr_offset(A::CuStridedDeviceArray{T,N}, other::Int, red::Int, ::Val{MASK}) where {T,N,MASK}
+@inline function _mr_offset(A::CuStridedDeviceArray{T,N}, other::Int, red::Int, mask::NTuple{N,Bool}) where {T,N}
     o, r = _bitcast_uint(other), _bitcast_uint(red)
     offset = 0
     @inbounds for d in 1:N
         extent = _bitcast_uint(A.dims[d])
-        if MASK[d]
+        if mask[d]
             offset += _bitcast_int(Core.Intrinsics.urem_int(r, extent)) * A.strides[d]
             r = Core.Intrinsics.udiv_int(r, extent)
         else
@@ -31,20 +34,20 @@ MapReduceMap(f::F, op::OP, ::Type{R}, mask) where {F,OP,R} = MapReduceMap{F,OP,R
     return offset
 end
 
-function _mr_partial_kernel(A, scratch::CuStridedDeviceArray{S,1}, mapper::MapReduceMap{F,OP,R,MASK}, start::Int, chunks::Int) where {S,F,OP,R,MASK}
+function _mr_partial_kernel(A, scratch::CuStridedDeviceArray{S,1}, mapper::MapReduceMap{F,OP,R,N}, start::Int, chunks::Int) where {S,F,OP,R,N}
     tid = Int(CUDACore.threadIdx().x)
     block = Int(CUDACore.blockIdx().x) - 1
     other = start + _bitcast_int(Core.Intrinsics.udiv_int(_bitcast_uint(block), _bitcast_uint(chunks)))
     chunk = _bitcast_int(Core.Intrinsics.urem_int(_bitcast_uint(block), _bitcast_uint(chunks)))
     nred = 1
-    @inbounds for d in 1:length(MASK)
-        MASK[d] && (nred *= A.dims[d])
+    @inbounds for d in 1:N
+        mapper.mask[d] && (nred *= A.dims[d])
     end
     value = _mr_identity(mapper.op, S)
     i = chunk * _MR_THREADS + tid - 1
     first = true
     while i < nred
-        offset = _mr_offset(A, other, i, Val(MASK))
+        offset = _mr_offset(A, other, i, mapper.mask)
         x = unsafe_load(pointer(A), offset + 1, Val(_strided_align(A)))
         mapped = _mr_encode(mapper.op, convert(R, mapper.f(x)))
         value = first ? mapped : _mr_combine(mapper.op)(value, mapped)
@@ -163,6 +166,18 @@ _mr_dim_seed(op::_MR_OP, ::Type{R}, init, dims) where {R} = init
 _mr_dim_seed(op::_MR_ADD, ::Type{R}, ::NoReductionInit, dims::_MR_DIMS) where {R} = zero(R)
 _mr_dim_seed(op::_MR_MUL, ::Type{R}, ::NoReductionInit, dims::_MR_DIMS) where {R} = one(R)
 
+# Singleton finishers read raw inputs; ordinary finishers read reduction storage.
+_mr_finish_name(finish::MapReduceSingleton, ::Type{T}, ::Type{S}, ::Type{O}, dims::Val) where {T,S,O} =
+    _mr_finish_name(finish, T, O, dims)
+_mr_finish_name(finish::MapReduceFinish, ::Type{T}, ::Type{S}, ::Type{O}, dims::Val) where {T,S,O} =
+    _mr_finish_name(finish, S, O, dims)
+function _mr_finish_name(finish::F, ::Type{T}, ::Type{O}, ::Val{D}) where {F,T,O,D}
+    return _mr_kernel_name(_mr_finish_kernel, (
+        CuStridedDeviceArray{T,D,CUDACore.AS.Global},
+        CuStridedDeviceArray{O,D,CUDACore.AS.Global}, F,
+    ))
+end
+
 function _mr_launch(f, op, A::NDArray{T,N}, ::Type{R}, ::Type{O}, mask, shape, init, dims) where {T,N,R,O}
     S = _mr_storage(op, R)
     D = max(N, 1)
@@ -181,10 +196,7 @@ function _mr_launch(f, op, A::NDArray{T,N}, ::Type{R}, ::Type{O}, mask, shape, i
                          MapReduceFinish(op, R, _mr_dim_seed(op, R, init, dims))
     OD = max(length(shape), 1)
     needs_finish = singleton || S !== O || !(finish.init isa NoReductionInit)
-    finish_name = needs_finish ? _mr_kernel_name(_mr_finish_kernel, (
-        CuStridedDeviceArray{singleton ? T : S,OD,CUDACore.AS.Global},
-        CuStridedDeviceArray{O,OD,CUDACore.AS.Global}, typeof(finish),
-    )) : ""
+    finish_name = needs_finish ? _mr_finish_name(finish, T, S, O, Val(OD)) : ""
     accumulator = nda_full_array(shape, _mr_identity(op, S))
     result = nothing
     try

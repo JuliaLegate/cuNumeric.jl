@@ -1,6 +1,29 @@
 using Test
 import CUDACore
 
+@testset "Runtime reduction axes" begin
+    for (shape, strides) in (((5,), (2,)), ((2, 3), (2, 7)), ((2, 2, 3), (2, 7, 19)))
+        N = length(shape)
+        descriptor = cuNumeric.CuStridedDeviceArray{Int32,N,CUDACore.AS.Global}(
+            reinterpret(CUDACore.LLVMPtr{Int32,CUDACore.AS.Global}, UInt(0)),
+            0, shape, strides, prod(shape),
+        )
+        mapper_type = typeof(cuNumeric.MapReduceMap(identity, +, Int32, ntuple(_ -> true, N)))
+        for bits in 0:(2^N - 1)
+            mask = ntuple(d -> !iszero(bits & (1 << (d - 1))), N)
+            mapper = @inferred cuNumeric.MapReduceMap(identity, +, Int32, mask)
+            @test typeof(mapper) === mapper_type
+            @test mapper.mask === mask
+            reduced = CartesianIndices(ntuple(d -> mask[d] ? shape[d] : 1, N))
+            retained = CartesianIndices(ntuple(d -> mask[d] ? 1 : shape[d], N))
+            for (r, ri) in enumerate(reduced), (o, oi) in enumerate(retained)
+                expected = sum(d -> (ri[d] + oi[d] - 2) * strides[d], 1:N)
+                @test (@inferred cuNumeric._mr_offset(descriptor, o - 1, r - 1, mask)) == expected
+            end
+        end
+    end
+end
+
 function _test_strided_partial(parent, scratch, mapper, origin, stride, n, chunks)
     T = eltype(parent)
     src = cuNumeric.CuStridedDeviceArray{T,1,CUDACore.AS.Global}(
