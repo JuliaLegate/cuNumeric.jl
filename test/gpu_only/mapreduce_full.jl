@@ -1,12 +1,12 @@
 using Test
-import CUDACore
+import CUDA
 
 # One block for each possible nonempty prefix, so every warp boundary and tail
 # is checked in a single launch. Invalid lanes deliberately contain nonidentity
 # values to detect accidental participation in either level of the reduction.
 function _test_block_reduction(src, dest, op)
-    tid = Int(CUDACore.threadIdx().x)
-    active = Int(CUDACore.blockIdx().x)
+    tid = Int(CUDA.threadIdx().x)
+    active = Int(CUDA.blockIdx().x)
     @inbounds value = src[tid, active]
     value = cuNumeric._mr_reduce_block(op, value, active)
     tid == 1 && (@inbounds dest[active] = value)
@@ -18,15 +18,15 @@ function _check_block_prefixes(op, values::Vector{T}) where {T}
     for active in 1:256
         host[1:active, active] .= values[1:active]
     end
-    src, dest = CUDACore.CuArray(host), CUDACore.zeros(T, 256)
+    src, dest = CUDA.CuArray(host), CUDA.zeros(T, 256)
     try
-        CUDACore.@cuda threads=256 blocks=256 _test_block_reduction(src, dest, op)
+        CUDA.@cuda threads=256 blocks=256 _test_block_reduction(src, dest, op)
         expected = [foldl(op, @view(values[1:n])) for n in 1:256]
         @test isequal(Array(dest), expected)
     finally
-        CUDACore.synchronize()
-        CUDACore.unsafe_free!(src)
-        CUDACore.unsafe_free!(dest)
+        CUDA.synchronize()
+        CUDA.unsafe_free!(src)
+        CUDA.unsafe_free!(dest)
     end
 end
 
@@ -52,8 +52,8 @@ end
 @testset "Runtime reduction axes" begin
     for (shape, strides) in (((5,), (2,)), ((2, 3), (2, 7)), ((2, 2, 3), (2, 7, 19)))
         N = length(shape)
-        descriptor = cuNumeric.CuStridedDeviceArray{Int32,N,CUDACore.AS.Global}(
-            reinterpret(CUDACore.LLVMPtr{Int32,CUDACore.AS.Global}, UInt(0)),
+        descriptor = cuNumeric.CuStridedDeviceArray{Int32,N,CUDA.AS.Global}(
+            reinterpret(Core.LLVMPtr{Int32,CUDA.AS.Global}, UInt(0)),
             0, shape, strides, prod(shape),
         )
         mapper_type = typeof(cuNumeric.MapReduceMap(identity, +, Int32, ntuple(_ -> true, N)))
@@ -74,10 +74,10 @@ end
 
 function _test_strided_partial(parent, scratch, mapper, origin, stride, n, chunks)
     T = eltype(parent)
-    src = cuNumeric.CuStridedDeviceArray{T,1,CUDACore.AS.Global}(
+    src = cuNumeric.CuStridedDeviceArray{T,1,CUDA.AS.Global}(
         pointer(parent, origin + 1), (length(parent) - origin) * sizeof(T), (n,), (stride,), n,
     )
-    dst = cuNumeric.CuStridedDeviceArray{T,1,CUDACore.AS.Global}(
+    dst = cuNumeric.CuStridedDeviceArray{T,1,CUDA.AS.Global}(
         pointer(scratch), length(scratch) * sizeof(T), (length(scratch),), (1,), length(scratch),
     )
     cuNumeric._mr_partial_kernel(src, dst, mapper, 0, chunks)
@@ -89,17 +89,17 @@ end
     for n in (1, 31, 256, 257, 1025, 4097), origin in (0, 3), stride in (1, 2, 3)
         host = Int32[mod(i, 7) - 3 for i in 1:(3n + 7)]
         chunks = cld(n, 1024)
-        parent, scratch = CUDACore.CuArray(host), CUDACore.zeros(Int32, chunks)
+        parent, scratch = CUDA.CuArray(host), CUDA.zeros(Int32, chunks)
         try
-            CUDACore.@cuda threads=256 blocks=chunks _test_strided_partial(
+            CUDA.@cuda threads=256 blocks=chunks _test_strided_partial(
                 parent, scratch, mapper, origin, stride, n, chunks,
             )
             expected = sum(host[(origin + 1):stride:(origin + 1 + (n - 1)*stride)])
             @test sum(Array(scratch)) == expected
         finally
-            CUDACore.synchronize()
-            CUDACore.unsafe_free!(parent)
-            CUDACore.unsafe_free!(scratch)
+            CUDA.synchronize()
+            CUDA.unsafe_free!(parent)
+            CUDA.unsafe_free!(scratch)
         end
     end
 end
@@ -167,7 +167,7 @@ end
 # Exercise the combination independently of Legate's partitioning decisions.
 function _test_full_contribution(scratch, dest, op, single, chunks)
     S = eltype(scratch)
-    src = cuNumeric.CuStridedDeviceArray{S,1,CUDACore.AS.Global}(
+    src = cuNumeric.CuStridedDeviceArray{S,1,CUDA.AS.Global}(
         pointer(scratch), length(scratch) * sizeof(S), (length(scratch),), (1,), length(scratch),
     )
     cuNumeric._mr_contribute_full_kernel(src, dest, op, single, 0, 1, chunks)
@@ -184,14 +184,14 @@ end
             seed = S(3)
             expected = foldl(op, host)
             single || (expected = op(seed, expected))
-            scratch, dest = CUDACore.CuArray(host), CUDACore.CuArray([seed])
+            scratch, dest = CUDA.CuArray(host), CUDA.CuArray([seed])
             try
-                CUDACore.@cuda threads=256 blocks=1 _test_full_contribution(scratch, dest, op, single, n)
+                CUDA.@cuda threads=256 blocks=1 _test_full_contribution(scratch, dest, op, single, n)
                 @test isequal(only(Array(dest)), expected)
             finally
-                CUDACore.synchronize()
-                CUDACore.unsafe_free!(scratch)
-                CUDACore.unsafe_free!(dest)
+                CUDA.synchronize()
+                CUDA.unsafe_free!(scratch)
+                CUDA.unsafe_free!(dest)
             end
         end
     end
@@ -236,14 +236,14 @@ end
     for value in (-0f0, -0.0, ComplexF32(Inf, 0), ComplexF64(0, Inf)),
         n in (1, 31, 256, 257, 4096)
         host = fill(value, n)
-        scratch, dest = CUDACore.CuArray(host), CUDACore.CuArray([zero(value)])
+        scratch, dest = CUDA.CuArray(host), CUDA.CuArray([zero(value)])
         try
-            CUDACore.@cuda threads=256 blocks=1 _test_full_contribution(scratch, dest, +, true, n)
+            CUDA.@cuda threads=256 blocks=1 _test_full_contribution(scratch, dest, +, true, n)
             @test isequal(only(Array(dest)), foldl(+, host))
         finally
-            CUDACore.synchronize()
-            CUDACore.unsafe_free!(scratch)
-            CUDACore.unsafe_free!(dest)
+            CUDA.synchronize()
+            CUDA.unsafe_free!(scratch)
+            CUDA.unsafe_free!(dest)
         end
     end
 end
