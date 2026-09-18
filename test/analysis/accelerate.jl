@@ -129,7 +129,7 @@ using InteractiveUtils: code_typed
             end
         ))
 
-        if cuNumeric.FUSE_BROADCAST_EXPRS && cuNumeric.HAS_CUDA
+        if cuNumeric.FUSE_BROADCAST_EXPRS
             # A same-shape chain fuses into one multi-output launch and still
             # frees the hoisted slice temporaries.
             mo = string(expand(:(

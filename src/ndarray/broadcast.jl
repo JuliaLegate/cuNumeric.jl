@@ -254,7 +254,7 @@ end
     # Require an active GPU target so `--gpus 0` stays on the unfused path.
     # Fusion requires same-shaped NDArray leaves; otherwise fall back.
     # Single-op exprs (length < `FUSE_BROADCAST_MIN_OPS`) stay unfused by default.
-    @static if FUSE_BROADCAST_EXPRS && HAS_CUDA
+    @static if FUSE_BROADCAST_EXPRS
         if _has_gpu_target() && _should_attempt_broadcast_fusion(dest, bc)
             return fuse_broadcast_tree!(dest, bc)
         else

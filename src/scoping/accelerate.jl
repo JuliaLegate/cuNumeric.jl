@@ -58,7 +58,7 @@ function _accelerate_block_soft(block, caller::Module)
     fallback = process_ndarray_scope(
         nb; on_rewrite, protected_roots=_assigned_symbols(nb)
     )
-    @static if FUSE_BROADCAST_EXPRS && HAS_CUDA
+    @static if FUSE_BROADCAST_EXPRS
         fused = _try_fuse_block_multi(nb)
         if !isnothing(fused)
             return quote

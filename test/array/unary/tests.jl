@@ -403,7 +403,7 @@ function run_unary_tests(types; include_bool_reductions::Bool=false)
                 end
 
                 ## TODO Int8 min/max along an axis is broken on GPU
-                if cuNumeric.HAS_CUDA && T == Int8 && (func == Base.minimum || func == Base.maximum)
+                if cuNumeric._has_gpu_target() && T == Int8 && (func == Base.minimum || func == Base.maximum)
                     continue
                 end
 
