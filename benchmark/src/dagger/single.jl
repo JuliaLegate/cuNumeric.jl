@@ -17,9 +17,10 @@ include(joinpath(@__DIR__, "benchmarks", "grayscott.jl"))
 include(joinpath(@__DIR__, "benchmarks", "cg.jl"))
 include(joinpath(@__DIR__, "benchmarks", "nas", "ep.jl"))
 include(joinpath(@__DIR__, "benchmarks", "nas", "ft.jl"))
+include(joinpath(@__DIR__, "benchmarks", "nas", "mg.jl"))
 
 const SUPPORTED_BENCHMARKS = [
-    "montecarlo", "gemm", "grayscott", "cg", "nas_ep", "nas_ft"
+    "montecarlo", "gemm", "grayscott", "cg", "nas_ep", "nas_ft", "nas_mg"
 ]
 
 function model_build_benchmark(config::ModelWorkerConfig)
@@ -32,6 +33,8 @@ function model_build_benchmark(config::ModelWorkerConfig)
         return model_build_nas_ep(config)
     elseif config.name == "nas_ft"
         return model_build_nas_ft(config)
+    elseif config.name == "nas_mg"
+        return model_build_nas_mg(config)
     elseif config.name == "montecarlo"
         return model_build_montecarlo(config)
     elseif config.name == "gemm"

@@ -239,7 +239,8 @@ end
         c = MemoryContext(; model, fusion, workspace_bytes=0)
         for (name, B) in BENCHMARKS
             supports_benchmark(execution_model(model), name) || continue
-            B <: Union{NASEmbarrassinglyParallel,NASFourierTransform} && continue
+            B <: Union{NASEmbarrassinglyParallel,NASFourierTransform,NASMultiGrid} &&
+                continue
             m = if B <: AbstractDMD
                 16
             elseif B <: AbstractGrayScott || B <: GEMM

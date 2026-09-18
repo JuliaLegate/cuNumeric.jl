@@ -89,10 +89,10 @@ function supports_benchmark(::CuPyNumericModel, name::AbstractString)
     return name ∉ ("cg_plain", "montecarlo_naive") && !endswith(name, "_accelerated")
 end
 function supports_benchmark(::JACCModel, name::AbstractString)
-    return name in ("gemm", "montecarlo", "grayscott", "cg", "nas_ep", "nas_ft")
+    return name in ("gemm", "montecarlo", "grayscott", "cg", "nas_ep", "nas_ft", "nas_mg")
 end
 function supports_benchmark(::DaggerModel, name::AbstractString)
-    return name in ("gemm", "montecarlo", "grayscott", "cg", "nas_ep", "nas_ft")
+    return name in ("gemm", "montecarlo", "grayscott", "cg", "nas_ep", "nas_ft", "nas_mg")
 end
 
 supports_gpu_count(::ExecutionModel, gpus::Integer) = gpus > 0
@@ -103,6 +103,7 @@ function supports_run(model::ExecutionModel, name::AbstractString, gpus::Integer
     # JACC Gray-Scott is single-GPU pending its 2D ghost fix.
     model isa JACCModel && startswith(name, "grayscott") && gpus != 1 && return false
     model isa JACCModel && name == "nas_ft" && gpus != 1 && return false
+    model isa JACCModel && name == "nas_mg" && gpus != 1 && return false
     return supports_gpu_count(model, gpus)
 end
 
@@ -285,6 +286,6 @@ end
 # Native adapters must explicitly consume options; never silently ignore them.
 validate_model_kwargs(::ExecutionModel, name, kwargs) = nothing
 function validate_model_kwargs(model::Union{JACCModel,DaggerModel,CuPyNumericModel}, name, kwargs)
-    return isempty(kwargs) || name in ("cg", "nas_ep", "nas_ft") ||
+    return isempty(kwargs) || name in ("cg", "nas_ep", "nas_ft", "nas_mg") ||
            error("$(model_id(model)) $name does not yet accept constructor kwargs")
 end

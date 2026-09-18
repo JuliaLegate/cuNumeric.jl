@@ -73,3 +73,45 @@ end
         Set([:cunumeric, :cupynumeric, :cudajl, :jacc, :dagger])
     @test all(r.N == 64 && r.M == 64 && r.spec.n_iter == 1 for r in runs)
 end
+
+@testset "NAS MG contract" begin
+    @test NAS_MG_NPB_GPU_COMMIT == "3f12d84920ee315ab00ef283717c1e74b68f4d00"
+    @test Set(keys(NAS_MG_CLASSES)) == Set(["S", "W", "A", "B", "C", "D", "E"])
+    b = NASMultiGrid{Float64}(; N=32, M=32, class="S")
+    p = validate_nas_mg(b)
+    @test p == nas_mg_parameters("s")
+    @test p.niter == 4
+    @test nas_mg_level_sizes(p) == [4, 6, 10, 18, 34]
+    @test total_flops(b) == 7_602_176.0
+    @test total_space(b) == 1_057_088
+
+    rhs = nas_mg_rhs(p)
+    interior = @view rhs[2:(end - 1), 2:(end - 1), 2:(end - 1)]
+    @test count(!iszero, interior) == 2NAS_MG_EXTREMA
+    @test sum(interior) == 0.0
+    sizes = nas_mg_level_sizes(p)
+    u = [zeros(Float64, n, n, n) for n in sizes]
+    r = [zeros(Float64, n, n, n) for n in sizes]
+    residual = nas_mg_run!(u, r, rhs, p, nas_mg_smoother("S"))
+    norm = nas_mg_norm(residual, p)
+    @test norm ≈ p.norm rtol=1.0e-12
+    @test nas_mg_verified("S", norm)
+    @test_throws ErrorException validate_nas_mg(
+        NASMultiGrid{Float32}(; N=32, M=32, class="S")
+    )
+    @test all(
+        supports_benchmark(execution_model(model), "nas_mg") for
+        model in (:cunumeric, :cupynumeric, :cudajl, :jacc, :dagger)
+    )
+    @test !supports_run(execution_model(:jacc), "nas_mg", 2)
+    @test supports_run(execution_model(:dagger), "nas_mg", 2)
+
+    config = joinpath(@__DIR__, "..", "benchmarks_nas_mg.toml")
+    settings, specs = parse_config(config)
+    runs = plan_runs(
+        specs, settings, TOML.parsefile(config), parse_plot_groups(config), 10^12
+    )
+    @test Set(r.model for r in runs) ==
+        Set([:cunumeric, :cupynumeric, :cudajl, :jacc, :dagger])
+    @test all(r.N == 32 && r.M == 32 && r.spec.n_iter == 1 for r in runs)
+end

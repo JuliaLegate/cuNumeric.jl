@@ -211,3 +211,19 @@ function memory_estimate(b::NASEmbarrassinglyParallel{T}, c::MemoryContext) wher
         "one exact NPB EP partial per independent stream, partitioned across GPUs",
     )
 end
+
+function memory_estimate(b::NASMultiGrid{T}, c::MemoryContext) where {T}
+    validate_memory_context(b, c)
+    p = validate_nas_mg(b)
+    levels = nas_mg_level_sizes(p)
+    hierarchy = sum(big(n)^3 for n in levels)
+    finest = big(last(levels))^3
+    # The fixed NAS classes are never autosized. Use a replication-safe bound:
+    # all hierarchy storage plus active unfused stencil/restriction operands.
+    return MemoryEstimate(
+        (2hierarchy + finest)*sizeof(Float64),
+        (2hierarchy + 12finest)*sizeof(Float64),
+        0,
+        "NAS MG solution/residual hierarchy, sparse RHS, and conservative active stencil temporaries; full-volume replication-safe bound",
+    )
+end
