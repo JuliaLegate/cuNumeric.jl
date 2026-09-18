@@ -80,12 +80,13 @@ end
 # Dagger have native Monte Carlo, GEMM, Gray-Scott, and CG workers.
 supports_benchmark(::CuNumericModel, ::AbstractString) = true
 # The CUDA.jl array worker runs every generic kernel, including "cg"/"cg_plain";
-# only cuNumeric owns the `@accelerate` grayscott forms.
-supports_benchmark(::CUDAJLModel, name::AbstractString) =
-    !endswith(name, "_accelerated")
+# only cuNumeric owns the naive Monte Carlo and `@accelerate` grayscott forms.
+function supports_benchmark(::CUDAJLModel, name::AbstractString)
+    return name != "montecarlo_naive" && !endswith(name, "_accelerated")
+end
 # cuPyNumeric reimplements the default "cg" (its solver needs no accelerate macro).
 function supports_benchmark(::CuPyNumericModel, name::AbstractString)
-    return name != "cg_plain" && !endswith(name, "_accelerated")
+    return name ∉ ("cg_plain", "montecarlo_naive") && !endswith(name, "_accelerated")
 end
 function supports_benchmark(::JACCModel, name::AbstractString)
     return name in ("gemm", "montecarlo", "grayscott", "cg", "nas_ep", "nas_ft")

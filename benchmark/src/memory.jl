@@ -60,11 +60,11 @@ function random_peak(elements, ::Type{T}, model) where {T}
     return elements * (model == :cupynumeric ? sizeof(Float64) + sizeof(T) : sizeof(T))
 end
 
-function memory_estimate(b::MonteCarloIntegration{T}, c::MemoryContext) where {T}
+function memory_estimate(b::AbstractMonteCarloIntegration{T}, c::MemoryContext) where {T}
     validate_memory_context(b, c)
     e = cld(big(b.n_samples), c.gpus)
     bytes = e * sizeof(T)
-    if c.model in (:cudajl, :jacc, :dagger)
+    if b isa MonteCarloIntegration && c.model in (:cunumeric, :cudajl, :jacc, :dagger)
         return MemoryEstimate(
             2bytes, 2bytes, 0,
             "partitioned samples plus conservative per-device reduction workspace; " *
@@ -72,22 +72,10 @@ function memory_estimate(b::MonteCarloIntegration{T}, c::MemoryContext) where {T
         )
     end
     init = max(2bytes, random_peak(e, T, c.model))
-    # The unfused NDArray copy path allocates an outer destination before
-    # recursively materializing operations; count it as well as two temporaries.
-    arrays = if c.model == :cupynumeric
-        3
-    else
-        c.fusion ? 2 : 4
-    end
-    # Julia has tracing GC, not Python's reference counting. The returned
-    # broadcast output is not explicitly destroyed by this baseline kernel.
-    # This assumes the fully dotted expression in montecarlo.jl. On the unfused
-    # path nested broadcast temporaries are explicitly destroyed by the runtime;
-    # an undotted operation would instead escape that cleanup and need its own
-    # per-iteration retention allowance.
-    # Bound its retention over the complete trial instead of assuming a GC.
-    retained = c.model == :cunumeric ? c.steps-1 : 0
-    return MemoryEstimate(init, (arrays + retained)*bytes, 0,
+    arrays = c.model == :cupynumeric ? 3 : (c.fusion ? 2 : 4)
+    retained = c.model == :cunumeric ? c.steps - 1 : 0
+    return MemoryEstimate(
+        init, (arrays + retained)*bytes, 0,
         "samples + broadcast output; unfused temporaries; up to $retained prior Julia outputs awaiting GC; random dtype conversion",
     )
 end
