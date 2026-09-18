@@ -50,7 +50,11 @@ function versioninfo(io::IO=stdout)
     dirs2 = Legate.find_dependency_paths(typeof(legate_mode))
     other_dirs = merge(dirs1, dirs2)
 
-    hardware_str = HAS_CUDA ? "CPU + GPU" : "CPU Only"
+    active = runtime_started()
+    hardware_str =
+        active ?
+        (_has_gpu_target() ? "CPU + GPU" : "CPU Only") :
+        "not queried (runtime inactive)"
 
     legate_auto_config = get(ENV, "LEGATE_AUTO_CONFIG", "1")
     is_auto_config = legate_auto_config != "0" ? true : false
@@ -58,7 +62,6 @@ function versioninfo(io::IO=stdout)
 
     # versioninfo is also called by the test driver with LEGATE_SKIP_RUNTIME.
     # Do not start the runtime or query its machine just to print diagnostics.
-    active = runtime_started()
     not_queried = "not queried (runtime inactive)"
     mp_available = active ? _LINALG_RUNTIME[].available : not_queried
     active_gpus = active ? _LINALG_RUNTIME[].gpus : not_queried

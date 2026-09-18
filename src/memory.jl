@@ -102,7 +102,7 @@ hard_limit(; host=true) = _limit(hard_frac, host)
 function register_alloc!(nbytes::Integer)
     # assume device allocation if we have a GPU
     # the recalibration phase will fix any discrepancies
-    if HAS_CUDA
+    if _has_gpu_target()
         atomic_add!(current_device_bytes, nbytes)
     else
         atomic_add!(current_host_bytes, nbytes)
@@ -116,7 +116,7 @@ function register_alloc!(nbytes::Integer)
 end
 
 function register_free!(nbytes::Integer)
-    if HAS_CUDA
+    if _has_gpu_target()
         atomic_sub!(current_device_bytes, nbytes)
     else
         atomic_sub!(current_host_bytes, nbytes)
@@ -129,7 +129,7 @@ function recalibrate_allocator!()
     @assert recal_host_mem >= 0
     atomic_xchg!(current_host_bytes, recal_host_mem)
 
-    if HAS_CUDA
+    if _has_gpu_target()
         recal_device_mem = ccall((:nda_query_allocated_device_memory, libnda), Int64, ())
         @assert recal_device_mem >= 0
         atomic_xchg!(current_device_bytes, recal_device_mem)

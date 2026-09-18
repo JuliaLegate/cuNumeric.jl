@@ -56,14 +56,10 @@ import StatsBase: var, mean, std
 include(joinpath(@__DIR__, "../deps/version.jl"))
 include("utilities/preference.jl")
 
-const HAS_CUDA = LegatePreferences.has_cuda_gpu()
-if !HAS_CUDA
-    @warn "We couldn't find a CUDA-enabled GPU. If you have an NVIDIA GPU something might be wrong."
-end
-
-# `HAS_CUDA` describes the machine. A CPU-only Legate configuration on a GPU
-# machine must still avoid registering or launching GPU tasks.
-@inline _has_gpu_target() = HAS_CUDA && Int(Legate.num_gpus()) > 0
+# Populated after Legate starts and resolves its automatic or explicit machine
+# configuration. This reflects configured GPU targets, not merely visible hardware.
+const HAS_CUDA = Ref(false)
+@inline _has_gpu_target() = HAS_CUDA[]
 
 const DEFAULT_FLOAT = Float32
 const DEFAULT_INT = Int32
@@ -252,8 +248,10 @@ function _start_runtime()
     # AA = ArgcArgv([Base.julia_cmd()[1]])
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
 
+    num_gpus = Int(Legate.num_gpus())
+    HAS_CUDA[] = num_gpus > 0
     _LINALG_RUNTIME[] = _LinalgRuntime(
-        cusolvermp_available(), Int(Legate.num_gpus()), Int(Legate.num_procs())
+        cusolvermp_available(), num_gpus, Int(Legate.num_procs())
     )
 
     _init_deferred_free!()   # record launch thread for deferred frees (memory.jl)

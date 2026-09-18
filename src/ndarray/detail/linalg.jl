@@ -373,7 +373,7 @@ function _alloc_eigenvalues(a::NDArray{T,N}) where {T,N}
 end
 
 function _assert_geev_available()
-    (Legate.num_gpus() > 0 && !cuNumeric.cusolver_has_geev()) && error(
+    (_has_gpu_target() && !cuNumeric.cusolver_has_geev()) && error(
         "eigen requires cusolverDnXgeev, which the installed cuSolver does not " *
         "provide. Upgrade CUDA (12.6.2 or newer) or run without GPUs.",
     )
