@@ -107,7 +107,7 @@ function run!(b::NASFourierTransform, s::CUDANASFTState)
         CUDA.@cuda threads=threads blocks=cld(length(s.samples), threads) cuda_nas_ft_gather_kernel!(
             s.samples, s.u1, s.indices
         )
-        Base.mapreducedim!(identity, +, s.checksums[iter], s.samples; init=0.0 + 0.0im)
+        Base.mapreducedim!(identity, +, s.checksums[iter], s.samples)
     end
     return s.checksums
 end

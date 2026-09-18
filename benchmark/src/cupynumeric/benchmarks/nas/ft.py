@@ -143,7 +143,6 @@ class NASFourierTransform:
         for j in range(1, CHECKSUM_SAMPLES+1):
             mask[(5*j) % nz, (3*j) % ny, j % nx] += 1.0
         return {
-            "u0": np.zeros(shape, dtype=np.complex128), "twiddle": np.zeros(shape),
             "mask": np.asarray(mask),
             "ix2": np.asarray(frequency_squares(nx)).reshape(1, 1, nx),
             "iy2": np.asarray(frequency_squares(ny)).reshape(1, ny, 1),
@@ -152,12 +151,13 @@ class NASFourierTransform:
         }
     def run(self, state):
         niter = CLASSES[self.class_name][3]
-        initial_conditions(state["host_initial"]); state["u0"][:] = state["host_initial"]
-        state["twiddle"][:] = np.exp((-4.0*ALPHA*math.pi**2) *
+        initial_conditions(state["host_initial"])
+        u0 = np.asarray(state["host_initial"])
+        twiddle = np.exp((-4.0*ALPHA*math.pi**2) *
             (state["ix2"]+state["iy2"]+state["iz2"]))
-        u0, checksums = np.fft.fftn(state["u0"]), []
+        u0, checksums = np.fft.fftn(u0), []
         for _ in range(niter):
-            u0 *= state["twiddle"]
+            u0 *= twiddle
             checksums.append(np.sum(np.fft.ifftn(u0)*state["mask"]))
         return checksums
     def correctness_dims(self):

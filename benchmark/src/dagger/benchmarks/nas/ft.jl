@@ -1,9 +1,10 @@
 # LIMITATION: Dagger supplies a native distributed 3-D FFT with slab/pencil
 # redistributions, but not NPB's 46-bit RNG or indexed checksum reduction.
 # Exact initialization and index-map construction therefore run on the host
-# inside the timed sample and are copied into DArrays; each checksum is a full
-# masked DArray reduction. Checksums remain as 1×1×1 DArrays until verification,
-# so the runtime is not paused between FT iterations.
+# inside the timed sample and are copied into DArrays. Each checksum uses one
+# fused, device-side map-reduce per GPU slab. Dagger's data-dependency region
+# waits for those tasks, but the 1×1×1 device results are not fetched to the
+# host until correctness verification after the timed run.
 
 include(joinpath(@__DIR__, "..", "..", "..", "nas", "ft.jl"))
 
@@ -23,6 +24,26 @@ struct DaggerNASFTState{A,H,T}
     mask::T
     host_initial::H
     host_twiddle::Array{Float64,3}
+end
+
+function dagger_nas_ft_chunk_checksum(values, mask)
+    dims = ntuple(identity, ndims(values))
+    return mapreduce(*, +, values, mask; dims, init=zero(eltype(values)))
+end
+
+function dagger_nas_ft_checksum_tasks(b::DaggerNASFT, s::DaggerNASFTState)
+    length(s.u1.chunks) == length(b.processors) || error(
+        "Dagger FT expected one slab per GPU"
+    )
+    tasks = Vector{Dagger.DTask}(undef, length(b.processors))
+    Dagger.spawn_datadeps() do
+        for i in eachindex(tasks)
+            tasks[i] = Dagger.@spawn scope=Dagger.ExactScope(b.processors[i]) dagger_nas_ft_chunk_checksum(
+                Dagger.In(s.u1.chunks[i]), Dagger.In(s.mask.chunks[i])
+            )
+        end
+    end
+    return tasks
 end
 
 function model_build_nas_ft(config::ModelWorkerConfig)
@@ -68,16 +89,15 @@ function model_run!(b::DaggerNASFT, s::DaggerNASFTState)
         copyto!(s.u0, s.host_initial)
         copyto!(s.twiddle, s.host_twiddle)
         fft!(s.u0, (1, 2, 3); decomp=:slab)
-        checksums = Any[]
+        checksums = Vector{Dagger.DTask}[]
         for _ in 1:p.niter
             s.u0 .*= s.twiddle
             copyto!(s.u1, s.u0)
             ifft!(s.u1, (1, 2, 3); decomp=:slab)
-            push!(checksums, sum(s.u1 .* s.mask; dims=(1, 2, 3)))
+            push!(checksums, dagger_nas_ft_checksum_tasks(b, s))
         end
-        # Submit every deferred checksum before the trial-level GPU fence.
-        # This is one end-of-run wait, not a synchronization between iterations.
-        foreach(checksum -> foreach(wait, checksum.chunks), checksums)
+        # spawn_datadeps has completed each task, but each result remains a
+        # one-element device array. Do not fetch those scalars inside the run.
         return checksums
     end
 end
@@ -87,7 +107,9 @@ model_synchronize(::DaggerNASFT) = Dagger.gpu_synchronize(:CUDA)
 function model_check_correctness(b::DaggerNASFT, config)
     results = model_run!(b, model_initialize(b))
     model_synchronize(b)
-    got = ComplexF64[only(collect(x)) for x in results]
+    got = ComplexF64[
+        sum(only(fetch(task)) for task in tasks) for tasks in results
+    ]
     return nas_ft_verified(b.class, got) ? "pass" : "fail"
 end
 
