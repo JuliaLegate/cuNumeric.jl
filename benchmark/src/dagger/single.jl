@@ -15,9 +15,12 @@ include(joinpath(@__DIR__, "benchmarks", "montecarlo.jl"))
 include(joinpath(@__DIR__, "benchmarks", "gemm.jl"))
 include(joinpath(@__DIR__, "benchmarks", "grayscott.jl"))
 include(joinpath(@__DIR__, "benchmarks", "cg.jl"))
+include(joinpath(@__DIR__, "benchmarks", "nas", "ep.jl"))
 include(joinpath(@__DIR__, "benchmarks", "nas", "ft.jl"))
 
-const SUPPORTED_BENCHMARKS = ["montecarlo", "gemm", "grayscott", "cg", "nas_ft"]
+const SUPPORTED_BENCHMARKS = [
+    "montecarlo", "gemm", "grayscott", "cg", "nas_ep", "nas_ft"
+]
 
 function model_build_benchmark(config::ModelWorkerConfig)
     config.name in SUPPORTED_BENCHMARKS || error(
@@ -25,7 +28,9 @@ function model_build_benchmark(config::ModelWorkerConfig)
         join(SUPPORTED_BENCHMARKS, ", "),
     )
 
-    if config.name == "nas_ft"
+    if config.name == "nas_ep"
+        return model_build_nas_ep(config)
+    elseif config.name == "nas_ft"
         return model_build_nas_ft(config)
     elseif config.name == "montecarlo"
         return model_build_montecarlo(config)

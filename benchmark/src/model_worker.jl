@@ -52,6 +52,7 @@ end
 
 model_fence_each_iteration(benchmark) = true
 model_synchronize(benchmark) = nothing
+model_throughput_label(benchmark) = "GFLOP/s"
 # Native-worker counterpart of reset!; true means the reset needs a fence.
 model_reset!(benchmark, state) = false
 model_check_correctness(benchmark, config) = "skipped"
@@ -185,6 +186,7 @@ function run_model_worker(model::Symbol, label::String, args=ARGS)
 
     times_ms = Float64[]
     gflops = Float64[]
+    unit = model_throughput_label(benchmark)
     progress = ProgressMeter.Progress(
         config.n_trial; dt=0.0, desc="$(config.name) trials: ", barlen=40
     )
@@ -198,7 +200,7 @@ function run_model_worker(model::Symbol, label::String, args=ARGS)
             showvalues=[
                 ("Completed trials", "$(trial)/$(config.n_trial)"),
                 ("Last trial mean (ms/iteration)", @sprintf("%.5f", time_ms)),
-                ("Last trial GFLOP/s", @sprintf("%.5f", throughput)),
+                ("Last trial $unit", @sprintf("%.5f", throughput)),
             ],
         )
     end
@@ -208,8 +210,8 @@ function run_model_worker(model::Symbol, label::String, args=ARGS)
         label, mean(times_ms), length(times_ms)>1 ? std(times_ms) : 0.0,
     )
     @printf(
-        "[%s] Mean throughput: %.5f ± %.5f GFLOP/s (trial SD)\n",
-        label, mean(gflops), length(gflops)>1 ? std(gflops) : 0.0,
+        "[%s] Mean throughput: %.5f ± %.5f %s (trial SD)\n",
+        label, mean(gflops), length(gflops)>1 ? std(gflops) : 0.0, unit,
     )
     return save_model_results(config, model, times_ms, gflops, correctness)
 end

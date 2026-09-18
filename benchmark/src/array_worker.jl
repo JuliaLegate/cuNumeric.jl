@@ -3,7 +3,7 @@
 # shared benchmarks, loads any model-specific benchmark methods, and defines
 # `array_backend_entry`.
 
-length(ARGS) in (11,12) || error(
+length(ARGS) in (11, 12) || error(
     "array worker args: <gpus> <name> <T> <N> <M> <n_iter> <n_warmup> " *
     "<n_trial> <check_correctness> <n_correctness_iter> <flops> [kwargs TOML]",
 )
@@ -34,7 +34,7 @@ function run_array_worker(args=ARGS)
 
     backend = array_backend_entry()
     T = parse_worker_type(T_name)
-    kwargs = length(args)==12 ? Dict(Symbol(k)=>v for (k,v) in TOML.parse(args[12])) : Dict()
+    kwargs = length(args)==12 ? Dict(Symbol(k)=>v for (k, v) in TOML.parse(args[12])) : Dict()
     benchmark = build_benchmark(BENCHMARKS[name], T, N, M; kwargs...)
     fused = backend.fused()
     default_save_as = fused ? backend.save_as : "$(backend.save_as)_nofusion"
@@ -62,8 +62,8 @@ function run_array_worker(args=ARGS)
         label, mean(result.times_ms), _std(result.times_ms),
     )
     @printf(
-        "[%s] Mean throughput: %.5f ± %.5f GFLOP/s (trial SD)\n",
-        label, mean(result.gflops), _std(result.gflops),
+        "[%s] Mean throughput: %.5f ± %.5f %s (trial SD)\n",
+        label, mean(result.gflops), _std(result.gflops), throughput_label(benchmark),
     )
     return save_result(result, gpus; mod=save_as)
 end

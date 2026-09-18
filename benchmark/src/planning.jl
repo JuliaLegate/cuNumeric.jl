@@ -45,10 +45,11 @@ function validate_spec(s)
     for hint in (s.N_hint, s.M_hint)
         hint === nothing || hint > 0 || error("Pinned dimensions must be positive")
     end
-    if s.name == "nas_ft"
-        s.T == "Float64" || error("NAS FT requires Float64")
-        s.n_iter == 1 || error("NAS FT requires n_iter=1; use n_trial for repeated samples")
-        s.autosize && error("NAS FT uses fixed classes and cannot be autosized")
+    if s.name in ("nas_ep", "nas_ft")
+        label = s.name == "nas_ep" ? "NAS EP" : "NAS FT"
+        s.T == "Float64" || error("$label requires Float64")
+        s.n_iter == 1 || error("$label requires n_iter=1; use n_trial for repeated samples")
+        s.autosize && error("$label uses fixed classes and cannot be autosized")
     end
 end
 

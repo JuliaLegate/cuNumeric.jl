@@ -1,6 +1,7 @@
 """NAS benchmark implementations for cuPyNumeric."""
 
-from . import ft  # noqa: F401
+from . import ep, ft  # noqa: F401
+from .ep import NASEmbarrassinglyParallel
 from .ft import NASFourierTransform
 
-__all__ = ["NASFourierTransform"]
+__all__ = ["NASEmbarrassinglyParallel", "NASFourierTransform"]

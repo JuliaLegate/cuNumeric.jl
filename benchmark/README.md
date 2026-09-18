@@ -109,6 +109,7 @@ a known limitation, and — is not supported by the harness.
 | GEMM | ✅ / ✅ | ✅ / ✅ | ✅ / — | ✅ / ✅ | ✅ / ✅ |
 | 2D Gray–Scott | ✅ / ✅ | ✅ / ✅ | ✅ / — | ✅ / — | ✅ / ⚠ |
 | Conjugate gradient | ✅ / ✅ | ✅ / ✅ | ✅ / — | ✅ / ✅ | ✅ / ⚠ |
+| NAS embarrassingly parallel | ⚠ / ⚠ | ⚠ / ⚠ | ✅ / — | ✅ / ✅ | ✅ / ✅ |
 | NAS Fourier transform | ⚠ / ⚠ | ⚠ / ⚠ | ✅ / — | ⚠ / — | ⚠ / ⚠ |
 
 The Dagger Gray–Scott implementation is correct on multiple GPUs, but Dagger's
@@ -119,6 +120,12 @@ path still needs validation in the benchmark container. JACC Gray–Scott remain
 single-GPU pending working two-dimensional ghost exchange. The table covers the
 default benchmark forms; cuNumeric-specific accelerated forms and `cg_plain`
 are comparison variants rather than separate workloads.
+
+NAS EP reproduces the official 46-bit RNG sequence and verification sums. The
+cuNumeric and cuPyNumeric implementations express that RNG as Float64 array
+algebra because neither model provides it as a primitive, resulting in extra
+task-launch overhead. JACC and Dagger partition independent streams across all
+requested GPUs. See `nas/README.md` for the shared batching contract.
 
 NAS FT runs a complete official class per timed sample. cuNumeric and
 cuPyNumeric submit the full 3-D FFT as native Legate auto tasks, which the
@@ -134,8 +141,9 @@ estimates, package versions, and worker status.
 Timed iterations include synchronization but exclude harness initialization and
 warmup. NAS FT's specified RNG/index-map setup occurs inside `run!` and is
 therefore timed as part of each complete FT sample.
-Each trial reports its mean milliseconds per iteration and GFLOP/s; the final
-summary reports the mean and standard deviation across trials.
+Each trial reports its mean milliseconds per iteration and throughput; the
+final summary reports the mean and standard deviation across trials. Most
+benchmarks use GFLOP/s, while NAS EP follows NPB and reports G random numbers/s.
 
 To plot existing CSV files:
 

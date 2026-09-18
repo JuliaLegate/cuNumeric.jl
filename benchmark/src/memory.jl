@@ -203,3 +203,23 @@ function memory_estimate(b::NASFourierTransform{T}, c::MemoryContext) where {T}
         "NAS FT grids, checksum mask, and conservative native/distributed FFT transpose buffers",
     )
 end
+
+function memory_estimate(b::NASEmbarrassinglyParallel{T}, c::MemoryContext) where {T}
+    validate_memory_context(b, c)
+    p = validate_nas_ep(b)
+    streams = cld(big(nas_ep_batches(p)), c.gpus)
+    masks = (p.m - NAS_EP_MK)*streams*sizeof(Float64)
+    if c.model in (:cunumeric, :cupynumeric)
+        persistent = 13streams*sizeof(Float64) + masks
+        return MemoryEstimate(
+            persistent, 40streams*sizeof(Float64) + masks, 0,
+            "exact 46-bit LCG array streams, histogram accumulators, and fused-expression temporaries",
+        )
+    end
+    bytes = streams*sizeof(NASEPPartial)
+    c.model == :dagger && (bytes += streams*sizeof(Int64))
+    return MemoryEstimate(
+        bytes, bytes, 0,
+        "one exact NPB EP partial per independent stream, partitioned across GPUs",
+    )
+end
