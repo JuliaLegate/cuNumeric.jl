@@ -25,9 +25,12 @@ function _assignment(expr)
 end
 
 function _broadcast_assignment(expr)
-    MacroTools.isexpr(expr, :(.=)) || return nothing
-    MacroTools.@capture(expr, lhs_ .= rhs_) || return nothing
-    return (; lhs, rhs)
+    expr isa Expr && length(expr.args) == 2 || return nothing
+    op = expr.head
+    op isa Symbol || return nothing
+    spelling = string(op)
+    startswith(spelling, ".") && endswith(spelling, "=") || return nothing
+    return (; lhs=expr.args[1], rhs=expr.args[2])
 end
 
 function _call(expr)

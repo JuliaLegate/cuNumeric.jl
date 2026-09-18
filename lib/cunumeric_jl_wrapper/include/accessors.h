@@ -26,9 +26,11 @@
 
 #include "cupynumeric.h"
 #include "jlcxx/jlcxx.hpp"
+#include "legate.h"
 #include "legion.h"
 
-using coord_t = long long;
+// Match Legate coordinates; large scalar indices must never narrow to int.
+static_assert(sizeof(legate::coord_t) >= 8, "NDArray accessors require 64-bit coordinates");
 
 // To auto-magically generate templated classes and their
 // respective member functions you must define a `BuildParameterList`
@@ -49,7 +51,7 @@ class NDArrayAccessor {
   ~NDArrayAccessor() {}
   // static
   T read(void* arr, const std::vector<uint64_t>& dims) {
-    auto p = Realm::Point<n_dims>(0);
+    auto p = legate::Point<n_dims>(0);  // Realm::Point defaults to 32-bit int.
     for (int i = 0; i < n_dims; ++i) {
       p[i] = dims[i];
     }
@@ -59,7 +61,7 @@ class NDArrayAccessor {
 
   // static
   void write(void* arr, const std::vector<uint64_t>& dims, T val) {
-    auto p = Realm::Point<n_dims>(0);
+    auto p = legate::Point<n_dims>(0);  // Preserve indices beyond INT32_MAX.
     for (int i = 0; i < n_dims; ++i) {
       p[i] = dims[i];
     }

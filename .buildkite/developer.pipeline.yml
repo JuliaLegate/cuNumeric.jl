@@ -1,4 +1,13 @@
 steps:
+  - label: ":lock: Enter developer CI"
+    command: "true"
+    concurrency: 1
+    concurrency_group: "cunumeric/developer"
+    agents:
+      queue: "cuda"
+
+  - wait: ~
+
   - group: ":hammer: Developer"
     key: "developer"
     steps:
@@ -35,3 +44,13 @@ steps:
             fusion:
               - "on"
               - "off"
+
+  - wait: ~
+    continue_on_failure: true
+
+  - label: ":unlock: Leave developer CI"
+    command: "true"
+    concurrency: 1
+    concurrency_group: "cunumeric/developer"
+    agents:
+      queue: "cuda"

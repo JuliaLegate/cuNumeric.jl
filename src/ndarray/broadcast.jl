@@ -10,7 +10,7 @@ function map_cuda_type(::Type{cuNumeric.NDArrayStyle{N}}) where {N}
 end # Also can be HostMemory or UnifiedMemory
 
 function _nd_forbid_mix()
-    throw(
+    return throw(
         ArgumentError(
             "Broadcast between NDArray and other array types is not supported. " *
             "Convert explicitly to a single array type before broadcasting.",
@@ -26,6 +26,20 @@ Base.BroadcastStyle(::DefaultArrayStyle{0}, a::NDArrayStyle) = a
 Base.BroadcastStyle(::NDArrayStyle, ::DefaultArrayStyle) = _nd_forbid_mix()
 Base.BroadcastStyle(::DefaultArrayStyle, ::NDArrayStyle) = _nd_forbid_mix()
 
+# Like Base Diagonal vs Array: structured Diagonal style wins over dense NDArray
+# so D.+A uses StructuredMatrixStyle{Diagonal} (densify to NDArray in diagonal.jl)
+# instead of ArrayConflict → host Matrix + scalar indexing.
+function Base.BroadcastStyle(
+    ::LinearAlgebra.StructuredMatrixStyle{<:Diagonal}, ::NDArrayStyle
+)
+    return LinearAlgebra.StructuredMatrixStyle{Diagonal}()
+end
+function Base.BroadcastStyle(
+    ::NDArrayStyle, ::LinearAlgebra.StructuredMatrixStyle{<:Diagonal}
+)
+    return LinearAlgebra.StructuredMatrixStyle{Diagonal}()
+end
+
 Base.broadcastable(A::NDArray) = A
 
 #* IS THERE A BETTER WAY TO ALLOCATE THE NEW ARRAY???
@@ -37,25 +51,40 @@ Base.similar(arr::NDArray{T}, dims::Base.DimOrInd...) where {T} = similar(arr, T
 Base.similar(arr::NDArray, ::Type{T}) where {T} = similar(arr, T, size(arr))
 
 #* IS THERE A BETTER WAY TO ALLOCATE THE NEW ARRAY???
+# Prefer Dims over the axes catch-all: with StaticArrays loaded (GPU CI via CUDA),
+# `similar(::Type{<:AbstractArray}, ::Tuple{})` is otherwise ambiguous between
+# Base, StaticArrays, and our catch-all (0-d broadcast uses axes `()`).
+Base.similar(::Type{NDArray{T}}, dims::Dims{N}) where {T,N} = cuNumeric.zeros(T, dims)
+function Base.similar(
+    ::Type{NDArray{T}},
+    shape::Tuple{Union{Integer,Base.OneTo},Vararg{Union{Integer,Base.OneTo}}},
+) where {T}
+    return cuNumeric.zeros(T, map(Int, Base.to_shape.(shape)))
+end
 Base.similar(::Type{NDArray{T}}, axes) where {T} = cuNumeric.zeros(T, Base.to_shape.(axes))
 function Base.similar(bc::Broadcasted{NDArrayStyle{N}}, ::Type{ElType}) where {N,ElType}
     return similar(NDArray{ElType}, axes(bc))
 end
 
 function __broadcast(f::Function, _, args...)
-    #! WITH FUSION I THINK WE CAN SUPPORT THIS BY JUST CALLING MAP or MAP!
     return error(
-        """
-        Tried to broadcast $(f). cuNumeric.jl does not support broadcasting user-defined functions yet. Please re-define \
-        functions to match supported patterns. For example g(x) = x + 1 could be re-defined as \
-        broadcast_g(x::NDArray) = x .+ 1. This can make the intention of code opaque to the reader, \
-        but it is necessary until support is added.""",
+        "Broadcasting $(f) is not supported by cuNumeric's unfused broadcast path.\n" *
+        "Single-operation broadcasts skip fusion when FUSE_BROADCAST_MIN_OPS > 1 " *
+        "(current: $(FUSE_BROADCAST_MIN_OPS); fusion enabled: $(FUSE_BROADCAST_EXPRS)).\n" *
+        "To enable GPU fusion for eligible single-operation broadcasts, set the " *
+        "FUSE_BROADCAST_MIN_OPS preference to 1:\n" *
+        "    using CNPreferences\n" *
+        "    CNPreferences.enable_broadcast_fusion!()\n" *
+        "    CNPreferences.set_broadcast_fusion_min_ops!(1)\n" *
+        "Then restart Julia and retry. This is a preference, not an environment variable.\n" *
+        "Fusion requires an active GPU, compatible array shapes, and a GPU-compilable function. " *
+        "Otherwise, rewrite the expression using supported broadcast operations.",
     )
 end
 
 # Get depth of Broadcast tree recursively
 # Need to call instantiate first
-bcast_depth(bc::Base.Broadcast.Broadcasted) = maximum(bcast_depth, bc.args, init=0) + 1;
+bcast_depth(bc::Base.Broadcast.Broadcasted) = maximum(bcast_depth, bc.args; init=0) + 1;
 bcast_depth(::Any) = 0
 
 struct BrokenBroadcast{T} end
@@ -63,18 +92,22 @@ Base.convert(::Type{BrokenBroadcast{T}}, x) where {T} = BrokenBroadcast{T}()
 Base.convert(::Type{BrokenBroadcast{T}}, x::BrokenBroadcast{T}) where {T} = x
 Base.eltype(::Type{BrokenBroadcast{T}}) where {T} = T
 
+# Use cuNumeric promotion (`__recip_type` for inv, etc.), not Base.combine_eltypes
+# — e.g. inv.(Int32) must allocate Float32, not Float64.
+@inline function _broadcast_copy_eltype(bc::Broadcasted)
+    return __checked_promote_op(bc.f, Base.Broadcast.eltypes(bc.args))
+end
+
 function Broadcast.copy(bc::Broadcasted{<:NDArrayStyle{0}})
-    ElType = Broadcast.combine_eltypes(bc.f, bc.args)
+    ElType = _broadcast_copy_eltype(bc)
     if ElType == Union{}
         ElType = Nothing
     end
-    dest = copyto!(similar(bc, ElType), bc)
-    #! CHECK THIS DOESNT CAUSE ISSUES DUE TO BLOCKING NATURE
-    return @allowscalar dest[CartesianIndex()]
+    return copyto!(similar(bc, ElType), bc)
 end
 
 @inline function Broadcast.copy(bc::Broadcasted{<:NDArrayStyle})
-    ElType = Broadcast.combine_eltypes(bc.f, bc.args)
+    ElType = _broadcast_copy_eltype(bc)
     if ElType == Union{} || !Base.allocatedinline(ElType)
         ElType = BrokenBroadcast{ElType}
     end
@@ -95,16 +128,30 @@ __materialize(x::Base.RefValue{Val{V}}) where {V} = NDArray(V) # Use binary_op P
 # Catch unknown things...
 __materialize(x) = error("Unrecognized leaf in broadcast expression: $(x)")
 
-# Scalar-only nested broadcasts (e.g. `s1 .* s2 .+ A`): the inner
-# `Broadcasted(*, (s1, s2))` keeps DefaultArrayStyle{0}, not NDArrayStyle.
-# Fold to a Number so the parent unravel sees a scalar leaf.
+# Use Base for scalar-only broadcasts, including `literal_pow` wrappers.
 @inline function __materialize(bc::Broadcasted{<:DefaultArrayStyle{0}})
-    return bc.f((__materialize.(bc.args))...)
+    return Base.materialize(bc)
 end
 
 function __materialize(bc::Broadcasted{<:NDArrayStyle})
     bc = Base.Broadcast.instantiate(bc)
     return unravel_broadcast_tree(bc)
+end
+
+# The C API is binary, so evaluate flattened `+` and `*` chains pairwise.
+function _unravel_flattened_associative(f, args::Tuple)
+    acc = first(args)
+    owns_acc = false
+    for arg in Base.tail(args)
+        next = try
+            __materialize(Base.broadcasted(f, acc, arg))
+        finally
+            owns_acc && acc isa NDArray && destroy!(acc)
+        end
+        acc = next
+        owns_acc = acc isa NDArray
+    end
+    return acc
 end
 
 # Destroy promote copies and non-leaf materialized NDArrays (nested results / Val{V}).
@@ -120,6 +167,9 @@ end
 
 # Un-fused implementation of broadcast tree
 function unravel_broadcast_tree(bc::Broadcasted)
+    if length(bc.args) > 2 && _is_flattened_associative(bc.f)
+        return _unravel_flattened_associative(bc.f, bc.args)
+    end
 
     # Recursively materialize/unravel any nested broadcasts
     # until we reach a Broadcasted expression with only
@@ -162,7 +212,9 @@ end
 end
 
 @inline _copyto_unfused!(dest::NDArray{T}, temp_result::NDArray{T}) where {T} =
-    _store_broadcast_result!(dest, temp_result)
+    _store_broadcast_result!(
+        dest, temp_result
+    )
 
 @inline function _copyto_unfused!(dest::NDArray{T}, temp_result::NDArray) where {T}
     promoted = checked_promote_arr(temp_result, T)
@@ -204,13 +256,11 @@ end
         )
     end
 
-    # Fused writes `dest` in place (no post-fuse `nda_move`); promotion is
-    # checked pre-launch in `fuse_broadcast_tree!`. CPU vs GPU is compile-time
-    # via `@static if FUSE_BROADCAST_EXPRS && HAS_CUDA`.
+    # Require an active GPU target so `--gpus 0` stays on the unfused path.
     # Fusion requires same-shaped NDArray leaves; otherwise fall back.
     # Single-op exprs (length < `FUSE_BROADCAST_MIN_OPS`) stay unfused by default.
     @static if FUSE_BROADCAST_EXPRS && HAS_CUDA
-        if _should_attempt_broadcast_fusion(dest, bc)
+        if _has_gpu_target() && _should_attempt_broadcast_fusion(dest, bc)
             return fuse_broadcast_tree!(dest, bc)
         else
             return _copyto_unfused!(dest, unravel_broadcast_tree(bc))

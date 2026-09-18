@@ -16,6 +16,7 @@ on:
 jobs:
   docs:
     name: Documentation
+    if: ${{ !contains(toJSON(github.event), '[skip ci]') }}
     permissions:
       actions: write
       contents: write

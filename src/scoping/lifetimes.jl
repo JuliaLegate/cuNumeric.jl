@@ -38,17 +38,18 @@ function rewrite_eager_lifetimes(scope)
         broadcast_assignment = _broadcast_assignment(expr)
         if !isnothing(broadcast_assignment)
             (; lhs, rhs) = broadcast_assignment
+            op = expr.head
             new_lhs, lhs_temps = rewrite(lhs)
             # Do not hoist the top-level call of the RHS to preserve fusion.
             call = _call(rhs)
             if !isnothing(call)
                 new_rhs_args, rhs_temps = _maphoist(rewrite, call.args)
                 new_rhs = Expr(:call, call.f, new_rhs_args...)
-                return Expr(:(.=), new_lhs, new_rhs), vcat(lhs_temps, rhs_temps)
+                return Expr(op, new_lhs, new_rhs), vcat(lhs_temps, rhs_temps)
             end
 
             new_rhs, rhs_temps = rewrite(rhs)
-            return Expr(:(.=), new_lhs, new_rhs), vcat(lhs_temps, rhs_temps)
+            return Expr(op, new_lhs, new_rhs), vcat(lhs_temps, rhs_temps)
         end
 
         reference = _reference(expr)
@@ -70,6 +71,6 @@ function rewrite_eager_lifetimes(scope)
     return _prepend_statements(rewritten, temps), assigned_vars
 end
 
-function process_lifetime_scope(scope)
-    return _process_lifetime_scope(scope, rewrite_eager_lifetimes)
+function process_lifetime_scope(scope; protected_roots=Set{Symbol}())
+    return _process_lifetime_scope(scope, rewrite_eager_lifetimes; protected_roots)
 end

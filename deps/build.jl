@@ -19,6 +19,7 @@
 
 using Pkg
 using Preferences
+using Libdl: dlext
 
 # The build only needs Legate's paths/tooling, not a running runtime.
 # Setting this env prevents a segfault on Julia 1.12
@@ -35,6 +36,7 @@ using OpenBLAS32_jll: OpenBLAS32_jll
 const BuildTools = Legate.BuildTools
 
 include("version.jl")
+include("cxxwrap.jl")
 
 function build_cpp_wrapper(
     repo_root, cupynumeric_loc, legate_loc, blas_loc, install_root;
@@ -42,7 +44,7 @@ function build_cpp_wrapper(
 )
     @info "libcunumeric_jl_wrapper: Building C++ Wrapper Library"
     isdir(install_root) && (rm(install_root; recursive=true); mkdir(install_root))
-    bld_command = `$(joinpath(repo_root, "scripts/build_cpp_wrapper.sh")) $repo_root $cupynumeric_loc $legate_loc $blas_loc $install_root 8`
+    bld_command = `$(joinpath(repo_root, "scripts/build_cpp_wrapper.sh")) $repo_root $cupynumeric_loc $legate_loc $blas_loc $install_root $(Threads.nthreads())`
     return BuildTools.run_build_wrapper_script(
         repo_root, bld_command; cuda_root, cuda_enabled, log_dir=@__DIR__
     )
@@ -60,15 +62,19 @@ function build_deps(pkg_root, cupynumeric_root, blas_root; cuda_root=nothing, cu
         )
     end
 
-    BuildTools.build_jlcxxwrap(
+    ensure_cxxwrap(
         pkg_root, get_cupynumeric_version(cupynumeric_root);
-        log_dir=@__DIR__, is_compatible=is_supported_version,
+        log_dir=@__DIR__,
     )
     build_cpp_wrapper(
         pkg_root, cupynumeric_root, up_dir(legate_lib), blas_root,
         install_lib;
         cuda_root, cuda_enabled,
     )
+    for name in ("cunumeric_jl_wrapper", "cunumeric_c_wrapper")
+        library = joinpath(install_lib, "lib", "lib$name.$dlext")
+        isfile(library) || error("Wrapper build did not produce $library; see deps/cpp_wrapper.err. JLL override was not updated.")
+    end
     return BuildTools.set_jll_artifact_override(:cunumeric_jl_wrapper_jll, install_lib)
 end
 
