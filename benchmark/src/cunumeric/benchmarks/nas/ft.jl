@@ -37,7 +37,12 @@ end
 function run!(b::NASFourierTransform, s::CuNumericNASFTState)
     p = nas_ft_parameters(b.class)
     nas_ft_initial_conditions!(s.host_initial)
-    copyto!(s.u0, s.host_initial)
+    # `copyto!(::NDArray, ::Array)` falls back to Base's scalar-indexing path.
+    # Upload through an NDArray staging store so the actual copy is a native
+    # Legate array operation.
+    initial = cuNumeric.NDArray(s.host_initial)
+    copyto!(s.u0, initial)
+    cuNumeric.destroy!(initial)
     ap = -4.0*NAS_FT_ALPHA*pi^2
     s.twiddle .= exp.(ap .* (s.ix2 .+ s.iy2 .+ s.iz2))
     fft!(s.u0)
@@ -55,6 +60,6 @@ function check_benchmark_correctness(
     b::NASFourierTransform, gs::GlobalSettings; mod=cuNumeric
 )
     state = only(initialize(b; mod))
-    got = ComplexF64[only(Array(x)) for x in run!(b, state)]
+    got = ComplexF64[cuNumeric.@allowscalar(x[]) for x in run!(b, state)]
     return nas_ft_verified(b.class, got) ? "pass" : "fail"
 end
