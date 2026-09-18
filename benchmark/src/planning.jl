@@ -68,7 +68,7 @@ function baseline_shape(s, k)
         return (something(s.N_hint, k), something(s.M_hint, DEFAULT_DMD_M))
     elseif B <: PoissonFFT
         return s.N_hint === nothing ? (k, something(s.M_hint, 1)) : (s.N_hint, k)
-    elseif B <: MonteCarloIntegration || B <: AbstractTensorContraction ||
+    elseif B <: AbstractMonteCarloIntegration || B <: AbstractTensorContraction ||
         B <: AbstractConjugateGradient
         s.M_hint === nothing || s.M_hint == 1 || error("$(s.name) requires M=1")
         return (something(s.N_hint, k), 1)

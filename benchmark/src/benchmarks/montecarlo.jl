@@ -1,65 +1,74 @@
-Base.@kwdef struct MonteCarloIntegration{T} <: AbstractBenchmark{T}
+abstract type AbstractMonteCarloIntegration{T} <: AbstractBenchmark{T} end
+
+Base.@kwdef struct MonteCarloIntegration{T} <: AbstractMonteCarloIntegration{T}
+    n_samples::Int
+end
+
+Base.@kwdef struct MonteCarloNaive{T} <: AbstractMonteCarloIntegration{T}
     n_samples::Int
 end
 
 name(::MonteCarloIntegration) = "montecarlo"
-dims(mci::MonteCarloIntegration) = (mci.n_samples, 1)
-function data(mci::MonteCarloIntegration{T}) where {T}
+name(::MonteCarloNaive) = "montecarlo_naive"
+dims(mci::AbstractMonteCarloIntegration) = (mci.n_samples, 1)
+function data(mci::AbstractMonteCarloIntegration{T}) where {T}
     return "Monte Carlo Integration with T=$(T), n_samples=$(mci.n_samples)"
 end
 
-allowed_types(::Type{MonteCarloIntegration}) = cuNumeric.SUPPORTED_FLOAT_TYPES
+allowed_types(::Type{<:AbstractMonteCarloIntegration}) = cuNumeric.SUPPORTED_FLOAT_TYPES
 
-total_flops(s::MonteCarloIntegration) = s.n_samples
-# Fused broadcast: samples x plus exp.(-x .^ 2), materialized before sum.
-# Initialization also needs two arrays: random samples and their scaled output.
-# Assumes fusion is enabled; workspace/runtime overhead uses the headroom left
-# by mem_frac. This is not a memory estimate for unfused comparison backends.
-total_space(s::MonteCarloIntegration{T}) where {T} = 2 * s.n_samples * sizeof(T)
+total_flops(s::AbstractMonteCarloIntegration) = s.n_samples
+# Reserve one sample array plus one array-sized reduction/broadcast workspace.
+# Model-specific memory accounting refines this conservative shared bound.
+total_space(s::AbstractMonteCarloIntegration{T}) where {T} = 2 * s.n_samples * sizeof(T)
 
-function estimate_scaling(s::MonteCarloIntegration, P::Integer)
+function estimate_scaling(s::AbstractMonteCarloIntegration, P::Integer)
     P == 1 && return dims(s)
     return (s.n_samples * P, 1)
 end
 
 function fit_one_gpu(
-    ::Type{MonteCarloIntegration}, ::Type{T};
+    ::Type{B}, ::Type{T};
     budget::Int, N_hint=nothing, M_hint=nothing,
-) where {T}
+) where {B<:AbstractMonteCarloIntegration,T}
     hi = max(8, Int(fld(budget, sizeof(T))))
-    n = largest_feasible(8, hi, k -> total_space(MonteCarloIntegration{T}(; n_samples=k)) <= budget)
+    n = largest_feasible(8, hi, k -> total_space(B{T}(; n_samples=k)) <= budget)
     n === nothing && error("montecarlo does not fit in $(budget) bytes")
     return (align8(n), 1)
 end
 
-function initialize(mci::MonteCarloIntegration{T}; mod=cuNumeric) where {T}
+function initialize(mci::AbstractMonteCarloIntegration{T}; mod=cuNumeric) where {T}
     # Uniform samples over the integration domain [0, 10].
     x = T(10) .* rand_array(mod, T, mci.n_samples)
     GC.gc()
     return (x,)
 end
 
-_domain_volume(mci::MonteCarloIntegration{T}) where {T} = T(10) / mci.n_samples
+_domain_volume(mci::AbstractMonteCarloIntegration{T}) where {T} = T(10) / mci.n_samples
+@inline _montecarlo_scalar_integrand(x) = exp(-(x*x))
 # Dot the negation too: plain `-` materializes the squared array and prevents
 # the surrounding exponential from sharing one broadcast with the square.
 _montecarlo_integrand(x) = exp.(.-(x .^ 2))
 
-function run!(mci::MonteCarloIntegration, x)
+function run!(mci::AbstractMonteCarloIntegration, x)
     integrand = _montecarlo_integrand(x)
     return _domain_volume(mci) * sum(integrand)
 end
 
 # n_samples comes in as N; M is unused.
-function build_benchmark(::Type{MonteCarloIntegration}, ::Type{T}, N, M; kwargs...) where {T}
-    return MonteCarloIntegration{T}(; kwargs..., n_samples=N)
+function build_benchmark(
+    ::Type{B}, ::Type{T}, N, M; kwargs...
+) where {B<:AbstractMonteCarloIntegration,T}
+    return B{T}(; kwargs..., n_samples=N)
 end
 
-function correctness_problem(b::MonteCarloIntegration{T}) where {T}
-    return MonteCarloIntegration{T}(; n_samples=min(b.n_samples, 1024))
+function correctness_problem(b::B) where {T,B<:AbstractMonteCarloIntegration{T}}
+    return B(; n_samples=min(b.n_samples, 1024))
 end
-function correctness_seed(b::MonteCarloIntegration{T}) where {T}
+function correctness_seed(b::AbstractMonteCarloIntegration{T}) where {T}
     return (T.(range(T(0), T(10); length=b.n_samples)),)
 end
-correctness_uses_cpu(::MonteCarloIntegration) = true
+correctness_uses_cpu(::AbstractMonteCarloIntegration) = true
 
 register_benchmark("montecarlo", MonteCarloIntegration)
+register_benchmark("montecarlo_naive", MonteCarloNaive)

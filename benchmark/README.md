@@ -121,6 +121,11 @@ single-GPU pending working two-dimensional ghost exchange. The table covers the
 default benchmark forms; cuNumeric-specific accelerated forms and `cg_plain`
 are comparison variants rather than separate workloads.
 
+`montecarlo` uses cuNumeric's fused mapped reduction. The cuNumeric-only
+`montecarlo_naive` variant materializes the broadcasted integrand before its
+ordinary reduction for an explicit implementation comparison. Run both with
+`julia --project=. run.jl --config=benchmarks_montecarlo.toml`.
+
 NAS EP reproduces the official 46-bit RNG sequence and verification sums. The
 cuNumeric and cuPyNumeric implementations express that RNG as Float64 array
 algebra because neither model provides it as a primitive, resulting in extra

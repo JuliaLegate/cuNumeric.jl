@@ -16,6 +16,7 @@ const CONFIG = joinpath(@__DIR__, "..", "benchmarks.toml")
 const SMOKE_CONFIG = joinpath(@__DIR__, "..", "benchmarks_smoke.toml")
 const GRAYSCOTT_MULTIGPU_CONFIG = joinpath(@__DIR__, "..", "benchmarks_grayscott_multigpu.toml")
 const FORMS_CONFIG = joinpath(@__DIR__, "..", "benchmarks_grayscott_forms.toml")
+const MONTECARLO_CONFIG = joinpath(@__DIR__, "..", "benchmarks_montecarlo.toml")
 const RAW = TOML.parsefile(CONFIG)
 const GROUPS = parse_plot_groups(CONFIG)
 const FORMS_GROUPS = parse_plot_groups(FORMS_CONFIG)
@@ -41,11 +42,11 @@ function Base.similar(a::CountedArray, ::Type{T}, dims::Dims) where {T}
     return CountedArray(Array{T}(undef, dims))
 end
 
-@testset "Monte Carlo broadcasts fuse across negation" begin
-    for T in (Float32, Float64)
+@testset "Monte Carlo CPU fallback uses one fused broadcast" begin
+    for T in (Float32, Float64), B in (MonteCarloIntegration, MonteCarloNaive)
         data = T[0, 0.5, 1, 2, 5]
         x = CountedArray(data)
-        b = MonteCarloIntegration{T}(; n_samples=length(x))
+        b = B{T}(; n_samples=length(x))
         MATERIALIZATIONS[] = 0
         got = run!(b, x)
         @test MATERIALIZATIONS[] == 1
@@ -64,6 +65,8 @@ end
     @test dims(mc_check) == (1024, 1)
     @test only(correctness_seed(mc_check)) ==
         Float32.(range(0.0f0, 10.0f0; length=1024))
+    @test correctness_problem(MonteCarloNaive{Float32}(; n_samples=2048)) isa
+        MonteCarloNaive{Float32}
 
     gemm = GEMM{Float32}(; N=16, M=12)
     gemm_check = correctness_problem(gemm)
@@ -110,6 +113,18 @@ end
     @test main(["--only=montecarlo", "--dry-run"];
         budget_provider=(f, p)->(1_000_000, f),
         executor=(args...)->error("dry-run launched workers"))==0
+
+    mcgs, mcspecs = parse_config(MONTECARLO_CONFIG)
+    mcruns = plan_runs(
+        mcspecs, mcgs, TOML.parsefile(MONTECARLO_CONFIG),
+        parse_plot_groups(MONTECARLO_CONFIG), 1_000_000,
+    )
+    @test Set(r.spec.name for r in mcruns) == Set(("montecarlo", "montecarlo_naive"))
+    @test all(r.model == :cunumeric for r in mcruns)
+    @test all(
+        length(unique((r.N, r.M) for r in mcruns if r.spec.gpus == p)) == 1 for
+        p in (1, 2, 4, 8)
+    )
 end
 
 @testset "Smoke configuration" begin
@@ -239,9 +254,15 @@ end
         end
     end
     b = MonteCarloIntegration{Float32}(; n_samples=1024)
+    naive = MonteCarloNaive{Float32}(; n_samples=1024)
     @test peak_bytes(memory_estimate(b, MemoryContext())) == 8192
     @test peak_bytes(memory_estimate(b, MemoryContext(; model=:cupynumeric))) == 12288
-    @test peak_bytes(memory_estimate(b, MemoryContext(; fusion=false))) == 16384
+    @test peak_bytes(memory_estimate(b, MemoryContext(; fusion=false))) == 8192
+    @test peak_bytes(memory_estimate(naive, MemoryContext())) == 8192
+    @test peak_bytes(memory_estimate(naive, MemoryContext(; fusion=false))) == 16384
+    @test supports_benchmark(execution_model(:cunumeric), "montecarlo_naive")
+    @test !supports_benchmark(execution_model(:cupynumeric), "montecarlo_naive")
+    @test !supports_benchmark(execution_model(:cudajl), "montecarlo_naive")
     # GEMM resolves to a source default; jacc's kernel needs no cuBLAS scratch.
     @test memory_estimate(GEMM{Float32}(; N=64, M=64), MemoryContext()).workspace ==
         CUBLAS_WORKSPACE_PER_GPU

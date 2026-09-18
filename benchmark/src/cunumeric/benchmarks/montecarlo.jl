@@ -1,12 +1,10 @@
-# Keep the ordinary array implementation in the shared benchmark file for CPU
-# correctness. The cuNumeric worker replaces only its NDArray path with the
-# recommended accelerated scope.
-let body = quote
-        integrand = _montecarlo_integrand(x)
-        return _domain_volume(mci) * sum(integrand)
-    end
-    definition = _define_accelerated_definition(
-        :(run!(mci::MonteCarloIntegration, x::NDArray)), body
-    )
-    @eval $definition
+function run!(mci::MonteCarloIntegration{T}, x::NDArray) where {T}
+    total = mapreduce(_montecarlo_scalar_integrand, +, x; init=zero(T))
+    return _domain_volume(mci) * total
+end
+
+function benchmark_backend_label(
+    ::MonteCarloIntegration, backend::String, default::String
+)
+    return backend == "cunumeric" ? "cuNumeric (mapreduce)" : default
 end
