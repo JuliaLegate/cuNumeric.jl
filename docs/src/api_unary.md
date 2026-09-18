@@ -18,6 +18,9 @@ The following unary operations are supported and can be broadcast over `NDArray`
 - `var` / `std` match Julia / StatsBase sample statistics (`corrected=true`, divisor `n-1`). Complex is not supported.
 - `argmax` / `argmin` are 1-d only (matching Base's `Int` return, not `CartesianIndex`). The result is a 0-d `NDArray{Int64}` of the 1-based index. Complex is not supported.
 
+For `mapreduce` and mapped `sum`, `prod`, `minimum`, and `maximum`, see
+[Mapped Reductions](./api_mapreduce.md).
+
 ```@autodocs
 Modules = [cuNumeric]
 Pages = ["ndarray/unary.jl"]

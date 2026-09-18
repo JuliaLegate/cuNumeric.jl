@@ -23,12 +23,14 @@
 #include <algorithm>
 #include <cstdint>
 #include <regex>
+#include <stdexcept>
 
 #include "legate.h"
 #include "legate/utilities/proc_local_storage.h"
 #include "legion.h"
 #include "types.h"
 #include "ufi.h"
+#include "ptx.h"
 
 // #define CUDA_DEBUG
 #include "cuda_macros.h"  // Shared error/debug and dense argument-packing macros.
@@ -64,6 +66,19 @@ using FunctionMap = std::unordered_map<FunctionKey, CUfunction, FunctionKeyHash,
 
 static legate::ProcLocalStorage<FunctionMap> cufunction_ptr{};
 
+CUfunction lookup_ptx(const std::string& name, cudaStream_t stream) {
+  CUcontext ctx;
+  if (cuStreamGetCtx(stream, &ctx) != CUDA_SUCCESS)
+    throw std::runtime_error("PTX: could not get the task CUDA context");
+  if (!cufunction_ptr.has_value())
+    throw std::runtime_error("PTX: no modules loaded on this processor");
+  auto& functions = cufunction_ptr.get();
+  auto it = functions.find({ctx, name});
+  if (it == functions.end())
+    throw std::runtime_error("PTX: missing kernel " + name);
+  return it->second;
+}
+
 #ifdef CUDA_DEBUG
 std::string context_to_string(CUcontext ctx) {
   std::ostringstream oss;
@@ -90,18 +105,6 @@ struct CuDeviceArray {
   uint64_t maxsize;              // Total allocated size in bytes
   std::array<uint64_t, D> dims;  // Fixed-size array of dimension sizes
   uint64_t length;               // Number of elements (at the end)
-};
-
-// Strided — matches Julia cuNumeric.CuStridedDeviceArray (RunPTXBroadcastTask
-// only).
-template <size_t D>
-struct CuStridedDeviceArray {
-  void *ptr;
-  uint64_t maxsize;
-  std::array<uint64_t, D> dims;
-  std::array<uint64_t, D>
-      strides;  // element strides (byte strides / sizeof(T))
-  uint64_t length;
 };
 
 #define CUDA_STRIDED_DEVICE_ARRAY_ARG(MODE, ACCESSOR_CALL)                     \
@@ -194,27 +197,7 @@ static PTXLaunchParams read_launch_params(legate::TaskContext &context) {
   p.ty = context.scalar(THREAD_START + 1).value<std::uint32_t>();
   p.tz = context.scalar(THREAD_START + 2).value<std::uint32_t>();
 
-  CUcontext ctx;
-  cuStreamGetCtx(p.stream, &ctx);
-
-  FunctionKey key = {ctx, p.kernel_name};
-  assert(cufunction_ptr.has_value());
-  FunctionMap &fmap = cufunction_ptr.get();
-  auto it = fmap.find(key);
-
-#ifdef CUDA_DEBUG
-  if (it == fmap.end()) {
-    std::cerr << "[RunPTXTask] Could not find key: " << key_to_string(key)
-              << std::endl;
-    for (const auto &[k, v] : fmap) {
-      std::cerr << "[RunPTXTask] Map key: " << key_to_string(k) << std::endl;
-    }
-    assert(0 && "[RunPTXTask] key is not found in hashmap");
-  }
-#endif
-
-  assert(it != fmap.end());
-  p.func = it->second;
+  p.func = lookup_ptx(p.kernel_name, p.stream);
   p.custream = reinterpret_cast<CUstream>(p.stream);
   return p;
 }

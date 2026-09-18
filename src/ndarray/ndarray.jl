@@ -192,32 +192,30 @@ function (::Type{Array{T}})(arr::NDArray{S,0}) where {T,S}
 end
 
 function (::Type{Array{T}})(arr::NDArray{T,1}) where {T}
-    out = Vector{T}(undef, length(arr))
-    isempty(out) && return out
-    # get_ptr waits for the source to be available in host memory. Keep its
-    # owner alive until the synchronous CPU copy into Julia-owned storage ends.
-    GC.@preserve arr out begin
-        src = Ptr{T}(get_ptr(arr))
-        unsafe_copyto!(pointer(out), src, length(out))
-    end
-    return out
+    # Legate.get_ptr requests a write accessor. A singleton can be backed by
+    # a read-only future, so copy into attached host storage before mapping it.
+    return _copy_to_julia_array(arr)
 end
 
 function (::Type{Array{T}})(arr::NDArray{S,1}) where {T,S}
-    return T.(make_array(S, Ptr{S}(get_ptr(arr)), size(arr)))
+    return copyto!(Vector{T}(undef, length(arr)), _copy_to_julia_array(arr))
 end
 
 # Copy logically into Julia's column-major storage.
 # Legate may map an NDArray in C or Fortran order.
 function _copy_to_julia_array(arr::NDArray{T,N}) where {T,N}
     out = Array{T}(undef, size(arr))
+    isempty(out) && return out
     store = Legate.attach_external_col_major(out)
     ptr = cuNumeric.nda_store_to_ndarray(store.handle)
     finalize(store.handle)
     attached = NDArray(ptr, T, Val(N), out)
-    copyto!(attached, arr)
-    get_ptr(attached) # Block until the copy into `out` completes.
-    destroy!(attached)
+    try
+        copyto!(attached, arr)
+        get_ptr(attached) # Block until the copy into `out` completes.
+    finally
+        destroy!(attached)
+    end
     return out
 end
 

@@ -163,6 +163,18 @@ _scope_op(kind, op_code) = string(kind, "#", Int32(op_code))
 NDArray(value::T) where {T<:SUPPORTED_TYPES} = nda_full_array((), value)
 
 # construction
+# Internal outputs only: callers must overwrite every element before any read.
+function nda_empty_array(dims::Dims{N}, ::Type{T}) where {T,N}
+    shape = collect(UInt64, dims)
+    legate_type = Legate.to_legate_type(T)
+    ptr = @task_scope "empty" begin
+        ccall((:nda_empty_array, libnda),
+            NDArray_t, (Int32, Ptr{UInt64}, Legate.LegateTypeAllocated),
+            Int32(N), shape, legate_type)
+    end
+    return NDArray(ptr, T, Val(N))
+end
+
 function nda_zeros_array(dims::Dims{N}, ::Type{T}) where {T,N}
     shape = collect(UInt64, dims)
     legate_type = Legate.to_legate_type(T)
