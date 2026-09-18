@@ -113,8 +113,9 @@ end
 # A full reduction has one output. Cooperate across a block instead of making
 # a single thread serially combine every partial. Invalid lanes never enter the
 # tree: an extra identity operation can change signed zeros or complex infinities.
-function _mr_contribute_full_kernel(scratch::CuStridedDeviceArray{S,1}, dest, op,
-                                    single::Bool, start::Int, count::Int, chunks::Int) where {S}
+# Keep nested GPU calls statically dispatched on Julia 1.10 as well.
+function _mr_contribute_full_kernel(scratch::CuStridedDeviceArray{S,1}, dest, op::OP,
+                                    single::Bool, start::Int, count::Int, chunks::Int) where {S,OP}
     tid = Int(CUDACore.threadIdx().x)
     active = min(chunks, _MR_THREADS)
     value = _mr_identity(op, S)
