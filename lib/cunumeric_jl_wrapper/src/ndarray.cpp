@@ -63,6 +63,12 @@ struct CN_Store {
   legate::LogicalStore obj;
 };
 
+CN_NDArray* nda_empty_array(int32_t dim, const uint64_t* shape, CN_Type type) {
+  std::vector<uint64_t> shp(shape, shape + dim);
+  auto* runtime = cupynumeric::CuPyNumericRuntime::get_runtime();
+  return new CN_NDArray{runtime->create_array(shp, type.obj)};
+}
+
 CN_NDArray* nda_zeros_array(int32_t dim, const uint64_t* shape, CN_Type type) {
   std::vector<uint64_t> shp(shape, shape + dim);
   NDArray result = zeros(shp, type.obj);

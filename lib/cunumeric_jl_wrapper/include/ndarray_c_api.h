@@ -52,6 +52,9 @@ uint64_t nda_query_device_memory();
 //   CN_Type    : Legate type of object
 CN_NDArray* nda_zeros_array(int32_t dim, const uint64_t* shape, CN_Type type);
 
+// Internal allocation without a fill; every element must be written before use.
+CN_NDArray* nda_empty_array(int32_t dim, const uint64_t* shape, CN_Type type);
+
 // full(shape, value)
 //   dim   : number of dimensions
 //   shape : pointer to array[length=dim]
