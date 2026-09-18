@@ -111,6 +111,7 @@ a known limitation, and — is not supported by the harness.
 | Conjugate gradient | ✅ / ✅ | ✅ / ✅ | ✅ / — | ✅ / ✅ | ✅ / ⚠ |
 | NAS embarrassingly parallel | ⚠ / ⚠ | ⚠ / ⚠ | ✅ / — | ✅ / ✅ | ✅ / ✅ |
 | NAS Fourier transform | ⚠ / ⚠ | ⚠ / ⚠ | ✅ / — | ⚠ / — | ⚠ / ⚠ |
+| NAS multigrid | ✅ / ✅ | ✅ / ✅ | ✅ / — | ✅ / — | ✅ / ⚠ |
 
 The Dagger Gray–Scott implementation is correct on multiple GPUs, but Dagger's
 current fused stencil path transfers whole neighboring chunks before slicing
@@ -136,6 +137,12 @@ NAS FT runs a complete official class per timed sample. cuNumeric and
 cuPyNumeric submit the full 3-D FFT as native Legate auto tasks, which the
 runtime can distribute across the available GPUs. See `nas/README.md` for the
 initialization and checksum fallbacks used by each model.
+
+NAS MG runs the official periodic multigrid V-cycle and verifies its final L2
+norm. Its exact sparse RNG-generated right-hand side is setup outside timing,
+matching NPB-GPU. Dagger uses distributed periodic stencils, but currently
+constructs temporary distributed arrays for multigrid transfers; its GPU
+scaling still needs measurement. See `nas/README.md` for backend limitations.
 
 ## Results
 

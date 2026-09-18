@@ -63,3 +63,30 @@ Run class S across all models with:
 ```sh
 julia --project=. run.jl --config=benchmarks_nas_ft.toml
 ```
+
+## MG execution contract
+
+One timed MG sample follows the pinned `CUDA/MG/mg.cu`: starting from the
+official sparse right-hand side, it computes the initial residual, executes
+the class's fixed number of complete multigrid V-cycles, recomputes the finest
+residual after every cycle, and performs the reference's initial and final L2
+norm reductions. Reduction results remain device-side until correctness
+verification. The 46-bit RNG search for the ten positive and ten negative
+impulses is setup work outside NPB-GPU's timer and is likewise performed before
+harness timing.
+
+The V-cycle includes periodic boundary exchange, the 27-point residual,
+full-weight restriction, trilinear interpolation, and the NPB smoother at
+every prescribed level. Correctness compares the final L2 norm with the
+official value at relative tolerance `1.0e-8`.
+
+JACC is single-GPU because it has no distributed 3-D halo API. CUDA.jl is the
+single-GPU baseline. cuNumeric, cuPyNumeric, and Dagger express the hierarchy
+through their distributed array APIs; implementation headers document their
+communication limitations.
+
+Run class S across all models with:
+
+```sh
+julia --project=. run.jl --config=benchmarks_nas_mg.toml
+```
