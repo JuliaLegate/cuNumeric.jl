@@ -21,6 +21,7 @@ end
 include(joinpath(@__DIR__, "..", "core.jl"))
 include_benchmarks()
 include(joinpath(@__DIR__, "benchmarks", "cg.jl"))
+include(joinpath(@__DIR__, "benchmarks", "nas", "ep.jl"))
 include(joinpath(@__DIR__, "benchmarks", "nas", "ft.jl"))
 include(joinpath(@__DIR__, "benchmarks", "montecarlo.jl"))
 include(joinpath(@__DIR__, "benchmarks", "grayscott_accelerate_forms.jl"))

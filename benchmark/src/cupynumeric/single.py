@@ -19,7 +19,7 @@ from core import MOD, parse_type, trial, save_result, _mean, _std
 from benchmarks import BENCHMARKS  # import populates BENCHMARKS
 
 
-def show_progress(name, completed, total, last_time_ms, last_gflops, started):
+def show_progress(name, completed, total, last_time_ms, last_gflops, started, unit):
     width = 40
     filled = width * completed // total
     bar = "█" * filled + " " * (width - filled)
@@ -33,7 +33,7 @@ def show_progress(name, completed, total, last_time_ms, last_gflops, started):
         sys.stderr.write(
             f"\n                 Completed trials: {completed}/{total}"
             f"\n   Last trial mean (ms/iteration): {last_time_ms:.5f}"
-            f"\n               Last trial GFLOP/s: {last_gflops:.5f}\n"
+            f"\n               Last trial {unit}: {last_gflops:.5f}\n"
         )
         sys.stderr.flush()
 
@@ -91,7 +91,8 @@ def main():
         t, g = trial(bench, n_warmup, n_iter, flops)
         times_ms.append(t)
         gflops.append(g)
-        show_progress(name, trial_index, n_trial, t, g, progress_started)
+        unit = getattr(bench, "throughput_label", "GFLOP/s")
+        show_progress(name, trial_index, n_trial, t, g, progress_started, unit)
 
     print(f"[{MOD}] Correctness: {correctness}")
     print(
@@ -100,7 +101,7 @@ def main():
     )
     print(
         f"[{MOD}] Mean throughput: {_mean(gflops):.5f} ± {_std(gflops):.5f} "
-        "GFLOP/s (trial SD)"
+        f"{getattr(bench, 'throughput_label', 'GFLOP/s')} (trial SD)"
     )
 
     save_result(bench.name, bench.dims(), gpus, times_ms, gflops, correctness)

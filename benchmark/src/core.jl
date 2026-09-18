@@ -50,6 +50,7 @@ function allowed_types end
 function total_flops end
 function initialize end
 function run! end
+throughput_label(::AbstractBenchmark) = "GFLOP/s"
 # Optional untimed reset before warmup and measurement. Return true when the
 # reset submitted asynchronous work that must complete before the clock starts.
 reset!(::AbstractBenchmark, state...) = false
@@ -294,6 +295,7 @@ function run_benchmark(
     end
     times_ms = Float64[]
     gflops = Float64[]
+    unit = throughput_label(b)
     progress = ProgressMeter.Progress(
         gs.n_trial; dt=0.0, desc="$(name(b)) trials: ", barlen=40
     )
@@ -308,7 +310,7 @@ function run_benchmark(
             showvalues=[
                 ("Completed trials", "$(trial)/$(gs.n_trial)"),
                 ("Last trial mean (ms/iteration)", @sprintf("%.5f", t)),
-                ("Last trial GFLOP/s", @sprintf("%.5f", g)),
+                ("Last trial $unit", @sprintf("%.5f", g)),
             ],
         )
     end

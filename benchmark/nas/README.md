@@ -8,6 +8,36 @@ The executable specification is GMAP/NPB-GPU at commit
 updating reference metadata and validating the official verification values.
 Its license is preserved in [`THIRD_PARTY_LICENSE.md`](THIRD_PARTY_LICENSE.md).
 
+## EP execution contract
+
+One timed sample generates the class's exact `2^(M+1)` random numbers with the
+NPB 46-bit linear-congruential generator, applies the Gaussian
+acceptance-rejection transform, and produces the ten-bin histogram plus `sx`
+and `sy` partial sums. Correctness aggregation happens after timing and checks
+the official sums with relative tolerance `1.0e-8`.
+
+NPB explicitly permits changing `MK`, the batch-size exponent, without changing
+the result. The pinned CUDA source uses `MK=16`; all harness models use `MK=8`.
+That common setting preserves the exact global RNG sequence while limiting each
+independent stream to 256 Gaussian pairs, allowing array programming models to
+express the serial recurrence without host-generating the benchmark workload.
+
+cuNumeric and cuPyNumeric implement the LCG as Float64 array algebra because
+they have no NPB RNG primitive. CUDA.jl and JACC evaluate the same scalar stream
+function directly. Dagger maps that function over its device-resident chunks
+without a hand-written CUDA kernel. JACC and Dagger partition streams across
+the requested GPUs; CUDA.jl remains the single-GPU baseline.
+
+Use `n_iter = 1`; use `n_trial` for independent complete runs. The common
+throughput value follows NAS EP and counts random numbers generated rather than
+floating-point instructions.
+
+Run class S across all models with:
+
+```sh
+julia --project=. run.jl --config=benchmarks_nas_ep.toml
+```
+
 ## FT execution contract
 
 FT needs no cached input artifact: its 46-bit RNG and spectral index map are
