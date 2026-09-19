@@ -244,7 +244,7 @@ using TensorOperations: TensorOperations as TO
         GC.gc()
         cuNumeric.drain_pending_frees!()
         current_bytes =
-            cuNumeric.HAS_CUDA ?
+            cuNumeric._has_gpu_target() ?
             cuNumeric.current_device_bytes :
             cuNumeric.current_host_bytes
         baseline = current_bytes[]

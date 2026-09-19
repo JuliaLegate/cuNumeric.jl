@@ -2,6 +2,9 @@ name = "cuNumeric"
 uuid = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
 version = "0.3.0"
 
+[workspace]
+projects = ["test", "dev"]
+
 [deps]
 AbstractFFTs = "621f4979-c628-5d54-868e-fcf4e3e8185c"
 CNPreferences = "3e078157-ea10-49d5-bf32-908f777cd46f"
@@ -35,14 +38,14 @@ cuNumericTensorOperationsExt = "TensorOperations"
 [compat]
 AbstractFFTs = "1.5"
 CNPreferences = "0.1.4"
-CUDACore = "6.2"
-CUDATools = "6.2"
-CxxWrap = "0.17"
+CUDACore = "6.4"
+CUDATools = "6.4"
+CxxWrap = "0.17.5"
 ExpressionExplorer = "1.1.4"
 JuliaFormatter = "2.3.0"
 KernelAbstractions = "0.9.41"
-Legate = "0.2.1"
-LegatePreferences = "0.1.6"
+Legate = "0.2.4"
+LegatePreferences = "0.1.7"
 MacroTools = "0.5.16"
 OpenBLAS32_jll = "0.3"
 Pkg = "1"
@@ -51,9 +54,6 @@ Random = "1"
 StaticArrays = "1"
 StatsBase = "0.34"
 TensorOperations = "5.8"
-cunumeric_jl_wrapper_jll = "26.6.2"
+cunumeric_jl_wrapper_jll = "26.6.4"
 cupynumeric_jll = "26.6.0"
 julia = "1.10"
-
-[workspace]
-projects = ["test", "dev"]

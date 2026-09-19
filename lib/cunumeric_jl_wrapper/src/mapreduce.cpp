@@ -32,7 +32,7 @@ class MapReduceMapper : public legate::mapping::Mapper {
       const legate::mapping::Task&, legate::mapping::StoreTarget target) override {
     // One partial buffer; ComplexF64 is the largest supported accumulator.
     return target == legate::mapping::StoreTarget::FBMEM
-        ? MAX_PARTIALS * sizeof(legate::type_of<legate::Type::Code::COMPLEX128>) : 0;
+        ? MAX_PARTIALS * sizeof(legate::type_of_t<legate::Type::Code::COMPLEX128>) : 0;
   }
 
   legate::Scalar tunable_value(legate::TunableID) override {
@@ -57,7 +57,7 @@ struct PackArray {
   template <legate::Type::Code C>
   ArrayArg<D> operator()(const legate::PhysicalStore& store) const {
     if constexpr (supported<C>) {
-      using T = legate::type_of<C>;
+      using T = legate::type_of_t<C>;
       auto rect = store.shape<D>();
       auto acc = [&]() {
         if constexpr (WRITE) return store.write_accessor<T, D>();
@@ -165,7 +165,7 @@ struct ReduceDispatch {
   template <legate::Type::Code C, int D>
   void operator()(legate::TaskContext& ctx, CUfunction kernel) const {
     if constexpr (supported<C> && C != legate::Type::Code::BOOL) {
-      using T = legate::type_of<C>;
+      using T = legate::type_of_t<C>;
       auto op = static_cast<MapReduceOp>(ctx.scalar(3).value<MapReduceOpValue>());
       if (op == MapReduceOp::ADD) return run_reduction<legate::SumReduction<T>, D>(ctx, kernel);
       if constexpr (C != legate::Type::Code::COMPLEX128) {

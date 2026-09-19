@@ -579,7 +579,7 @@ end
 #= Broadcast fusion PTX compilation cache.
  * Verifies `_BCAST_PTX_CACHE` grows on first fused launch of a signature and
  * is reused (no new entry) on a second launch of the same signature.
- * Gated on `FUSE_BROADCAST_EXPRS` + `HAS_CUDA`; skips otherwise.
+ * Gated on `FUSE_BROADCAST_EXPRS` and an active GPU target; skips otherwise.
  * With `FUSE_BROADCAST_MIN_OPS > 1`, single-op exprs are unfused — tests
  * should set min ops to 1 (LocalPreferences / ENV) to exercise the cache.
 =#
@@ -587,8 +587,8 @@ end
     T=Float32
     N=64
 
-    if !(cuNumeric.FUSE_BROADCAST_EXPRS && cuNumeric.HAS_CUDA)
-        @info "Skipping PTX cache tests (need FUSE_BROADCAST_EXPRS && HAS_CUDA)"
+    if !(cuNumeric.FUSE_BROADCAST_EXPRS && cuNumeric._has_gpu_target())
+        @info "Skipping PTX cache tests (need fusion and an active GPU target)"
         return nothing
     end
     if cuNumeric.FUSE_BROADCAST_MIN_OPS > 1

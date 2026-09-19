@@ -168,7 +168,7 @@ function ptx_task(ptx::String, kernel_name)
     taskid = cuNumeric.LOAD_PTX
 
     # One point task per GPU so every GPU compiles the module.
-    ngpus = max(Int(Legate.num_gpus()), 1)
+    ngpus = max(_LINALG_RUNTIME[].gpus, 1)
     domain = Legate.domain_from_shape(Legate.Shape(Legate.to_cxx_vector((ngpus,))))
     task = Legate.create_manual_task(rt, lib, taskid, domain)
     Legate.add_scalar(task, Legate.string_to_scalar(ptx))

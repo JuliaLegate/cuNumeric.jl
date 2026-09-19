@@ -46,6 +46,8 @@ end
     rt = cuNumeric._LINALG_RUNTIME[]
     @test rt.available == cuNumeric.cusolvermp_available()
     @test rt.gpus == Int(cuNumeric.Legate.num_gpus())
+    @test cuNumeric.HAS_CUDA[] == (rt.gpus > 0)
+    @test cuNumeric._has_gpu_target() == (rt.gpus > 0)
     @test rt.procs == Int(cuNumeric.Legate.num_procs())
     @test rt.mp_eligible == (rt.available && rt.gpus > 1)
     @test cuNumeric.choose_nd_color_shape((33, 33)) == (1, 1)

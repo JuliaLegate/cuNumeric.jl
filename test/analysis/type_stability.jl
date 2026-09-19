@@ -276,7 +276,7 @@ end
 end
 
 @testset verbose = true "fft" begin
-    if cuNumeric.HAS_CUDA
+    if cuNumeric._has_gpu_target()
         a = cuNumeric.zeros(ComplexF32, 8)
         b = cuNumeric.zeros(ComplexF32, 4, 6)
         @test @inferred(fft(a)) !== nothing

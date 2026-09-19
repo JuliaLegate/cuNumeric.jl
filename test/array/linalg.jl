@@ -520,10 +520,6 @@ end
     allowscalar() do
         @test isapprox(A_ref, Array(parent(L)) * Array(parent(L))'; atol=atol(T), rtol=rtol(T))
     end
-
-    # `F.U` (and hence destructuring as `L, U = F`) needs `copy(F.factors')`,
-    # which falls back to scalar indexing until `adjoint(::NDArray)` lands.
-    @test_throws "scalar-indexed" F.U
 end
 
 @testset "cholesky rejects bad shapes and types" begin

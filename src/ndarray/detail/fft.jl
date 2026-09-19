@@ -119,7 +119,7 @@ function _bluestein_mask(
 end
 
 function _assert_fft_gpu()
-    Legate.num_gpus() > 0 && return nothing
+    _has_gpu_target() && return nothing
     return throw(
         ErrorException(
             "FFT requires a CUDA GPU; cupynumeric's FFT task has no CPU variant"
