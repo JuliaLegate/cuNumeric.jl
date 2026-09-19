@@ -44,7 +44,7 @@ fi
 echo "Using $JULIA at: $JULIA_PATH"
 
 GIT_REPO="https://github.com/JuliaInterop/libcxxwrap-julia.git"
-COMMIT_HASH="89e4699837bfa0929610c9e330889fb2df925b47" #(v14.2)
+COMMIT_HASH="ee8a49b403ced7669c8fa56cec860f567f6510aa" #(v14.11)
 JULIA_CXXWRAP_SRC=$CUNUMERIC_ROOT_DIR/lib/libcxxwrap-julia
 
 if [ ! -d "$JULIA_CXXWRAP_SRC" ]; then

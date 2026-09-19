@@ -163,11 +163,20 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   wrap_fft_ops(mod);
   wrap_bitgenerator_ops(mod);
 
-  mod.add_bits<ufi::MapReduceOp>("MapReduceOp", jlcxx::julia_type("CppEnum"));
-  mod.set_const("MAPREDUCE_ADD", ufi::MapReduceOp::ADD);
-  mod.set_const("MAPREDUCE_MUL", ufi::MapReduceOp::MUL);
-  mod.set_const("MAPREDUCE_MIN", ufi::MapReduceOp::MIN);
-  mod.set_const("MAPREDUCE_MAX", ufi::MapReduceOp::MAX);
+  mod.add_enum<ufi::MapReduceOp>("MapReduceOp",
+    std::vector<const char*>({
+        "MAPREDUCE_ADD",
+        "MAPREDUCE_MUL",
+        "MAPREDUCE_MIN",
+        "MAPREDUCE_MAX"
+    }),
+    std::vector<int>({
+        static_cast<int>(ufi::MapReduceOp::ADD),
+        static_cast<int>(ufi::MapReduceOp::MUL),
+        static_cast<int>(ufi::MapReduceOp::MIN),
+        static_cast<int>(ufi::MapReduceOp::MAX)
+    })
+  );
 
   using jlcxx::ParameterList;
   using jlcxx::Parametric;
