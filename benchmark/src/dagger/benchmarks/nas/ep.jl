@@ -2,6 +2,9 @@
 # Device chunks use high-level map! with the common scalar EP function; there
 # is no hand-written CUDA kernel. The untimed correctness pass uses Dagger's
 # mapped reductions so only the two verification scalars reach the host.
+# LIMITATION: Timing includes task completion but excludes global aggregation,
+# consistently with the other EP adapters. This uses one stream-mapping task
+# per GPU, not Dagger's distributed mapreduce as the timed workload.
 
 include(joinpath(@__DIR__, "..", "..", "..", "nas", "ep.jl"))
 

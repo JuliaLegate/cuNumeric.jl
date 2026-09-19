@@ -3,6 +3,11 @@
 # interpolation use Dagger-scheduled chunk broadcasts. This avoids scalar
 # DArray indexing and does not use a hand-written CUDA kernel, but interpolation
 # currently builds seven temporary DArrays per level.
+# Restriction filters the entire fine grid before subsampling (eight times as
+# many stencil outputs as direct coarse-grid evaluation). Coarse levels use
+# fewer GPUs; stencil/chunk movement is runtime-managed, not explicit minimal
+# halo exchange. Norms produce device-local partials; global aggregation is
+# untimed, unlike other adapters. Common timing deviations: see nas/README.md.
 
 include(joinpath(@__DIR__, "..", "..", "..", "nas", "mg.jl"))
 

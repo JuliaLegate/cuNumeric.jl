@@ -3,6 +3,10 @@
 LIMITATION: The exact NPB sparse right-hand side is generated on the host, as
 in NPB-GPU, and uploaded before timing. All residual, restriction,
 interpolation, smoothing, and periodic-boundary work stays in cuPyNumeric.
+Transfers use separable axis passes and temporary arrays, not JACC's direct
+per-cell kernels; array expressions also materialize intermediates. The common
+harness times initial zeroing and L2 sum-of-squares, but omits NPB's Linf norm;
+see nas/README.md.
 """
 
 import math

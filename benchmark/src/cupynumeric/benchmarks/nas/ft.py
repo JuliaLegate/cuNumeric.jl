@@ -2,9 +2,11 @@
 
 LIMITATION: cuPyNumeric has no NPB 46-bit RNG primitive, so the exact initial
 field is generated on the host during every timed run and copied to Legate.
-The full 3-D FFT is a native Legate auto task and distributes across available
-GPUs. The 1024-point checksum is currently a full masked reduction because
-cuPyNumeric has no indexed-reduction primitive. Official verification is kept.
+That serial Python RNG and transfer are timed, unlike CUDA/JACC's device RNG.
+The FFT auto task broadcasts transformed axes: a full 3-D FFT cannot partition
+across GPUs, though other array operations may distribute. Native take gathers
+the prescribed 1024 checksum samples. ifftn normalizes the full array; FFT and
+evolution temporaries are allocated inside timing. Official verification is kept.
 """
 
 import math
@@ -139,11 +141,11 @@ class NASFourierTransform:
         return self.N, self.M
     def initialize(self):
         nx, ny, nz, _ = CLASSES[self.class_name]; shape = (nz, ny, nx)
-        mask = host_np.zeros(shape)
-        for j in range(1, CHECKSUM_SAMPLES+1):
-            mask[(5*j) % nz, (3*j) % ny, j % nx] += 1.0
+        j = host_np.arange(1, CHECKSUM_SAMPLES+1, dtype=host_np.int64)
+        # C-order flattened indices; keep repeated samples (not a set).
+        indices = ((5*j) % nz * ny + (3*j) % ny) * nx + j % nx
         return {
-            "mask": np.asarray(mask),
+            "indices": np.asarray(indices),
             "ix2": np.asarray(frequency_squares(nx)).reshape(1, 1, nx),
             "iy2": np.asarray(frequency_squares(ny)).reshape(1, ny, 1),
             "iz2": np.asarray(frequency_squares(nz)).reshape(nz, 1, 1),
@@ -158,7 +160,9 @@ class NASFourierTransform:
         u0, checksums = np.fft.fftn(u0), []
         for _ in range(niter):
             u0 *= twiddle
-            checksums.append(np.sum(np.fft.ifftn(u0)*state["mask"]))
+            # All indices are valid; clip avoids a host-side bounds check.
+            samples = np.take(np.fft.ifftn(u0), state["indices"], mode="clip")
+            checksums.append(np.sum(samples))
         return checksums
     def correctness_dims(self):
         return self.N, self.M

@@ -1,6 +1,10 @@
 # LIMITATION: NPB MG's exact sparse right-hand side is generated on the host,
 # as in NPB-GPU, then uploaded once before timing. The V-cycle itself uses
 # cuNumeric views and broadcasts, allowing Legate to partition every level.
+# Restriction/interpolation are separable axis passes with temporary arrays,
+# not JACC's direct per-cell kernels. Views are no-ops; explicit slice/store
+# operations express the regions. The common harness times initial zeroing
+# and L2 sum-of-squares, but omits NPB's Linf norm; see nas/README.md.
 
 mutable struct CuNumericNASMGState{U,R,V,W}
     u::U

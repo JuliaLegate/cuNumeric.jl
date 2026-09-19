@@ -1,6 +1,8 @@
 # JACC.Multi partitions the independent EP streams across all visible GPUs.
 # Each stream executes the exact NPB 46-bit RNG and writes one partial result;
 # host aggregation is performed only by the untimed correctness check.
+# LIMITATION: Like the other EP adapters, timing excludes global aggregation.
+# JACC.Multi synchronizes launches; this is not an asynchronous multi-GPU DAG.
 
 include(joinpath(@__DIR__, "..", "..", "..", "nas", "ep.jl"))
 

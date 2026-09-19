@@ -1,8 +1,9 @@
 # LIMITATION: NPB-GPU uses a hand-written Stockham FFT, whereas this CUDA.jl
 # baseline uses cuFFT through AbstractFFTs. Initial-condition generation,
-# index-map construction, evolution, and checksum sampling remain device
-# kernels, and a timed run covers the complete NPB FT execution. CUDA.jl is
-# intentionally single-GPU in this harness.
+# index-map construction, evolution, and 1024-point checksum sampling use
+# device kernels. Plane-start seeds are computed/uploaded on the host inside
+# timing; one GPU thread generates each plane's RNG sequence. CUDA.jl is
+# intentionally single-GPU. Unlike NPB's FFT, ifft! normalizes the full array.
 
 struct CUDANASFTState{A,T,S,I,C}
     u0::A

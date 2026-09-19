@@ -1,10 +1,14 @@
 # LIMITATION: Dagger supplies a native distributed 3-D FFT with slab/pencil
-# redistributions, but not NPB's 46-bit RNG or indexed checksum reduction.
+# redistributions. This adapter generates the NPB 46-bit RNG on the host.
 # Exact initialization and index-map construction therefore run on the host
 # inside the timed sample and are copied into DArrays. Each checksum uses one
 # fused, device-side map-reduce per GPU slab. Dagger's data-dependency region
 # waits for those tasks, but the 1×1×1 device results are not fetched to the
-# host until correctness verification after the timed run.
+# host until correctness verification after the timed run. This scans whole
+# slabs using a checksum mask, not just the 1024 prescribed samples. Global
+# aggregation of slab partials is untimed, unlike the Legate/CUDA/JACC paths;
+# results are not an identical-work checksum comparison. ifft! normalizes the
+# full array, unlike the reference's checksum-only normalization.
 
 include(joinpath(@__DIR__, "..", "..", "..", "nas", "ft.jl"))
 
