@@ -1,8 +1,10 @@
 # LIMITATION: cuNumeric has no NPB 46-bit RNG primitive, so exact initial
 # conditions are generated on the host during each timed run and copied into a
-# Legate array. The full 3-D FFT is a native Legate auto task and distributes
-# across the available GPUs. Checksum sampling is currently expressed as a
-# full masked reduction because cuNumeric has no indexed-reduction primitive.
+# Legate array (host RNG and transfer are timed). The FFT auto task broadcasts
+# transformed axes: a full 3-D FFT cannot partition across GPUs; other array
+# operations may distribute. Checksum sampling uses a full-volume masked
+# reduction, rather than a 1024-element gather, with an extra product array.
+# ifft! normalizes the full array. These are material comparison limitations.
 
 struct CuNumericNASFTState{A,T,M,X,Y,Z,H,C}
     u0::A

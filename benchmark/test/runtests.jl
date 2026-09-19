@@ -11,6 +11,7 @@ include("../src/result_rows.jl")
 include("../src/model_worker.jl")
 include("timing.jl")
 include("nas.jl")
+include("jacc_nas_launch.jl")
 
 const CONFIG = joinpath(@__DIR__, "..", "benchmarks.toml")
 const SMOKE_CONFIG = joinpath(@__DIR__, "..", "benchmarks_smoke.toml")

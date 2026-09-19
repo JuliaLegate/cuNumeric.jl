@@ -134,9 +134,9 @@ task-launch overhead. JACC and Dagger partition independent streams across all
 requested GPUs. See `nas/README.md` for the shared batching contract.
 
 NAS FT runs a complete official class per timed sample. cuNumeric and
-cuPyNumeric submit the full 3-D FFT as native Legate auto tasks, which the
-runtime can distribute across the available GPUs. See `nas/README.md` for the
-initialization and checksum fallbacks used by each model.
+cuPyNumeric submit native Legate FFT auto tasks, but transformed axes cannot
+partition: their full 3-D FFT is not distributed. Dagger uses a distributed
+FFT. See `nas/README.md` for initialization, checksum, and timing differences.
 
 NAS MG runs the official periodic multigrid V-cycle and verifies its final L2
 norm. Its exact sparse RNG-generated right-hand side is setup outside timing,

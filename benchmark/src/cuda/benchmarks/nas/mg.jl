@@ -1,6 +1,9 @@
 # LIMITATION: This idiomatic CUDA.jl baseline expresses the NPB MG operators as
 # fused CuArray broadcasts instead of copying NPB-GPU's hand-written kernels.
 # CUDA.jl remains the harness's intentionally single-GPU baseline.
+# Restriction/interpolation use strided views and multiple broadcasts, not
+# JACC's one-kernel-per-operator approach. The common harness times initial
+# zeroing and L2 sum-of-squares, but omits NPB's Linf norm (see nas/README.md).
 
 mutable struct CUDANASMGState{U,R,V}
     u::U

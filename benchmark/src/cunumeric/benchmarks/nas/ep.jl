@@ -2,6 +2,10 @@
 # therefore expressed as fused Float64 array algebra over independent MK=8
 # streams. This preserves the official sequence and verification values, but
 # has more task-launch overhead than a scalar RNG primitive would require.
+# Each of the 256 recurrence steps traverses the stream arrays; masked math
+# also evaluates log/sqrt for rejected pairs. Scalar-kernel models keep their
+# recurrence local and skip rejected math. Global aggregation is untimed in all
+# models; precomputed skip masks are metadata, not precomputed random samples.
 
 mutable struct CuNumericNASEPState{V,M}
     values::V

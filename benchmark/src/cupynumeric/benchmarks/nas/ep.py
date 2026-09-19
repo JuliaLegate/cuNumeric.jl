@@ -3,6 +3,10 @@
 LIMITATION: cuPyNumeric has no NPB RNG primitive. The official LCG is expressed
 as Float64 array operations over MK=8 streams. This preserves the sequence and
 verification values but submits more tasks than a native scalar RNG kernel.
+Each of 256 steps traverses stream arrays with materialized intermediates;
+masked log/sqrt also evaluates rejected pairs. Scalar-kernel models avoid that
+work. Global aggregation is untimed in all models; setup skip masks contain
+metadata, not precomputed random samples.
 """
 
 import cupynumeric as np

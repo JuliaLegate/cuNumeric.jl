@@ -2,6 +2,9 @@
 # exchange, so this implementation is single-GPU. Every MG operator and the
 # final norm are nevertheless JACC kernels/reductions; no CUDA.jl kernel is
 # used directly.
+# Transfers use direct per-cell kernels, unlike the array adapters' staged
+# transfers. The common harness times initial zeroing and L2 sum-of-squares,
+# but omits NPB's Linf norm; see nas/README.md.
 
 include(joinpath(@__DIR__, "..", "..", "..", "nas", "mg.jl"))
 
@@ -16,7 +19,6 @@ struct JACCNASMGState
     r
     rhs
     c
-    launch
     norm_reducer
 end
 
@@ -38,9 +40,15 @@ function model_initialize(b::JACCNASMG)
     r = [JACC.zeros(Float64, n, n, n) for n in sizes]
     return JACCNASMGState(
         u, r, JACC.Array(nas_mg_rhs(p)), nas_mg_smoother(b.class),
-        JACC.launch_spec(; sync=false),
         JACC.reducer(; range=p.n^3, type=Float64, sync=false),
     )
+end
+
+# CUDA fills in and retains a LaunchSpec's grid dimensions. MG changes both
+# grid size and kernel, so each launch must start with an unconfigured spec.
+# None of these kernels uses dynamic shared memory.
+function jacc_mg_launch(n, kernel, args...)
+    return JACC.parallel_for(JACC.launch_spec(; sync=false, shmem_size=0), n, kernel, args...)
 end
 
 @inline function jacc_mg_decode(index, n, offset)
@@ -86,9 +94,9 @@ end
 
 function jacc_mg_comm3!(s::JACCNASMGState, out)
     n = size(out, 1)
-    JACC.parallel_for(s.launch, (n - 2)^2, jacc_mg_comm_x, out, n)
-    JACC.parallel_for(s.launch, n*(n - 2), jacc_mg_comm_y, out, n)
-    JACC.parallel_for(s.launch, n*n, jacc_mg_comm_z, out, n)
+    jacc_mg_launch((n - 2)^2, jacc_mg_comm_x, out, n)
+    jacc_mg_launch(n*(n - 2), jacc_mg_comm_y, out, n)
+    jacc_mg_launch(n*n, jacc_mg_comm_z, out, n)
     return out
 end
 
@@ -111,7 +119,7 @@ end
 
 function jacc_mg_resid!(s, r, u, v)
     n = size(r, 1)
-    JACC.parallel_for(s.launch, (n - 2)^3, jacc_mg_resid, r, u, v, n)
+    jacc_mg_launch((n - 2)^3, jacc_mg_resid, r, u, v, n)
     return jacc_mg_comm3!(s, r)
 end
 
@@ -132,7 +140,7 @@ end
 
 function jacc_mg_psinv!(s, u, r)
     n = size(u, 1)
-    JACC.parallel_for(s.launch, (n - 2)^3, jacc_mg_psinv, u, r, n, s.c)
+    jacc_mg_launch((n - 2)^3, jacc_mg_psinv, u, r, n, s.c)
     return jacc_mg_comm3!(s, u)
 end
 
@@ -163,7 +171,7 @@ end
 
 function jacc_mg_restrict!(s, coarse, fine)
     nc = size(coarse, 1)
-    JACC.parallel_for(s.launch, (nc - 2)^3, jacc_mg_restrict, coarse, fine, nc)
+    jacc_mg_launch((nc - 2)^3, jacc_mg_restrict, coarse, fine, nc)
     return jacc_mg_comm3!(s, coarse)
 end
 
@@ -187,12 +195,12 @@ function jacc_mg_interp(index, fine, coarse, nf)
 end
 
 function jacc_mg_interp!(s, fine, coarse)
-    JACC.parallel_for(s.launch, length(fine), jacc_mg_interp, fine, coarse, size(fine, 1))
+    jacc_mg_launch(length(fine), jacc_mg_interp, fine, coarse, size(fine, 1))
     return fine
 end
 
 function jacc_mg_fill!(s, out)
-    JACC.parallel_for(s.launch, length(out), jacc_mg_zero, out)
+    jacc_mg_launch(length(out), jacc_mg_zero, out)
     return out
 end
 

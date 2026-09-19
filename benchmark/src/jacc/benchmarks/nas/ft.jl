@@ -3,6 +3,9 @@
 # index map, evolution, and checksum are JACC parallel_for/parallel_reduce
 # kernels and remain ordered on JACC's CUDA stream without per-iteration host
 # scalar fetches. Results are useful as a documented hybrid, not pure JACC FT.
+# Plane-start seeds are computed/uploaded on the host inside timing; one GPU
+# thread generates each plane, as in the CUDA.jl adapter. Real and imaginary
+# checksums use separate 1024-element reductions. ifft! normalizes the full array.
 
 include(joinpath(@__DIR__, "..", "..", "..", "nas", "ft.jl"))
 
@@ -50,8 +53,8 @@ function model_initialize(b::JACCNASFT)
         JACC.zeros(Float64, p.niter), JACC.zeros(Float64, p.niter),
         JACC.reducer(; range=NAS_FT_CHECKSUM_SAMPLES, type=Float64, sync=false),
         JACC.reducer(; range=NAS_FT_CHECKSUM_SAMPLES, type=Float64, sync=false),
-        JACC.launch_spec(; sync=false), JACC.launch_spec(; sync=false),
-        JACC.launch_spec(; sync=false), JACC.launch_spec(; sync=false),
+        JACC.launch_spec(; sync=false, shmem_size=0), JACC.launch_spec(; sync=false, shmem_size=0),
+        JACC.launch_spec(; sync=false, shmem_size=0), JACC.launch_spec(; sync=false, shmem_size=0),
     )
 end
 

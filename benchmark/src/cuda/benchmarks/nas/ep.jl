@@ -1,6 +1,8 @@
 # NPB permits changing MK without changing the generated sequence. This uses
 # the harness-wide MK=8 so every programming model performs the same batching.
 # CUDA.jl remains the intentionally single-GPU baseline.
+# LIMITATION: Timing ends at per-stream histogram/sum partials, not a global
+# reduction, consistently across models. See nas/README.md for the contract.
 
 struct CUDANASEPState{A}
     partials::A
