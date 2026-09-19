@@ -358,7 +358,9 @@ function test_scoping_rewrite_pipeline()
             stmts = utils._flatten_statements(rewritten)
 
             @test assigned == Set([:tmp1, :tmp2, :tmp3])
-            @test utils._assignment(stmts[1]).lhs == :tmp1
+            destination = utils._assignment(stmts[1])
+            @test destination.lhs == :tmp1
+            @test occursin("@view", sprint(Base.show_unquoted, destination.rhs))
             @test utils._assignment(stmts[2]) ==
                 (lhs=:tmp2, rhs=:(A[2:(end - 1), 2:(end - 1)]))
             @test utils._assignment(stmts[3]) ==

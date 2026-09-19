@@ -12,8 +12,8 @@ using Statistics
     standard deviations/errors.
 - `n_gpu::Int` : The number of GPUs used by legate. Set through the LEGATE_CONFIG,
     this value is just bookkeeping.
-- `check_correctness::Bool` : If true and `n_gpu == 1`, compare a tiny cuNumeric
-    result against CUDA.jl before timing. CUDA.jl / multi-GPU / Python skip.
+- `check_correctness::Bool` : If true and `n_gpu == 1`, compare the model result
+    against a reference on benchmark-defined dimensions before timing.
 - `n_correctness_iter::Int` : Steps to run for that single correctness check.
 """
 Base.@kwdef struct GlobalSettings
@@ -21,8 +21,7 @@ Base.@kwdef struct GlobalSettings
     n_iter::Int # Number of iterations to run per trial
     n_trial::Int = 1 # Number of independent trials to run. Benchmark
     n_gpu::Int = 0
-    cupynumeric::Bool = false # also run baselines under cupynumeric for comparison
-    cuda::Bool = false # also run under CUDA.jl for comparison (single-GPU only)
+    models::Vector{Symbol} = [:cunumeric]
     check_correctness::Bool = false
     n_correctness_iter::Int = 5
     auto_size::Bool = false
@@ -51,25 +50,34 @@ function allowed_types end
 function total_flops end
 function initialize end
 function run! end
+throughput_label(::AbstractBenchmark) = "GFLOP/s"
+# Optional untimed reset before warmup and measurement. Return true when the
+# reset submitted asynchronous work that must complete before the clock starts.
+reset!(::AbstractBenchmark, state...) = false
 
 include("autosize.jl")
 
 function include_benchmarks()
     dir = joinpath(@__DIR__, "benchmarks")
-    for file in sort(filter(f -> endswith(f, ".jl"), readdir(dir; join=true)))
+    files = String[]
+    for (root, _, names) in walkdir(dir), name in names
+        endswith(name, ".jl") && push!(files, joinpath(root, name))
+    end
+    for file in sort!(files)
         Base.include(@__MODULE__, file)
     end
     return nothing
 end
 
-total_space(b::AbstractBenchmark) =
-    error("total_space not defined for $(typeof(b)); add a method in its benchmark file")
+function total_space(b::AbstractBenchmark)
+    return error("total_space not defined for $(typeof(b)); add a method in its benchmark file")
+end
 
 function estimate_scaling(b::AbstractBenchmark, P::Integer)
     P < 1 && throw(ArgumentError("P must be ≥ 1, got $P"))
     P == 1 && return map(Int, dims(b))
     return error(
-        "estimate_scaling not defined for $(typeof(b)); add a method in its benchmark file",
+        "estimate_scaling not defined for $(typeof(b)); add a method in its benchmark file"
     )
 end
 
@@ -100,16 +108,18 @@ end
 benchmark_backend_label(::AbstractBenchmark, backend::String, default::String) = default
 benchmark_backend_save_as(::AbstractBenchmark, backend::String, default::String) = default
 
-function build_benchmark(::Type{B}, ::Type{T}, N, M) where {B<:AbstractBenchmark,T}
-    return B{T}(; N=N, M=M)
+function build_benchmark(::Type{B}, ::Type{T}, N, M; kwargs...) where {B<:AbstractBenchmark,T}
+    return B{T}(; kwargs..., N=N, M=M)
 end
 
-# Optional hooks for the generic CUDA.jl check (initialize + run!).
+# Optional hooks for the generic correctness check (initialize + run!).
 correctness_problem(b::AbstractBenchmark) = b
+correctness_seed(b::AbstractBenchmark) = initialize(b; mod=Base)
 correctness_iters(::AbstractBenchmark, gs::GlobalSettings) = 1
 cuda_runnable(b::AbstractBenchmark) = b
 correctness_result(::AbstractBenchmark, state, out) = out === nothing ? state : out
 correctness_atol_rtol(::AbstractBenchmark, ::Type{T}) where {T} = ref_atol_rtol(T)
+correctness_uses_cpu(::AbstractBenchmark) = false
 
 #########################################
 
@@ -126,11 +136,13 @@ end
 # CUDA.jl 6: the worker may pass `CUDA` or `CUDACore` as `mod`.
 is_cuda_backend(mod) = nameof(mod) === :CUDA || nameof(mod) === :CUDACore
 
-# Timed CUDA.jl is never the thing we check. Oracle compare is cuNumeric vs CUDA
-# on a single GPU (the cuNumeric worker loads CUDA for the tiny problem).
-function correctness_applies(gs::GlobalSettings, mod)
-    is_cuda_backend(mod) && return false
-    return gs.n_gpu == 1
+function correctness_applies(gs::GlobalSettings, mod, benchmark)
+    gs.n_gpu == 1 || return false
+    return !is_cuda_backend(mod) || correctness_uses_cpu(benchmark)
+end
+
+function correctness_reference_label(mod, benchmark)
+    return is_cuda_backend(mod) || correctness_uses_cpu(benchmark) ? "CPU" : "CUDA.jl"
 end
 
 function cuda_backend()
@@ -162,7 +174,7 @@ to_host(A) = Array(A)
 
 function to_backend(mod, A::AbstractArray)
     h = A isa Array ? A : Array(A)
-    mod === cuNumeric && return NDArray(h)
+    nameof(mod) === :cuNumeric && return mod.NDArray(h)
     is_cuda_backend(mod) && return mod.CuArray(h)
     return h
 end
@@ -202,12 +214,12 @@ end
 function check_benchmark_correctness(
     b::AbstractBenchmark{T}, gs::GlobalSettings; mod=cuNumeric
 ) where {T}
-    tiny = correctness_problem(b)
-    seed = initialize(tiny; mod=Base)
+    check_problem = correctness_problem(b)
+    seed = correctness_seed(check_problem)
     atol, rtol = correctness_atol_rtol(b, T)
-    nstep = correctness_iters(tiny, gs)
-    return check_vs_cuda(T; atol, rtol) do backend
-        kernel = backend === cuNumeric ? tiny : cuda_runnable(tiny)
+    nstep = correctness_iters(check_problem, gs)
+    reference = correctness_uses_cpu(check_problem) ? Base : cuda_backend()
+    run_on(backend, kernel) = begin
         state = to_backend_state(backend, seed)
         out = nothing
         for _ in 1:nstep
@@ -215,13 +227,10 @@ function check_benchmark_correctness(
         end
         return correctness_result(kernel, state, out)
     end
-end
-
-# `f(mod)` runs the tiny problem on one backend and returns the value(s) to compare.
-function check_vs_cuda(f, ::Type{T}; atol=nothing, rtol=nothing) where {T}
-    got = f(cuNumeric)
-    ref = f(cuda_backend())
-    return _all_approx(got, ref, T; atol, rtol) ? "pass" : "fail"
+    got = run_on(mod, check_problem)
+    reference_kernel = reference === Base ? check_problem : cuda_runnable(check_problem)
+    expected = run_on(reference, reference_kernel)
+    return _all_approx(got, expected, T; atol, rtol) ? "pass" : "fail"
 end
 
 # One timed trial: warmup, then time `n_iter` iterations of `run!`.
@@ -233,11 +242,15 @@ function _trial(
     state = initialize(b; mod=mod)
     fence_each = fence_each_iteration(b)
 
-    start_time = nothing
-    for idx in 1:(gs.n_warmup + gs.n_iter)
-        if idx == gs.n_warmup + 1
-            start_time = clock()
-        end
+    for _ in 1:gs.n_warmup
+        reset!(b, state...)
+        run!(b, state...)
+        fence_each && synchronize()
+    end
+    reset!(b, state...) && synchronize()
+
+    start_time = clock()
+    for _ in 1:gs.n_iter
         run!(b, state...)
         fence_each && synchronize()
     end
@@ -254,38 +267,52 @@ function run_benchmark(
     b::AbstractBenchmark, gs::GlobalSettings;
     mod=cuNumeric, clock=get_time_microseconds, synchronize=benchmark_synchronize,
 )
+    verbose = get(ENV, "CUNUMERIC_BENCH_VERBOSE", "0") == "1"
     correctness = "skipped"
     if gs.check_correctness
-        if correctness_applies(gs, mod)
-            println("Checking correctness against CUDA.jl on a small problem...")
-            flush(stdout)
+        if correctness_applies(gs, mod, b)
+            if verbose
+                check_dims = join(dims(correctness_problem(b)), '×')
+                println(
+                    "Correctness check: reference=$(correctness_reference_label(mod, b)), " *
+                    "dimensions=$check_dims",
+                )
+                flush(stdout)
+            end
             correctness = check_benchmark_correctness(b, gs; mod=mod)
         else
             correctness = "skipped"
         end
     end
 
-    println("Correctness: $(correctness)")
-    println(
-        "Starting $(gs.n_trial) trials; each includes initialization, " *
-        "$(gs.n_warmup) warmups, and $(gs.n_iter) timed iterations; " *
-        (fence_each_iteration(b) ? "per-iteration synchronization." : "batch synchronization."),
-    )
-    flush(stdout)
+    if verbose
+        println(
+            "Trials: count=$(gs.n_trial), warmups=$(gs.n_warmup), " *
+            "iterations=$(gs.n_iter), synchronization=" *
+            (fence_each_iteration(b) ? "per-iteration" : "per-trial"),
+        )
+        flush(stdout)
+    end
     times_ms = Float64[]
     gflops = Float64[]
-    progress = ProgressMeter.Progress(gs.n_trial; dt=0.0, desc="$(name(b)) trials: ")
+    unit = throughput_label(b)
+    progress = ProgressMeter.Progress(
+        gs.n_trial; dt=0.0, desc="$(name(b)) trials: ", barlen=40
+    )
     ProgressMeter.update!(progress, 0)
     for trial in 1:gs.n_trial
         t, g = _trial(b, gs; mod=mod, clock=clock, synchronize=synchronize)
         push!(times_ms, t)
         push!(gflops, g)
         # Update only after _trial has stopped its clock; never inside the kernel loop.
-        ProgressMeter.next!(progress; showvalues=[
-            ("Completed trials", "$(trial)/$(gs.n_trial)"),
-            ("Last trial mean (ms/iteration)", t),
-            ("Last trial GFLOP/s", g),
-        ])
+        ProgressMeter.next!(
+            progress;
+            showvalues=[
+                ("Completed trials", "$(trial)/$(gs.n_trial)"),
+                ("Last trial mean (ms/iteration)", @sprintf("%.5f", t)),
+                ("Last trial $unit", @sprintf("%.5f", g)),
+            ],
+        )
     end
     return BenchmarkResult(times_ms, gflops, b, correctness)
 end

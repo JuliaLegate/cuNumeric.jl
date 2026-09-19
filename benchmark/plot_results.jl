@@ -59,10 +59,14 @@ const COLOR_CUNUMERIC = "#2a78d6"
 const COLOR_CUPYNUMERIC = "#eb6834"
 const COLOR_CUDA = "#1a7f37"
 const COLOR_CUTENSOR = "#0d7377"
+const COLOR_JACC = "#8e44ad"
+const COLOR_DAGGER = "#c49a00"
 const MARKER_CUNUMERIC = :circle
 const MARKER_CUPYNUMERIC = :rect
 const MARKER_CUDA = :utriangle
 const MARKER_CUTENSOR = :star5
+const MARKER_JACC = :diamond
+const MARKER_DAGGER = :hexagon
 
 # Extra cuNumeric variants (Gray-Scott forms, DMD accelerated). Avoid the
 # reference orange/green so CUDA.jl and cuPyNumeric stay unique.
@@ -73,6 +77,8 @@ const REF_FAMILIES = [
     ("cupynumeric", "cuPyNumeric", COLOR_CUPYNUMERIC, MARKER_CUPYNUMERIC),
     ("CUDA.jl", "CUDA.jl", COLOR_CUDA, MARKER_CUDA),
     ("tensoroperations_cuda", "TensorOperations.jl / cuTENSOR", COLOR_CUTENSOR, MARKER_CUTENSOR),
+    ("jacc", "JACC.jl", COLOR_JACC, MARKER_JACC),
+    ("dagger", "Dagger.jl", COLOR_DAGGER, MARKER_DAGGER),
 ]
 
 const INK = "#111111"
@@ -249,7 +255,9 @@ function weak_scaling_figure(series; plot_title)
         append!(efficiencies, [x.h / (x.gpus * base) for x in s.agg])
     end
     p3 = plot(; ylabel="Parallel efficiency", title="Weak-scaling efficiency",
-        ylims=positive_ylim(max(1.0, isempty(efficiencies) ? 0.0 : maximum(efficiencies)); pad=0.12),
+        ylims=positive_ylim(
+            max(1.0, isempty(efficiencies) ? 0.0 : maximum(efficiencies)); pad=0.12
+        ),
         common..., left_margin=16Plots.mm)
     hline!(p3, [1.0]; color=IDEALCOL, ls=:dashdot, lw=1.6, label="")
     for s in series

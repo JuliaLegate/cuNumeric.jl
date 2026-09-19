@@ -50,59 +50,49 @@ end
 # Query only the GPUs the worker is allowed to see. Tests inject rows/env so
 # device selection and budget calculation do not require a GPU.
 function selected_gpu_budget(mem_frac, count;
-    inventory=read(`nvidia-smi --query-gpu=index,uuid,memory.total,memory.free --format=csv,noheader,nounits`,String),
-    visibility=get(ENV,"CUDA_VISIBLE_DEVICES",nothing),
-    fraction=get(ENV,"CUNUMERIC_BENCH_MEM_FRAC",string(mem_frac)),
-    fbmem=get(ENV,"CUNUMERIC_BENCH_FBMEM_MB",nothing))
-    frac = parse(Float64,fraction)
+    inventory=read(
+        `nvidia-smi --query-gpu=index,uuid,memory.total,memory.free --format=csv,noheader,nounits`,
+        String,
+    ),
+    visibility=get(ENV, "CUDA_VISIBLE_DEVICES", nothing),
+    fraction=get(ENV, "CUNUMERIC_BENCH_MEM_FRAC", string(mem_frac)),
+    fbmem=get(ENV, "CUNUMERIC_BENCH_FBMEM_MB", nothing))
+    frac = parse(Float64, fraction)
     0 < frac <= 1 || error("mem_frac must be in (0,1]")
-    rows = [strip.(split(line,',')) for line in split(inventory,'\n') if !isempty(strip(line))]
+    rows = [strip.(split(line, ',')) for line in split(inventory, '\n') if !isempty(strip(line))]
     devices = if visibility === nothing
         rows
     else
-        tokens = split(visibility,',')
-        any(t->isempty(strip(t)),tokens) && error("No usable CUDA_VISIBLE_DEVICES entries")
-        length(unique(tokens)) == length(tokens) || error("Duplicate CUDA_VISIBLE_DEVICES entries")
+        tokens = split(visibility, ',')
+        any(t->isempty(strip(t)), tokens) && error("No usable CUDA_VISIBLE_DEVICES entries")
+        length(unique(tokens)) == length(tokens) ||
+            error("Duplicate CUDA_VISIBLE_DEVICES entries")
         map(tokens) do token
-            matches = filter(r->r[1]==strip(token) || startswith(r[2],strip(token)),rows)
-            length(matches)==1 || error("Cannot resolve visible GPU '$token'; MIG requires a device-specific inventory")
-            only(matches)
+            matches = filter(r->r[1]==strip(token) || startswith(r[2], strip(token)), rows)
+            length(matches)==1 || error(
+                "Cannot resolve visible GPU '$token'; MIG requires a device-specific inventory"
+            )
+            return only(matches)
         end
     end
-    0 < count <= length(devices) || error("Requested $count GPUs, but only $(length(devices)) are visible")
+    0 < count <= length(devices) ||
+        error("Requested $count GPUs, but only $(length(devices)) are visible")
     # All visible devices are eligible for the runtime; use the smallest pool.
-    pools = [parse(Int,r[3])*1024^2 for r in devices]
-    free = minimum(parse(Int,r[4])*1024^2 for r in devices)
+    pools = [parse(Int, r[3])*1024^2 for r in devices]
+    free = minimum(parse(Int, r[4])*1024^2 for r in devices)
     if fbmem !== nothing
-        cap = parse(Int,fbmem)*1024^2
+        cap = parse(Int, fbmem)*1024^2
         cap > 0 || error("CUNUMERIC_BENCH_FBMEM_MB must be positive")
-        pools = min.(pools,cap)
+        pools = min.(pools, cap)
     end
-    budget = floor(Int,frac*minimum(pools))
+    budget = floor(Int, frac*minimum(pools))
     # Do not silently shrink for transient other workloads.
-    free >= budget || error("Selected GPUs have only $free free bytes; planned budget is $budget. Free the devices or explicitly reduce mem_frac.")
-    return budget,frac
+    free >= budget || error(
+        "Selected GPUs have only $free free bytes; planned budget is $budget. Free the devices or explicitly reduce mem_frac."
+    )
+    return budget, frac
 end
 
 function parse_bench_type(T_str::AbstractString)
     return getfield(Base, Symbol(T_str))::DataType
-end
-
-function resolve_autosize(
-    name::AbstractString, T_str::AbstractString, P::Integer;
-    mem_frac::Real, N_hint, M_hint,
-)
-    haskey(BENCHMARKS, name) || error(
-        "No benchmark registered for '$(name)'. Known: $(join(sort(collect(keys(BENCHMARKS))), ", "))",
-    )
-    B = BENCHMARKS[name]
-    T = parse_bench_type(T_str)
-    budget, frac = autosize_budget(mem_frac)
-    N1, M1 = fit_one_gpu(B, T; budget, N_hint, M_hint)
-    scaled = estimate_scaling(build_benchmark(B, T, N1, M1), P)
-    if scaled === nothing
-        return nothing
-    end
-    N, M = scaled
-    return (; N, M, N1, M1, budget, frac)
 end

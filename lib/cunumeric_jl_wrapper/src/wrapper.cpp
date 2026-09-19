@@ -203,24 +203,20 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
   mod.method("cusolvermp_available", &cupynumeric_has_cusolvermp);
 
   // Match cuPyNumeric 26.06: the MP kernels use a single NCCL communicator.
-  mod.method("add_nccl_communicator", [](legate::ManualTask& task) {
-    task.add_communicator("nccl");
-  });
-  mod.method("add_nccl_communicator", [](legate::AutoTask& task) {
-    task.add_communicator("nccl");
-  });
+  mod.method("add_nccl_communicator",
+             [](legate::ManualTask& task) { task.add_communicator("nccl"); });
+  mod.method("add_nccl_communicator",
+             [](legate::AutoTask& task) { task.add_communicator("nccl"); });
 
   // Tiled Cholesky launches subrectangles in the original partition's color
   // space. Bounds are inclusive and zero-based, as in Legion::Rect.
-  mod.method("create_linalg_task",
-             [](legate::LocalTaskID id, int64_t row_lo, int64_t col_lo,
-                int64_t row_hi, int64_t col_hi) {
-               auto domain = Legion::Domain{Legion::Rect<2>{
-                   Legion::Point<2>{row_lo, col_lo},
-                   Legion::Point<2>{row_hi, col_hi}}};
-               return legate::Runtime::get_runtime()->create_task(
-                   get_lib(), id, domain);
-             });
+  mod.method("create_linalg_task", [](legate::LocalTaskID id, int64_t row_lo,
+                                      int64_t col_lo, int64_t row_hi,
+                                      int64_t col_hi) {
+    auto domain = Legion::Domain{Legion::Rect<2>{
+        Legion::Point<2>{row_lo, col_lo}, Legion::Point<2>{row_hi, col_hi}}};
+    return legate::Runtime::get_runtime()->create_task(get_lib(), id, domain);
+  });
   mod.method("add_input_tile",
              [](legate::ManualTask& task,
                 std::shared_ptr<legate::LogicalStorePartition> part,
@@ -228,14 +224,14 @@ JLCXX_MODULE define_julia_module(jlcxx::Module& mod) {
                std::vector<uint64_t> color{row, col};
                task.add_input(part->get_child_store(color));
              });
-  mod.method("add_input_column",
-             [](legate::ManualTask& task,
-                std::shared_ptr<legate::LogicalStorePartition> part,
-                int32_t col) {
-               task.add_input(*part, legate::SymbolicPoint{
-                   std::vector<legate::SymbolicExpr>{legate::dimension(0),
-                                                     legate::constant(col)}});
-             });
+  mod.method(
+      "add_input_column",
+      [](legate::ManualTask& task,
+         std::shared_ptr<legate::LogicalStorePartition> part, int32_t col) {
+        task.add_input(*part,
+                       legate::SymbolicPoint{std::vector<legate::SymbolicExpr>{
+                           legate::dimension(0), legate::constant(col)}});
+      });
 
   mod.method("add_input_proj",
              [](legate::ManualTask& task,

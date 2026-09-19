@@ -226,8 +226,9 @@ end
 
 # A synthetic configuration exercises MP selection without changing the live
 # runtime cache or requiring multiple GPUs. Size remains a runtime argument.
-dl_mp_backend(op, shape) =
-    cuNumeric._linalg_backend(op, shape, cuNumeric._LinalgRuntime(true, 4, 4))
+function dl_mp_backend(op, shape)
+    return cuNumeric._linalg_backend(op, shape, cuNumeric._LinalgRuntime(true, 4, 4))
+end
 
 @testset "distributed linear algebra inference" begin
     cn = cuNumeric

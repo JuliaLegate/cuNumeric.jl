@@ -45,31 +45,31 @@
   } while (0)
 #endif
 
-#define CUDA_DEVICE_ARRAY_ARG(MODE, ACCESSOR_CALL)                             \
-  template <                                                                   \
-      typename T, int D,                                                       \
-      typename std::enable_if<(D >= 1 && D <= REALM_MAX_DIM), int>::type = 0>  \
-  void cuda_device_array_arg_##MODE(char *&p,                                  \
-                                    const legate::PhysicalArray &rf) {         \
-    auto shp = rf.shape<D>();                                                  \
-    auto acc = rf.data().ACCESSOR_CALL<T, D>();                                \
-    CUDA_DEBUG_PRINT(std::cerr << "[RunPTXTask] " #MODE " accessor shape: "    \
-                               << shp.lo << " - " << shp.hi << ", dim: " << D  \
-                               << std::endl;                                   \
-                     std::cerr << "[RunPTXTask] " #MODE " accessor strides: "  \
-                               << acc.accessor.strides << std::endl;);         \
+#define CUDA_DEVICE_ARRAY_ARG(MODE, ACCESSOR_CALL)                            \
+  template <                                                                  \
+      typename T, int D,                                                      \
+      typename std::enable_if<(D >= 1 && D <= REALM_MAX_DIM), int>::type = 0> \
+  void cuda_device_array_arg_##MODE(char *&p,                                 \
+                                    const legate::PhysicalArray &rf) {        \
+    auto shp = rf.shape<D>();                                                 \
+    auto acc = rf.data().ACCESSOR_CALL<T, D>();                               \
+    CUDA_DEBUG_PRINT(std::cerr << "[RunPTXTask] " #MODE " accessor shape: "   \
+                               << shp.lo << " - " << shp.hi << ", dim: " << D \
+                               << std::endl;                                  \
+                     std::cerr << "[RunPTXTask] " #MODE " accessor strides: " \
+                               << acc.accessor.strides << std::endl;);        \
     /* Preserve 64-bit coordinates; Realm::Point<D> defaults to int. */       \
-    void *dev_ptr = const_cast<void *>(/*.lo to ensure multiple GPU support*/  \
-                                       static_cast<const void *>(              \
-                                           acc.ptr(shp.lo)));                 \
-    auto extents = shp.hi - shp.lo + legate::Point<D>::ONES();                 \
-    CuDeviceArray<D> desc;                                                     \
-    desc.ptr = dev_ptr;                                                        \
-    desc.maxsize = shp.volume() * sizeof(T);                                   \
-    for (size_t i = 0; i < D; ++i) {                                           \
-      desc.dims[i] = extents[i];                                               \
-    }                                                                          \
-    desc.length = shp.volume();                                                \
-    memcpy(p, &desc, sizeof(CuDeviceArray<D>));                                \
-    p += sizeof(CuDeviceArray<D>);                                             \
+    void *dev_ptr =                                                           \
+        const_cast<void *>(/*.lo to ensure multiple GPU support*/             \
+                           static_cast<const void *>(acc.ptr(shp.lo)));       \
+    auto extents = shp.hi - shp.lo + legate::Point<D>::ONES();                \
+    CuDeviceArray<D> desc;                                                    \
+    desc.ptr = dev_ptr;                                                       \
+    desc.maxsize = shp.volume() * sizeof(T);                                  \
+    for (size_t i = 0; i < D; ++i) {                                          \
+      desc.dims[i] = extents[i];                                              \
+    }                                                                         \
+    desc.length = shp.volume();                                               \
+    memcpy(p, &desc, sizeof(CuDeviceArray<D>));                               \
+    p += sizeof(CuDeviceArray<D>);                                            \
   }

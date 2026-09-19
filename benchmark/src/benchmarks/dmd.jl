@@ -24,8 +24,8 @@ dims(b::AbstractDMD) = (b.N, b.M)
 data(b::AbstractDMD{T}) where {T} = "DMD with T=$(T), N=$(b.N), M=$(b.M)"
 allowed_types(::Type{<:AbstractDMD}) = cuNumeric.SUPPORTED_FLOAT_TYPES
 
-function build_benchmark(::Type{A}, ::Type{T}, N, M) where {A<:AbstractDMD,T}
-    return A{T}(; N=N, M=M)
+function build_benchmark(::Type{A}, ::Type{T}, N, M; kwargs...) where {A<:AbstractDMD,T}
+    return A{T}(; kwargs..., N=N, M=M)
 end
 
 _dmd_rank(b::AbstractDMD) = min(20, b.M - 1)
@@ -87,8 +87,16 @@ function initialize(b::AbstractDMD{T}; mod=cuNumeric) where {T}
     return (X,)
 end
 
-_dmd_T(A) = A isa NDArray ? cuNumeric.transpose(A) : transpose(A)
-_dmd_row(v) = v isa NDArray ? cuNumeric.reshape(v, (1, length(v))) : reshape(v, 1, length(v))
+_is_cunumeric_array(A) = nameof(typeof(A)) === :NDArray
+_dmd_T(A) = _is_cunumeric_array(A) ?
+            getfield(@__MODULE__, :cuNumeric).transpose(A) : transpose(A)
+function _dmd_row(v)
+    return if _is_cunumeric_array(v)
+        getfield(@__MODULE__, :cuNumeric).reshape(v, (1, length(v)))
+    else
+        reshape(v, 1, length(v))
+    end
+end
 
 # svd / eigen return factorizations whose stores the lifetime rewriter cannot
 # see, so those stay outside the macro. The GEMM lift is wrapped.
@@ -132,7 +140,7 @@ end
 
 run!(b::AbstractDMD, X) = _dmd_compute!(b, X, _dmd_rank(b))
 
-function correctness_problem(b::AD) where {AD <: AbstractDMD}
+function correctness_problem(b::AD) where {AD<:AbstractDMD}
     m = min(b.M, 16)
     n = max(min(b.N, 64), m - 1)
     return AD(; N=n, M=m)

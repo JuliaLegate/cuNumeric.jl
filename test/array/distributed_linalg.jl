@@ -1,12 +1,13 @@
 using Test, LinearAlgebra, Random
-import cuNumeric
+using cuNumeric: cuNumeric
 
 dl_host(a) = cuNumeric.allowscalar() do
-    Array(a)
+    return Array(a)
 end
 dl_tol(::Type{T}) where {T} = 200 * eps(real(T))
-dl_backend(op, shape, available, gpus, procs) =
-    cuNumeric._linalg_backend(op, shape, cuNumeric._LinalgRuntime(available, gpus, procs))
+function dl_backend(op, shape, available, gpus, procs)
+    return cuNumeric._linalg_backend(op, shape, cuNumeric._LinalgRuntime(available, gpus, procs))
+end
 
 @testset "linear algebra task selection" begin
     cn = cuNumeric
