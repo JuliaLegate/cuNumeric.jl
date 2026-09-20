@@ -46,6 +46,35 @@
     @allowscalar @test Array(a) == reshape(Float64.(1:15), 5, 3)
 end
 
+@testset "Host-copy handles do not reach off-thread GC" begin
+    # Run with both thread pools enabled to exercise the original abort. All
+    # array operations stay on the runtime thread; only GC runs on the other pool.
+    if Threads.nthreads(:interactive) > 0
+        runtime_thread = Threads.threadid()
+        function copy_and_release()
+            x = cuNumeric.ones(Float64, 8)
+            @test Array(x) == ones(8)
+            cuNumeric.destroy!(x)
+        end
+        function collect_elsewhere()
+            @test Threads.threadid() != runtime_thread
+            GC.gc(true)
+        end
+        for _ in 1:10
+            copy_and_release()
+            task = if Threads.threadpool() === :interactive
+                Threads.@spawn :default collect_elsewhere()
+            else
+                Threads.@spawn :interactive collect_elsewhere()
+            end
+            fetch(task)
+            cuNumeric.drain_pending_frees!()
+        end
+    else
+        @test_skip false # Requires an additional thread pool.
+    end
+end
+
 @testset "Array ↔ NDArray value roundtrip (row-major attach)" begin
     A = rand(Float64, 4, 4)
     NA = NDArray(A)

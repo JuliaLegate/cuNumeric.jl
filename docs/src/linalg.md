@@ -97,6 +97,33 @@ Pages = ["ndarray/binary.jl"]
 Filter = t -> t isa Function && nameof(t) === :mul!
 ```
 
+## Vector operations
+
+Numeric `NDArray`s support matrix-vector `A * x`, three- and five-argument
+`mul!`, vector `dot`, `axpy!`, `axpby!`, and scalar `lmul!` / `rmul!`.
+Five-argument matrix-matrix `mul!` is also available. Mixed types follow the
+package's explicit promotion policy. Matrix multiplication rejects
+integer-integer inputs (including Bool); mixed integer/floating-point inputs
+are supported when their promoted type is supported by the matrix kernel.
+Destinations of `mul!` must not alias inputs. Vector updates support exact
+self-aliasing, but not partially overlapping views.
+
+`dot` conjugates its first argument. **`dot` and dense-array `norm` return 0D
+NDArrays**, keeping their results on the backend without implicit scalar
+extraction or synchronization. Use `only` or `unwrap` explicitly when a Julia
+scalar is required. Bool-Bool dot products accumulate into `Int` under the
+existing promotion policy.
+
+`norm(A, p)` is an entrywise norm, not `opnorm`. It uses mapped reductions and
+currently requires a GPU target. The 2-norm fuses `abs2` into a sum reduction,
+then applies a backend square root. Like cuPyNumeric, powers are accumulated
+without scaling and can overflow or underflow. Integer inputs are converted
+to floating point under the existing promotion policy.
+
+Matrix-vector contraction selects cuPyNumeric's specialized `MATVECMUL` task.
+Generic solvers that require Julia scalar reductions, including IterativeSolvers
+CG, need adaptation to work with these asynchronous reduction results.
+
 ## Solve
 
 `cuNumeric.solve(A, b)` solves a linear system and returns an array with the same

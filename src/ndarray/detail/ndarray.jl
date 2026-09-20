@@ -658,7 +658,14 @@ function get_ptr(arr::NDArray{T,N}) where {T,N}
     # store with the NDArray; finalize after use (same pin class as `_add_task_array!`).
     st_handle = get_store(arr) # LogicalArrayImplAllocated (returned by value)
     la = Legate.LogicalArray{T,N}(st_handle, size(arr))
-    ptr = Legate.get_ptr(la)
+    # Legate.get_ptr(::LogicalArray) leaves PhysicalArray/PhysicalStore handles
+    # to GC. Their destructors can unmap regions, which must run on the runtime
+    # thread, just like the logical handle below. Keep and release them here.
+    physical = Legate.get_physical_array(la)
+    data = Legate.data(physical)
+    ptr = Legate.get_ptr(data)
+    finalize(data)
+    finalize(physical)
     finalize(st_handle)
     return ptr
 end

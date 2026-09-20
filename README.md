@@ -45,6 +45,14 @@ s = sum(A)          # NDArray{T,0}
 x = unwrap(s)       # T, e.g. Float32
 ```
 
+`LinearAlgebra.dot` on vectors and `LinearAlgebra.norm` on dense NDArrays
+return 0D NDArrays, keeping reductions asynchronous. Extract a Julia scalar explicitly with `only` or `unwrap` when needed.
+See [Linear algebra](https://julialegate.github.io/cuNumeric.jl/dev/linalg).
+
+**0D arrays support scalar-shaped arithmetic.** Use `+`, `-`, `*`, `/`, and `^`
+with two 0D NDArrays or with a 0D NDArray and a Julia number. Results stay as
+0D NDArrays on the backend, following the existing promotion policy.
+
 **The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into a task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them [for example `println`, `unwrap`, or communicating with the Julia runtime (i.e., `Array(A)`)]. Hiding latency enables performant code.
 
 For API details see [Initialization](https://julialegate.github.io/cuNumeric.jl/dev/api_initialization) and [NDArray Reference](https://julialegate.github.io/cuNumeric.jl/dev/api). For common performance pitfalls, see [Patterns to Avoid](https://julialegate.github.io/cuNumeric.jl/dev/perf/patterns_to_avoid).
