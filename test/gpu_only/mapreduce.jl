@@ -1,3 +1,5 @@
+_mapped_reduction_eltype(x::cuNumeric.NDScalar) = eltype(x.value)
+_mapped_reduction_eltype(x) = eltype(x)
 _mapped_reduction_host(A) = @allowscalar ndims(A) == 0 ? cuNumeric.unwrap(A) : Array(A)
 
 struct ReductionAffine
@@ -23,9 +25,9 @@ function _check_mapped_reduction(f, op, input; kwargs...)
         expected = mapreduce(f, op, input; kwargs...)
         result = mapreduce(f, op, A; kwargs...)
         @test size(result) == size(expected)
-        @test eltype(result) === (expected isa AbstractArray ? eltype(expected) : typeof(expected))
+        @test _mapped_reduction_eltype(result) === (expected isa AbstractArray ? eltype(expected) : typeof(expected))
         actual = _mapped_reduction_host(result)
-        if op === min || op === max || eltype(result) <: Integer
+        if op === min || op === max || _mapped_reduction_eltype(result) <: Integer
             @test isequal(actual, expected)
         else
             tolerances = _mapped_reduction_tolerances(f, input; dims=get(kwargs, :dims, :))
@@ -190,7 +192,7 @@ end
         A = cuNumeric.ones(Int8, 3)
         @test_throws Exception sum(identity, A)
         r = mapreduce(identity, +, A)
-        @test eltype(r) === Int8
+        @test _mapped_reduction_eltype(r) === Int8
         cuNumeric.destroy!(r)
         cuNumeric.destroy!(A)
     end

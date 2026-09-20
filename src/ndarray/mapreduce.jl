@@ -115,7 +115,7 @@ _mr_empty(f::Union{typeof(abs),typeof(abs2)}, op::typeof(max), T, M, ::NoReducti
     mapreduce(f, op, A::NDArray; dims=:, init)
 
 Fuse a scalar mapping with a distributed GPU reduction. Supported operators are
-`+`, `*`, `min`, and `max`. Full reductions return a 0-d `NDArray`; explicit
+`+`, `*`, `min`, and `max`. Full reductions return an `NDScalar`; explicit
 dimensions retain singleton axes. `sum(f, A)` and `prod(f, A)` use Base's integer
 widening rules, subject to `allowpromotion`.
 
@@ -143,10 +143,10 @@ function Base.mapreduce(f::F, op::OP, A::NDArray{T}; dims=:, init=NoReductionIni
     nreduce = prod(d -> mask[d] ? input_shape[d] : 1, 1:ndims(A); init=1)
     if nreduce == 0
         value = _mr_empty(f, op, T, M, init, dims)
-        return nda_full_array(shape, value)
+        return _scalar_result(nda_full_array(shape, value))
     end
-    any(iszero, input_shape) && return nda_zeros_array(shape, O)
-    return _mr_launch(mapper, op, A, R, O, mask, shape, init, dims, nreduce == 1)
+    any(iszero, input_shape) && return _scalar_result(nda_zeros_array(shape, O))
+    return _scalar_result(_mr_launch(mapper, op, A, R, O, mask, shape, init, dims, nreduce == 1))
 end
 
 Base.mapreduce(f, op, A::NDArray, B::AbstractArray, rest::AbstractArray...; kwargs...) =

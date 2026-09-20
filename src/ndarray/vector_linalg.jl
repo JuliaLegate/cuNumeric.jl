@@ -72,7 +72,7 @@ end
 """
     dot(x::NDArray{<:Any,1}, y::NDArray{<:Any,1})
 
-Hermitian inner product as a 0D NDArray, without unwrapping or synchronizing.
+Hermitian inner product as an NDScalar, without unwrapping or synchronizing.
 Conjugates the first operand for complex inputs. Numeric inputs are promoted
 using the package's existing policy. Bool-Bool dot accumulates into Int.
 """
@@ -84,7 +84,7 @@ function LinearAlgebra.dot(x::NDArray{TX,1}, y::NDArray{TY,1}) where {TX<:SUPPOR
     result = isempty(x) ? cuNumeric.zeros(T, ()) : _dot_same_type(xp, yp)
     xp !== x && destroy!(xp)
     yp !== y && destroy!(yp)
-    return result
+    return ndscalar(result)
 end
 
 _norm_nonzero(v) = ifelse(iszero(v), zero(real(v)), one(real(v)))
@@ -92,7 +92,7 @@ _norm_nonzero(v) = ifelse(iszero(v), zero(real(v)), one(real(v)))
 """
     norm(x::NDArray, p::Real=2)
 
-Entrywise p-norm as a real-valued 0D NDArray (not the matrix operator norm).
+Entrywise p-norm as an NDReal (not the matrix operator norm).
 The result stays on the backend; no reduction is unwrapped. Like cuPyNumeric,
 powers are accumulated without scaling and may overflow or underflow. Integer
 inputs convert to floating point under the existing promotion policy.
@@ -100,12 +100,12 @@ Uses mapped reductions, which currently require a GPU target.
 """
 function LinearAlgebra.norm(x::NDArray{T}, p::Real=2) where {T<:_LA_FLOAT}
     R = real(T)
-    isempty(x) && return cuNumeric.zeros(R, ())
+    isempty(x) && return ndscalar(cuNumeric.zeros(R, ()))
     p == 0 && return sum(_norm_nonzero, x)
     p == 1 && return sum(abs, x)
     p == Inf && return maximum(abs, x)
     p == -Inf && return minimum(abs, x)
-    isnan(p) && return NDArray(R(NaN))
+    isnan(p) && return ndscalar(NDArray(R(NaN)))
     exponent = R(p)
     total = p == 2 ? sum(abs2, x) : sum(v -> abs(v)^exponent, x)
     # Optimization opportunity: a specialized reduction could fuse the root into

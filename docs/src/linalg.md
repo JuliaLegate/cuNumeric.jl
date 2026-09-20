@@ -108,8 +108,7 @@ are supported when their promoted type is supported by the matrix kernel.
 Destinations of `mul!` must not alias inputs. Vector updates support exact
 self-aliasing, but not partially overlapping views.
 
-`dot` conjugates its first argument. **`dot` and dense-array `norm` return 0D
-NDArrays**, keeping their results on the backend without implicit scalar
+`dot` conjugates its first argument. **`dot` and dense-array `norm` return NDScalars**, keeping their results on the backend without implicit scalar
 extraction or synchronization. Use `only` or `unwrap` explicitly when a Julia
 scalar is required. Bool-Bool dot products accumulate into `Int` under the
 existing promotion policy.
@@ -121,8 +120,7 @@ without scaling and can overflow or underflow. Integer inputs are converted
 to floating point under the existing promotion policy.
 
 Matrix-vector contraction selects cuPyNumeric's specialized `MATVECMUL` task.
-Generic solvers that require Julia scalar reductions, including IterativeSolvers
-CG, need adaptation to work with these asynchronous reduction results.
+NDScalar wrappers satisfy numeric field constraints in generic solvers. Use the scoped `autounwrap` permission for host comparisons and conversions; see [Device scalars](api_ndscalar.md).
 
 ## Solve
 
@@ -311,7 +309,7 @@ must be `NDArray` unless noted.
 - `mul!`, `lmul!`, `rmul!` with `NDArray`
 - `D \ B`, `A / D`, `ldiv!`, `rdiv!` with `NDArray`
 - `inv(D)` — reciprocal on-device; zeros become Inf (no `SingularException`)
-- `det(D)` — 0-dimensional `NDArray` product of the diagonal
+- `det(D)` — `NDScalar` product of the diagonal
 
 **`NDArray` ± `Diagonal`**
 
@@ -337,12 +335,12 @@ must be `NDArray` unless noted.
 - `eigvals(D)`, `eigen(D)`, `eigvecs(D)` — unsorted; values are a copy of the
   diagonal (`NDArray`), vectors are `NDArray` identity. Keyword `sortby` is not
   supported on this method.
-- `tr`, `sum`, `prod`, `maximum`, `minimum` — 0-dimensional `NDArray` (not a Julia scalar)
+- `tr`, `sum`, `prod`, `maximum`, `minimum` — `NDScalar` (not a Julia scalar)
 - `iszero`, `isone`, `istriu`, `istril`, `ishermitian`, `issymmetric`, `isposdef` — 0-dimensional `NDArray{Bool}`
-- `opnorm(D)` / `opnorm(D, p)` for `p ∈ {1, 2, Inf}` — 0-dimensional `NDArray`
-- `norm(D)` / `norm(D, p)` for finite `p` (including `±Inf`); off-diagonals are zero — 0-dimensional `NDArray`
-- `cond(D)` / `cond(D, p)` for `p ∈ {1, 2, Inf}` — 0-dimensional `NDArray`
-- `logdet(D)` for real `Diagonal` only — 0-dimensional `NDArray`
+- `opnorm(D)` / `opnorm(D, p)` for `p ∈ {1, 2, Inf}` — `NDScalar`
+- `norm(D)` / `norm(D, p)` for finite `p` (including `±Inf`); off-diagonals are zero — `NDScalar`
+- `cond(D)` / `cond(D, p)` for `p ∈ {1, 2, Inf}` — `NDScalar`
+- `logdet(D)` for real `Diagonal` only — `NDScalar`
 
 **Helpers on dense `NDArray`**
 

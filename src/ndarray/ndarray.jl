@@ -876,8 +876,8 @@ a == c
 ```
 """
 function Base.:(==)(a::NDArray, b::NDArray)
-    size(a) == size(b) || return NDArray(false)
-    return _array_equal_impl(a, b)
+    size(a) == size(b) || return ndscalar(NDArray(false))
+    return ndscalar(_array_equal_impl(a, b))
 end
 
 function Base.:(!=)(a::NDArray, b::NDArray)

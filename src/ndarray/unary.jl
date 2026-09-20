@@ -261,8 +261,8 @@ The following unary reduction operations are supported and can be applied direct
   • `var` / `std` (sample / `corrected=true`; real types only)
   • `argmax` / `argmin` (1-d only)
 
-Full reductions return a **0-d `NDArray`**, not a Julia scalar. Use `unwrap` or
-`A[]` (with `allowscalar`) when you need a host value.
+Full reductions return an **`NDScalar`** backed by a 0D NDArray. Use `unwrap` or
+`only` when you need a host value.
 
 Reduction over specific dimensions is supported via the `dims` keyword argument,
 following the same keepdims semantics as Julia's base reduction functions.
@@ -304,7 +304,7 @@ const unary_reduction_map = Dict{Function,UnaryRedCode}(
     # VARIANCE opcode is unused: compose sample var from mean / sum instead.
 )
 
-# Full reductions return 0-d NDArrays (not Julia scalars). That is intentional.
+# Public full reductions wrap backend 0D NDArrays as NDScalars.
 
 function _unary_reduction_apply(out, op_code, input::NDArray{T}, ::Type{T}) where {T}
     return nda_unary_reduction(out, op_code, input)
@@ -363,7 +363,7 @@ end
 for (base_func, op_code) in unary_reduction_map
     @eval begin
         function $(Symbol(base_func))(input::NDArray{T,N}; dims=Colon()) where {T,N}
-            return _unary_reduction_impl($base_func, $(op_code), input, dims)
+            return _scalar_result(_unary_reduction_impl($base_func, $(op_code), input, dims))
         end
     end
 end
@@ -397,11 +397,11 @@ function _bool_reduction_impl(op_code, input::NDArray{Bool}, dims)
 end
 
 function Base.all(input::NDArray{Bool}; dims=Colon())
-    return _bool_reduction_impl(cuNumeric.ALL, input, dims)
+    return _scalar_result(_bool_reduction_impl(cuNumeric.ALL, input, dims))
 end
 
 function Base.any(input::NDArray{Bool}; dims=Colon())
-    return _bool_reduction_impl(cuNumeric.ANY, input, dims)
+    return _scalar_result(_bool_reduction_impl(cuNumeric.ANY, input, dims))
 end
 
 # Compare on-device against `zero(T)` / `_eye(T, n)` (identity filled with `one(T)`).
@@ -411,14 +411,14 @@ function Base.iszero(A::NDArray{T}) where {T}
 end
 function Base.isone(A::NDArray{T,2}) where {T}
     m, n = size(A)
-    m != n && return NDArray(false) # LinearAlgebra.isone: only square matrices
+    m != n && return ndscalar(NDArray(false)) # LinearAlgebra.isone: only square matrices
     return all(A .== _eye(T, m))
 end
 
 # Boolean multiplication is logical conjunction. cuPyNumeric's PROD reduction
 # uses a numeric fill identity, which Legate rejects for a Boolean target.
 function Base.prod(input::NDArray{Bool}; dims=Colon())
-    return _unary_reduction_impl(Base.prod, cuNumeric.ALL, input, dims)
+    return _scalar_result(_unary_reduction_impl(Base.prod, cuNumeric.ALL, input, dims))
 end
 
 # Number of elements a reduction with `dims` collapses. Used by mean/var/std.
@@ -442,7 +442,7 @@ end
 """
     mean(A::NDArray; dims=:)
 
-Arithmetic mean of `A`. Full reduction returns a 0-d `NDArray`, not a Julia
+Arithmetic mean of `A`. Full reduction returns an `NDScalar`, not a host
 scalar. With `dims`, the reduced axes are kept as size 1, matching Base.
 """
 function mean(arr::NDArray; dims=Colon())
@@ -457,13 +457,13 @@ end
     std(A::NDArray; corrected=true, mean=nothing, dims=:)
 
 Sample variance and standard deviation (`corrected=true`, divisor `n-1`),
-matching Julia / StatsBase. Real types only. Returns a 0-d or reduced
+matching Julia / StatsBase. Real types only. Returns an `NDScalar` or dimension-preserving
 `NDArray`, not a Julia scalar.
 """
 function var(arr::NDArray{T}; corrected::Bool=true, mean=nothing, dims=Colon()) where {T<:Real}
     μ = isnothing(mean) ? cuNumeric.mean(arr; dims=dims) : mean
     centered = arr .- μ
-    isnothing(mean) && μ isa NDArray && destroy!(μ)
+    isnothing(mean) && μ isa Union{NDArray,NDScalar} && destroy!(μ)
     sq = centered .^ 2
     destroy!(centered)
     s = sum(sq; dims=dims)
@@ -505,7 +505,7 @@ end
 #     count(!iszero, A::NDArray; dims=:)
 #
 # Count `true` values in a `Bool` array, or nonzeros in a numeric array.
-# Returns a 0-d or reduced `NDArray` of integers, not a Julia `Int`.
+# Returns an `NDScalar` or dimension-preserving `NDArray` of integers, not a Julia `Int`.
 # """
 # function count(arr::NDArray{Bool}; dims=Colon())
 #     return _count_nonzero(arr, dims)

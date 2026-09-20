@@ -67,6 +67,7 @@ makedocs(;
             "Random" => "api_random.md",
             "Unary Operations" => "api_unary.md",
             "Mapped Reductions" => "api_mapreduce.md",
+            "Device Scalars" => "api_ndscalar.md",
             "Binary Operations" => "api_binary.md",
             "Linear Algebra" => "linalg.md",
             "Tensor Contractions" => "api_tensor.md",
