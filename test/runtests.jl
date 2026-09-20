@@ -30,6 +30,8 @@ end
 
 testsuite = find_tests(@__DIR__)
 delete!(testsuite, "util")
+# This standalone build test requires CMake and runs explicitly in developer CI.
+delete!(testsuite, "build_cxxwrap")
 # These cases deliberately fail a runtime; run individually under a timeout.
 delete!(testsuite, "linalg_errors")
 delete!(testsuite, "array/unary/tests")

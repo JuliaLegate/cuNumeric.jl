@@ -20,6 +20,10 @@ sh "$CMAKE_INSTALLER" --skip-license --prefix="$CMAKE_ROOT"
 export PATH="$CMAKE_ROOT/bin:$PATH"
 cmake --version
 
+# Exercise libcxxwrap cache validation separately from package tests, which run in
+# JLL jobs where no build toolchain is installed.
+julia --startup-file=no test/build_cxxwrap.jl
+
 # Clean slate so cached state doesn't leak across Julia versions.
 rm -f Manifest.toml test/Manifest.toml dev/Manifest.toml \
       LocalPreferences.toml test/LocalPreferences.toml
