@@ -5,8 +5,6 @@ ARG CUDA_MAJOR=13
 ARG CUDA_MINOR=0
 ENV CUDA_VERSION_MAJOR_MINOR="${CUDA_MAJOR}.${CUDA_MINOR}"
 
-ARG REF=main
-ENV REF=${REF}
 # using bash
 SHELL ["/bin/bash", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
@@ -55,15 +53,26 @@ RUN cat /etc/.env
 
 
 RUN echo "Install Legate and cuNumeric.jl"
-# Install Legate.jl and cuNumeric.jl
 RUN source /etc/.env && source /etc/.env && julia --color=yes -e ' \
     using Pkg; \
     Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/Legate.jl", rev = "main")) \
 '
 
+# The workflow checks out the requested revision before building. Copy only the
+# package source so benchmark-only changes leave this image unchanged.
+COPY Project.toml /opt/cuNumeric.jl/Project.toml
+COPY deps /opt/cuNumeric.jl/deps
+COPY ext /opt/cuNumeric.jl/ext
+COPY lib /opt/cuNumeric.jl/lib
+COPY scripts /opt/cuNumeric.jl/scripts
+COPY src /opt/cuNumeric.jl/src
+COPY test /opt/cuNumeric.jl/test
+
 RUN source /etc/.env && source /etc/.env && julia --color=yes -e ' \
     using Pkg; \
-    Pkg.add(PackageSpec(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = ENV["REF"])) \
+    Pkg.develop(PackageSpec(path = "/opt/cuNumeric.jl/lib/CNPreferences")); \
+    Pkg.develop(PackageSpec(path = "/opt/cuNumeric.jl")); \
+    Pkg.precompile() \
 '
 RUN \
     #= remove useless stuff =# \
@@ -104,5 +113,9 @@ RUN apt-get clean \
 
 ENV LEGATE_AUTO_CONFIG=1
 
-ENTRYPOINT source /etc/.env && exec /bin/bash
+COPY docker/profile.sh /etc/profile.d/cunumeric.sh
+COPY docker/entrypoint.sh /usr/local/bin/cunumeric-entrypoint
+RUN chmod +x /usr/local/bin/cunumeric-entrypoint
+ENTRYPOINT ["/usr/local/bin/cunumeric-entrypoint"]
+CMD ["/bin/bash"]
 WORKDIR /workspace

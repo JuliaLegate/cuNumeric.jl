@@ -5,8 +5,6 @@ ARG CUDA_MAJOR=13
 ARG CUDA_MINOR=0
 ENV CUDA_VERSION_MAJOR_MINOR="${CUDA_MAJOR}.${CUDA_MINOR}"
 
-ARG REF=main
-ENV REF=${REF}
 # using bash
 SHELL ["/bin/bash", "-c"]
 ENV DEBIAN_FRONTEND=noninteractive
@@ -123,5 +121,9 @@ RUN apt-get clean \
 
 ENV LEGATE_AUTO_CONFIG=1
 
-ENTRYPOINT source /etc/.env && exec /bin/bash
+COPY docker/profile.sh /etc/profile.d/cunumeric.sh
+COPY docker/entrypoint.sh /usr/local/bin/cunumeric-entrypoint
+RUN chmod +x /usr/local/bin/cunumeric-entrypoint
+ENTRYPOINT ["/usr/local/bin/cunumeric-entrypoint"]
+CMD ["/bin/bash"]
 WORKDIR /workspace

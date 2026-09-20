@@ -8,8 +8,11 @@ op = only(ARGS)
 a = cuNumeric.zeros(Float64, 33, 33)
 b = cuNumeric.ones(Float64, 33, 1)
 cuNumeric.versioninfo()
-backend = op == "tiled_cholesky" ? cuNumeric._TiledCholesky() :
+backend = if op == "tiled_cholesky"
+    cuNumeric._TiledCholesky()
+else
     cuNumeric._linalg_backend(Val(Symbol(op)), a)
+end
 println("Testing numerical failure with ", typeof(backend))
 
 @testset "$op numerical failure" begin
