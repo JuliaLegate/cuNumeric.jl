@@ -1,6 +1,6 @@
 # How to Benchmark
 
-The benchmark harness lives in `benchmark/` at the repo root. Configs are declared in `benchmarks.toml`. `run.jl` expands those configs and launches one worker process per run. Workers never share a GPU runtime within a measurement.
+The benchmark harness lives in the `benchmark/` submodule, maintained in [JuliaLegate/benchmarking](https://github.com/JuliaLegate/benchmarking). Configs are declared in `benchmarks.toml`. `run.jl` expands those configs and launches one worker process per run. Workers never share a GPU runtime within a measurement.
 
 > [!WARNING]
 > We do not commit to maintaining the benchmark scripts forever. The harness evolves with the package. The ideas here (declare configs in TOML, one process per run, time with Legate fences) should still apply even if file names move.
@@ -14,11 +14,13 @@ cuNumeric ops are asynchronous. A Julia call usually returns before the GPU work
 From the repo:
 
 ```bash
+git submodule update --init --recursive
 cd benchmark
+./instantiate_projects.sh
 julia --project=. run.jl
 ```
 
-With no extra args, `run.jl` reads `benchmarks.toml` and runs every expanded config. It develops `CNPreferences` and `cuNumeric` from the parent checkout, then for each config:
+The setup script develops `CNPreferences` and `cuNumeric` from the parent checkout. See the harness README for cuPyNumeric's Conda setup. With no extra args, `run.jl` reads `benchmarks.toml` and runs every expanded config:
 
 1. Sets the broadcast-fusion preference if needed and precompiles
 2. Calls `run_benchmark.sh`, which exports `LEGATE_CONFIG` from `--gpus` / `--cpus` **before** Julia starts

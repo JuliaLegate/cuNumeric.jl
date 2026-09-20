@@ -53,11 +53,6 @@ jobs:
           ref: ${{ inputs.tag || github.event.release.tag_name || github.sha }}
           fetch-depth: 0
 
-      - name: Select build scope
-        id: scope
-        run: |
-          echo "benchmark=${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[benchmark-container]') }}" >> "$GITHUB_OUTPUT"
-
       - name: Select wrapper build
         id: wrapper-build
         env:
@@ -161,33 +156,16 @@ jobs:
           labels: |
               org.opencontainers.image.version=${{ steps.pkg.outputs.version }}
 
-      - name: Extract benchmark image metadata
-        id: benchmark-meta
-        if: steps.scope.outputs.benchmark == 'true'
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-              type=raw,value=${{ steps.pkg.outputs.commit }}-julia${{ matrix.julia }}-cuda${{ steps.cuda.outputs.major }}.${{ steps.cuda.outputs.minor }}-benchmark
-              type=raw,value=${{ steps.pkg.outputs.name }}-benchmark,enable=${{ github.ref_type == 'tag' || inputs.tag != '' }}
-              type=raw,value=latest-benchmark,enable=${{ github.ref_type == 'tag' || (inputs.tag != '' && inputs.mark_as_latest) }}
-              type=raw,value=dev-benchmark,enable=${{ github.ref_type == 'branch' && inputs.tag == '' }}
-          labels: |
-              org.opencontainers.image.version=${{ steps.pkg.outputs.version }}
-
       - name: Select immutable image tags
         id: image-tags
         env:
           BASE_TAGS: ${{ steps.meta.outputs.tags }}
-          BENCHMARK_TAGS: ${{ steps.benchmark-meta.outputs.tags }}
         run: |
           echo "base=$(printf '%s\n' "$BASE_TAGS" | head -n1)" >> "$GITHUB_OUTPUT"
-          echo "benchmark=$(printf '%s\n' "$BENCHMARK_TAGS" | head -n1)" >> "$GITHUB_OUTPUT"
 
       - name: Save tags to files
         run: |
           echo "${{ steps.image-tags.outputs.base }}" > image_tag.txt
-          echo "${{ steps.image-tags.outputs.benchmark }}" > benchmark_image_tag.txt
 
       - name: Upload tag artifact
         uses: actions/upload-artifact@v4
@@ -195,7 +173,6 @@ jobs:
           name: docker-tag
           path: |
             image_tag.txt
-            benchmark_image_tag.txt
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -252,66 +229,12 @@ jobs:
           rm -rf /tmp/.buildx-cache/base
           mv /tmp/.buildx-cache/base-new /tmp/.buildx-cache/base
 
-      - name: Build benchmark image
-        if: steps.scope.outputs.benchmark == 'true'
-        uses: docker/build-push-action@v6
-        with:
-          file: docker/Dockerfile.benchmark
-          load: true
-          push: false
-          provenance: false
-          platforms: ${{ matrix.platform }}
-          tags: ${{ steps.benchmark-meta.outputs.tags }}
-          labels: ${{ steps.benchmark-meta.outputs.labels }}
-          cache-from: type=local,src=/tmp/.buildx-cache/benchmark
-          cache-to: type=local,dest=/tmp/.buildx-cache/benchmark-new,mode=max
-          build-args: |
-            BASE_IMAGE=${{ steps.image-tags.outputs.base }}
-            DEPENDENCY_REFRESH=${{ github.run_id }}-${{ github.run_attempt }}
-
-      - name: Update benchmark layer cache
-        if: steps.scope.outputs.benchmark == 'true'
-        run: |
-          rm -rf /tmp/.buildx-cache/benchmark
-          mv /tmp/.buildx-cache/benchmark-new /tmp/.buildx-cache/benchmark
-
-      - name: Test benchmark harness
-        if: steps.scope.outputs.benchmark == 'true'
-        run: |
-          docker run --rm ${{ steps.image-tags.outputs.benchmark }} \
-            julia --project=. test/runtests.jl
-
-      - name: Push benchmark image
-        if: steps.scope.outputs.benchmark == 'true' && success()
-        env:
-          BASE_TAGS: ${{ steps.meta.outputs.tags }}
-          BENCHMARK_TAGS: ${{ steps.benchmark-meta.outputs.tags }}
-        run: |
-          while IFS= read -r image; do
-            docker push "$image"
-          done <<< "$BENCHMARK_TAGS"
-
-          while IFS= read -r image; do
-            docker image rm "$image"
-          done <<< "$BENCHMARK_TAGS"
-
-          while IFS= read -r image; do
-            docker image rm "$image"
-          done <<< "$BASE_TAGS"
-
       # can happen if there is a failure to push
       - name: Ensure image is removed (safety)
         if: always()
         env:
           BASE_TAGS: ${{ steps.meta.outputs.tags }}
-          BENCHMARK_TAGS: ${{ steps.benchmark-meta.outputs.tags }}
         run: |
-          while IFS= read -r image; do
-            if [[ -n "$image" ]] && docker image inspect "$image" > /dev/null 2>&1; then
-              docker image rm "$image" || true
-            fi
-          done <<< "$BENCHMARK_TAGS"
-
           while IFS= read -r image; do
             if [[ -n "$image" ]] && docker image inspect "$image" > /dev/null 2>&1; then
               docker image rm "$image" || true
