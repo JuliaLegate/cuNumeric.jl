@@ -111,6 +111,9 @@ end
 
 unwrap(x::NDScalar) = only(x.value)
 Base.only(x::NDScalar) = unwrap(x)
+# Preserve explicit scalar indexing of reduction results, including allowscalar.
+# Number's default getindex would instead return the wrapper unchanged.
+Base.getindex(x::NDScalar) = x.value[]
 destroy!(x::NDScalar) = destroy!(x.value)
 Base.copy(x::NDScalar) = ndscalar(copy(x.value))
 Base.broadcastable(x::NDScalar) = x.value

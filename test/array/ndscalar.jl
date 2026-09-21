@@ -25,6 +25,13 @@ end
                 @test NDScalarRealSlot(x).value === x
             end
             @test unwrap(x) == one(T)
+            @test_throws ErrorException x[]
+            @test_throws ErrorException (@autounwrap x[])
+            cuNumeric.allowscalar() do
+                @test x[] === a[]
+                @test x[] == one(T)
+                @test_throws ArgumentError x == one(T)
+            end
             for op in (+, -, *, /, ^)
                 for (l, r) in ((x, x), (x, one(T)), (one(T), x))
                     result = @inferred op(l, r)
