@@ -1,11 +1,18 @@
 # Device scalars and autounwrapping
 
 Full reductions such as `sum(A)`, `dot(x, y)`, and `norm(x)` return an
-`NDScalar`. `NDReal{T} <: Real` holds real results, including Boolean results;
-`NDComplex{T} <: Number` holds complex results. `NDScalar` is a union of these
-two wrapper types. Each owns a reference to a 0D NDArray, with no copy or host
+`NDScalar`. Concrete wrappers mirror the numeric category of their storage:
+`NDFloat <: AbstractFloat`, `NDInt <: Signed`, `NDUInt <: Unsigned`,
+`NDBool <: Integer`, and `NDComplex <: Number`. `NDReal` is the union of the
+four real wrapper families, and `NDScalar` also includes `NDComplex`.
+Each owns a reference to a 0D NDArray, with no copy or host
 extraction when it is wrapped. Reductions that retain dimensions still return
 NDArrays. Explicit 0D array construction and array broadcasts remain arrays.
+
+The wrappers retain both the element type `T` and the parent type `P` in a
+concrete `value::NDArray{T,0,P}` field. `P` describes the storage owner, not
+padding: an attached Julia 0D array can have a non-`Nothing` parent even when
+it is unpadded. Constructors infer both parameters from the array.
 
 `DeviceScalar{T}` is the shared dispatch alias for a raw `NDArray{T,0}` or an
 `NDScalar{T}` wrapper. Use `DeviceScalar` when either representation is accepted:
@@ -28,7 +35,7 @@ use `searchsortedfirst`/`searchsortedlast` to retain device results.
 ```julia
 using cuNumeric, LinearAlgebra
 x = cuNumeric.NDArray([1.0, 2.0, 3.0])
-s = sum(x)                    # NDReal{Float64}, accepted in <:Real fields
+s = sum(x)                    # NDFloat{Float64}, accepted in <:AbstractFloat fields
 t = s^2 / 2                   # another device scalar
 y = x .* t                    # backend broadcast; no implicit host extraction
 value = unwrap(t)             # explicit synchronization, always permitted
@@ -88,6 +95,30 @@ For example, a function accepting only `Float64` still needs `f(Float64(s))`.
 Julia also requires an actual Bool in `if`: use `Bool(all(A))` within the scope,
 or a comparison that returns a host Bool. Autounwrapping does not change Julia's
 dispatch or condition evaluation rules.
+
+## Performance without autounwrapping
+
+These are implementation-level costs, not benchmark results. Disabling
+autounwrap prevents implicit extraction; it does not disable device scalar
+wrapping or backend work. Permission can also be enabled by the do-block or
+`autounwrap(true)`, independently of whether a macro appears in the code.
+
+| Operation | Cost or behavior with extraction permission disabled |
+|:--|:--|
+| Existing calls with ordinary host numbers | The scalar normalization helpers return the host value or use the existing host path. They do not inspect task-local permission or add device work. Additional Julia forwarding calls should generally specialize away, but zero runtime overhead has not been benchmarked. |
+| Full reductions | Construct an immutable numeric wrapper around the existing 0D result. Wrapping adds no backend allocation, kernel, or synchronization. The Julia-side wrapper may be optimized away; allocation-free execution is not guaranteed in every calling context. |
+| Scalar arithmetic | Uses backend broadcasts and result arrays, with no autounwrap permission lookup. Separate non-dotted operations such as `a*b+c` submit separate operations; the wrapper does not fuse them into one kernel. This is more expensive than computing with already-materialized host scalars. |
+| Scalar unary operations | `_scalar_unary` creates size-one and rank-zero reshape handles around a broadcast. Composite operations such as complex `abs2` currently perform several backend operations. These are optimization opportunities, independent of the permission setting. |
+| `zero(s)` / `one(s)` | Construct backend scalar storage, rather than a cheap native numeric constant. Generic numeric code can therefore incur allocations and task submissions here. |
+| Device coefficients and fill values | Use array/broadcast paths. Device coefficients do not take value-dependent host zero/one shortcuts, so they can require extra work or temporaries compared with equivalent host constants. `fill(device_value, dims)` currently allocates zeros and then broadcasts the fill. Existing host coefficient/fill paths retain their shortcuts. |
+| Implicit comparisons, predicates, and checked host conversions | Perform a task-local permission lookup and then throw when disabled. They do not silently synchronize and continue. |
+| Explicit `unwrap` / `only`, or display | Extract host values without autounwrap permission. REPL display therefore synchronizes unless suppressed with `;`, matching the previous 0D NDArray display behavior. |
+| Loading and first use | Extra numeric methods and wrapper specializations can increase precompilation, compilation, and code size. These costs have not been measured. |
+
+The comparison for backend arithmetic is important: a wrapper around a 0D array
+does not intrinsically add a kernel, but choosing device scalar arithmetic over
+native host arithmetic does add backend work. Explicitly extracting a scalar
+may make subsequent arithmetic cheaper, at the cost of synchronization.
 
 ## IterativeSolvers
 

@@ -16,6 +16,9 @@ end
             x = ndscalar(a)
             @test x.value === a
             @test x isa Number
+            @test x isa supertype(T)
+            @test isconcretetype(fieldtype(typeof(x), :value))
+            @test x isa NDScalar{T}
             @test NDScalarNumberSlot(x).value === x
             if T <: Real
                 @test x isa Real
@@ -58,11 +61,23 @@ end
             @test unwrap(p) == 2.0 && unwrap(q) == host
         end
         fractional = ndscalar(NDArray(1.5))
-        @test_throws ArgumentError NDReal{Int64}(fractional)
-        @test_throws InexactError @autounwrap NDReal{Int64}(fractional)
+        @test_throws ArgumentError NDInt{Int64}(fractional)
+        @test_throws InexactError @autounwrap NDInt{Int64}(fractional)
         imaginary = ndscalar(NDArray(1.0 + 2.0im))
-        @test_throws ArgumentError NDReal{Float64}(imaginary)
-        @test_throws InexactError @autounwrap NDReal{Float64}(imaginary)
+        @test_throws ArgumentError NDFloat{Float64}(imaginary)
+        @test_throws InexactError @autounwrap NDFloat{Float64}(imaginary)
+    end
+end
+
+@testset "Device scalar parent storage" begin
+    for T in (Float64, Int64, UInt64, Bool, ComplexF64)
+        host = fill(one(T))
+        a = NDArray(host)
+        x = @inferred ndscalar(a)
+        @test x.value === a
+        @test x.value.parent === host
+        @test isconcretetype(fieldtype(typeof(x), :value))
+        @test unwrap(x) == one(T)
     end
 end
 
