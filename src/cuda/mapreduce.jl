@@ -250,11 +250,12 @@ function _mr_launch(f, op, A::NDArray{T,N}, ::Type{R}, ::Type{O}, mask, shape, i
         result = needs_finish ? nda_empty_array(shape, O) : accumulator
         _mr_submit(A, accumulator, result, mask, dims isa Colon, single, _mr_redop(op, S),
                    name, contribute_name, finish_name, mapper, finish)
+        # Returning here keeps the cleanup sentinel out of Julia 1.10 inference.
+        return result
     catch
         isnothing(result) || destroy!(result)
         rethrow()
     finally
         result === accumulator || destroy!(accumulator)
     end
-    return result
 end
