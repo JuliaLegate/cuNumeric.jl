@@ -10,8 +10,8 @@ function cg!(x, A, b; rtol=1e-8, check_every=10, max_iter=1000)
     r = b - A*x
     p, Ap = copy(r), similar(r)
     rho = sum(r .* r)
-    target = rtol^2 * fetch(sum(b .* b))
-    fetch(rho) <= target && return x
+    target = rtol^2 * only(sum(b .* b))
+    only(rho) <= target && return x
 
     for k in 1:max_iter
         mul!(Ap, A, p)
@@ -25,7 +25,7 @@ function cg!(x, A, b; rtol=1e-8, check_every=10, max_iter=1000)
         rho = next
 
         if k % check_every == 0 || k == max_iter
-            fetch(rho) <= target && return x
+            only(rho) <= target && return x
         end
     end
     error("CG did not converge within max_iter")
@@ -44,7 +44,7 @@ println(Array(x))
 ```
 
 `rho` holds the squared residual norm. Reductions and the coefficients `alpha`
-and `beta` remain in cuNumeric's computation graph; `fetch(rho)` reads a value
+and `beta` remain in cuNumeric's computation graph; `only(rho)` reads a value
 back to the host at a convergence check. Increasing `check_every` lets the host
 submit more iterations ahead, at the cost of potentially doing extra work
 before observing convergence. A check also occurs at the iteration limit.
