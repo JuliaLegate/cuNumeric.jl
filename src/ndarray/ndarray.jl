@@ -978,15 +978,15 @@ isapprox(julia_arr, arr2)
 """
 function Base.isapprox(julia_array::AbstractArray{T}, arr::NDArray{T}; atol=0, rtol=0) where {T}
     #! REPLCE THIS WITH BIN_OP isapprox
-    return compare(julia_array, arr, atol, rtol)
+    return compare(julia_array, arr, _host_parameter(atol), _host_parameter(rtol))
 end
 
 function Base.isapprox(arr::NDArray{T}, julia_array::AbstractArray{T}; atol=0, rtol=0) where {T}
-    return compare(julia_array, arr, atol, rtol)
+    return compare(julia_array, arr, _host_parameter(atol), _host_parameter(rtol))
 end
 
 function Base.isapprox(arr::NDArray{T}, arr2::NDArray{T}; atol=0, rtol=0) where {T}
-    return compare(arr, arr2, atol, rtol)
+    return compare(arr, arr2, _host_parameter(atol), _host_parameter(rtol))
 end
 
 # HDF5 signature. A leftover empty/truncated file from a crashed write has no

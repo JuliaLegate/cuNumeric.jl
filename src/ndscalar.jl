@@ -1,4 +1,4 @@
-export NDReal, NDComplex, NDScalar, ndscalar, autounwrap, @autounwrap
+export NDReal, NDComplex, NDScalar, DeviceScalar, ndscalar, autounwrap, @autounwrap
 
 "A real device scalar backed by a 0D NDArray; wrapping does not synchronize."
 struct NDReal{T<:Real,A<:NDArray{T,0}} <: Real
@@ -10,12 +10,47 @@ struct NDComplex{T<:Complex,A<:NDArray{T,0}} <: Number
     value::A
 end
 
-const NDScalar = Union{NDReal,NDComplex}
+# Bounded wrapper branches allow both DeviceScalar{Float64} and
+# DeviceScalar{ComplexF64}; an exact NDComplex{Float64} would violate its bound.
+const NDScalar{T} = Union{NDReal{<:T},NDComplex{<:T}}
+const DeviceScalar{T} = Union{NDArray{T,0},NDScalar{T}}
 ndscalar(x::NDArray{T,0}) where {T<:Real} = NDReal(x)
 ndscalar(x::NDArray{T,0}) where {T<:Complex} = NDComplex(x)
 ndscalar(x::NDScalar) = x
 _scalar_result(x::NDArray{<:Number,0}) = ndscalar(x)
 _scalar_result(x) = x
+
+_scale_storage(x::NDScalar) = x.value
+# Host shortcuts must not inspect a device coefficient's value.
+_host_iszero(::NDScalar) = false
+_host_isone(::NDScalar) = false
+
+# Numeric data stays in backend storage; host control parameters are explicitly
+# permission-checked for both wrapped and unwrapped device scalars.
+_host_parameter(x) = x
+function _host_parameter(x::DeviceScalar{<:Real})
+    _assert_autounwrap()
+    return only(_scale_storage(x))
+end
+
+_coefficient_type(x) = typeof(x)
+_coefficient_type(x::DeviceScalar) = eltype(_scale_storage(x))
+_coefficient_as(::Type{T}, x::Number) where {T} = convert(T, x)
+_coefficient_as(::Type{T}, x::DeviceScalar) where {T} = checked_promote_arr(_scale_storage(x), T)
+
+searchsortedfirst(a::NDArray{T,1}, x::NDScalar) where {T} = searchsortedfirst(a, x.value)
+searchsortedlast(a::NDArray{T,1}, x::NDScalar) where {T} = searchsortedlast(a, x.value)
+
+function Base.fill!(a::NDArray, x::DeviceScalar)
+    a .= _scale_storage(x)
+    return a
+end
+function fill(x::DeviceScalar, dims::Dims)
+    a = cuNumeric.zeros(_coefficient_type(x), dims)
+    return fill!(a, x)
+end
+fill(x::DeviceScalar, dims::Int...) = fill(x, dims)
+fill(x::DeviceScalar, dim::Int) = fill(x, (dim,))
 
 """
     autounwrap(f, allow=true)
@@ -56,7 +91,11 @@ Base.only(x::NDScalar) = unwrap(x)
 destroy!(x::NDScalar) = destroy!(x.value)
 Base.copy(x::NDScalar) = ndscalar(copy(x.value))
 Base.broadcastable(x::NDScalar) = x.value
-Base.show(io::IO, x::NDScalar) = print(io, nameof(typeof(x)), "{", eltype(x.value), "}(device scalar)")
+# Ref(device_scalar) still represents one backend value, not a host kernel arg.
+Base.broadcastable(x::Base.RefValue{<:DeviceScalar}) = _scale_storage(x[])
+# Display is an intentional host extraction, just as for the backing 0D NDArray.
+Base.show(io::IO, x::NDScalar) = show(io, x.value)
+Base.show(io::IO, mime::MIME"text/plain", x::NDScalar) = show(io, mime, x.value)
 
 _scalar_operand(x::NDScalar) = x.value
 _scalar_operand(x::Number) = x

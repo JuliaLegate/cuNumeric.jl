@@ -271,7 +271,12 @@ end
 LinearAlgebra.logdet(D::DiagonalNDArray{<:Real}) = sum(log.(_diag_vec(D)))
 
 # Operator / entrywise norms from the diagonal only (no host densify).
+for op in (:norm, :opnorm, :cond)
+    @eval LinearAlgebra.$op(D::DiagonalNDArray, p::NDArray{<:Real,0}) = $op(D, _host_parameter(p))
+end
+
 function LinearAlgebra.opnorm(D::DiagonalNDArray, p::Real=2)
+    p = _host_parameter(p)
     if !(p == 1 || p == 2 || p == Inf)
         throw(ArgumentError(lazy"invalid p-norm p=$p. Valid: 1, 2, Inf"))
     end
@@ -280,6 +285,7 @@ function LinearAlgebra.opnorm(D::DiagonalNDArray, p::Real=2)
 end
 
 function LinearAlgebra.norm(D::DiagonalNDArray, p::Real=2)
+    p = _host_parameter(p)
     # Off-diagonals are zero, so the matrix vec-norm equals the diag vec-norm.
     d = abs.(_diag_vec(D))
     if p == 2
@@ -296,6 +302,7 @@ function LinearAlgebra.norm(D::DiagonalNDArray, p::Real=2)
 end
 
 function LinearAlgebra.cond(D::DiagonalNDArray, p::Real=2)
+    p = _host_parameter(p)
     if !(p == 1 || p == 2 || p == Inf)
         throw(ArgumentError(lazy"invalid p-norm p=$p. Valid: 1, 2, Inf"))
     end
@@ -324,6 +331,16 @@ Base.:-(D::DiagonalNDArray, A::NDArray{<:Any,2}) = D + (-A)
     return isone(λ) ? E : nda_multiply_scalar(E, R(λ))
 end
 
+function _uniformscaling_eye(::Type{R}, n::Integer, λ::NDArray{<:Any,0}) where {R}
+    E = _eye(R, Int(n))
+    E .*= _coefficient_as(R, λ)
+    return E
+end
+
+_uniformscale_mul(::Type{T}, λ::Number, a::NDArray) where {T} = _mul_scalar(T, λ, a)
+_uniformscale_mul(::Type{T}, λ::NDArray{<:Any,0}, a::NDArray) where {T} =
+    a .* _coefficient_as(T, λ)
+
 function NDArray{T}(J::LinearAlgebra.UniformScaling, dims::Dims{2}) where {T}
     A = zeros(T, dims)
     copyto!(A, J)
@@ -332,29 +349,29 @@ end
 function NDArray{T}(J::LinearAlgebra.UniformScaling, m::Integer, n::Integer) where {T}
     return NDArray{T}(J, Dims((Int(m), Int(n))))
 end
-NDArray(J::LinearAlgebra.UniformScaling{T}, dims::Dims{2}) where {T} = NDArray{T}(J, dims)
+NDArray(J::LinearAlgebra.UniformScaling{T}, dims::Dims{2}) where {T} = NDArray{_coefficient_type(J.λ)}(J, dims)
 function NDArray(J::LinearAlgebra.UniformScaling{T}, m::Integer, n::Integer) where {T}
-    return NDArray{T}(J, Dims((Int(m), Int(n))))
+    return NDArray(J, Dims((Int(m), Int(n))))
 end
 
 function Base.copyto!(A::NDArray{T,2}, J::LinearAlgebra.UniformScaling) where {T}
     m, n = size(A)
-    if iszero(J.λ)
+    if _host_iszero(J.λ)
         return fill!(A, zero(T))
     elseif m == n
-        return copyto!(A, _uniformscaling_eye(T, m, J.λ))
+        return copyto!(A, _uniformscaling_eye(T, m, _scale_storage(J.λ)))
     else
         fill!(A, zero(T))
         k = min(m, n)
-        A[1:k, 1:k] = _uniformscaling_eye(T, k, J.λ)
+        A[1:k, 1:k] = _uniformscaling_eye(T, k, _scale_storage(J.λ))
         return A
     end
 end
 
 function Base.:+(A::NDArray{T,2}, J::LinearAlgebra.UniformScaling) where {T}
     LinearAlgebra.checksquare(A)
-    R = Base.promote_op(+, T, typeof(J.λ))
-    return A + _uniformscaling_eye(R, size(A, 1), J.λ)
+    R = Base.promote_op(+, T, _coefficient_type(J.λ))
+    return A + _uniformscaling_eye(R, size(A, 1), _scale_storage(J.λ))
 end
 Base.:+(J::LinearAlgebra.UniformScaling, A::NDArray{<:Any,2}) = A + J
 
@@ -365,10 +382,10 @@ end
 
 # Scale by λ without promoting the array (A * I must not Bool→Float32 promote).
 function Base.:*(A::NDArray{T}, J::LinearAlgebra.UniformScaling) where {T}
-    return _mul_scalar(T, J.λ, A)
+    return _uniformscale_mul(T, _scale_storage(J.λ), A)
 end
 function Base.:*(J::LinearAlgebra.UniformScaling, A::NDArray{T}) where {T}
-    return _mul_scalar(T, J.λ, A)
+    return _uniformscale_mul(T, _scale_storage(J.λ), A)
 end
 
 function Base.one(A::NDArray{T,2}) where {T}
@@ -384,24 +401,24 @@ end
 
 # Keep Diagonal structure: D + λI == Diagonal(d .+ λ), not a dense matrix.
 function Base.:+(D::DiagonalNDArray{T}, J::LinearAlgebra.UniformScaling) where {T}
-    R = Base.promote_op(+, T, typeof(J.λ))
-    return Diagonal(_diag_vec(D) .+ convert(R, J.λ))
+    R = Base.promote_op(+, T, _coefficient_type(J.λ))
+    return Diagonal(_diag_vec(D) .+ _coefficient_as(R, J.λ))
 end
 Base.:+(J::LinearAlgebra.UniformScaling, D::DiagonalNDArray) = D + J
 
 Base.:-(D::DiagonalNDArray, J::LinearAlgebra.UniformScaling) = D + (-J)
 function Base.:-(J::LinearAlgebra.UniformScaling, D::DiagonalNDArray{T}) where {T}
-    R = Base.promote_op(-, typeof(J.λ), T)
-    return Diagonal(convert(R, J.λ) .- _diag_vec(D))
+    R = Base.promote_op(-, _coefficient_type(J.λ), T)
+    return Diagonal(_coefficient_as(R, J.λ) .- _diag_vec(D))
 end
 
 function Base.:*(D::DiagonalNDArray{T}, J::LinearAlgebra.UniformScaling) where {T}
-    return Diagonal(_mul_scalar(T, J.λ, _diag_vec(D)))
+    return Diagonal(_uniformscale_mul(T, _scale_storage(J.λ), _diag_vec(D)))
 end
 Base.:*(J::LinearAlgebra.UniformScaling, D::DiagonalNDArray) = D * J
 
 function Base.copyto!(D::DiagonalNDArray{T}, J::LinearAlgebra.UniformScaling) where {T}
-    fill!(_diag_vec(D), convert(T, J.λ))
+    fill!(_diag_vec(D), _coefficient_as(T, J.λ))
     return D
 end
 

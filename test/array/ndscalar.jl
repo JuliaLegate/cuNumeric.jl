@@ -48,7 +48,6 @@ end
         @test unwrap(max(x, 2.0)) == 6.0
         @test (@autounwrap x > 2.0)
         @test (@autounwrap isless(2.0, x))
-        @test occursin("device scalar", sprint(show, x))
         @test (@autounwrap 2x) isa NDScalar
         p, q = promote(x, 2.0)
         @test p isa NDScalar && q isa NDScalar

@@ -22,18 +22,23 @@ function LinearAlgebra.mul!(y::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, A::NDArray{<:
     return mul!(y, A, x, true, false)
 end
 
+_mul_output_scale(x::Number, ::Type{T}) where {T} = convert(T, x)
+_mul_output_scale(x::NDArray, ::Type{T}) where {T} = x
+
 function _linalg_mul!(C::NDArray{T}, cm, A::NDArray{TA}, am, B::NDArray{TB}, bm, α, β) where {T,TA,TB}
     required = _matmul_eltype(promote_type(TA, TB))
     promote_type(required, T) === T || throw(ArgumentError("mul! output type $T cannot hold promoted input type $required"))
     Ap = checked_promote_arr(mul!, A, T)
     Bp = checked_promote_arr(mul!, B, T)
-    if iszero(α) || isempty(A) || isempty(B) || isempty(C)
+    α = _scale_storage(α)
+    β = _scale_storage(β)
+    if _host_iszero(α) || isempty(A) || isempty(B) || isempty(C)
         _contract_prepare(C, cm, Ap, am, Bp, bm)
         if !isempty(C)
-            if iszero(β)
+            if _host_iszero(β)
                 fill!(C, zero(T))
             else
-                C .*= convert(T, β)
+                C .*= _mul_output_scale(β, T)
             end
         end
     else
@@ -44,13 +49,19 @@ function _linalg_mul!(C::NDArray{T}, cm, A::NDArray{TA}, am, B::NDArray{TB}, bm,
     return C
 end
 
-function LinearAlgebra.mul!(y::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, A::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, α::Number, β::Number)
+function LinearAlgebra.mul!(y::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, A::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, α::Union{Number,DeviceScalar}, β::Union{Number,DeviceScalar})
     return _linalg_mul!(y, "i", A, "ij", x, "j", α, β)
 end
 
-function LinearAlgebra.mul!(C::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, A::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, B::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, α::Number, β::Number)
+function LinearAlgebra.mul!(C::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, A::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, B::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, α::Union{Number,DeviceScalar}, β::Union{Number,DeviceScalar})
     return _linalg_mul!(C, "ij", A, "ik", B, "kj", α, β)
 end
+
+# Resolve intersections with LinearAlgebra's host Number signatures.
+LinearAlgebra.mul!(y::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, A::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, α::Number, β::Number) =
+    _linalg_mul!(y, "i", A, "ij", x, "j", α, β)
+LinearAlgebra.mul!(C::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, A::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, B::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, α::Number, β::Number) =
+    _linalg_mul!(C, "ij", A, "ik", B, "kj", α, β)
 
 function Base.:*(A::NDArray{TA,2}, x::NDArray{TX,1}) where {TA<:SUPPORTED_ARRAY_TYPES,TX<:SUPPORTED_ARRAY_TYPES}
     T = _matmul_eltype(promote_type(TA, TX))
@@ -89,6 +100,9 @@ end
 
 _norm_nonzero(v) = ifelse(iszero(v), zero(real(v)), one(real(v)))
 
+LinearAlgebra.norm(x::NDArray{<:SUPPORTED_ARRAY_TYPES}, p::NDArray{<:Real,0}) =
+    norm(x, _host_parameter(p))
+
 """
     norm(x::NDArray, p::Real=2)
 
@@ -99,6 +113,7 @@ inputs convert to floating point under the existing promotion policy.
 Uses mapped reductions, which currently require a GPU target.
 """
 function LinearAlgebra.norm(x::NDArray{T}, p::Real=2) where {T<:_LA_FLOAT}
+    p = _host_parameter(p)
     R = real(T)
     isempty(x) && return ndscalar(cuNumeric.zeros(R, ()))
     p == 0 && return sum(_norm_nonzero, x)
@@ -132,16 +147,16 @@ end
 Update numeric vectors with backend broadcasts and return `y`. Vector lengths
 must match. Exact self-aliasing is supported; partially overlapping views are not.
 """
-function LinearAlgebra.axpy!(α::Number, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, y::NDArray{<:SUPPORTED_ARRAY_TYPES,1})
+function LinearAlgebra.axpy!(α::Union{Number,DeviceScalar}, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, y::NDArray{<:SUPPORTED_ARRAY_TYPES,1})
     length(x) == length(y) || throw(DimensionMismatch("axpy! vector lengths do not match"))
-    iszero(α) && return y
+    _host_iszero(α) && return y
     y .= α .* x .+ y
     return y
 end
 
-function LinearAlgebra.axpby!(α::Number, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, β::Number, y::NDArray{<:SUPPORTED_ARRAY_TYPES,1})
+function LinearAlgebra.axpby!(α::Union{Number,DeviceScalar}, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, β::Union{Number,DeviceScalar}, y::NDArray{<:SUPPORTED_ARRAY_TYPES,1})
     length(x) == length(y) || throw(DimensionMismatch("axpby! vector lengths do not match"))
-    iszero(α) && isone(β) && return y
+    _host_iszero(α) && _host_isone(β) && return y
     y .= α .* x .+ β .* y
     return y
 end
@@ -155,6 +170,11 @@ function LinearAlgebra.lmul!(α::Number, x::NDArray{<:SUPPORTED_ARRAY_TYPES})
     x .= α .* x
     return x
 end
+
+# Keep the Number signatures above to resolve Base's AbstractArray/Number
+# intersections. Raw device scalars share their implementation via the wrapper.
+LinearAlgebra.rmul!(x::NDArray{<:SUPPORTED_ARRAY_TYPES}, α::NDArray{<:Any,0}) = rmul!(x, ndscalar(α))
+LinearAlgebra.lmul!(α::NDArray{<:Any,0}, x::NDArray{<:SUPPORTED_ARRAY_TYPES}) = lmul!(ndscalar(α), x)
 
 function LinearAlgebra.ldiv!(y::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, D::DiagonalNDArray{<:SUPPORTED_ARRAY_TYPES}, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1})
     length(x) == length(y) == size(D, 1) || throw(DimensionMismatch("diagonal solve dimensions do not match"))

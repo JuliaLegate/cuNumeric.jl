@@ -38,10 +38,15 @@ function TO.select_backend(
     return CuNumericBackend()
 end
 
+# Promotion with an NDScalar coefficient describes the scalar wrapper, but the
+# tensor result stores its native backend element type.
+_tensor_eltype(::Type{T}) where {T} = T
+_tensor_eltype(::Type{T}) where {T<:CN.NDScalar} = CN._scalar_eltype(T)
+
 function TO.tensoradd_type(
     TC, A::CN.NDArray, pA::TO.Index2Tuple, conjA::Bool
 )
-    return CN.NDArray{TC,TO.numind(pA)}
+    return CN.NDArray{_tensor_eltype(TC),TO.numind(pA)}
 end
 
 function TO.tensorcontract_type(
@@ -54,7 +59,8 @@ function TO.tensorcontract_type(
     conjB::Bool,
     pAB::TO.Index2Tuple,
 )
-    Tout = TC <: Union{Integer,Bool} ? Float64 : TC
+    T = _tensor_eltype(TC)
+    Tout = T <: Union{Integer,Bool} ? Float64 : T
     return CN.NDArray{Tout,TO.numind(pAB)}
 end
 
@@ -85,6 +91,7 @@ end
 
 _as_scale(x::One, ::Type) = x
 _as_scale(x::Zero, ::Type) = x
+_as_scale(x::CN.NDScalar, ::Type{T}) where {T} = _as_scale(x.value, T)
 function _as_scale(x::CN.NDArray, ::Type{T}) where {T}
     _require_0d_scale(x)
     return _convert_eltype(x, T)
@@ -101,6 +108,8 @@ function _free_scale!(orig, scaled)
     end
     return nothing
 end
+
+_free_scale!(orig::CN.NDScalar, scaled) = _free_scale!(orig.value, scaled)
 
 _accumulate!(C::CN.NDArray, A::CN.NDArray, ::One, ::Zero) = (C.=A; C)
 _accumulate!(C::CN.NDArray, A::CN.NDArray, α::CN.NDArray, ::Zero) = (C.=α .* A; C)

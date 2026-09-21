@@ -116,7 +116,7 @@ end
 Base's scalar search. Materializes two 0-d index arrays via `unwrap`.
 Not `Base.searchsorted`.
 """
-function searchsorted(a::NDArray{T,1}, x::Number) where {T}
+function searchsorted(a::NDArray{T,1}, x::Union{Number,DeviceScalar}) where {T}
     lo = searchsortedfirst(a, x)
     hi = searchsortedlast(a, x)
     return unwrap(lo):unwrap(hi)

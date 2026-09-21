@@ -191,6 +191,7 @@ const FUSE_BROADCAST_EXPRS = CNPreferences.FUSE_BROADCAST
 const FUSE_BROADCAST_MIN_OPS = CNPreferences.FUSE_BROADCAST_MIN_OPS
 
 # Functionality
+include("ndscalar.jl")
 include("ndarray/diagonal.jl")
 include("ndarray/promotion.jl")
 include("cuda/cuda_ptx_task.jl")
@@ -209,7 +210,6 @@ include("ndarray/sort.jl")
 include("ndarray/batched_linalg.jl")
 include("ndarray/contract.jl")
 include("ndarray/vector_linalg.jl")
-include("ndscalar.jl")
 include("ndarray/fft.jl")
 include("scoping/scoping.jl")
 
