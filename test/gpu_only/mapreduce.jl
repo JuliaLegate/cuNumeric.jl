@@ -1,6 +1,6 @@
-_mapped_reduction_eltype(x::cuNumeric.NDScalar) = eltype(x.value)
+_mapped_reduction_eltype(x::cuNumeric.CNScalar) = eltype(x.value)
 _mapped_reduction_eltype(x) = eltype(x)
-_mapped_reduction_host(A) = @allowscalar ndims(A) == 0 ? cuNumeric.unwrap(A) : Array(A)
+_mapped_reduction_host(A) = @allowscalar ndims(A) == 0 ? cuNumeric.fetch(A) : Array(A)
 
 struct ReductionAffine
     scale::Float32
@@ -179,7 +179,7 @@ end
         cuNumeric.destroy!(parent)
 
         # Drop the source before execution completes, then consume the result
-        # on the device without an intervening unwrap or execution fence.
+        # on the device without an intervening fetch or execution fence.
         A = cuNumeric.ones(Float32, 131071)
         r = mapreduce(abs2, +, A)
         cuNumeric.destroy!(A)

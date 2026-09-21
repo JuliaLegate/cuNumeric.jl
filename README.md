@@ -38,20 +38,20 @@ The semantics of `NDArray` closely mirror Julia's `Array`, and in most cases it 
 
 **Slices are views.** Indexing an `NDArray` with ranges returns a view onto the same store, not a copy. That differs from Base Julia, where `A[1:n]` allocates a new `Array`. Mutating an `NDArray` slice mutates the parent and all other aliases of the underlying data.
 
-**Scalar reductions return device scalars.** Full reductions such as `sum(A)`, `dot(x,y)`, and `norm(x)` return numeric wrappers (`NDFloat`, `NDInt`, `NDUInt`, `NDBool`, or `NDComplex`) backed by 0D NDArrays. Each subtypes the corresponding abstract numeric category; `NDReal` and `NDScalar` group the wrapper families. Dimension-preserving reductions still return NDArrays. Arithmetic stays on the backend; use `unwrap` or `only` for explicit host extraction:
+**Scalar reductions return device scalars.** Full reductions such as `sum(A)`, `dot(x,y)`, and `norm(x)` return numeric wrappers (`CNFloat`, `CNInt`, `CNUInt`, `CNBool`, or `CNComplex`) backed by 0D NDArrays. Each subtypes the corresponding abstract numeric category; `CNReal` and `CNScalar` group the wrapper families. Dimension-preserving reductions still return NDArrays. Arithmetic stays on the backend; use `fetch` for explicit host extraction:
 
 ```julia
-s = sum(A)          # NDArray{T,0}
-x = unwrap(s)       # T, e.g. Float32
+s = sum(A)          # CNScalar
+x = fetch(s)        # native Julia scalar, e.g. Float32
 ```
 
-Use `autounwrap() do ... end` or `@autounwrap` to permit host comparisons and numeric conversions of device scalars. Permission is task-local and disabled by default; arithmetic remains on the backend. See [Device scalars](https://julialegate.github.io/cuNumeric.jl/dev/api_ndscalar).
+Use `allowautofetch() do ... end` or `@allowautofetch` to permit host comparisons and numeric conversions of device scalars. Permission is task-local and disabled by default; arithmetic remains on the backend. See [Device scalars](https://julialegate.github.io/cuNumeric.jl/dev/api_cnscalar).
 
 **0D arrays support scalar-shaped arithmetic.** Use `+`, `-`, `*`, `/`, and `^`
 with two 0D NDArrays or with a 0D NDArray and a Julia number. Results stay as
 0D NDArrays on the backend, following the existing promotion policy.
 
-**The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into a task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them [for example `println`, `unwrap`, or communicating with the Julia runtime (i.e., `Array(A)`)]. Hiding latency enables performant code.
+**The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into a task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them [for example `println`, `fetch`, or communicating with the Julia runtime (i.e., `Array(A)`)]. Hiding latency enables performant code.
 
 For API details see [Initialization](https://julialegate.github.io/cuNumeric.jl/dev/api_initialization) and [NDArray Reference](https://julialegate.github.io/cuNumeric.jl/dev/api). For common performance pitfalls, see [Patterns to Avoid](https://julialegate.github.io/cuNumeric.jl/dev/perf/patterns_to_avoid).
 

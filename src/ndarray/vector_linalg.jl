@@ -10,14 +10,6 @@ function _matmul_eltype(::Type{T}) where {T<:_LA_INTEGER}
     ))
 end
 
-"""
-    mul!(y::NDArray, A::NDArray, x::NDArray[, α, β])
-
-Compute `y = α * A * x + β * y` for a matrix and vector. Five-argument
-matrix-matrix multiplication is also supported. Mixed integer/floating-point
-inputs follow the usual promotion policy; integer-integer inputs are unsupported.
-The destination must hold the promoted result and must not alias either input.
-"""
 function LinearAlgebra.mul!(y::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, A::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1})
     return mul!(y, A, x, true, false)
 end
@@ -80,13 +72,6 @@ function _dot_same_type(x::NDArray{T,1}, y::NDArray{T,1}) where {T<:Complex}
     return result
 end
 
-"""
-    dot(x::NDArray{<:Any,1}, y::NDArray{<:Any,1})
-
-Hermitian inner product as an NDScalar, without unwrapping or synchronizing.
-Conjugates the first operand for complex inputs. Numeric inputs are promoted
-using the package's existing policy. Bool-Bool dot accumulates into Int.
-"""
 function LinearAlgebra.dot(x::NDArray{TX,1}, y::NDArray{TY,1}) where {TX<:SUPPORTED_ARRAY_TYPES,TY<:SUPPORTED_ARRAY_TYPES}
     length(x) == length(y) || throw(DimensionMismatch("dot vector lengths do not match"))
     T = _dot_eltype(promote_type(TX, TY))
@@ -95,32 +80,23 @@ function LinearAlgebra.dot(x::NDArray{TX,1}, y::NDArray{TY,1}) where {TX<:SUPPOR
     result = isempty(x) ? cuNumeric.zeros(T, ()) : _dot_same_type(xp, yp)
     xp !== x && destroy!(xp)
     yp !== y && destroy!(yp)
-    return ndscalar(result)
+    return cnscalar(result)
 end
 
 _norm_nonzero(v) = ifelse(iszero(v), zero(real(v)), one(real(v)))
 
 LinearAlgebra.norm(x::NDArray{<:SUPPORTED_ARRAY_TYPES}, p::NDArray{<:Real,0}) =
-    norm(x, _host_parameter(p))
+    norm(x, _maybe_fetch(p))
 
-"""
-    norm(x::NDArray, p::Real=2)
-
-Entrywise p-norm as an NDReal (not the matrix operator norm).
-The result stays on the backend; no reduction is unwrapped. Like cuPyNumeric,
-powers are accumulated without scaling and may overflow or underflow. Integer
-inputs convert to floating point under the existing promotion policy.
-Uses mapped reductions, which currently require a GPU target.
-"""
 function LinearAlgebra.norm(x::NDArray{T}, p::Real=2) where {T<:_LA_FLOAT}
-    p = _host_parameter(p)
+    p = _maybe_fetch(p)
     R = real(T)
-    isempty(x) && return ndscalar(cuNumeric.zeros(R, ()))
+    isempty(x) && return cnscalar(cuNumeric.zeros(R, ()))
     p == 0 && return sum(_norm_nonzero, x)
     p == 1 && return sum(abs, x)
     p == Inf && return maximum(abs, x)
     p == -Inf && return minimum(abs, x)
-    isnan(p) && return ndscalar(NDArray(R(NaN)))
+    isnan(p) && return cnscalar(NDArray(R(NaN)))
     exponent = R(p)
     total = p == 2 ? sum(abs2, x) : sum(v -> abs(v)^exponent, x)
     # Optimization opportunity: a specialized reduction could fuse the root into
@@ -140,13 +116,6 @@ function LinearAlgebra.norm(x::NDArray{T}, p::Real=2) where {T<:_LA_INTEGER}
     return result
 end
 
-"""
-    axpy!(α, x::NDArray{<:Any,1}, y::NDArray{<:Any,1})
-    axpby!(α, x::NDArray{<:Any,1}, β, y::NDArray{<:Any,1})
-
-Update numeric vectors with backend broadcasts and return `y`. Vector lengths
-must match. Exact self-aliasing is supported; partially overlapping views are not.
-"""
 function LinearAlgebra.axpy!(α::Union{Number,DeviceScalar}, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, y::NDArray{<:SUPPORTED_ARRAY_TYPES,1})
     length(x) == length(y) || throw(DimensionMismatch("axpy! vector lengths do not match"))
     _host_iszero(α) && return y
@@ -173,8 +142,8 @@ end
 
 # Keep the Number signatures above to resolve Base's AbstractArray/Number
 # intersections. Raw device scalars share their implementation via the wrapper.
-LinearAlgebra.rmul!(x::NDArray{<:SUPPORTED_ARRAY_TYPES}, α::NDArray{<:Any,0}) = rmul!(x, ndscalar(α))
-LinearAlgebra.lmul!(α::NDArray{<:Any,0}, x::NDArray{<:SUPPORTED_ARRAY_TYPES}) = lmul!(ndscalar(α), x)
+LinearAlgebra.rmul!(x::NDArray{<:SUPPORTED_ARRAY_TYPES}, α::NDArray{<:Any,0}) = rmul!(x, cnscalar(α))
+LinearAlgebra.lmul!(α::NDArray{<:Any,0}, x::NDArray{<:SUPPORTED_ARRAY_TYPES}) = lmul!(cnscalar(α), x)
 
 function LinearAlgebra.ldiv!(y::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, D::DiagonalNDArray{<:SUPPORTED_ARRAY_TYPES}, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1})
     length(x) == length(y) == size(D, 1) || throw(DimensionMismatch("diagonal solve dimensions do not match"))

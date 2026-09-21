@@ -14,7 +14,7 @@ H = S^x_1 S^x_2 + S^y_1 S^y_2 + S^z_1 S^z_2.
 The examples below apply it to an MPS-like state with tensors ``A^{(1)}``,
 ``A^{(2)}`` and boundary environments ``L``, ``R``. The first contractions keep
 open bond indices and stay `NDArray`s. The second contracts every index; the
-ratio stays on device until `unwrap` for printing.
+ratio stays on device until `fetch` for printing.
 
 ```julia
 # found in examples/tensor_network.jl
@@ -59,13 +59,13 @@ println("Hψ is a ", typeof(Hψ), " of size ", size(Hψ))
 
 A fully contracted `@tensor` assignment is a 0D `NDArray`, like `sum`.
 Prefer to keep it that way and do device arithmetic (`./`) until you
-need a host `Number`. `unwrap` (here, only to print) **blocks**. See
+need a host `Number`. `fetch` (here, only to print) **blocks**. See
 [Scalars](../api_tensor.md#Scalars).
 
 ```julia
 @tensor energy = conj(ψ[a, s1, s2, b]) * Hψ[a, s1, s2, b]
 @tensor norm² = conj(ψ[a, s1, s2, b]) * ψ[a, s1, s2, b]
 
-println("two-site energy = ", real(unwrap(energy ./ norm²)))
+println("two-site energy = ", real(fetch(energy ./ norm²)))
 ```
 See [Tensor Contractions](../api_tensor.md) documentation for more details.

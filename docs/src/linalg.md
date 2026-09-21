@@ -99,28 +99,15 @@ Filter = t -> t isa Function && nameof(t) === :mul!
 
 ## Vector operations
 
-Numeric `NDArray`s support matrix-vector `A * x`, three- and five-argument
-`mul!`, vector `dot`, `axpy!`, `axpby!`, and scalar `lmul!` / `rmul!`.
-Five-argument matrix-matrix `mul!` is also available. Mixed types follow the
-package's explicit promotion policy. Matrix multiplication rejects
-integer-integer inputs (including Bool); mixed integer/floating-point inputs
-are supported when their promoted type is supported by the matrix kernel.
-Destinations of `mul!` must not alias inputs. Vector updates support exact
-self-aliasing, but not partially overlapping views.
+Supported `LinearAlgebra` operations include:
 
-`dot` conjugates its first argument. **`dot` and dense-array `norm` return NDScalars**, keeping their results on the backend without implicit scalar
-extraction or synchronization. Use `only` or `unwrap` explicitly when a Julia
-scalar is required. Bool-Bool dot products accumulate into `Int` under the
-existing promotion policy.
+- `mul!(y, A, x)` and `mul!(y, A, x, α, β)` for matrix-vector products; `A * x` is also supported.
+- `mul!(C, A, B, α, β)` for matrix-matrix products.
+- `dot(x, y)` and entrywise `norm(A, p)` (dense-array norms currently require a GPU).
+- `axpy!`, `axpby!`, `lmul!`, and `rmul!`.
+- `ldiv!(y, D, x)` and `ldiv!(D, x)` for an NDArray-backed `Diagonal`.
 
-`norm(A, p)` is an entrywise norm, not `opnorm`. It uses mapped reductions and
-currently requires a GPU target. The 2-norm fuses `abs2` into a sum reduction,
-then applies a backend square root. Like cuPyNumeric, powers are accumulated
-without scaling and can overflow or underflow. Integer inputs are converted
-to floating point under the existing promotion policy.
-
-Matrix-vector contraction selects cuPyNumeric's specialized `MATVECMUL` task.
-NDScalar wrappers satisfy numeric field constraints in generic solvers. Use the scoped `autounwrap` permission for host comparisons and conversions; see [Device scalars](api_ndscalar.md).
+`dot` and dense-array `norm` return [device scalars](api_cnscalar.md).
 
 ## Solve
 
@@ -309,7 +296,7 @@ must be `NDArray` unless noted.
 - `mul!`, `lmul!`, `rmul!` with `NDArray`
 - `D \ B`, `A / D`, `ldiv!`, `rdiv!` with `NDArray`
 - `inv(D)` — reciprocal on-device; zeros become Inf (no `SingularException`)
-- `det(D)` — `NDScalar` product of the diagonal
+- `det(D)` — `CNScalar` product of the diagonal
 
 **`NDArray` ± `Diagonal`**
 
@@ -335,12 +322,12 @@ must be `NDArray` unless noted.
 - `eigvals(D)`, `eigen(D)`, `eigvecs(D)` — unsorted; values are a copy of the
   diagonal (`NDArray`), vectors are `NDArray` identity. Keyword `sortby` is not
   supported on this method.
-- `tr`, `sum`, `prod`, `maximum`, `minimum` — `NDScalar` (not a Julia scalar)
+- `tr`, `sum`, `prod`, `maximum`, `minimum` — `CNScalar` (not a Julia scalar)
 - `iszero`, `isone`, `istriu`, `istril`, `ishermitian`, `issymmetric`, `isposdef` — 0-dimensional `NDArray{Bool}`
-- `opnorm(D)` / `opnorm(D, p)` for `p ∈ {1, 2, Inf}` — `NDScalar`
-- `norm(D)` / `norm(D, p)` for finite `p` (including `±Inf`); off-diagonals are zero — `NDScalar`
-- `cond(D)` / `cond(D, p)` for `p ∈ {1, 2, Inf}` — `NDScalar`
-- `logdet(D)` for real `Diagonal` only — `NDScalar`
+- `opnorm(D)` / `opnorm(D, p)` for `p ∈ {1, 2, Inf}` — `CNScalar`
+- `norm(D)` / `norm(D, p)` for finite `p` (including `±Inf`); off-diagonals are zero — `CNScalar`
+- `cond(D)` / `cond(D, p)` for `p ∈ {1, 2, Inf}` — `CNScalar`
+- `logdet(D)` for real `Diagonal` only — `CNScalar`
 
 **Helpers on dense `NDArray`**
 

@@ -52,7 +52,7 @@ other reductions like `sum`.
 function trace(arr::NDArray{T,2}; offset::Int=0, a1::Int=0, a2::Int=1) where {T}
     LinearAlgebra.checksquare(arr)
     T_OUT = Base.promote_op(Base.sum, Vector{T})
-    return ndscalar(nda_trace(arr, Int32(offset), Int32(a1), Int32(a2), T_OUT))
+    return cnscalar(nda_trace(arr, Int32(offset), Int32(a1), Int32(a2), T_OUT))
 end
 
 function LinearAlgebra.tr(arr::NDArray{<:Any,2})
@@ -192,9 +192,9 @@ Base.sum(D::DiagonalNDArray) = sum(_diag_vec(D))
 # Diagonal has off-diagonal zeros, so the product is zero — match Base, as 0D.
 function Base.prod(D::DiagonalNDArray{T}) where {T<:Number}
     n = size(D, 1)
-    n == 0 && return ndscalar(NDArray(one(T)))
+    n == 0 && return cnscalar(NDArray(one(T)))
     n == 1 && return prod(_diag_vec(D))
-    return ndscalar(NDArray(zero(T)))
+    return cnscalar(NDArray(zero(T)))
 end
 
 function Base.maximum(D::DiagonalNDArray{T}) where {T<:Number}
@@ -216,22 +216,22 @@ end
 
 # Base walks `iszero(D.diag)` by scalar iteration; keep on-device via `iszero(D)`.
 function LinearAlgebra.istriu(D::DiagonalNDArray, k::Integer=0)
-    return k <= 0 ? ndscalar(NDArray(true)) : iszero(D)
+    return k <= 0 ? cnscalar(NDArray(true)) : iszero(D)
 end
 function LinearAlgebra.istril(D::DiagonalNDArray, k::Integer=0)
-    return k >= 0 ? ndscalar(NDArray(true)) : iszero(D)
+    return k >= 0 ? cnscalar(NDArray(true)) : iszero(D)
 end
 
 # Real Diagonal is always Hermitian/symmetric in Base; Complex Hermitian needs isreal(diag).
-LinearAlgebra.ishermitian(D::DiagonalNDArray{<:Real}) = ndscalar(NDArray(true))
+LinearAlgebra.ishermitian(D::DiagonalNDArray{<:Real}) = cnscalar(NDArray(true))
 function LinearAlgebra.ishermitian(D::DiagonalNDArray{<:Complex})
     return all(imag(_diag_vec(D)) .== zero(real(eltype(D))))
 end
-LinearAlgebra.issymmetric(D::DiagonalNDArray{<:Number}) = ndscalar(NDArray(true))
+LinearAlgebra.issymmetric(D::DiagonalNDArray{<:Number}) = cnscalar(NDArray(true))
 
 # Base `isposdef(D) = all(isposdef, D.diag)` scalar-iterates.
 function LinearAlgebra.isposdef(D::DiagonalNDArray{T}) where {T<:Real}
-    isempty(D) && return ndscalar(NDArray(true))
+    isempty(D) && return cnscalar(NDArray(true))
     return all(_diag_vec(D) .> zero(T))
 end
 function LinearAlgebra.isposdef(D::DiagonalNDArray{T}) where {T<:Complex}
@@ -272,20 +272,20 @@ LinearAlgebra.logdet(D::DiagonalNDArray{<:Real}) = sum(log.(_diag_vec(D)))
 
 # Operator / entrywise norms from the diagonal only (no host densify).
 for op in (:norm, :opnorm, :cond)
-    @eval LinearAlgebra.$op(D::DiagonalNDArray, p::NDArray{<:Real,0}) = $op(D, _host_parameter(p))
+    @eval LinearAlgebra.$op(D::DiagonalNDArray, p::NDArray{<:Real,0}) = $op(D, _maybe_fetch(p))
 end
 
 function LinearAlgebra.opnorm(D::DiagonalNDArray, p::Real=2)
-    p = _host_parameter(p)
+    p = _maybe_fetch(p)
     if !(p == 1 || p == 2 || p == Inf)
         throw(ArgumentError(lazy"invalid p-norm p=$p. Valid: 1, 2, Inf"))
     end
-    isempty(D) && return ndscalar(NDArray(float(real(zero(eltype(D))))))
+    isempty(D) && return cnscalar(NDArray(float(real(zero(eltype(D))))))
     return maximum(abs.(_diag_vec(D)))
 end
 
 function LinearAlgebra.norm(D::DiagonalNDArray, p::Real=2)
-    p = _host_parameter(p)
+    p = _maybe_fetch(p)
     # Off-diagonals are zero, so the matrix vec-norm equals the diag vec-norm.
     d = abs.(_diag_vec(D))
     if p == 2
@@ -293,20 +293,20 @@ function LinearAlgebra.norm(D::DiagonalNDArray, p::Real=2)
     elseif p == 1
         return sum(d)
     elseif p == Inf
-        return isempty(D) ? ndscalar(NDArray(float(real(zero(eltype(D)))))) : maximum(d)
+        return isempty(D) ? cnscalar(NDArray(float(real(zero(eltype(D)))))) : maximum(d)
     elseif p == -Inf
-        return isempty(D) ? ndscalar(NDArray(float(real(zero(eltype(D)))))) : minimum(d)
+        return isempty(D) ? cnscalar(NDArray(float(real(zero(eltype(D)))))) : minimum(d)
     else
         return sum(d .^ p) ^ (one(p) / p)
     end
 end
 
 function LinearAlgebra.cond(D::DiagonalNDArray, p::Real=2)
-    p = _host_parameter(p)
+    p = _maybe_fetch(p)
     if !(p == 1 || p == 2 || p == Inf)
         throw(ArgumentError(lazy"invalid p-norm p=$p. Valid: 1, 2, Inf"))
     end
-    isempty(D) && return ndscalar(NDArray(float(one(real(eltype(D))))))
+    isempty(D) && return cnscalar(NDArray(float(one(real(eltype(D))))))
     dabs = abs.(_diag_vec(D))
     return maximum(dabs) / minimum(dabs)
 end

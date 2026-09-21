@@ -115,7 +115,7 @@ _mr_empty(f::Union{typeof(abs),typeof(abs2)}, op::typeof(max), T, M, ::NoReducti
     mapreduce(f, op, A::NDArray; dims=:, init)
 
 Fuse a scalar mapping with a distributed GPU reduction. Supported operators are
-`+`, `*`, `min`, and `max`. Full reductions return an `NDScalar`; explicit
+`+`, `*`, `min`, and `max`. Full reductions return an `CNScalar`; explicit
 dimensions retain singleton axes. `sum(f, A)` and `prod(f, A)` use Base's integer
 widening rules, subject to `allowpromotion`.
 

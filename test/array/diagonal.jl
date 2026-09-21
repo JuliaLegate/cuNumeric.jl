@@ -37,15 +37,15 @@ function _host_diag_compare(ref, out, ::Type{T}) where {T}
     end
 end
 
-function _host_scalar_compare(ref, out::NDScalar, ::Type{T}) where {T}
+function _host_scalar_compare(ref, out::CNScalar, ::Type{T}) where {T}
     allowscalar() do
-        @test ref ≈ unwrap(out) atol=atol(T) rtol=rtol(T)
+        @test ref ≈ fetch(out) atol=atol(T) rtol=rtol(T)
     end
 end
 
-function _host_bool_compare(ref::Bool, out::NDReal{Bool})
+function _host_bool_compare(ref::Bool, out::CNReal{Bool})
     allowscalar() do
-        @test unwrap(out) == ref
+        @test fetch(out) == ref
     end
 end
 
@@ -109,7 +109,7 @@ end
         @testset "offset=$k" for k in (-2, -1, 0, 1, 2)
             ref = sum(diag(A, k))
             out = cuNumeric.trace(nda; offset=k)
-            @test out isa NDScalar
+            @test out isa CNScalar
             _host_scalar_compare(ref, out, eltype(ref))
         end
     end
@@ -467,7 +467,7 @@ end
         d = my_rand(T, 3)
         Dh = Diagonal(d)
         D = Diagonal(NDArray(d))
-        @test det(D) isa NDScalar
+        @test det(D) isa CNScalar
         _host_scalar_compare(det(Dh), det(D), T)
         _host_scalar_compare(det(Matrix(D)), det(D), T)
 

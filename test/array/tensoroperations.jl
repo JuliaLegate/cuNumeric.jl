@@ -217,9 +217,9 @@ using TensorOperations: TensorOperations as TO
         hostC = reshape(collect(Float64, 1:6), 2, 3)
         C = NDArray(hostC)
         reduced = sum(C)
-        @test reduced isa NDScalar
+        @test reduced isa CNScalar
         @test ndims(reduced) == 0
-        autounwrap(false) do
+        allowautofetch(false) do
             for α in (NDArray(sum(hostC)), reduced)
                 @tensor scaled[i, j] := α * C[i, j]
                 @test Array(scaled) ≈ sum(hostC) .* hostC

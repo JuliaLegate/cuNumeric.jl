@@ -80,7 +80,7 @@ Insertion indices into a 1-d sorted `a`. `x` may be a `Number` or an
 `NDArray` of needles.
 
 Scalar queries return a 0-d `NDArray{Int64}` (not a Julia `Int`); use
-`unwrap` for an `Int`. Array queries return an `NDArray{Int64}` with the
+`fetch` for an `Int`. Array queries return an `NDArray{Int64}` with the
 shape of the needles. Indices are 1-based.
 
 Not `Base.searchsortedfirst` / `searchsortedlast`. `a` must already be sorted
@@ -113,13 +113,13 @@ end
     cuNumeric.searchsorted(a::NDArray{T,1}, x::Number)
 
 `searchsortedfirst(a, x):searchsortedlast(a, x)` as a `UnitRange`, matching
-Base's scalar search. Materializes two 0-d index arrays via `unwrap`.
+Base's scalar search. Materializes two 0-d index arrays via `fetch`.
 Not `Base.searchsorted`.
 """
 function searchsorted(a::NDArray{T,1}, x::Union{Number,DeviceScalar}) where {T}
     lo = searchsortedfirst(a, x)
     hi = searchsortedlast(a, x)
-    return unwrap(lo):unwrap(hi)
+    return fetch(lo):fetch(hi)
 end
 
 @doc"""

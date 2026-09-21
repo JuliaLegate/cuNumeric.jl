@@ -1,6 +1,6 @@
 using Test, LinearAlgebra, Random, cuNumeric
 
-la_value(x::cuNumeric.NDScalar) = unwrap(x)
+la_value(x::cuNumeric.CNScalar) = fetch(x)
 
 @testset "NDArray norms" begin
     cuNumeric.allowscalar(false)
@@ -17,7 +17,7 @@ la_value(x::cuNumeric.NDScalar) = unwrap(x)
                 @test la_value(norm(x, p)) ≈ norm(xh, p)
                 @test la_value(norm(a, p)) ≈ norm(ah, p)
             end
-            @test norm(x) isa cuNumeric.NDReal{R}
+            @test norm(x) isa cuNumeric.CNReal{R}
             @test la_value(norm(cuNumeric.NDArray(T[0, 2, 0, 3]), 0)) == R(2)
             @test la_value(norm(cuNumeric.NDArray(T[0, 2]), -1)) == zero(R)
             @test isnan(la_value(norm(cuNumeric.NDArray(T[NaN, 1]))))
@@ -41,7 +41,7 @@ end
 # Prevent constant propagation of p from hiding branch-dependent return types.
 Base.@noinline function check_norm_inference(x::cuNumeric.NDArray{T}, p::Real) where {T}
     R = typeof(float(real(zero(T))))
-    @test (@inferred norm(x, p)) isa cuNumeric.NDReal{R}
+    @test (@inferred norm(x, p)) isa cuNumeric.CNReal{R}
 end
 
 @testset "NDArray norm inference" begin
@@ -51,7 +51,7 @@ end
             @testset "$T" begin
                 x = cuNumeric.ones(T, 3)
                 R = typeof(float(real(zero(T))))
-                @test (@inferred norm(x)) isa cuNumeric.NDReal{R}
+                @test (@inferred norm(x)) isa cuNumeric.CNReal{R}
                 for p in (0, 1, 2, 3, -1, -2, 0.5, Inf, -Inf, NaN, 2.0f0)
                     check_norm_inference(x, p)
                 end

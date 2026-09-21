@@ -196,7 +196,7 @@ end
         Ω = T(2) * xmax
         samples = Ω .* cuNumeric.rand(T, n) .- xmax
         integrand = (x) -> @. exp(-x^2)
-        estimate = unwrap((Ω / n) * sum(integrand(samples)))
+        estimate = fetch((Ω / n) * sum(integrand(samples)))
         @test isapprox(estimate, T(sqrt(π)); atol=T(0.08))
     end
 

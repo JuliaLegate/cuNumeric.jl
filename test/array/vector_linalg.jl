@@ -1,7 +1,7 @@
 using Test, LinearAlgebra, Random, cuNumeric
 
 # Host extraction belongs to validation, not the NDArray implementation.
-la_value(x::cuNumeric.NDScalar) = unwrap(x)
+la_value(x::cuNumeric.CNScalar) = fetch(x)
 
 @testset "LinearAlgebra vector interface" begin
     cuNumeric.allowscalar(false)
@@ -37,7 +37,7 @@ la_value(x::cuNumeric.NDScalar) = unwrap(x)
 
                 zh = randn(T, 5)
                 z = cuNumeric.NDArray(zh)
-                @test dot(x, z) isa (T <: Real ? NDReal{T} : NDComplex{T})
+                @test dot(x, z) isa (T <: Real ? CNReal{T} : CNComplex{T})
                 @test la_value(dot(x, z)) ≈ dot(xh, zh)
                 @test_throws DimensionMismatch dot(x, y)
                 empty = cuNumeric.zeros(T, 0)

@@ -261,7 +261,7 @@ The following unary reduction operations are supported and can be applied direct
   • `var` / `std` (sample / `corrected=true`; real types only)
   • `argmax` / `argmin` (1-d only)
 
-Full reductions return an **`NDScalar`** backed by a 0D NDArray. Use `unwrap` or
+Full reductions return an **`CNScalar`** backed by a 0D NDArray. Use `fetch` or
 `only` when you need a host value.
 
 Reduction over specific dimensions is supported via the `dims` keyword argument,
@@ -304,7 +304,7 @@ const unary_reduction_map = Dict{Function,UnaryRedCode}(
     # VARIANCE opcode is unused: compose sample var from mean / sum instead.
 )
 
-# Public full reductions wrap backend 0D NDArrays as NDScalars.
+# Public full reductions wrap backend 0D NDArrays as CNScalars.
 
 function _unary_reduction_apply(out, op_code, input::NDArray{T}, ::Type{T}) where {T}
     return nda_unary_reduction(out, op_code, input)
@@ -411,7 +411,7 @@ function Base.iszero(A::NDArray{T}) where {T}
 end
 function Base.isone(A::NDArray{T,2}) where {T}
     m, n = size(A)
-    m != n && return ndscalar(NDArray(false)) # LinearAlgebra.isone: only square matrices
+    m != n && return cnscalar(NDArray(false)) # LinearAlgebra.isone: only square matrices
     return all(A .== _eye(T, m))
 end
 
@@ -442,7 +442,7 @@ end
 """
     mean(A::NDArray; dims=:)
 
-Arithmetic mean of `A`. Full reduction returns an `NDScalar`, not a host
+Arithmetic mean of `A`. Full reduction returns an `CNScalar`, not a host
 scalar. With `dims`, the reduced axes are kept as size 1, matching Base.
 """
 function mean(arr::NDArray; dims=Colon())
@@ -457,13 +457,13 @@ end
     std(A::NDArray; corrected=true, mean=nothing, dims=:)
 
 Sample variance and standard deviation (`corrected=true`, divisor `n-1`),
-matching Julia / StatsBase. Real types only. Returns an `NDScalar` or dimension-preserving
+matching Julia / StatsBase. Real types only. Returns an `CNScalar` or dimension-preserving
 `NDArray`, not a Julia scalar.
 """
 function var(arr::NDArray{T}; corrected::Bool=true, mean=nothing, dims=Colon()) where {T<:Real}
     μ = isnothing(mean) ? cuNumeric.mean(arr; dims=dims) : mean
     centered = arr .- μ
-    isnothing(mean) && μ isa Union{NDArray,NDScalar} && destroy!(μ)
+    isnothing(mean) && μ isa Union{NDArray,CNScalar} && destroy!(μ)
     sq = centered .^ 2
     destroy!(centered)
     s = sum(sq; dims=dims)
@@ -481,7 +481,7 @@ end
 
 # SQRT kernel rejects 0-d (shape [] vs [1]). Wrap the host sqrt back into a 0-d array.
 function _sqrt_ndarray(v::NDArray{T,0}) where {T}
-    s = T(sqrt(unwrap(v)))
+    s = T(sqrt(fetch(v)))
     destroy!(v)
     return NDArray(s)
 end
@@ -505,7 +505,7 @@ end
 #     count(!iszero, A::NDArray; dims=:)
 #
 # Count `true` values in a `Bool` array, or nonzeros in a numeric array.
-# Returns an `NDScalar` or dimension-preserving `NDArray` of integers, not a Julia `Int`.
+# Returns an `CNScalar` or dimension-preserving `NDArray` of integers, not a Julia `Int`.
 # """
 # function count(arr::NDArray{Bool}; dims=Colon())
 #     return _count_nonzero(arr, dims)

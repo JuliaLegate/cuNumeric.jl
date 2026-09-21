@@ -40,14 +40,14 @@ The semantics of `NDArray` closely mirror Julia's `Array`, and in most cases it 
 
 **Slices are views.** Indexing an `NDArray` with ranges returns a view onto the same store, not a copy. That differs from Base Julia, where `A[1:n]` allocates a new `Array`. Mutations through an `NDArray` slice are visible through other aliases of the same data.
 
-**Reductions return arrays, not Julia scalars.** Reductions such as `sum(A)` produce a **0D or 1D** `NDArray` (axis reductions produce a lower-rank `NDArray`), rather than a bare `Float64` / `Float32`. That keeps the Legate task graph asynchronous instead of forcing synchronization to communicate with the Julia runtime. When you need a plain Julia number, call `unwrap`:
+**Scalar reductions return device scalars.** Full reductions such as `sum(A)` return a `CNScalar` backed by a 0D NDArray. Reductions that retain dimensions still return NDArrays. This keeps the Legate task graph asynchronous. When you need a native Julia scalar, call `fetch`:
 
 ```julia
-s = sum(A)          # NDArray{T,0}
-x = unwrap(s)       # T, e.g. Float32
+s = sum(A)          # CNScalar
+x = fetch(s)        # native Julia scalar, e.g. Float32
 ```
 
-**The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into Legate's task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them (for example `println`, `unwrap`, or converting with `Array(A)`). Hiding latency enables performant code.
+**The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into Legate's task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them (for example `println`, `fetch`, or converting with `Array(A)`). Hiding latency enables performant code.
 
 For API details see [Initialization](./api_initialization.md), [Random](./api_random.md), [FFT](./fft.md), and [NDArray Reference](./api.md). For anti-patterns that kill performance, see [Patterns to Avoid](./perf/patterns_to_avoid.md).
 
