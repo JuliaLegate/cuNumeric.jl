@@ -30,9 +30,11 @@ cupynumeric_jll = "2862d674-414d-5b0b-a494-b21f8deca547"
 libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
 
 [weakdeps]
+Krylov = "ba0b0d4f-ebba-5204-a429-3ac8c609bfb7"
 TensorOperations = "6aa20fa7-93e2-5fca-9bc0-fbd0db3c71a2"
 
 [extensions]
+cuNumericKrylovExt = "Krylov"
 cuNumericTensorOperationsExt = "TensorOperations"
 
 [compat]
@@ -44,6 +46,7 @@ CxxWrap = "0.17.5"
 ExpressionExplorer = "1.1.4"
 JuliaFormatter = "2.3.0"
 KernelAbstractions = "0.9.41"
+Krylov = "0.10.10"
 Legate = "0.2.4"
 LegatePreferences = "0.1.7"
 MacroTools = "0.5.16"
