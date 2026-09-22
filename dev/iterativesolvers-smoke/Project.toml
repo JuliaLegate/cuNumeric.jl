@@ -1,6 +1,8 @@
 [deps]
 cuNumeric = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
 IterativeSolvers = "42fd0dbc-a981-5370-80f2-aaf504508153"
+Krylov = "ba0b0d4f-ebba-5204-a429-3ac8c609bfb7"
+KrylovKit = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 
 [sources]
@@ -9,3 +11,5 @@ cuNumeric = {url = "https://github.com/JuliaLegate/cuNumeric.jl.git", rev = "cod
 [compat]
 julia = "1.11"
 IterativeSolvers = "0.9"
+Krylov = "0.10"
+KrylovKit = "0.10"

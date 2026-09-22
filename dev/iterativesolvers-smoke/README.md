@@ -36,3 +36,23 @@ On this machine, Pkg's URL checkout failed with
 The tested environment instead uses `cuNumeric = {path = "cuNumeric.jl"}` pointing
 to a fresh, unmodified Git clone of that exact branch and revision. Its backend
 library preferences were copied from the working dubliner test environment.
+
+## Krylov and KrylovKit
+
+Run `krylov.jl` in the same environment (log: `krylov.log`). Tested releases:
+Krylov 0.10.10, KrylovKit 0.10.4, VectorInterface 0.6.1, CUDACore 6.4.0.
+The script compares NDArrays with CUDA CuArrays on the same SPD system, with
+scalar indexing disabled and `@allowautofetch` enabled. No library methods are added.
+
+| Call | NDArray | CuArray |
+| --- | --- | --- |
+| `Krylov.cg(A, b)` | Missing `NDArray{Float64,1,Nothing}(undef, n)` constructor at `krylov_workspaces.jl:273`. | Pass, residual `2.23e-16`. |
+| `Krylov.cg!` with `CgWorkspace(KrylovConstructor(b))` | Gets past allocation; fails at `cg.jl:239` because `kaxpy!` requires matching coefficient and vector element types (`CNFloat{Float64}` versus `Float64`). | Pass, residual `2.23e-16`. |
+| `KrylovKit.linsolve(A, b, zero(b), CG(...))` | Fails at `linsolve/cg.jl:4`: VectorInterface's `inner` calls two-input `mapreduce`, which cuNumeric does not support. | Pass, residual `2.39e-16`. |
+
+Both libraries explicitly support CUDA arrays:
+[Krylov GPU support](https://jso.dev/Krylov.jl/stable/gpu/) and
+[KrylovKit vector support](https://jutho.github.io/KrylovKit.jl/stable/).
+Krylov's documented custom workspace bypasses the constructor gap but does not
+resolve its scalar dispatch requirements. KrylovKit's first integration point
+is `VectorInterface.inner`; later compatibility has not been established.
