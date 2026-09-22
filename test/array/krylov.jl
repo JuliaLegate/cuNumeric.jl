@@ -42,5 +42,13 @@ using Krylov
         @test stats.solved
         @test solution isa NDArray
         @test norm(hostA * Array(solution) - hostb) / norm(hostb) <= 5tol
+
+        # BiCGSTAB exercises the same device-scalar hooks on a nonsymmetric operator.
+        nonsymmetric = Matrix(Tridiagonal(fill(T(-0.3), n - 1), fill(T(4), n), fill(T(-0.8), n - 1)))
+        B = NDArray(nonsymmetric)
+        biworkspace = Krylov.BicgstabWorkspace(B, rhs)
+        @allowpromotion @allowautofetch Krylov.bicgstab!(biworkspace, B, rhs; atol=zero(R), rtol=tol, itmax=100)
+        @test biworkspace.stats.solved
+        @test norm(nonsymmetric * Array(biworkspace.x) - hostb) / norm(hostb) <= 5tol
     end
 end

@@ -11,6 +11,10 @@ function Krylov.CgWorkspace(A, b::NDArray{T,1}) where {T}
     return Krylov.CgWorkspace(Krylov.KrylovConstructor(similar(b)))
 end
 
+function Krylov.BicgstabWorkspace(A, b::NDArray{T,1}) where {T}
+    return Krylov.BicgstabWorkspace(Krylov.KrylovConstructor(similar(b)))
+end
+
 # Krylov's documented custom-vector hooks:
 # https://jso.dev/Krylov.jl/stable/custom_workspaces/#Methods-to-overload-for-compatibility-with-Krylov.jl
 # Its AbstractVector fallbacks operate on whole vectors (the n argument is

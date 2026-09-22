@@ -1,9 +1,0 @@
-Generating SQLite file python-gemv-65535.sqlite from python-gemv-65535.nsys-rep
-Processing [python-gemv-65535.sqlite] with [/opt/nvidia/nsight-systems/2025.3.2/host-linux-x64/reports/cuda_gpu_kern_sum.py]...
-Time (%),Total Time (ns),Instances,Avg (ns),Med (ns),Min (ns),Max (ns),StdDev (ns),Name
-96.7,1016011926,8,127001490.8,118836254.0,118834622,157780093,15488380.7,ampere_sgemm_128x128_tn
-3.3,34651361,10,3465136.1,3008.0,2976,34577953,10931933.6,fill_affine_batch2D_32
-
-Processing [python-gemv-65535.sqlite] with [/opt/nvidia/nsight-systems/2025.3.2/host-linux-x64/reports/cuda_gpu_mem_size_sum.py]...
-Total (MB),Count,Avg (MB),Med (MB),Min (MB),Max (MB),StdDev (MB),Operation
-0.262,1,0.262,0.262,0.262,0.262,0.000,[CUDA memcpy Device-to-Host]
