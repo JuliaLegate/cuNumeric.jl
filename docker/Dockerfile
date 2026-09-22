@@ -113,6 +113,11 @@ RUN apt-get clean \
 
 ENV LEGATE_AUTO_CONFIG=1
 
+# Include the complete checkout and history after package installation so
+# documentation and history changes do not invalidate the expensive layers.
+COPY . /opt/cuNumeric.jl/
+RUN git -C /opt/cuNumeric.jl rev-parse --verify HEAD
+
 COPY docker/profile.sh /etc/profile.d/cunumeric.sh
 COPY docker/entrypoint.sh /usr/local/bin/cunumeric-entrypoint
 RUN chmod +x /usr/local/bin/cunumeric-entrypoint

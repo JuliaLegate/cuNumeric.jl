@@ -51,6 +51,8 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.event.release.tag_name || github.sha }}
           fetch-depth: 0
+          # The image includes .git; do not store the checkout token there.
+          persist-credentials: false
 
       - name: Select wrapper build
         id: wrapper-build
@@ -189,6 +191,7 @@ jobs:
       - name: Build image
         uses: docker/build-push-action@v6
         with:
+          context: .
           file: ${{ steps.wrapper-build.outputs.dockerfile }}
           load: true
           push: false
