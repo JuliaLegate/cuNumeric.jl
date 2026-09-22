@@ -1,4 +1,4 @@
-ARG JULIA_VERSION=1.11
+ARG JULIA_VERSION=1.13
 FROM julia:${JULIA_VERSION}
 
 ARG CUDA_MAJOR=13
@@ -51,7 +51,7 @@ ENV PATH="/usr/local/.juliaup/bin:/usr/local/bin:$PATH"
 
 # install CUDA.jl itself.
 RUN julia --color=yes -e 'using Pkg; Pkg.add("CUDA"); using CUDA; CUDA.set_runtime_version!(VersionNumber(ENV["CUDA_VERSION_MAJOR_MINOR"]))'
-RUN julia -e 'using Pkg; Pkg.add(name = "CUDA_Driver_jll", version = "13.0.0"); Pkg.add("CUDA_Runtime_jll")'
+RUN julia -e 'using Pkg; Pkg.add(["CUDA_Driver_jll", "CUDA_Runtime_jll"])'
 RUN echo "export LD_LIBRARY_PATH=\$(julia -e 'print(Sys.BINDIR * \"/../lib\")'):\$(julia -e 'using CUDA_Driver_jll; print(joinpath(CUDA_Driver_jll.artifact_dir, \"lib\"))'):\$(julia -e 'using CUDA_Runtime_jll; print(joinpath(CUDA_Runtime_jll.artifact_dir, \"lib\"))'):\$LD_LIBRARY_PATH" >> /etc/.env
 RUN chmod +x /etc/.env
 RUN cat /etc/.env
@@ -120,6 +120,11 @@ RUN apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 ENV LEGATE_AUTO_CONFIG=1
+
+# Include the complete checkout and history after package installation so
+# documentation and history changes do not invalidate the expensive layers.
+COPY . /opt/cuNumeric.jl/
+RUN git -C /opt/cuNumeric.jl rev-parse --verify HEAD
 
 COPY docker/profile.sh /etc/profile.d/cunumeric.sh
 COPY docker/entrypoint.sh /usr/local/bin/cunumeric-entrypoint
