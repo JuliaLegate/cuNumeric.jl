@@ -17,7 +17,7 @@
  *            Ethan Meitz <emeitz@andrew.cmu.edu>
 =#
 
-export fft, ifft, fft!, ifft!, batched_fft, batched_ifft, batched_fft!, batched_ifft!
+export fft, ifft, bfft!, fft!, ifft!, batched_fft, batched_ifft, batched_fft!, batched_ifft!
 
 const _FFT_PROMOTABLE = Union{SUPPORTED_INT_TYPES,Bool,SUPPORTED_FLOAT_TYPES}
 const _FFT_ACCEPTED = Union{SUPPORTED_COMPLEX_TYPES,_FFT_PROMOTABLE}
@@ -125,6 +125,20 @@ end
 function ifft!(A::NDArray{T,N}, dims) where {T<:SUPPORTED_COMPLEX_TYPES,N}
     region = _fft_dims(A, dims)
     return fft_task!(A, A, region, Int32(cuNumeric.FFT_INVERSE); scale=true)
+end
+
+function bfft!(A::NDArray{T,N}) where {T<:SUPPORTED_COMPLEX_TYPES,N}
+    return bfft!(A, _fft_dims(A))
+end
+function bfft!(A::NDArray{T,N}, dims) where {T<:SUPPORTED_COMPLEX_TYPES,N}
+    return fft_task!(A, A, _fft_dims(A, dims), Int32(cuNumeric.FFT_INVERSE))
+end
+
+function bfft!(A::NDArray)
+    return throw(ArgumentError("bfft! requires a complex NDArray; got $(eltype(A))"))
+end
+function bfft!(A::NDArray, ::Any)
+    return throw(ArgumentError("bfft! requires a complex NDArray; got $(eltype(A))"))
 end
 
 function ifft!(A::NDArray)

@@ -149,6 +149,19 @@ a[1,1]
     return arr
 end
 
+function Base.copyto!(dest::NDArray{T,N}, src::Array{T,N}) where {T,N}
+    attached = _nda_from_julia_array(src)
+    try
+        GC.@preserve src attached begin
+            copyto!(dest, attached)
+            issue_execution_fence(; block=true)
+        end
+    finally
+        destroy!(attached)
+    end
+    return dest
+end
+
 @doc"""
     as_type(arr::NDArray, t::Type{T}) where {T}
 

@@ -43,7 +43,7 @@ import Base: axes, convert, copy, copyto!, inv, isfinite, sqrt, -, +, *, ==, !=,
 using LinearAlgebra
 import LinearAlgebra: mul!
 
-import AbstractFFTs: fft, ifft, fft!, ifft!
+import AbstractFFTs: fft, ifft, bfft!, fft!, ifft!
 
 using Random
 import Random: rand!, randn!, randexp!

@@ -88,7 +88,7 @@ end
     end
 end
 
-@testset verbose = true "fft!/ifft!" begin
+@testset verbose = true "fft!/ifft!/bfft!" begin
     @testset verbose = true for T in _FFT_INPLACE_TYPES
         rtol_t = rtol(T)
         atol_t = atol(T)
@@ -103,6 +103,11 @@ end
         z = ifft!(x)
         @test z === x
         @test _fft_compare(x, x_cpu; rtol=rtol_t, atol=atol_t)
+
+        x = cuNumeric.NDArray(copy(x_cpu))
+        z = bfft!(x)
+        @test z === x
+        @test _fft_compare(x, length(x_cpu) .* ifft(x_cpu); rtol=rtol_t, atol=atol_t)
     end
 
     @testset "fft! rejects non-complex" begin
@@ -110,6 +115,7 @@ end
             x = cuNumeric.NDArray(my_rand(T, 8))
             @test_throws ArgumentError fft!(x)
             @test_throws ArgumentError ifft!(x)
+            @test_throws ArgumentError bfft!(x)
         end
     end
 end
