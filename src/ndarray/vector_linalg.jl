@@ -10,6 +10,11 @@ function _matmul_eltype(::Type{T}) where {T<:_LA_INTEGER}
     ))
 end
 
+"""
+    mul!(y::NDArray, A::NDArray, x::NDArray)
+
+Store the matrix-vector product `A * x` in `y`.
+"""
 function LinearAlgebra.mul!(y::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, A::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1})
     return mul!(y, A, x, true, false)
 end
@@ -41,10 +46,22 @@ function _linalg_mul!(C::NDArray{T}, cm, A::NDArray{TA}, am, B::NDArray{TB}, bm,
     return C
 end
 
+"""
+    mul!(y::NDArray, A::NDArray, x::NDArray, α, β)
+
+Store `α * A * x + β * y` in `y`. The destination must not alias an input.
+`α` and `β` accept host numbers, 0D `NDArray{T,0}` values, or `CNScalar` wrappers.
+"""
 function LinearAlgebra.mul!(y::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, A::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, α::Union{Number,DeviceScalar}, β::Union{Number,DeviceScalar})
     return _linalg_mul!(y, "i", A, "ij", x, "j", α, β)
 end
 
+"""
+    mul!(C::NDArray, A::NDArray, B::NDArray, α, β)
+
+Store `α * A * B + β * C` in `C`. The destination must not alias an input.
+`α` and `β` accept host numbers, 0D `NDArray{T,0}` values, or `CNScalar` wrappers.
+"""
 function LinearAlgebra.mul!(C::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, A::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, B::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, α::Union{Number,DeviceScalar}, β::Union{Number,DeviceScalar})
     return _linalg_mul!(C, "ij", A, "ik", B, "kj", α, β)
 end
@@ -72,6 +89,11 @@ function _dot_same_type(x::NDArray{T,1}, y::NDArray{T,1}) where {T<:Complex}
     return result
 end
 
+"""
+    dot(x::NDArray, y::NDArray)
+
+Return the vector inner product as a `CNScalar`. Complex inputs conjugate `x`.
+"""
 function LinearAlgebra.dot(x::NDArray{TX,1}, y::NDArray{TY,1}) where {TX<:SUPPORTED_ARRAY_TYPES,TY<:SUPPORTED_ARRAY_TYPES}
     length(x) == length(y) || throw(DimensionMismatch("dot vector lengths do not match"))
     T = _dot_eltype(promote_type(TX, TY))
@@ -88,6 +110,13 @@ _norm_nonzero(v) = ifelse(iszero(v), zero(real(v)), one(real(v)))
 LinearAlgebra.norm(x::NDArray{<:SUPPORTED_ARRAY_TYPES}, p::NDArray{<:Real,0}) =
     norm(x, _maybe_fetch(p))
 
+"""
+    norm(x::NDArray, p::Real=2)
+
+Return the entrywise `p`-norm as a real `CNScalar`, not a matrix operator norm.
+Dense-array norms currently require a GPU. Unscaled accumulation can overflow
+or underflow.
+"""
 function LinearAlgebra.norm(x::NDArray{T}, p::Real=2) where {T<:_LA_FLOAT}
     p = _maybe_fetch(p)
     R = real(T)
@@ -116,6 +145,11 @@ function LinearAlgebra.norm(x::NDArray{T}, p::Real=2) where {T<:_LA_INTEGER}
     return result
 end
 
+"""
+    axpy!(α, x::NDArray, y::NDArray)
+
+Update and return `y` with `y = α * x + y`.
+"""
 function LinearAlgebra.axpy!(α::Union{Number,DeviceScalar}, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, y::NDArray{<:SUPPORTED_ARRAY_TYPES,1})
     length(x) == length(y) || throw(DimensionMismatch("axpy! vector lengths do not match"))
     _host_iszero(α) && return y
@@ -123,6 +157,11 @@ function LinearAlgebra.axpy!(α::Union{Number,DeviceScalar}, x::NDArray{<:SUPPOR
     return y
 end
 
+"""
+    axpby!(α, x::NDArray, β, y::NDArray)
+
+Update and return `y` with `y = α * x + β * y`.
+"""
 function LinearAlgebra.axpby!(α::Union{Number,DeviceScalar}, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, β::Union{Number,DeviceScalar}, y::NDArray{<:SUPPORTED_ARRAY_TYPES,1})
     length(x) == length(y) || throw(DimensionMismatch("axpby! vector lengths do not match"))
     _host_iszero(α) && _host_isone(β) && return y
