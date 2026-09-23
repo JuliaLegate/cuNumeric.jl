@@ -684,6 +684,15 @@ end
     return arr
 end
 
+# Base.fill! accepts host values convertible to the array element type. Without
+# this method, e.g. fill!(::NDArray{Float32}, false) scalar-indexes via Base.
+@inline function Base.fill!(
+    arr::NDArray{T}, val::SUPPORTED_ARRAY_TYPES
+) where {T<:SUPPORTED_ARRAY_TYPES}
+    # This union-typed method wins normal dispatch even after conversion.
+    return invoke(fill!, Tuple{NDArray{S},S} where S, arr, convert(T, val))
+end
+
 #### INITIALIZATION OF NDARRAYS ####
 @doc"""
     cuNumeric.fill(val::T, dims::Dims)
