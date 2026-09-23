@@ -358,6 +358,34 @@ E2 = one(A)                     # same shape / eltype as A
 Avoid building a dense identity (or densifying `D` with `Matrix(D)`) just to
 scale or shift; prefer `Diagonal` and `I` instead. There is no public `eye`.
 
+## Krylov.jl CG
+
+Loading `Krylov` activates the cuNumeric extension for runtime-backed scalar
+coefficients and CG workspace allocation. Allow automatic fetching for the
+solver's convergence decisions:
+
+```julia
+using cuNumeric, Krylov
+
+A = NDArray([4.0 1.0; 1.0 3.0])
+b = NDArray([1.0, 2.0])
+x, stats = @allowautofetch Krylov.cg(A, b; rtol=1e-8)
+```
+
+For complex systems, use `@allowpromotion @allowautofetch Krylov.cg(...)`:
+CG computes real scalar coefficients that must promote when scaling complex
+vectors.
+
+The extension forwards `kaxpy!` and `kaxpby!` with `DeviceScalar` coefficients
+to cuNumeric's `LinearAlgebra` methods. See Krylov's
+[documented custom-vector helpers](https://jso.dev/Krylov.jl/stable/custom_workspaces/#Methods-to-overload-for-compatibility-with-Krylov.jl).
+The `HaloVector` in that example illustrates a custom vector type; this
+extension defines the corresponding methods for `NDArray`.
+
+To reuse allocations, construct `workspace = Krylov.CgWorkspace(A, b)` and call
+`@allowautofetch Krylov.cg!(workspace, A, b)`. Other Krylov solvers may require
+additional integration methods.
+
 ## Not available yet
 
 There is no public dense-matrix `lu`, matrix `inv`, or `ldiv!` yet (beyond the
@@ -365,4 +393,4 @@ There is no public dense-matrix `lu`, matrix `inv`, or `ldiv!` yet (beyond the
 operations, not matrix inverse.
 
 Also missing: `eigh` / Hermitian eigen (needs `Hermitian` and `Symmetric`
-support on `NDArray`), batched SVD and QR, and conjugate gradient.
+support on `NDArray`), and batched SVD and QR.
