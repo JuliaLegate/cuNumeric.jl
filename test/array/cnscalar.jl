@@ -15,6 +15,8 @@ end
             a = NDArray(one(T))
             x = cnscalar(a)
             @test x.value === a
+            @test @inferred(typeof(x)(x)) === x
+            @test fetch(oneunit(typeof(x))) == one(T)
             @test x isa Number
             @test x isa supertype(T)
             @test isconcretetype(fieldtype(typeof(x), :value))
@@ -88,6 +90,24 @@ end
         @test isconcretetype(fieldtype(typeof(x), :value))
         @test fetch(x) == one(T)
     end
+end
+
+@testset "fill! host and device scalars" begin
+    for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
+        a = cuNumeric.zeros(T, 3)
+        @test fill!(a, false) === a
+        @test Array(a) == fill(zero(T), 3)
+        @test fill!(a, one(T)) === a
+        @test Array(a) == fill(one(T), 3)
+        device_zero = cnscalar(NDArray(zero(T)))
+        for value in (device_zero, device_zero.value)
+            @test fill!(a, value) === a
+            @test Array(a) == fill(zero(T), 3)
+        end
+    end
+    a = cuNumeric.zeros(Float32, 2)
+    @test fill!(a, 2) === a
+    @test Array(a) == Float32[2, 2]
 end
 
 @testset "Scoped allowautofetch" begin

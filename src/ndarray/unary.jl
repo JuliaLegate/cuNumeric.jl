@@ -46,6 +46,14 @@ const unary_op_map_no_args = Dict{Function,UnaryOpCode}(
     Base.round => cuNumeric.RINT,
 )
 
+for julia_fn in (keys(floaty_unary_ops_no_args)..., keys(unary_op_map_no_args)...,
+                 identity, real, imag, conj, inv, !)
+    @eval @inline _has_unfused_broadcast(::typeof($julia_fn), ::Val{1}) = true
+end
+# Positional rounding modes are rejected by the native path, too.
+@inline _has_unfused_broadcast(::typeof(round), ::Val) = true
+@inline _has_unfused_broadcast(::typeof(Base.literal_pow), ::Val{3}) = true
+
 ### SPECIAL CASES ###
 
 # `dest .= src` lowers to `identity.(src)`. Treat identity like the native
@@ -53,6 +61,23 @@ const unary_op_map_no_args = Dict{Function,UnaryOpCode}(
 # NDArrays, including writable slices.
 @inline function __broadcast(::typeof(identity), out::NDArray, input::NDArray)
     return nda_unary_op!(out, cuNumeric.COPY, input)
+end
+
+# Real abs2 is a single native square.
+@inline function __broadcast(::typeof(abs2), out::NDArray{T}, input::NDArray{T}) where {T<:Real}
+    return nda_unary_op!(out, cuNumeric.SQUARE, input)
+end
+
+# Complex abs2 has no matching native opcode. Take the magnitude into a real
+# temporary and square it, keeping the unfused path available without a GPU.
+@inline function __broadcast(
+    ::typeof(abs2), out::NDArray{T}, input::NDArray{Complex{T}}
+) where {T<:SUPPORTED_FLOAT_TYPES}
+    magnitude = similar(out)
+    nda_unary_op!(magnitude, cuNumeric.ABSOLUTE, input)
+    nda_unary_op!(out, cuNumeric.SQUARE, magnitude)
+    destroy!(magnitude)
+    return out
 end
 
 # Needed to support !=

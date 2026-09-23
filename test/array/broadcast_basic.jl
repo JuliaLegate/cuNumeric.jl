@@ -159,6 +159,16 @@ end
     end
 end
 
+@testset "muladd broadcast" begin
+    for T in (Float32, Float64)
+        a = NDArray(T[1, 2, 3])
+        b = NDArray(T[4, 5, 6])
+        out = cuNumeric.zeros(T, 3)
+        out .= muladd.(T(2), a, b)
+        @test Array(out) == muladd.(T(2), T[1, 2, 3], T[4, 5, 6])
+    end
+end
+
 #TODO LOOP BINARY OPS WITH SCALARS
 @testset verbose = true "Scalars" begin
     N = 10

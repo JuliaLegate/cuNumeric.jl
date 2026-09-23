@@ -44,6 +44,12 @@ const floaty_binary_op_map = Dict{Function,BinaryOpCode}(
     Base.atan => cuNumeric.ARCTAN2,
 )
 
+for julia_fn in (keys(binary_op_map)..., keys(floaty_binary_op_map)...)
+    @eval @inline _has_unfused_broadcast(::typeof($julia_fn), ::Val{2}) = true
+end
+@inline _has_unfused_broadcast(::typeof(+), ::Val{N}) where {N} = N >= 2
+@inline _has_unfused_broadcast(::typeof(*), ::Val{N}) where {N} = N >= 2
+
 ## SPECIAL CASES ##
 # Promote into out's eltype, then destroy any new temps (dispatch; no runtime !==).
 @inline function _nda_binary_op_promoted!(
