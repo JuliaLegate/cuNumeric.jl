@@ -212,7 +212,7 @@ function contract!(
     Ap = checked_promote_arr(contract!, A, T)
     Bp = checked_promote_arr(contract!, B, T)
     try
-        return _contract_same_type!(C, Cmodes, Ap, Amodes, Bp, Bmodes, α, β)
+        return _contract_same_type!(C, Cmodes, Ap, Amodes, Bp, Bmodes, _scale_storage(α), _scale_storage(β))
     finally
         Ap !== A && destroy!(Ap)
         Bp !== B && destroy!(Bp)
@@ -227,6 +227,13 @@ function contract!(C::NDArray, Cmodes, A::NDArray, Amodes, B::NDArray, Bmodes; �
     end
     return throw(ArgumentError("array type $bad is unsupported in contract!"))
 end
+
+# Device scalar wrappers specialize this to expose storage without host extraction.
+_scale_storage(x) = x
+_host_iszero(x::Number) = iszero(x)
+_host_iszero(::NDArray) = false
+_host_isone(x::Number) = isone(x)
+_host_isone(::NDArray) = false
 
 function _require_0d_scale(x::NDArray)
     ndims(x) == 0 || throw(

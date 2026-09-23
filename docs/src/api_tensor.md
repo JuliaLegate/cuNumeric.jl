@@ -34,8 +34,8 @@ end
 
 Prefer a Julia `Number` for scale factors when possible (i.e., `2.0f0`, `randn()`, …). This allows TensorOperations.jl to perform optimizatoins for special values like zero and one.
 
-A 0D `NDArray` is also accepted as a scale — for example `sum(C)`, or a
-fully contracted `@tensor` result. If you intend to use these results in down-stream tensor contractions keep those on device. `unwrap` copies the value to the host and **blocks the Legate runtime**, so only unwrap
+A `CNScalar`, such as `sum(C)`, or a raw 0D `NDArray`, such as a
+fully contracted `@tensor` result, is also accepted as a scale. Keep these results in runtime-managed storage when reusing them in tensor contractions. `fetch` retrieves a native Julia scalar and waits for the result, so only fetch
 when you truly need a Julia `Number` (i.e. printing of host-side if-else).
 
 ```julia
@@ -48,8 +48,8 @@ B = cuNumeric.rand(Float64, 32, 16)
 @tensor D[i, j] := α * C[i, j]          # Julia Number, no sync
 
 @tensor s = conj(C[i, j]) * C[i, j]    # 0D NDArray, stays asynchronous
-@tensor E[i, j] := s * C[i, j]         # reuse 0D as a scale, still no unwrap
-x = unwrap(s)                          # host Number; blocks
+@tensor E[i, j] := s * C[i, j]         # reuse 0D as a scale, still no fetch
+x = fetch(s)                          # host Number; blocks
 ```
 
 ## Low-level `contract` / `contract!`

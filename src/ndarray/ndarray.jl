@@ -18,7 +18,7 @@
  *            Nader Rahhal <naderrahhal2026@u.northwestern.edu>
 =#
 
-export unwrap, squeeze
+export squeeze
 
 # See TODO.md (Base / LinearAlgebra sections) for AbstractArray and LA gaps.
 
@@ -855,7 +855,7 @@ function Base.only(x::NDArray{T,N}) where {T,N}
     return @allowscalar x[firstindex(x)]
 end
 
-unwrap(x::NDArray) = only(x)
+Base.fetch(x::NDArray) = only(x)
 
 @doc"""
     ==(arr1::NDArray, arr2::NDArray)
@@ -863,7 +863,7 @@ unwrap(x::NDArray) = only(x)
 
 Element-wise equality reduced to a 0-d `NDArray{Bool}` (not a Julia `Bool`).
 Same shape and values yields true; mismatched shape or rank yields false.
-Mixed dtypes follow Julia `==` (promote, then compare). Use `unwrap` or `A[]`
+Mixed dtypes follow Julia `==` (promote, then compare). Use `fetch` or `A[]`
 (with `allowscalar`) for a host value. Broadcast `.==` / `.!=` stay elementwise.
 
 # Examples
@@ -876,8 +876,8 @@ a == c
 ```
 """
 function Base.:(==)(a::NDArray, b::NDArray)
-    size(a) == size(b) || return NDArray(false)
-    return _array_equal_impl(a, b)
+    size(a) == size(b) || return cnscalar(NDArray(false))
+    return cnscalar(_array_equal_impl(a, b))
 end
 
 function Base.:(!=)(a::NDArray, b::NDArray)
@@ -978,15 +978,15 @@ isapprox(julia_arr, arr2)
 """
 function Base.isapprox(julia_array::AbstractArray{T}, arr::NDArray{T}; atol=0, rtol=0) where {T}
     #! REPLCE THIS WITH BIN_OP isapprox
-    return compare(julia_array, arr, atol, rtol)
+    return compare(julia_array, arr, _maybe_fetch(atol), _maybe_fetch(rtol))
 end
 
 function Base.isapprox(arr::NDArray{T}, julia_array::AbstractArray{T}; atol=0, rtol=0) where {T}
-    return compare(julia_array, arr, atol, rtol)
+    return compare(julia_array, arr, _maybe_fetch(atol), _maybe_fetch(rtol))
 end
 
 function Base.isapprox(arr::NDArray{T}, arr2::NDArray{T}; atol=0, rtol=0) where {T}
-    return compare(arr, arr2, atol, rtol)
+    return compare(arr, arr2, _maybe_fetch(atol), _maybe_fetch(rtol))
 end
 
 # HDF5 signature. A leftover empty/truncated file from a crashed write has no

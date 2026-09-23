@@ -149,18 +149,18 @@ function random(g::Generator, ::Type{Bool}, dims::Dims)
     return integers(g, Int16, dims; low=0, high=2) .!= Int16(0)
 end
 
-function _randn!(g::Generator, arr::NDArray{Float32}; loc::Real=0, scale::Real=1)
+function _randn!(g::Generator, arr::NDArray{Float32}; loc::Union{Real,DeviceScalar{<:Real}}=0, scale::Union{Real,DeviceScalar{<:Real}}=1)
     _bitgenerator_distribution!(
         arr, g.bit_generator, cuNumeric.BITGENDIST_NORMAL_32,
-        _EMPTY_INT64, SVector{2,Float32}(Float32(loc), Float32(scale)), _EMPTY_FLOAT64,
+        _EMPTY_INT64, SVector{2,Float32}(Float32(_maybe_fetch(loc)), Float32(_maybe_fetch(scale))), _EMPTY_FLOAT64,
     )
     return arr
 end
 
-function _randn!(g::Generator, arr::NDArray{Float64}; loc::Real=0, scale::Real=1)
+function _randn!(g::Generator, arr::NDArray{Float64}; loc::Union{Real,DeviceScalar{<:Real}}=0, scale::Union{Real,DeviceScalar{<:Real}}=1)
     _bitgenerator_distribution!(
         arr, g.bit_generator, cuNumeric.BITGENDIST_NORMAL_64,
-        _EMPTY_INT64, _EMPTY_FLOAT32, SVector{2,Float64}(Float64(loc), Float64(scale)),
+        _EMPTY_INT64, _EMPTY_FLOAT32, SVector{2,Float64}(Float64(_maybe_fetch(loc)), Float64(_maybe_fetch(scale))),
     )
     return arr
 end
@@ -205,8 +205,8 @@ function randn(g::Generator, ::Type{T}, dims::Dims) where {T<:SUPPORTED_COMPLEX_
     return arr
 end
 
-function randexp!(g::Generator, arr::NDArray{Float32}; scale::Real=1)
-    s = Float32(scale)
+function randexp!(g::Generator, arr::NDArray{Float32}; scale::Union{Real,DeviceScalar{<:Real}}=1)
+    s = Float32(_maybe_fetch(scale))
     s > 0 || throw(ArgumentError("scale must be positive, got $scale"))
     _bitgenerator_distribution!(
         arr, g.bit_generator, cuNumeric.BITGENDIST_EXPONENTIAL_32,
@@ -215,8 +215,8 @@ function randexp!(g::Generator, arr::NDArray{Float32}; scale::Real=1)
     return arr
 end
 
-function randexp!(g::Generator, arr::NDArray{Float64}; scale::Real=1)
-    s = Float64(scale)
+function randexp!(g::Generator, arr::NDArray{Float64}; scale::Union{Real,DeviceScalar{<:Real}}=1)
+    s = Float64(_maybe_fetch(scale))
     s > 0 || throw(ArgumentError("scale must be positive, got $scale"))
     _bitgenerator_distribution!(
         arr, g.bit_generator, cuNumeric.BITGENDIST_EXPONENTIAL_64,
@@ -225,12 +225,12 @@ function randexp!(g::Generator, arr::NDArray{Float64}; scale::Real=1)
     return arr
 end
 
-function randexp!(g::Generator, arr::NDArray{T}; scale::Real=1) where {T}
+function randexp!(g::Generator, arr::NDArray{T}; scale::Union{Real,DeviceScalar{<:Real}}=1) where {T}
     return error("randexp! only supports Float32 and Float64 NDArray storage")
 end
 
 function randexp(
-    g::Generator, ::Type{T}, dims::Dims; scale::Real=1
+    g::Generator, ::Type{T}, dims::Dims; scale::Union{Real,DeviceScalar{<:Real}}=1
 ) where {T<:SUPPORTED_FLOAT_TYPES}
     arr = zeros(T, dims)
     randexp!(g, arr; scale=scale)

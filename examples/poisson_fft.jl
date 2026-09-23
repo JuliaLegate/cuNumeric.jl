@@ -68,7 +68,7 @@ function main()
     f = NDArray(f_h)
     u = poisson_solve(f)
     err = maximum(abs.(u - NDArray(u_true)))
-    @printf("single grid %dx%d  max |u − u_true| = %.3e\n", n, n, unwrap(err))
+    @printf("single grid %dx%d  max |u − u_true| = %.3e\n", n, n, fetch(err))
 
     # Four independent charge distributions, one FFT task, batch axis first.
     b = 4
@@ -76,7 +76,7 @@ function main()
     invk = reshape(NDArray(poisson_inv_laplacian(Float32, n)), 1, n, n)
     u_batch = real(cuNumeric.batched_ifft(cuNumeric.batched_fft(f_batch) .* invk))
     err_b = maximum(abs.(u_batch - NDArray(repeat(reshape(u_true, 1, n, n), b, 1, 1))))
-    @printf("batched  %d×%dx%d  max |u − u_true| = %.3e\n", b, n, n, unwrap(err_b))
+    @printf("batched  %d×%dx%d  max |u − u_true| = %.3e\n", b, n, n, fetch(err_b))
 
     return u
 end

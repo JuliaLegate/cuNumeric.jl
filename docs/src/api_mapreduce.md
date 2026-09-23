@@ -6,14 +6,14 @@ Mapped `sum`, `prod`, `minimum`, and `maximum` use the same implementation.
 
 ```julia
 A = cuNumeric.ones(Float32, 1024, 512)
-energy = sum(abs2, A)                         # 0-d NDArray
+energy = sum(abs2, A)                         # CNScalar
 columns = mapreduce(abs2, +, A; dims=1)        # 1 × 512
 α = 0.5f0
 distance = sum(x -> abs2(x - α), A)
 largest = maximum(abs, A; init=0f0)
 ```
 
-Full reductions return a device-resident 0-d NDArray. Dimensional reductions
+Full reductions return a device-resident CNScalar. Dimensional reductions
 keep reduced axes with size one. Duplicate dimensions are ignored; positive
 out-of-rank dimensions have no effect. `dims=()` still applies the mapping.
 

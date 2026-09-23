@@ -2,7 +2,7 @@
 
 The first contractions build an MPS-like two-site state and apply a Heisenberg
 operator. Those results stay on device as NDArrays. The fully contracted
-⟨ψ|H|ψ⟩ / ⟨ψ|ψ⟩ ratio is computed on device; unwrap only to print (it blocks).
+⟨ψ|H|ψ⟩ / ⟨ψ|ψ⟩ ratio is computed on device; fetch only to print (it blocks).
 =#
 
 using cuNumeric
@@ -35,8 +35,8 @@ println("ψ is a ", typeof(ψ), " of size ", size(ψ))
 println("Hψ is a ", typeof(Hψ), " of size ", size(Hψ))
 
 # Fully contracted @tensor results are 0D NDArrays. Keep them on device
-# until a host Number is required; unwrap blocks.
+# until a host Number is required; fetch blocks.
 @tensor energy = conj(ψ[a, s1, s2, b]) * Hψ[a, s1, s2, b]
 @tensor norm² = conj(ψ[a, s1, s2, b]) * ψ[a, s1, s2, b]
 
-println("two-site energy = ", real(unwrap(energy ./ norm²)))
+println("two-site energy = ", real(fetch(energy ./ norm²)))

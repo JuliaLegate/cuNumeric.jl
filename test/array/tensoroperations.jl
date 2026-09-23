@@ -213,25 +213,28 @@ using TensorOperations: TensorOperations as TO
         @test only(Array(scalar_product)) ≈ sum(uhost .* vhost)
     end
 
-    @testset "0D NDArray scale factors" begin
+    @testset "Device scalar scale factors" begin
         hostC = reshape(collect(Float64, 1:6), 2, 3)
         C = NDArray(hostC)
-        α = sum(C)
-        @test α isa NDArray
-        @test ndims(α) == 0
+        reduced = sum(C)
+        @test reduced isa CNScalar
+        @test ndims(reduced) == 0
+        allowautofetch(false) do
+            for α in (NDArray(sum(hostC)), reduced)
+                @tensor scaled[i, j] := α * C[i, j]
+                @test Array(scaled) ≈ sum(hostC) .* hostC
 
-        @tensor scaled[i, j] := α * C[i, j]
-        @test Array(scaled) ≈ only(Array(α)) .* hostC
+                dest = NDArray(fill(2.0, 2, 3))
+                @tensor dest[i, j] += α * C[i, j]
+                @test Array(dest) ≈ fill(2.0, 2, 3) .+ sum(hostC) .* hostC
+            end
+        end
 
         @tensor s = C[i, j] * C[i, j]
         @test s isa NDArray
         @test ndims(s) == 0
         @tensor scaled2[i, j] := s * C[i, j]
         @test Array(scaled2) ≈ only(Array(s)) .* hostC
-
-        dest = NDArray(fill(2.0, 2, 3))
-        @tensor dest[i, j] += α * C[i, j]
-        @test Array(dest) ≈ fill(2.0, 2, 3) .+ only(Array(α)) .* hostC
     end
 
     @testset "temporary destruction" begin

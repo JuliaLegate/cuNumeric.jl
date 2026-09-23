@@ -116,9 +116,9 @@ end
             continue
         end
         for x in _search_needles(T)
-            @test cuNumeric.unwrap(cuNumeric.searchsortedfirst(nda, x)) ==
+            @test cuNumeric.fetch(cuNumeric.searchsortedfirst(nda, x)) ==
                 Base.searchsortedfirst(A, x)
-            @test cuNumeric.unwrap(cuNumeric.searchsortedlast(nda, x)) ==
+            @test cuNumeric.fetch(cuNumeric.searchsortedlast(nda, x)) ==
                 Base.searchsortedlast(A, x)
             @test cuNumeric.searchsorted(nda, x) == Base.searchsorted(A, x)
         end

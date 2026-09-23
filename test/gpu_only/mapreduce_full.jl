@@ -110,7 +110,7 @@ function _check_full_reduction(input, op; kwargs...)
     try
         expected = mapreduce(identity, op, input; kwargs...)
         result = mapreduce(identity, op, A; kwargs...)
-        actual = @allowscalar cuNumeric.unwrap(result)
+        actual = @allowscalar cuNumeric.fetch(result)
         @test typeof(actual) === typeof(expected)
         @test isequal(actual, expected)
     finally
@@ -156,7 +156,7 @@ end
         sliced = nothing
         cuNumeric.destroy!(parent)
         parent = nothing
-        @test (@allowscalar cuNumeric.unwrap(result)) == mapreduce(x -> x*x, +, host[2:16, 3:18])
+        @test (@allowscalar cuNumeric.fetch(result)) == mapreduce(x -> x*x, +, host[2:16, 3:18])
     finally
         isnothing(result) || cuNumeric.destroy!(result)
         isnothing(sliced) || cuNumeric.destroy!(sliced)
@@ -222,7 +222,7 @@ end
         @test (@allowscalar Array(results[1])) == fill(3f0, 1, 33)
         for i in 2:3:length(results)
             @test (@allowscalar Array(results[i])) == fill(1f0, 1, 1)
-            @test (@allowscalar cuNumeric.unwrap(results[i + 1])) === 35.0
+            @test (@allowscalar cuNumeric.fetch(results[i + 1])) === 35.0
             @test (@allowscalar Array(results[i + 2])) == fill(1f0, 1, 33)
         end
     finally

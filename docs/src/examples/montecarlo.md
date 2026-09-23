@@ -26,4 +26,4 @@ println("Monte-Carlo estimate: $(estimate)")
 println("Analytical value: $(sqrt(pi))")
 ```
 
-The result is a 0-dimensional `NDArray`, which keeps the reduction asynchronous. Use `unwrap(estimate)` only when a Julia scalar is required.
+The result is a `CNScalar` backed by a 0D NDArray, which keeps the reduction asynchronous. Use `fetch(estimate)` only when a Julia scalar is required.

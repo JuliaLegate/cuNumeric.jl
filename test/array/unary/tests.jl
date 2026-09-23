@@ -144,10 +144,10 @@ function test_mean_var_std(
     rtolv = reduction_rtol(T, n)
     allowpromotion(true) do
         allowscalar() do
-            @test isapprox(mean(julia_arr), unwrap(mean(cunumeric_arr)); atol=atolv, rtol=rtolv)
+            @test isapprox(mean(julia_arr), fetch(mean(cunumeric_arr)); atol=atolv, rtol=rtolv)
             if T <: Real
-                @test isapprox(var(julia_arr), unwrap(var(cunumeric_arr)); atol=atolv, rtol=rtolv)
-                @test isapprox(std(julia_arr), unwrap(std(cunumeric_arr)); atol=atolv, rtol=rtolv)
+                @test isapprox(var(julia_arr), fetch(var(cunumeric_arr)); atol=atolv, rtol=rtolv)
+                @test isapprox(std(julia_arr), fetch(std(cunumeric_arr)); atol=atolv, rtol=rtolv)
             end
         end
         for d in 1:N
@@ -199,9 +199,9 @@ end
 # function test_count(julia_arr::AbstractArray{T,N}, cunumeric_arr::NDArray{T,N}) where {T,N}
 #     allowpromotion(true) do
 #         allowscalar() do
-#             @test count(!iszero, julia_arr) == unwrap(count(!iszero, cunumeric_arr))
+#             @test count(!iszero, julia_arr) == fetch(count(!iszero, cunumeric_arr))
 #             if T == Bool
-#                 @test count(julia_arr) == unwrap(count(cunumeric_arr))
+#                 @test count(julia_arr) == fetch(count(cunumeric_arr))
 #             end
 #         end
 #         for d in 1:N
@@ -233,10 +233,10 @@ function test_argmax_argmin()
     allowpromotion(true) do
         allowscalar() do
             vn = NDArray(v)
-            @test unwrap(argmax(vn)) == 2
-            @test unwrap(argmin(vn)) == 1
-            @test unwrap(argmax(vn)) == argmax(v)
-            @test unwrap(argmin(vn)) == argmin(v)
+            @test fetch(argmax(vn)) == 2
+            @test fetch(argmin(vn)) == 1
+            @test fetch(argmax(vn)) == argmax(v)
+            @test fetch(argmin(vn)) == argmin(v)
 
             c = NDArray(ComplexF32[1, 2])
             @test_throws ArgumentError argmax(c)
@@ -344,7 +344,7 @@ function run_unary_tests(types; include_bool_reductions::Bool=false)
                 allowscalar() do
                     @test isapprox(
                         sum(x),
-                        unwrap(sum(ndx));
+                        fetch(sum(ndx));
                         atol=atol(T) * N,
                         rtol=reduction_rtol(T, N),
                     )
