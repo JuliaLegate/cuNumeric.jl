@@ -36,8 +36,7 @@ jobs:
       id-token: write
     strategy:
       matrix:
-        # julia: ["1.10", "1.11"]
-        julia: ["1.11"] # 1.10 will break
+        julia: ["1.13"]
         cuda: ["13.0"]
         platform: ["linux/amd64"]
         os: ["ubuntu-22.04"]
@@ -52,6 +51,8 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.event.release.tag_name || github.sha }}
           fetch-depth: 0
+          # The image includes .git; do not store the checkout token there.
+          persist-credentials: false
 
       - name: Select wrapper build
         id: wrapper-build
@@ -190,6 +191,7 @@ jobs:
       - name: Build image
         uses: docker/build-push-action@v6
         with:
+          context: .
           file: ${{ steps.wrapper-build.outputs.dockerfile }}
           load: true
           push: false
