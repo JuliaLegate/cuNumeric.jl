@@ -140,6 +140,26 @@ function Base.:(+)(rhs1::NDArray{A,N}, rhs2::NDArray{B,N}) where {A,B,N}
     return _nda_binary_op_promoted!(out, cuNumeric.ADD, rhs1, rhs2)
 end
 
+# Scalar-shaped arithmetic stays on the backend. Array-array + and - above
+# already support rank zero; higher-rank * and / keep their linear algebra meaning.
+# This deliberately departs from Julia's standard array API: a 0D Array is not
+# a Number, and Base does not support this full set of scalar-style operations
+# on it. NDArray supports them to keep reduction arithmetic asynchronous.
+for op in (:*, :/, :^)
+    @eval function Base.$op(
+        a::NDArray{<:SUPPORTED_ARRAY_TYPES,0}, b::NDArray{<:SUPPORTED_ARRAY_TYPES,0}
+    )
+        return broadcast($op, a, b)
+    end
+end
+for op in (:+, :-, :*, :/, :^)
+    @eval begin
+        Base.$op(a::NDArray{<:SUPPORTED_ARRAY_TYPES,0}, b::Number) = broadcast($op, a, b)
+        Base.$op(a::Number, b::NDArray{<:SUPPORTED_ARRAY_TYPES,0}) = broadcast($op, a, b)
+    end
+end
+Base.literal_pow(::typeof(^), a::NDArray{<:SUPPORTED_ARRAY_TYPES,0}, ::Val{P}) where {P} = a ^ P
+
 function Base.:(*)(val::V, arr::NDArray{A}) where {A,V<:Number}
     return _mul_scalar(__my_promote_type(A, V), val, arr)
 end

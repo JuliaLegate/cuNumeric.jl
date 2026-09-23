@@ -18,9 +18,6 @@ corresponding `Base` methods are missing, so calls fall through to
 - `fill!` (convertible eltypes)
 - `collect`
 
-**P0 done**
-- `iszero` / `isone` (on-device reductions → `Bool` via scalar sync; `isone` square 2D only)
-
 **P1**
 - `transpose` / `adjoint`
 - `unique`
@@ -46,25 +43,18 @@ Starter list of easy/medium LA gaps. Prefer wiring `LinearAlgebra` entry
 points so they do not fall through to scalar-indexing Base paths.
 
 **BLAS-1 style (dense `NDArray`)**
-- `axpy!` / `axpby!` — common scale-and-add; examples use broadcast today
-- `scal!` and related in-place scale
-- `LinearAlgebra.dot` if not already Base-wired to `nda_dot`
+- Additional BLAS-style indexed updates.
 
 **Reductions / traces**
 - `LinearAlgebra.tr` for dense 2D `NDArray` — `cuNumeric.trace` exists; `tr` is
   already wired for `Diagonal{<:NDArray}`
 
 **Diagonal vs fallthrough (context)**
-- Already on-device for `Diagonal`: `mul!` / `lmul!` / `rmul!`, `\` / `/`,
-  `tr`, `norm` / `opnorm`, many predicates — see `docs/src/linalg.md`
 - Still fallthrough / unsupported on `Diagonal` (e.g. `svd`, `pinv`,
   `cholesky`, host `AbstractArray` RHS): leave alone unless fixing is cheap;
   densify intentionally when needed
 
 **Decompositions**
-- Done: `cholesky`, `eigen` / `eigvals` / `eigvecs`, `svd`, `qr`, and `\` are
-  wired to `LinearAlgebra` for 2D `NDArray`; `batched_solve` / `batched_cholesky`
-  / `batched_eigen` / `batched_eigvals` cover one batch dimension
 - `eigh` / Hermitian eigen — the `SYEV` task is already wrapped, but there is no
   entry point until `Hermitian` / `Symmetric` work on `NDArray`
 - `PosDefException` from `cholesky` — a non-positive-definite input now raises a
