@@ -108,6 +108,16 @@ end
         z = bfft!(x)
         @test z === x
         @test _fft_compare(x, length(x_cpu) .* ifft(x_cpu); rtol=rtol_t, atol=atol_t)
+
+        src_cpu = my_rand(T, 5, 8, 12)
+        src = cuNumeric.NDArray(src_cpu)
+        dest = cuNumeric.zeros(T, size(src))
+        @test bfft!(dest, src) === dest
+        @test _fft_compare(
+            dest, prod(size(src_cpu)) .* _reference_ifft(src_cpu);
+            rtol=rtol_t, atol=atol_t,
+        )
+        @test _fft_compare(src, src_cpu; rtol=rtol_t, atol=atol_t)
     end
 
     @testset "fft! rejects non-complex" begin

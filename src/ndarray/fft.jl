@@ -134,6 +134,18 @@ function bfft!(A::NDArray{T,N}, dims) where {T<:SUPPORTED_COMPLEX_TYPES,N}
     return fft_task!(A, A, _fft_dims(A, dims), Int32(cuNumeric.FFT_INVERSE))
 end
 
+"""
+    bfft!(dest::NDArray, src::NDArray)
+
+Write the unnormalized inverse FFT of `src` into `dest` without changing `src`.
+Both arrays must have the same shape and complex eltype.
+"""
+function bfft!(
+    dest::NDArray{T,N}, src::NDArray{T,N}
+) where {T<:SUPPORTED_COMPLEX_TYPES,N}
+    return fft_task!(dest, src, _fft_dims(src), Int32(cuNumeric.FFT_INVERSE))
+end
+
 function bfft!(A::NDArray)
     return throw(ArgumentError("bfft! requires a complex NDArray; got $(eltype(A))"))
 end
