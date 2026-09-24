@@ -4,6 +4,15 @@ struct StructStorageTriple{T}
     c::T
 end
 
+struct StructStorageParticle{T}
+    position::T
+    velocity::T
+end
+
+_struct_storage_step(p, dt) = StructStorageParticle(
+    p.position + dt * p.velocity, p.velocity
+)
+
 function _struct_storage_float(x)
     return StructStorageTriple{Float32}(
         Float32(x + 1), Float32(x + 2), Float32(x + 3)
@@ -125,5 +134,34 @@ end
         end
     finally
         cuNumeric.destroy!(input)
+    end
+end
+
+@testset "Struct host transfer and in-place broadcast" begin
+    initial = StructStorageParticle{Float32}[
+        StructStorageParticle(0.0f0, 1.0f0),
+        StructStorageParticle(2.0f0, -0.5f0),
+    ]
+    particles = NDArray(initial)
+    try
+        @test particles isa NDArray{StructStorageParticle{Float32},1}
+        @test Array(particles) == initial
+        @test occursin("StructStorageParticle", sprint(show, MIME"text/plain"(), particles))
+
+        particles .= _struct_storage_step.(particles, 0.1f0)
+        @test Array(particles) == StructStorageParticle{Float32}[
+            StructStorageParticle(0.1f0, 1.0f0),
+            StructStorageParticle(1.95f0, -0.5f0),
+        ]
+    finally
+        cuNumeric.destroy!(particles)
+    end
+
+    mixed = reshape([_struct_storage_padded(i) for i in 0:5], 2, 3)
+    device_mixed = NDArray(mixed)
+    try
+        @test Array(device_mixed) == mixed
+    finally
+        cuNumeric.destroy!(device_mixed)
     end
 end

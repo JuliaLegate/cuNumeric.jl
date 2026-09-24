@@ -343,7 +343,10 @@ end
 # checks stay in pre-flatten `_assert_fused_broadcast_promotion`.
 function _align_fused_runtime_args(runtime_args::Tuple)
     isempty(runtime_args) && return runtime_args
-    T_IN = __my_promote_type(map(eltype, runtime_args)...)
+    all(a -> !(a isa Number), runtime_args) && return runtime_args
+    numeric_types = filter(T -> T <: Number, map(eltype, runtime_args))
+    isempty(numeric_types) && return runtime_args
+    T_IN = __my_promote_type(numeric_types...)
     return map(a -> unchecked_promote_scalar(a, T_IN), runtime_args)
 end
 
@@ -469,9 +472,11 @@ function get_cuda_task(
                 get_ptx(obj, DEST_T, ARG_TYPES...)
             catch err
                 err isa InterruptException && rethrow()
-                throw(ErrorException(
-                    "GPU broadcast function failed to fuse: $(sprint(showerror, err))"
-                ))
+                throw(
+                    ErrorException(
+                        "GPU broadcast function failed to fuse: $(sprint(showerror, err))"
+                    ),
+                )
             end
 
             orig_name = extract_kernel_name(ptx)
@@ -651,7 +656,10 @@ end
     else
         __checked_promote_op(bc.f, eltypes)
     end
-    if bc.f === Base.literal_pow
+    if bc.f isa StructConstructor
+        # Constructing a record keeps each field's declared type; its numeric
+        # inputs are not operands of a common arithmetic operation.
+    elseif bc.f === Base.literal_pow
         __my_promote_type(eltypes.parameters...)
     else
         numeric_types = _numeric_broadcast_types(eltypes)
