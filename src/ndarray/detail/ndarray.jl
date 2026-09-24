@@ -41,7 +41,12 @@ end
 
 get_n_dim(ptr::NDArray_t) = Int(ccall((:nda_array_dim, libnda), Int32, (NDArray_t,), ptr))
 
-abstract type AbstractNDArray{T<:SUPPORTED_TYPES,N} <: AbstractArray{T,N} end
+abstract type AbstractNDArray{T,N} <: AbstractArray{T,N} end
+
+@inline _struct_storage_type(::Type{T}) where {T} =
+    isbitstype(T) && !(T <: SUPPORTED_TYPES) && !isprimitivetype(T) &&
+    fieldcount(T) > 0 &&
+    all(F -> F <: SUPPORTED_ARRAY_TYPES, fieldtypes(T))
 
 # Runtime padding uses an abstract field to break the recursive storage definition.
 abstract type AbstractPaddedStorage{T,N} end
@@ -166,6 +171,32 @@ NDArray(value::T) where {T<:SUPPORTED_TYPES} = nda_full_array((), value)
 # Internal outputs only: callers must overwrite every element before any read.
 function nda_empty_array(dims::Dims{N}, ::Type{T}) where {T,N}
     shape = collect(UInt64, dims)
+    if _struct_storage_type(T)
+        fields = fieldtypes(T)
+        codes = Int32[Int32(Legate.code(Legate.to_legate_type(F))) for F in fields]
+        offsets = UInt32[UInt32(fieldoffset(T, i)) for i in eachindex(fields)]
+        layout_matches = ccall((:nda_struct_layout_matches, libnda), Bool,
+            (Int32, Ptr{Int32}, UInt32, Ptr{UInt32}),
+            Int32(length(fields)), codes, UInt32(sizeof(T)), offsets)
+        layout_matches || throw(
+            ArgumentError(
+                "Legate cannot store $T: its field offsets or size differ from Julia's layout"
+            ),
+        )
+        ptr = @task_scope "empty_struct" begin
+            ccall((:nda_empty_struct_array, libnda), NDArray_t,
+                (Int32, Ptr{UInt64}, Int32, Ptr{Int32}, UInt32, Ptr{UInt32}),
+                Int32(N), shape, Int32(length(fields)), codes, UInt32(sizeof(T)), offsets)
+        end
+        return NDArray(ptr, T, Val(N))
+    end
+    if isbitstype(T) && !isprimitivetype(T) && !(T <: SUPPORTED_TYPES)
+        throw(
+            ArgumentError(
+                "Unsupported isbits element type $T: struct fields must be supported scalar types"
+            ),
+        )
+    end
     legate_type = Legate.to_legate_type(T)
     ptr = @task_scope "empty" begin
         ccall((:nda_empty_array, libnda),

@@ -54,6 +54,11 @@ CN_NDArray* nda_zeros_array(int32_t dim, const uint64_t* shape, CN_Type type);
 
 // Internal allocation without a fill; every element must be written before use.
 CN_NDArray* nda_empty_array(int32_t dim, const uint64_t* shape, CN_Type type);
+CN_NDArray* nda_empty_struct_array(int32_t dim, const uint64_t* shape,
+                                   int32_t fields, const int32_t* codes,
+                                   uint32_t size, const uint32_t* offsets);
+bool nda_struct_layout_matches(int32_t fields, const int32_t* codes,
+                               uint32_t size, const uint32_t* offsets);
 
 // full(shape, value)
 //   dim   : number of dimensions

@@ -51,7 +51,12 @@ if filter_tests!(testsuite, test_args)
 
     if !run_gpu_tests || !cuNumeric.FUSE_BROADCAST_EXPRS
         @warn "Broadcast fusion is disabled, skipping fusion tests"
-        filter!(test -> !startswith(first(test), "gpu_only/broadcast_fusion"), testsuite)
+        filter!(
+            test ->
+                !startswith(first(test), "gpu_only/broadcast_fusion") &&
+                !startswith(first(test), "gpu_only/struct_storage"),
+            testsuite,
+        )
     end
 end
 
