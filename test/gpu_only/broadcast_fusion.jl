@@ -46,6 +46,26 @@ _broadcast_fusion_user_add(x, y) = x + y
     b = @allowscalar NDArray(julia_b)
     c = @allowscalar NDArray(julia_c)
 
+    @testset "identity broadcast between slices" begin
+        values = NDArray(Float64.(1:8))
+        dst = values[1:2]
+        src = values[7:8]
+        @test !cuNumeric.nda_overlaps(dst, src)
+        dst .= src
+        @test Array(values) == Float64[7, 8, 3, 4, 5, 6, 7, 8]
+        cuNumeric.destroy!(dst)
+        cuNumeric.destroy!(src)
+
+        values = NDArray(Float64.(1:8))
+        dst = values[2:4]
+        src = values[1:3]
+        @test cuNumeric.nda_overlaps(dst, src)
+        dst .= src
+        @test Array(values) == Float64[1, 1, 2, 3, 5, 6, 7, 8]
+        cuNumeric.destroy!(dst)
+        cuNumeric.destroy!(src)
+    end
+
     s1 = T(2.5)
     s2 = T(1.0)
     s3 = T(0.5)

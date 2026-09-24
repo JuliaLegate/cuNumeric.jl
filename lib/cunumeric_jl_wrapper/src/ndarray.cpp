@@ -252,6 +252,10 @@ void nda_assign(CN_NDArray* arr, CN_NDArray* other) {
   arr->obj.assign(other->obj);
 }
 
+bool nda_overlaps(CN_NDArray* lhs, CN_NDArray* rhs) {
+  return lhs->obj.get_store().overlaps(rhs->obj.get_store());
+}
+
 void nda_move(CN_NDArray* dst, CN_NDArray* src) {
   dst->obj.operator=(std::move(src->obj));
 }
