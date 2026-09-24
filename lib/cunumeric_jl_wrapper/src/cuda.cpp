@@ -21,6 +21,7 @@
 #include "cuda.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <regex>
 #include <stdexcept>
@@ -28,9 +29,9 @@
 #include "legate.h"
 #include "legate/utilities/proc_local_storage.h"
 #include "legion.h"
+#include "ptx.h"
 #include "types.h"
 #include "ufi.h"
-#include "ptx.h"
 
 // #define CUDA_DEBUG
 #include "cuda_macros.h"  // Shared error/debug and dense argument-packing macros.
@@ -66,13 +67,13 @@ using FunctionMap = std::unordered_map<FunctionKey, CUfunction, FunctionKeyHash,
 
 static legate::ProcLocalStorage<FunctionMap> cufunction_ptr{};
 
-CUfunction lookup_ptx(const std::string& name, cudaStream_t stream) {
+CUfunction lookup_ptx(const std::string &name, cudaStream_t stream) {
   CUcontext ctx;
   if (cuStreamGetCtx(stream, &ctx) != CUDA_SUCCESS)
     throw std::runtime_error("PTX: could not get the task CUDA context");
   if (!cufunction_ptr.has_value())
     throw std::runtime_error("PTX: no modules loaded on this processor");
-  auto& functions = cufunction_ptr.get();
+  auto &functions = cufunction_ptr.get();
   auto it = functions.find({ctx, name});
   if (it == functions.end())
     throw std::runtime_error("PTX: missing kernel " + name);
@@ -172,6 +173,56 @@ struct ufiStridedFunctor {
       cuda_strided_device_array_arg_write<CppT, DIM>(p, arr);
   }
 };
+
+template <int D>
+void pack_struct(char *&p, const legate::PhysicalArray &array,
+                 AccessMode mode) {
+  const auto elem_size = array.type().size();
+  const auto shape = array.shape<D>();
+  const auto extents = shape.hi - shape.lo + legate::Point<D>::ONES();
+  // Legate permits byte views with a separate logical element size. The mdspan
+  // mapping reports strides in logical elements, as CUDA.jl's descriptor needs.
+  auto store = array.data();
+  CuStridedDeviceArray<D> desc{};
+  if (mode == AccessMode::WRITE) {
+    auto span = store.span_write_accessor<std::byte, D, false>(elem_size);
+    desc.ptr = span.data_handle();
+    for (int i = 0; i < D; ++i) {
+      desc.strides[i] = span.mapping().stride(i);
+    }
+  } else {
+    auto span = store.span_read_accessor<std::byte, D, false>(elem_size);
+    desc.ptr = const_cast<std::byte *>(span.data_handle());
+    for (int i = 0; i < D; ++i) {
+      desc.strides[i] = span.mapping().stride(i);
+    }
+  }
+  desc.maxsize = shape.volume() * elem_size;
+  for (int i = 0; i < D; ++i) {
+    desc.dims[i] = extents[i];
+  }
+  desc.length = shape.volume();
+  memcpy(p, &desc, sizeof(desc));
+  p += sizeof(desc);
+}
+
+void pack_struct(char *&p, const legate::PhysicalArray &array,
+                 AccessMode mode) {
+  switch (array.dim()) {
+    case 1: {
+      return pack_struct<1>(p, array, mode);
+    }
+    case 2: {
+      return pack_struct<2>(p, array, mode);
+    }
+    case 3: {
+      return pack_struct<3>(p, array, mode);
+    }
+    default: {
+      throw std::runtime_error("struct broadcast supports ranks 1 through 3");
+    }
+  }
+}
 
 struct PTXLaunchParams {
   cudaStream_t stream;
@@ -440,13 +491,21 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
     if (val >= 0 && val < static_cast<std::int32_t>(num_outputs)) {
       align8(p);
       auto ps = context.output(val);
-      legate::double_dispatch(ps.dim(), ps.type().code(), ufiStridedFunctor{},
-                              ufi::AccessMode::WRITE, p, ps);
+      if (ps.type().code() == legate::Type::Code::STRUCT) {
+        pack_struct(p, ps, ufi::AccessMode::WRITE);
+      } else {
+        legate::double_dispatch(ps.dim(), ps.type().code(), ufiStridedFunctor{},
+                                ufi::AccessMode::WRITE, p, ps);
+      }
     } else if (val >= static_cast<std::int32_t>(num_outputs)) {
       align8(p);
       auto ps = context.input(val - num_outputs);
-      legate::double_dispatch(ps.dim(), ps.type().code(), ufiStridedFunctor{},
-                              ufi::AccessMode::READ, p, ps);
+      if (ps.type().code() == legate::Type::Code::STRUCT) {
+        pack_struct(p, ps, ufi::AccessMode::READ);
+      } else {
+        legate::double_dispatch(ps.dim(), ps.type().code(), ufiStridedFunctor{},
+                                ufi::AccessMode::READ, p, ps);
+      }
     } else {
       std::size_t scalar_idx = static_cast<std::size_t>(-(val + 1));
       const auto &scalar = context.scalar(scalar_values_start + scalar_idx);

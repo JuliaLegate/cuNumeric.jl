@@ -68,6 +68,50 @@ CN_NDArray* nda_empty_array(int32_t dim, const uint64_t* shape, CN_Type type) {
   return new CN_NDArray{runtime->create_array(shp, type.obj)};
 }
 
+bool nda_struct_layout_matches(int32_t fields, const int32_t* codes,
+                               uint32_t size, const uint32_t* offsets) {
+  if (fields <= 0) {
+    return false;
+  }
+  std::vector<legate::Type> field_types;
+  field_types.reserve(fields);
+  for (int32_t i = 0; i < fields; ++i) {
+    field_types.push_back(
+        legate::primitive_type(static_cast<legate::Type::Code>(codes[i])));
+  }
+  auto type = legate::struct_type(field_types, true);
+  auto layout = type.offsets();
+  if (type.size() != size || layout.size() != static_cast<size_t>(fields)) {
+    return false;
+  }
+  for (int32_t i = 0; i < fields; ++i) {
+    if (layout[i] != offsets[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+CN_NDArray* nda_empty_struct_array(int32_t dim, const uint64_t* shape,
+                                   int32_t fields, const int32_t* codes,
+                                   uint32_t size, const uint32_t* offsets) {
+  if (!nda_struct_layout_matches(fields, codes, size, offsets)) {
+    throw std::invalid_argument(
+        "Legate struct layout does not match Julia layout");
+  }
+  std::vector<legate::Type> field_types;
+  field_types.reserve(fields);
+  for (int32_t i = 0; i < fields; ++i) {
+    field_types.push_back(
+        legate::primitive_type(static_cast<legate::Type::Code>(codes[i])));
+  }
+  auto type = legate::struct_type(field_types, true);
+  std::vector<uint64_t> shp(shape, shape + dim);
+  auto store =
+      legate::Runtime::get_runtime()->create_store(legate::Shape(shp), type);
+  return new CN_NDArray{cupynumeric::as_array(store)};
+}
+
 CN_NDArray* nda_zeros_array(int32_t dim, const uint64_t* shape, CN_Type type) {
   std::vector<uint64_t> shp(shape, shape + dim);
   NDArray result = zeros(shp, type.obj);
