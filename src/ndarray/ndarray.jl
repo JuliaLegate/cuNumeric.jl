@@ -183,6 +183,13 @@ end
 # AbstractArray): exact `Array{T}` / `Array{T,N}` / `Array` signatures so we win
 # over `Array{T,N}(::AbstractArray)` (which would scalar-index). Bulk path uses
 # `_copy_to_julia_array`; 1-d has specialized same-type and converting paths.
+struct StructConstructor{T} end
+@inline (::StructConstructor{T})(fields...) where {T} = T(fields...)
+@inline (::StructConstructor{T})(fields...) where {T<:NamedTuple} = T(fields)
+
+struct StructField{I} end
+@inline (::StructField{I})(value) where {I} = getfield(value, I)
+
 function (::Type{Array{T}})(arr::NDArray{S,0}) where {T,S}
     out = Array{T,0}(undef)
     allowscalar() do
@@ -204,6 +211,22 @@ end
 # Copy logically into Julia's column-major storage.
 # Legate may map an NDArray in C or Fortran order.
 function _copy_to_julia_array(arr::NDArray{T,N}) where {T,N}
+    if _struct_storage_type(T)
+        out = Array{T}(undef, size(arr))
+        isempty(out) && return out
+        fields = ntuple(fieldcount(T)) do i
+            projected = StructField{i}().(arr)
+            try
+                Array(projected)
+            finally
+                destroy!(projected)
+            end
+        end
+        for i in eachindex(out)
+            out[i] = StructConstructor{T}()(ntuple(j -> fields[j][i], fieldcount(T))...)
+        end
+        return out
+    end
     out = Array{T}(undef, size(arr))
     isempty(out) && return out
     store = Legate.attach_external_col_major(out)
@@ -232,11 +255,23 @@ end
 # Julia Arrays are column-major; Legate stores are row-major. For N>=2 we
 # materialize a C-ordered buffer via permutedims, attach it with the original
 # shape, and keep that buffer as `parent` for lifetime.
+function _nda_from_julia_struct_array(arr::Array{T,N}) where {T,N}
+    isempty(arr) && return nda_empty_array(size(arr), T)
+    fields = ntuple(i -> NDArray(getfield.(arr, i)), fieldcount(T))
+    try
+        return StructConstructor{T}().(fields...)
+    finally
+        foreach(destroy!, fields)
+    end
+end
+
 function _nda_from_julia_array(arr::Array{T,0}) where {T}
+    _struct_storage_type(T) && return _nda_from_julia_struct_array(arr)
     return cuNumeric.nda_attach_external(arr)
 end
 
 function _nda_from_julia_array(arr::Array{T,1}) where {T}
+    _struct_storage_type(T) && return _nda_from_julia_struct_array(arr)
     # Prototype: the attachment borrows Julia memory only for this copy.
     # Preserve the source through completion, not just task submission.
     GC.@preserve arr begin
@@ -254,6 +289,7 @@ function _nda_from_julia_array(arr::Array{T,1}) where {T}
 end
 
 function _nda_from_julia_array(arr::Array{T,N}) where {T,N}
+    _struct_storage_type(T) && return _nda_from_julia_struct_array(arr)
     tmp = collect(permutedims(arr, reverse(ntuple(identity, Val(N)))))
     return cuNumeric.nda_attach_external(tmp; shape=size(arr))
 end
