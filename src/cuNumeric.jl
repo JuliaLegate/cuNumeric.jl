@@ -23,13 +23,14 @@ module cuNumeric
 using Preferences
 using CNPreferences
 using LegatePreferences: LegatePreferences
+# Load CUDACore before Legate/CxxWrap to avoid recompilation in its __init__.
+using CUDACore: CUDACore
+import CUDACore: CuArray
 using Legate
 using Libdl
 using CxxWrap
 
 using CUDATools: CUDATools
-using CUDACore: CUDACore
-import CUDACore: CuArray
 import KernelAbstractions: @kernel, @index
 import KernelAbstractions as KA
 
