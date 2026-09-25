@@ -743,6 +743,9 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
 
     input_ndarrays = tuple(unique_ndarrays...)
 
+    # Legion forbids overlapping input and output regions in one task.
+    output = any(nda -> nda_overlaps(dest, nda), unique_ndarrays) ? similar(dest) : dest
+
     if BCAST_FUSION_DEBUG[]
         tree_str = _bcast_runtime_tree_str(
             bc_scope, ndarray_to_input_idx, actual_scalars
@@ -759,23 +762,27 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
         )
     end
 
-    @task_scope _bcast_scope_name(bc_scope, ndarray_to_input_idx, actual_scalars) begin
-        # `blocks=1` is a placeholder; RunPTXBroadcastTask overwrites grid dims
-        # from the local PhysicalArray. `threads` is only the occupancy budget (tx).
-        # Scalars after ctx: num_kernel_args, arg_map...
-        launch(
-            fkm.cuda_task,
-            input_ndarrays,
-            (dest,),
-            (Int32(length(arg_map)), arg_map..., actual_scalars...);
-            blocks=1,
-            threads=fkm.threads,
-            taskid=cuNumeric.RUN_PTX_BROADCAST,
-            ctx=fkm.ctx,
-        )
+    try
+        @task_scope _bcast_scope_name(bc_scope, ndarray_to_input_idx, actual_scalars) begin
+            # `blocks=1` is a placeholder; RunPTXBroadcastTask overwrites grid dims
+            # from the local PhysicalArray. `threads` is only the occupancy budget (tx).
+            # Scalars after ctx: num_kernel_args, arg_map...
+            launch(
+                fkm.cuda_task,
+                input_ndarrays,
+                (output,),
+                (Int32(length(arg_map)), arg_map..., actual_scalars...);
+                blocks=1,
+                threads=fkm.threads,
+                taskid=cuNumeric.RUN_PTX_BROADCAST,
+                ctx=fkm.ctx,
+            )
+        end
+        output === dest || nda_assign(dest, output)
+    finally
+        output === dest || destroy!(output)
     end
 
-    # Fused kernel already wrote `dest` in place; promotion was checked pre-launch.
     return dest
 end
 

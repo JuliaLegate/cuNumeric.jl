@@ -111,6 +111,7 @@ CN_NDArray* nda_unary_reduction_axes(CuPyNumericUnaryRedCode op_code,
                                      int32_t num_axes, bool keepdims);
 CN_NDArray* nda_get_slice(CN_NDArray* arr, const CN_Slice* slices,
                           int32_t ndim);
+bool nda_overlaps(CN_NDArray* lhs, CN_NDArray* rhs);
 CN_NDArray* nda_attach_external(const void* ptr, size_t size, int dim,
                                 const uint64_t* shape, CN_Type type);
 
