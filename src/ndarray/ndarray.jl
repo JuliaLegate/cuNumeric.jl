@@ -226,7 +226,20 @@ end
 
 # Copy logically into Julia's column-major storage.
 # Legate may map an NDArray in C or Fortran order.
-function _copy_to_julia_array(arr::NDArray{T,N}) where {T,N}
+function _copy_to_julia_array(arr::NDArray{T,0}) where {T}
+    _struct_storage_type(T) || return _copy_to_julia_array_impl(arr)
+    # Struct fields are projected by the fused kernel, which needs a rank.
+    vector = nda_reshape_array(arr, (1,))
+    try
+        return Base.reshape(_copy_to_julia_array(vector), ())
+    finally
+        destroy!(vector)
+    end
+end
+
+_copy_to_julia_array(arr::NDArray) = _copy_to_julia_array_impl(arr)
+
+function _copy_to_julia_array_impl(arr::NDArray{T,N}) where {T,N}
     if _struct_storage_type(T)
         out = Array{T}(undef, size(arr))
         isempty(out) && return out
@@ -280,6 +293,13 @@ function _nda_from_julia_struct_array(arr::Array{T,N}) where {T,N}
     finally
         foreach(destroy!, fields)
     end
+end
+
+# A 0-d store cannot run the fused kernel, but can be filled with its element.
+function _nda_from_julia_struct_array(arr::Array{T,0}) where {T}
+    out = nda_empty_array((), T)
+    nda_fill_struct_array(out, arr[])
+    return out
 end
 
 function _nda_from_julia_array(arr::Array{T,0}) where {T}
@@ -535,6 +555,39 @@ function _setindex!(
     return write(acc, arr.ptr, to_cpp_index(Int.(idxs)), value)
 end
 
+# Struct elements have no typed accessor; move one element through a slice.
+@inline _struct_element_slice(arr::NDArray{T,N}, idxs::Vararg{Integer,N}) where {T,N} =
+    nda_get_slice(arr, slice_array(map(_zero_based_index, idxs)...))
+
+function Base.getindex(arr::NDArray{T,0}) where {T}
+    _struct_storage_type(T) || throw(Base.CanonicalIndexError("getindex", typeof(arr)))
+    assertscalar("getindex")
+    return _copy_to_julia_array(arr)[]
+end
+
+@inline function Base.getindex(arr::NDArray{T,N}, idxs::Vararg{Integer,N}) where {T,N}
+    _struct_storage_type(T) || throw(Base.CanonicalIndexError("getindex", typeof(arr)))
+    @boundscheck checkbounds(arr, idxs...)
+    assertscalar("getindex")
+    element = _struct_element_slice(arr, idxs...)
+    try
+        return only(_copy_to_julia_array(element))
+    finally
+        destroy!(element)
+    end
+end
+
+function _setindex!(::Val{N}, arr::NDArray{T,N}, value::T, idxs::Vararg{Integer,N}) where {T,N}
+    _struct_storage_type(T) || throw(Base.CanonicalIndexError("setindex!", typeof(arr)))
+    N == 0 && return nda_fill_struct_array(arr, value)
+    element = _struct_element_slice(arr, idxs...)
+    try
+        return nda_fill_struct_array(element, value)
+    finally
+        destroy!(element)
+    end
+end
+
 #### START OF SLICING ####
 # LHS slices from `nda_get_slice` are invisible to `@accelerate`; destroy
 # the view handle after submitting the assign so they cannot pile up under Julia
@@ -724,6 +777,12 @@ end
     return arr
 end
 
+function Base.fill!(arr::NDArray{T}, val) where {T}
+    _struct_storage_type(T) || return invoke(fill!, Tuple{AbstractArray,Any}, arr, val)
+    nda_fill_struct_array(arr, convert(T, val))
+    return arr
+end
+
 #### INITIALIZATION OF NDARRAYS ####
 @doc"""
     cuNumeric.fill(val::T, dims::Dims)
@@ -741,11 +800,16 @@ function fill(val::T, dims::Dims) where {T<:SUPPORTED_TYPES}
     return nda_full_array(dims, val)
 end
 
-function fill(val::T, dims::Int...) where {T<:SUPPORTED_TYPES}
+function fill(val::T, dims::Dims) where {T}
+    _struct_storage_type(T) || throw(MethodError(fill, (val, dims)))
+    return fill!(nda_empty_array(dims, T), val)
+end
+
+function fill(val::T, dims::Int...) where {T}
     return fill(val, dims)
 end
 
-function fill(val::T, dim::Int) where {T<:SUPPORTED_TYPES}
+function fill(val::T, dim::Int) where {T}
     return fill(val, (dim,))
 end
 

@@ -287,6 +287,18 @@ void nda_contract(CN_NDArray* out, const char* lhs_modes, int32_t n_lhs,
   out->obj.contract(lhs, rhs1->obj, r1, rhs2->obj, r2, mode2extent);
 }
 
+// Julia passes the struct's bytes; the store's own type gives their layout.
+void nda_fill_struct_array(CN_NDArray* arr, const void* value, uint64_t size) {
+  auto store = arr->obj.get_store();
+  if (store.type().size() != size) {
+    throw std::invalid_argument(
+        "struct fill value size does not match the array type");
+  }
+  if (store.volume() == 0) return;
+  legate::Runtime::get_runtime()->issue_fill(
+      store, legate::Scalar(store.type(), value, true));
+}
+
 CN_NDArray* nda_copy(CN_NDArray* arr) {
   NDArray result = arr->obj.copy();
   return new CN_NDArray{NDArray(std::move(result))};
