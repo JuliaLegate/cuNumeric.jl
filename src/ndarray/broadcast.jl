@@ -43,7 +43,15 @@ end
 Base.broadcastable(A::NDArray) = A
 
 #* IS THERE A BETTER WAY TO ALLOCATE THE NEW ARRAY???
-Base.similar(arr::NDArray, ::Type{T}, dims::Dims{N}) where {T,N} = cuNumeric.zeros(T, dims)
+function _broadcast_allocate(::Type{T}, dims::Dims) where {T}
+    if _struct_storage_type(T) ||
+        (isbitstype(T) && !isprimitivetype(T) && !(T <: SUPPORTED_TYPES))
+        return nda_empty_array(dims, T)
+    end
+    return cuNumeric.zeros(T, dims)
+end
+
+Base.similar(arr::NDArray, ::Type{T}, dims::Dims{N}) where {T,N} = _broadcast_allocate(T, dims)
 Base.similar(arr::NDArray, ::Type{T}, dims::Base.DimOrInd...) where {T} = similar(arr, T, dims)
 Base.similar(arr::NDArray{T,N}) where {T,N} = similar(arr, T, size(arr))
 Base.similar(arr::NDArray{T}, dims::Tuple) where {T} = similar(arr, T, dims)
@@ -54,14 +62,14 @@ Base.similar(arr::NDArray, ::Type{T}) where {T} = similar(arr, T, size(arr))
 # Prefer Dims over the axes catch-all: with StaticArrays loaded (GPU CI via CUDA),
 # `similar(::Type{<:AbstractArray}, ::Tuple{})` is otherwise ambiguous between
 # Base, StaticArrays, and our catch-all (0-d broadcast uses axes `()`).
-Base.similar(::Type{NDArray{T}}, dims::Dims{N}) where {T,N} = cuNumeric.zeros(T, dims)
+Base.similar(::Type{NDArray{T}}, dims::Dims{N}) where {T,N} = _broadcast_allocate(T, dims)
 function Base.similar(
     ::Type{NDArray{T}},
     shape::Tuple{Union{Integer,Base.OneTo},Vararg{Union{Integer,Base.OneTo}}},
 ) where {T}
-    return cuNumeric.zeros(T, map(Int, Base.to_shape.(shape)))
+    return _broadcast_allocate(T, map(Int, Base.to_shape.(shape)))
 end
-Base.similar(::Type{NDArray{T}}, axes) where {T} = cuNumeric.zeros(T, Base.to_shape.(axes))
+Base.similar(::Type{NDArray{T}}, axes) where {T} = _broadcast_allocate(T, Base.to_shape.(axes))
 function Base.similar(bc::Broadcasted{NDArrayStyle{N}}, ::Type{ElType}) where {N,ElType}
     return similar(NDArray{ElType}, axes(bc))
 end
@@ -281,11 +289,26 @@ end
         if should_fuse
             return fuse_broadcast_tree!(dest, bc)
         else
+            _assert_struct_broadcast_fused(dest)
             return _copyto_unfused!(dest, unravel_broadcast_tree(bc))
         end
     else
+        _assert_struct_broadcast_fused(dest)
         return _copyto_unfused!(dest, unravel_broadcast_tree(bc))
     end
+end
+
+# The unfused path runs cuPyNumeric operations, none of which produce records.
+# TODO fuse struct results with size-1 extrusion and into 0-d destinations.
+@inline function _assert_struct_broadcast_fused(dest::NDArray{T}) where {T}
+    _struct_storage_type(T) && throw(
+        ArgumentError(
+            "Broadcasts producing struct element type $(T) require GPU broadcast " *
+            "fusion with same-shaped NDArray inputs of rank at least 1 " *
+            "(fusion enabled: $(FUSE_BROADCAST_EXPRS), GPU available: $(_has_gpu_target()))",
+        ),
+    )
+    return nothing
 end
 
 # Support .=
