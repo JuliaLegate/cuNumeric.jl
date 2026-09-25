@@ -369,7 +369,29 @@ function nda_fill_array(arr::NDArray{T}, value::T) where {T}
     return nothing
 end
 
+# cuPyNumeric has no record kernels, so struct copies run the fused broadcast
+# kernel, which already packs struct stores, slices, and views.
+function _nda_assign_struct(arr::NDArray{T}, other::NDArray{T}) where {T}
+    size(arr) == size(other) || throw(
+        DimensionMismatch("cannot copy an array of size $(size(other)) into size $(size(arr))")
+    )
+    if ndims(arr) == 0
+        # The fused kernel needs a rank; a 0-d reshape views the same element.
+        dest, src = nda_reshape_array(arr, (1,)), nda_reshape_array(other, (1,))
+        try
+            _nda_assign_struct(dest, src)
+        finally
+            destroy!(dest)
+            destroy!(src)
+        end
+    else
+        arr .= StructIdentity().(other)
+    end
+    return nothing
+end
+
 function nda_assign(arr::NDArray{T}, other::NDArray{T}) where {T}
+    _struct_storage_type(T) && return _nda_assign_struct(arr, other)
     @task_scope "copyto!" begin
         ccall((:nda_assign, libnda),
             Cvoid, (NDArray_t, NDArray_t),
@@ -378,6 +400,11 @@ function nda_assign(arr::NDArray{T}, other::NDArray{T}) where {T}
 end
 
 function nda_copy(arr::NDArray{T,N}) where {T,N}
+    if _struct_storage_type(T)
+        out = nda_empty_array(size(arr), T)
+        _nda_assign_struct(out, arr)
+        return out
+    end
     ptr = @task_scope "copy" begin
         ccall((:nda_copy, libnda),
             NDArray_t, (NDArray_t,),

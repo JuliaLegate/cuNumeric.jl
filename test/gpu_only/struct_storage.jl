@@ -165,3 +165,46 @@ end
         cuNumeric.destroy!(device_mixed)
     end
 end
+
+@testset "Struct storage round trips across layouts" begin
+    for make_value in (
+        _struct_storage_float,
+        _struct_storage_packed,
+        _struct_storage_padded,
+        _struct_storage_complex,
+        _struct_storage_named,
+    )
+        T = typeof(make_value(0))
+        host = reshape(T[make_value(i) for i in 0:7], 2, 2, 2)
+        device = NDArray(host)
+        copied = similar(device)
+        try
+            @test size(device) == size(host)
+            @test Array(device) == host
+            @test Array{T,3}(device) == host
+            @test copyto!(copied, device) === copied
+            @test Array(copied) == host
+        finally
+            cuNumeric.destroy!(copied)
+            cuNumeric.destroy!(device)
+        end
+    end
+end
+
+@testset "Preallocated struct storage needs no experimental opt-in" begin
+    previous_experimental = get(task_local_storage(), :Experimental, false)
+    input = NDArray(Int64[0, 1, 2, 3])
+    output = similar(input, StructStoragePacked, size(input))
+    empty_output = similar(input, StructStoragePacked, (0, 2))
+    try
+        cuNumeric.Experimental(false)
+        @test output isa NDArray{StructStoragePacked,1}
+        @test (output .= _struct_storage_packed.(input)) === output
+        @test Array(output) == [_struct_storage_packed(i) for i in 0:3]
+        @test size(empty_output) == (0, 2)
+        @test isempty(Array(empty_output))
+    finally
+        cuNumeric.Experimental(previous_experimental)
+        foreach(cuNumeric.destroy!, (input, output, empty_output))
+    end
+end

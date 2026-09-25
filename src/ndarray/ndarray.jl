@@ -190,6 +190,9 @@ struct StructConstructor{T} end
 struct StructField{I} end
 @inline (::StructField{I})(value) where {I} = getfield(value, I)
 
+struct StructIdentity end
+@inline (::StructIdentity)(value) = value
+
 function (::Type{Array{T}})(arr::NDArray{S,0}) where {T,S}
     out = Array{T,0}(undef)
     allowscalar() do
@@ -257,7 +260,8 @@ end
 # shape, and keep that buffer as `parent` for lifetime.
 function _nda_from_julia_struct_array(arr::Array{T,N}) where {T,N}
     isempty(arr) && return nda_empty_array(size(arr), T)
-    fields = ntuple(i -> NDArray(getfield.(arr, i)), fieldcount(T))
+    # `map` keeps Bool fields as Array{Bool}; broadcasting would build a BitArray.
+    fields = ntuple(i -> NDArray(map(StructField{i}(), arr)), fieldcount(T))
     try
         return StructConstructor{T}().(fields...)
     finally
