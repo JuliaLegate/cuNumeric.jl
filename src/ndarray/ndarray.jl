@@ -948,6 +948,7 @@ end
 
 # cuPyNumeric copies non-view reshapes with a typed kernel that rejects records.
 # Reshape each numeric field and rebuild, so struct reshapes always copy.
+# TODO return a view when the reshape needs no copy, as numeric reshapes do.
 function _reshape_struct(arr::NDArray{T}, dims::Dims) where {T}
     prod(dims) == length(arr) || throw(
         DimensionMismatch(

@@ -79,6 +79,8 @@ function _push_static_arg!(static_args, arg_plan, x)
 
     # Static leaves are captured by the kernel closure, which the launcher does
     # not pass to the device; only zero-size values (functions, `Val`) are safe.
+    # TODO pass isbits values such as structs as runtime scalars; the C++
+    # launcher would need to align each scalar in the argument buffer.
     sizeof(x) == 0 || throw(
         ArgumentError(
             "Broadcast fusion cannot pass $(repr(x)) of type $(typeof(x)) to the GPU " *
@@ -707,6 +709,7 @@ end
 
 # Like static leaves, the broadcast function is captured by the kernel closure,
 # which the launcher does not pass to the device.
+# TODO pass the closure's captured state to the kernel so closures can fuse.
 @inline function _assert_kernel_function_has_no_data(f)
     sizeof(f) == 0 || throw(
         ArgumentError(
