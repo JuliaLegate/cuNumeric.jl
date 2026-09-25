@@ -333,6 +333,12 @@ function Base.map(f::Function, arr1::NDArray{A,N}, arr2::NDArray{B,N}) where {A,
     return f.(arr1, arr2) # Will try to call one of the functions generated above
 end
 
-# function Base.map!(f::Function, dest::NDArray, arr1::NDArray, arr2::NDArray)
-#     return f
-# end
+for (julia_fn, _) in binary_op_map
+    @eval function Base.map!(
+        f::typeof($(julia_fn)), dest::NDArray{O,N}, arr1::NDArray{T,N}, arr2::NDArray{T,N}
+    ) where {O,T,N}
+        axes(dest) == axes(arr1) == axes(arr2) ||
+            throw(DimensionMismatch("map! arrays must have matching axes"))
+        return __broadcast(f, dest, arr1, arr2)
+    end
+end
