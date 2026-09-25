@@ -370,6 +370,9 @@ function nda_fill_array(arr::NDArray{T}, value::T) where {T}
 end
 
 # Struct stores are filled from the value's bytes; Legate has their layout.
+# TODO fill!, fill, and struct setindex! call Legate's issue_fill directly. Move
+# them onto the fused broadcast kernel, as struct copies are, once runtime
+# scalar arguments keep their own types instead of promoting to a common one.
 function nda_fill_struct_array(arr::NDArray{T}, value::T) where {T}
     val = Ref(value)
     GC.@preserve val begin
