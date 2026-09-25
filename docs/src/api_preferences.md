@@ -8,10 +8,34 @@ Out of the box (no `LocalPreferences.toml` changes):
 |---|---|
 | Binary / build mode | **JLL** prebuilt binaries |
 | Broadcast fusion | **on** |
-| `FUSE_BROADCAST_MIN_OPS` | **2** (single-op broadcasts stay unfused) |
+| `FUSE_BROADCAST_MIN_OPS` | **2** (single native operations stay unfused) |
 | Task scope names | **off** |
+| `MIN_SOLVE_MATRIX_SIZE` | **2048** rows |
+| `MIN_SOLVE_TILE_SIZE` | **512** |
+| `MIN_CHOLESKY_MATRIX_SIZE` | **8192** rows |
+| `MIN_CHOLESKY_TILE_SIZE` | **2048** |
+| `MIN_QR_MATRIX_SIZE` | **1048576** elements |
+| `QR_TILE_SIZE` | **128** |
+| `MAX_CHOLESKY_TILES_PER_PROC` | **4** |
 
-Build-mode setup (JLL / conda / developer) is documented under [Build Modes](./install.md). Fusion usage tips live under [Kernel Fusion](./perf/kernel_fusion.md).
+Build-mode setup (JLL / conda / developer) is documented under [Build Modes](./install.md).
+
+## Linear algebra
+
+`set_linalg!` accepts the constant names above as keywords. All values must be
+positive integers; unspecified settings are unchanged. Restart Julia to load
+the new constants. `cuNumeric.versioninfo()` shows the effective values.
+
+```julia
+CNPreferences.set_linalg!(; MIN_SOLVE_MATRIX_SIZE=4096, MIN_SOLVE_TILE_SIZE=512)
+```
+
+See [Distributed solves and factorizations](./linalg.md#distributed-solves-and-factorizations)
+for selection rules and tuning details.
+
+```@docs
+CNPreferences.set_linalg!
+```
 
 ## Build mode
 
@@ -36,7 +60,7 @@ CNPreferences.set_broadcast_fusion_min_ops!(1)     # also fuse single-ops
 
 `set_broadcast_fusion_min_ops!` counts `Broadcasted` nodes (ops) in the tree:
 
-- **`2` (default):** fuse multi-op trees such as `y .= @. a * b + c`. Single-ops like `y .= cos.(x)` stay on the unfused C-API path.
+- **`2` (default):** fuse multi-op trees such as `y .= @. a * b + c`. Single native operations like `y .= cos.(x)` use the C-API path. Functions without a native implementation are fused on the GPU when their broadcast arguments are eligible.
 - **`1`:** fuse every eligible expression, including single-ops.
 
 Set the preference in one Julia process, then start a fresh process to use it.

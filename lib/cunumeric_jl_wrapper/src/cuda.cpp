@@ -23,14 +23,17 @@
 #include <algorithm>
 #include <cstdint>
 #include <regex>
+#include <stdexcept>
 
 #include "legate.h"
 #include "legate/utilities/proc_local_storage.h"
 #include "legion.h"
 #include "types.h"
 #include "ufi.h"
+#include "ptx.h"
 
 // #define CUDA_DEBUG
+#include "cuda_macros.h"  // Shared error/debug and dense argument-packing macros.
 
 #define BLOCK_START 1
 #define THREAD_START 4
@@ -38,51 +41,6 @@
 
 // global padding for CUDA.jl kernel state
 std::size_t padded_bytes_kernel_state = 16;
-
-#define ERROR_CHECK(x)                                                 \
-  {                                                                    \
-    cudaError_t status = x;                                            \
-    if (status != cudaSuccess) {                                       \
-      fprintf(stderr, "CUDA Error at %s:%d: %s\n", __FILE__, __LINE__, \
-              cudaGetErrorString(status));                             \
-      if (stream_) cudaStreamDestroy(stream_);                         \
-      exit(-1);                                                        \
-    }                                                                  \
-  }
-
-#define DRIVER_ERROR_CHECK(x)                                                 \
-  {                                                                           \
-    CUresult status = x;                                                      \
-    if (status != CUDA_SUCCESS) {                                             \
-      const char *err_str = nullptr;                                          \
-      cuGetErrorString(status, &err_str);                                     \
-      fprintf(stderr, "CUDA Driver Error at %s:%d: %s\n", __FILE__, __LINE__, \
-              err_str);                                                       \
-      if (stream_) cudaStreamDestroy(stream_);                                \
-      exit(-1);                                                               \
-    }                                                                         \
-  }
-
-#define TEST_PRINT_DEBUG(dev_ptr, N, T, format, stream, message)            \
-  {                                                                         \
-    std::vector<T> host_arr(N);                                             \
-    ERROR_CHECK(cudaMemcpy(host_arr.data(),                                 \
-                           reinterpret_cast<const T *>(dev_ptr),            \
-                           sizeof(T) * N, cudaMemcpyDeviceToHost));         \
-    ERROR_CHECK(cudaStreamSynchronize(stream));                             \
-    fprintf(stderr, "[TEST_PRINT] %s: " format "\n", message, host_arr[0]); \
-  }
-
-#ifdef CUDA_DEBUG
-#define CUDA_DEBUG_PRINT(x) \
-  do {                      \
-    x;                      \
-  } while (0)
-#else
-#define CUDA_DEBUG_PRINT(x) \
-  do {                      \
-  } while (0)
-#endif
 
 namespace ufi {
 using namespace Legion;
@@ -107,6 +65,19 @@ using FunctionMap = std::unordered_map<FunctionKey, CUfunction, FunctionKeyHash,
                                        FunctionKeyEqual>;
 
 static legate::ProcLocalStorage<FunctionMap> cufunction_ptr{};
+
+CUfunction lookup_ptx(const std::string& name, cudaStream_t stream) {
+  CUcontext ctx;
+  if (cuStreamGetCtx(stream, &ctx) != CUDA_SUCCESS)
+    throw std::runtime_error("PTX: could not get the task CUDA context");
+  if (!cufunction_ptr.has_value())
+    throw std::runtime_error("PTX: no modules loaded on this processor");
+  auto& functions = cufunction_ptr.get();
+  auto it = functions.find({ctx, name});
+  if (it == functions.end())
+    throw std::runtime_error("PTX: missing kernel " + name);
+  return it->second;
+}
 
 #ifdef CUDA_DEBUG
 std::string context_to_string(CUcontext ctx) {
@@ -136,46 +107,6 @@ struct CuDeviceArray {
   uint64_t length;               // Number of elements (at the end)
 };
 
-// Strided — matches Julia cuNumeric.CuStridedDeviceArray (RunPTXBroadcastTask
-// only).
-template <size_t D>
-struct CuStridedDeviceArray {
-  void *ptr;
-  uint64_t maxsize;
-  std::array<uint64_t, D> dims;
-  std::array<uint64_t, D>
-      strides;  // element strides (byte strides / sizeof(T))
-  uint64_t length;
-};
-
-#define CUDA_DEVICE_ARRAY_ARG(MODE, ACCESSOR_CALL)                             \
-  template <                                                                   \
-      typename T, int D,                                                       \
-      typename std::enable_if<(D >= 1 && D <= REALM_MAX_DIM), int>::type = 0>  \
-  void cuda_device_array_arg_##MODE(char *&p,                                  \
-                                    const legate::PhysicalArray &rf) {         \
-    auto shp = rf.shape<D>();                                                  \
-    auto acc = rf.data().ACCESSOR_CALL<T, D>();                                \
-    CUDA_DEBUG_PRINT(std::cerr << "[RunPTXTask] " #MODE " accessor shape: "    \
-                               << shp.lo << " - " << shp.hi << ", dim: " << D  \
-                               << std::endl;                                   \
-                     std::cerr << "[RunPTXTask] " #MODE " accessor strides: "  \
-                               << acc.accessor.strides << std::endl;);         \
-    void *dev_ptr = const_cast<void *>(/*.lo to ensure multiple GPU support*/  \
-                                       static_cast<const void *>(              \
-                                           acc.ptr(Realm::Point<D>(shp.lo)))); \
-    auto extents = shp.hi - shp.lo + legate::Point<D>::ONES();                 \
-    CuDeviceArray<D> desc;                                                     \
-    desc.ptr = dev_ptr;                                                        \
-    desc.maxsize = shp.volume() * sizeof(T);                                   \
-    for (size_t i = 0; i < D; ++i) {                                           \
-      desc.dims[i] = extents[i];                                               \
-    }                                                                          \
-    desc.length = shp.volume();                                                \
-    memcpy(p, &desc, sizeof(CuDeviceArray<D>));                                \
-    p += sizeof(CuDeviceArray<D>);                                             \
-  }
-
 #define CUDA_STRIDED_DEVICE_ARRAY_ARG(MODE, ACCESSOR_CALL)                     \
   template <                                                                   \
       typename T, int D,                                                       \
@@ -190,8 +121,9 @@ struct CuStridedDeviceArray {
         std::cerr << "[RunPTXBroadcastTask] " #MODE                            \
                   << " accessor byte strides: " << acc.accessor.strides        \
                   << std::endl;);                                              \
-    void *dev_ptr = const_cast<void *>(                                        \
-        static_cast<const void *>(acc.ptr(Realm::Point<D>(shp.lo))));          \
+    /* Preserve 64-bit coordinates; Realm::Point<D> defaults to int. */        \
+    void *dev_ptr =                                                            \
+        const_cast<void *>(static_cast<const void *>(acc.ptr(shp.lo)));        \
     auto extents = shp.hi - shp.lo + legate::Point<D>::ONES();                 \
     CuStridedDeviceArray<D> desc;                                              \
     desc.ptr = dev_ptr;                                                        \
@@ -265,27 +197,7 @@ static PTXLaunchParams read_launch_params(legate::TaskContext &context) {
   p.ty = context.scalar(THREAD_START + 1).value<std::uint32_t>();
   p.tz = context.scalar(THREAD_START + 2).value<std::uint32_t>();
 
-  CUcontext ctx;
-  cuStreamGetCtx(p.stream, &ctx);
-
-  FunctionKey key = {ctx, p.kernel_name};
-  assert(cufunction_ptr.has_value());
-  FunctionMap &fmap = cufunction_ptr.get();
-  auto it = fmap.find(key);
-
-#ifdef CUDA_DEBUG
-  if (it == fmap.end()) {
-    std::cerr << "[RunPTXTask] Could not find key: " << key_to_string(key)
-              << std::endl;
-    for (const auto &[k, v] : fmap) {
-      std::cerr << "[RunPTXTask] Map key: " << key_to_string(k) << std::endl;
-    }
-    assert(0 && "[RunPTXTask] key is not found in hashmap");
-  }
-#endif
-
-  assert(it != fmap.end());
-  p.func = it->second;
+  p.func = lookup_ptx(p.kernel_name, p.stream);
   p.custream = reinterpret_cast<CUstream>(p.stream);
   return p;
 }
@@ -380,6 +292,11 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
                                             const legate::PhysicalArray &out) {
   const std::uint32_t budget = std::max(lp.tx, 1u);
   const int dim = out.dim();
+  // Cap before narrowing; Julia grid-stride loops cover the remaining elements.
+  const auto blocks = [](std::uint64_t n, std::uint32_t t,
+                         std::uint64_t limit) {
+    return static_cast<std::uint32_t>(std::min((n - 1) / t + 1, limit));
+  };
 
   assert(dim > 0);
 
@@ -395,8 +312,8 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
     lp.ty = static_cast<std::uint32_t>(
         std::min<std::uint64_t>(budget / lp.tx, rows));
     lp.tz = 1;
-    lp.bx = static_cast<std::uint32_t>((cols + lp.tx - 1) / lp.tx);
-    lp.by = static_cast<std::uint32_t>((rows + lp.ty - 1) / lp.ty);
+    lp.bx = blocks(cols, lp.tx, 2147483647);
+    lp.by = blocks(rows, lp.ty, 65535);
     lp.bz = 1;
 
 #ifdef CUDA_DEBUG
@@ -423,9 +340,9 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
     const std::uint32_t z_budget = yz_budget / lp.ty;
     lp.tz = static_cast<std::uint32_t>(
         std::min<std::uint64_t>({z_budget, dim1, 64}));
-    lp.bx = static_cast<std::uint32_t>((dim3 + lp.tx - 1) / lp.tx);
-    lp.by = static_cast<std::uint32_t>((dim2 + lp.ty - 1) / lp.ty);
-    lp.bz = static_cast<std::uint32_t>((dim1 + lp.tz - 1) / lp.tz);
+    lp.bx = blocks(dim3, lp.tx, 2147483647);
+    lp.by = blocks(dim2, lp.ty, 65535);
+    lp.bz = blocks(dim1, lp.tz, 65535);
 
 #ifdef CUDA_DEBUG
     std::cerr << "[RunPTXBroadcastTask] local shape=" << dim1 << "x" << dim2
@@ -466,10 +383,7 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
 
   const std::uint32_t threads =
       static_cast<std::uint32_t>(std::min<std::uint64_t>(budget, volume));
-  const std::uint32_t blocks =
-      static_cast<std::uint32_t>((volume + threads - 1) / threads);
-
-  lp.bx = blocks;
+  lp.bx = blocks(volume, threads, 2147483647);
   lp.by = 1;
   lp.bz = 1;
   lp.tx = threads;

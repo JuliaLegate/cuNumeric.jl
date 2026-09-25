@@ -1,14 +1,14 @@
 # Still missing:
-#     # Base.copysign => cuNumeric.COPYSIGN, #* ANNOYING TO TEST
-#     #missing => cuNumeric.fmod, #same as mod in Julia?
-#     # Base.isapprox => cuNumeric.ISCLOSE, #* HANDLE rtol, atol kwargs!!!
-#     # Base.ldexp => cuNumeric.LDEXP, #* LHS FLOATS, RHS INTS
-#     #missing => cuNumeric.LOGADDEXP,
-#     #missing => cuNumeric.LOGADDEXP2,
-#     #missing => cuNumeric.NEXTAFTER,
+#     # Base.isapprox => cuNumeric.ISCLOSE, # rtol, atol kwargs
+#     # Base.ldexp => cuNumeric.LDEXP, # LHS floats, RHS ints
+#     # missing => cuNumeric.LOGADDEXP,
+#     # missing => cuNumeric.LOGADDEXP2,
+#     # missing => cuNumeric.NEXTAFTER,
+#     # Base.div / ÷  — FLOOR_DIVIDE matches Julia `fld` (toward -Inf), not
+#     # truncated `div`. Do not ship as `div`: `-7 ÷ 2` is -3 in Julia, -4 for fld.
 
 # Binary ops which are equivalent to Julia's broadcast syntax
-global const binary_op_map = Dict{Function,BinaryOpCode}(
+const binary_op_map = Dict{Function,BinaryOpCode}(
     Base.:+ => cuNumeric.ADD,
     Base.:* => cuNumeric.MULTIPLY,
     Base.:(-) => cuNumeric.SUBTRACT,
@@ -24,21 +24,31 @@ global const binary_op_map = Dict{Function,BinaryOpCode}(
     Base.:(==) => cuNumeric.EQUAL, #*  BE SURE TO DEFINE NON-BROADCASTED VERSION (BINARY_REDUCTION),
     Base.lcm => cuNumeric.LCM,
     Base.gcd => cuNumeric.GCD,
-    # Base.xor => cuNumeric.LOGICAL_XOR, #! DO LATER
-    # Base.:⊻ => cuNumeric.LOGICAL_XOR, #! DO LATER
-    # Base.div => cuNumeric.FLOOR_DIVIDE, #! THESE ARE IN-EXACT FOR INTS?
-    # Base.:(÷) => cuNumeric.FLOOR_DIVIDE, #! THESE ARE IN-EXACT FOR INTS?
-    # Base.:(>>) => cuNumeric.RIGHT_SHIFT, #! DO LATER
-    # Base.:(<<) => cuNumeric.LEFT_SHIFT, #! DO LATER
-    # Base.:(&&) => (cuNumeric.LOGICAL_AND, Bool, :same_as_input), #! CANNOT OVERLOAD WTF? (see Base.andand)
-    # Base.:(||) => (cuNumeric.LOGICAL_OR, Bool, :same_as_input), #! CANNOT OVERLOAD WTF?
+    Base.:(&) => cuNumeric.BITWISE_AND, # integers and Bool
+    Base.:(|) => cuNumeric.BITWISE_OR,
+    Base.:(⊻) => cuNumeric.BITWISE_XOR,
+    Base.:(<<) => cuNumeric.LEFT_SHIFT, # integers, not Bool
+    Base.:(>>) => cuNumeric.RIGHT_SHIFT, # integers, not Bool
+    Base.fld => cuNumeric.FLOOR_DIVIDE, # matches Julia fld, not div/÷
+    Base.mod => cuNumeric.MOD,
+    Base.rem => cuNumeric.FMOD,
+    Base.:(%) => cuNumeric.FMOD, # Julia `%` is rem
+    Base.copysign => cuNumeric.COPYSIGN, # floats only
+    # Base.:(&&) => (cuNumeric.LOGICAL_AND, Bool, :same_as_input), # cannot overload (see Base.andand)
+    # Base.:(||) => (cuNumeric.LOGICAL_OR, Bool, :same_as_input), # cannot overload
 )
 
-global const floaty_binary_op_map = Dict{Function,BinaryOpCode}(
+const floaty_binary_op_map = Dict{Function,BinaryOpCode}(
     Base.:/ => cuNumeric.DIVIDE,
     Base.hypot => cuNumeric.HYPOT,
     Base.atan => cuNumeric.ARCTAN2,
 )
+
+for julia_fn in (keys(binary_op_map)..., keys(floaty_binary_op_map)...)
+    @eval @inline _has_unfused_broadcast(::typeof($julia_fn), ::Val{2}) = true
+end
+@inline _has_unfused_broadcast(::typeof(+), ::Val{N}) where {N} = N >= 2
+@inline _has_unfused_broadcast(::typeof(*), ::Val{N}) where {N} = N >= 2
 
 ## SPECIAL CASES ##
 # Promote into out's eltype, then destroy any new temps (dispatch; no runtime !==).
@@ -136,8 +146,30 @@ function Base.:(+)(rhs1::NDArray{A,N}, rhs2::NDArray{B,N}) where {A,B,N}
     return _nda_binary_op_promoted!(out, cuNumeric.ADD, rhs1, rhs2)
 end
 
-Base.:(*)(val::V, arr::NDArray{A}) where {A,V} = _mul_scalar(__my_promote_type(A, V), val, arr)
-Base.:(*)(arr::NDArray{A}, val::V) where {A,V} = val * arr
+# Scalar-shaped arithmetic stays on the backend. Array-array + and - above
+# already support rank zero; higher-rank * and / keep their linear algebra meaning.
+# This deliberately departs from Julia's standard array API: a 0D Array is not
+# a Number, and Base does not support this full set of scalar-style operations
+# on it. NDArray supports them to keep reduction arithmetic asynchronous.
+for op in (:*, :/, :^)
+    @eval function Base.$op(
+        a::NDArray{<:SUPPORTED_ARRAY_TYPES,0}, b::NDArray{<:SUPPORTED_ARRAY_TYPES,0}
+    )
+        return broadcast($op, a, b)
+    end
+end
+for op in (:+, :-, :*, :/, :^)
+    @eval begin
+        Base.$op(a::NDArray{<:SUPPORTED_ARRAY_TYPES,0}, b::Number) = broadcast($op, a, b)
+        Base.$op(a::Number, b::NDArray{<:SUPPORTED_ARRAY_TYPES,0}) = broadcast($op, a, b)
+    end
+end
+Base.literal_pow(::typeof(^), a::NDArray{<:SUPPORTED_ARRAY_TYPES,0}, ::Val{P}) where {P} = a ^ P
+
+function Base.:(*)(val::V, arr::NDArray{A}) where {A,V<:Number}
+    return _mul_scalar(__my_promote_type(A, V), val, arr)
+end
+Base.:(*)(arr::NDArray{A}, val::V) where {A,V<:Number} = val * arr
 
 _mul_scalar(::Type{T}, val, arr::NDArray{T}) where {T} = nda_multiply_scalar(arr, T(val))
 function _mul_scalar(::Type{U}, val, arr::NDArray) where {U}
@@ -156,14 +188,14 @@ function Base.:(*)(rhs1::NDArray{A,2}, rhs2::NDArray{B,2}) where {A,B}
 end
 
 function Base.:(*)(rhs1::NDArray{Bool,2}, rhs2::NDArray{Bool,2})
-    throw(
+    return throw(
         ArgumentError("cuNumeric.jl does not support matrix multiplication of two Boolean arrays")
     )
 end
 
 function Base.:(*)(rhs1::NDArray{<:Integer,2}, rhs2::NDArray{<:Integer,2})
     #* this is a stupid.....
-    throw(
+    return throw(
         ArgumentError("cuNumeric.jl does not support matrix multiplication of two Integer arrays")
     )
 end
@@ -221,14 +253,14 @@ end
 
 function LinearAlgebra.mul!(out::NDArray, rhs1::NDArray{Bool,2}, rhs2::NDArray{Bool,2})
     #* Could just promote both inputs to Int32
-    throw(
+    return throw(
         ArgumentError("cuNumeric.jl does not support matrix multiplication of two Boolean arrays")
     )
 end
 
 function LinearAlgebra.mul!(out::NDArray, rhs1::NDArray{<:Integer,2}, rhs2::NDArray{<:Integer,2})
     #* this is a stupid.....
-    throw(
+    return throw(
         ArgumentError("cuNumeric.jl does not support matrix multiplication of two Integer arrays")
     )
 end
@@ -293,18 +325,6 @@ end
     return result
 end
 
-# function Base.:(==)(lhs::NDArray{A}, rhs::NDArray{B}) where {A,B}
-#     error("Not implemented yet")
-#     #! REPLACE WITH ARRAY_EQUAL ONCE THAT IS WRAPPED
-#     #! or explicit call to nda_binary_reduction
-# end
-
-# function Base.:(!=)(lhs::NDArray{A}, rhs::NDArray{B}) where {A,B}
-#     error("Not implemented yet")
-#     #! REPLACE WITH ARRAY_EQUAL ONCE THAT IS WRAPPED
-#     #! or explicit call to nda_binary_reduction
-# end
-
 # Specializations for 2 and -1 in unary.jl
 @inline function __broadcast(
     f::typeof(Base.literal_pow), out::NDArray, _, input::NDArray{T}, power::NDArray{T}
@@ -319,6 +339,12 @@ function Base.map(f::Function, arr1::NDArray{A,N}, arr2::NDArray{B,N}) where {A,
     return f.(arr1, arr2) # Will try to call one of the functions generated above
 end
 
-# function Base.map!(f::Function, dest::NDArray, arr1::NDArray, arr2::NDArray)
-#     return f
-# end
+for (julia_fn, _) in binary_op_map
+    @eval function Base.map!(
+        f::typeof($(julia_fn)), dest::NDArray{O,N}, arr1::NDArray{T,N}, arr2::NDArray{T,N}
+    ) where {O,T,N}
+        axes(dest) == axes(arr1) == axes(arr2) ||
+            throw(DimensionMismatch("map! arrays must have matching axes"))
+        return __broadcast(f, dest, arr1, arr2)
+    end
+end
