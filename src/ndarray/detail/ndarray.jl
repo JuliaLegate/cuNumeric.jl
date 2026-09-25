@@ -369,6 +369,19 @@ function nda_fill_array(arr::NDArray{T}, value::T) where {T}
     return nothing
 end
 
+# Struct stores are filled from the value's bytes; Legate has their layout.
+function nda_fill_struct_array(arr::NDArray{T}, value::T) where {T}
+    val = Ref(value)
+    GC.@preserve val begin
+        @task_scope "fill!" begin
+            ccall((:nda_fill_struct_array, libnda),
+                Cvoid, (NDArray_t, Ptr{Cvoid}, UInt64),
+                arr.ptr, Base.unsafe_convert(Ptr{T}, val), UInt64(sizeof(T)))
+        end
+    end
+    return nothing
+end
+
 # cuPyNumeric has no record kernels, so struct copies run the fused broadcast
 # kernel, which already packs struct stores, slices, and views.
 function _nda_assign_struct(arr::NDArray{T}, other::NDArray{T}) where {T}
