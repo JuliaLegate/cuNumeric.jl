@@ -35,6 +35,9 @@ const _REAL_SCALAR_WRAPPERS = (CNFloat, CNInt, CNUInt, CNBool)
 const _SCALAR_WRAPPERS = (_REAL_SCALAR_WRAPPERS..., CNComplex)
 for (W, H) in ((CNFloat, AbstractFloat), (CNInt, Signed), (CNUInt, Unsigned),
                (CNBool, Bool), (CNComplex, Complex))
+    # Number's identity constructor otherwise conflicts with the generated
+    # field constructor when a wrapped scalar is passed back to its type.
+    @eval $W{T,P}(x::$W{T,P}) where {T<:$H,P} = x
     @eval cnscalar(x::NDArray{T,0}) where {T<:$H} = $W(x)
     @eval _scalar_type(::Type{T}) where {T<:$H} = $W{T}
     @eval _scalar_eltype(::Type{<:$W{T}}) where {T} = T

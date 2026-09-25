@@ -196,6 +196,16 @@ end
 # AbstractArray): exact `Array{T}` / `Array{T,N}` / `Array` signatures so we win
 # over `Array{T,N}(::AbstractArray)` (which would scalar-index). Bulk path uses
 # `_copy_to_julia_array`; 1-d has specialized same-type and converting paths.
+struct StructConstructor{T} end
+@inline (::StructConstructor{T})(fields...) where {T} = T(fields...)
+@inline (::StructConstructor{T})(fields...) where {T<:NamedTuple} = T(fields)
+
+struct StructField{I} end
+@inline (::StructField{I})(value) where {I} = getfield(value, I)
+
+struct StructIdentity end
+@inline (::StructIdentity)(value) = value
+
 function (::Type{Array{T}})(arr::NDArray{S,0}) where {T,S}
     out = Array{T,0}(undef)
     allowscalar() do
@@ -216,7 +226,36 @@ end
 
 # Copy logically into Julia's column-major storage.
 # Legate may map an NDArray in C or Fortran order.
-function _copy_to_julia_array(arr::NDArray{T,N}) where {T,N}
+function _copy_to_julia_array(arr::NDArray{T,0}) where {T}
+    _struct_storage_type(T) || return _copy_to_julia_array_impl(arr)
+    # Struct fields are projected by the fused kernel, which needs a rank.
+    vector = nda_reshape_array(arr, (1,))
+    try
+        return Base.reshape(_copy_to_julia_array(vector), ())
+    finally
+        destroy!(vector)
+    end
+end
+
+_copy_to_julia_array(arr::NDArray) = _copy_to_julia_array_impl(arr)
+
+function _copy_to_julia_array_impl(arr::NDArray{T,N}) where {T,N}
+    if _struct_storage_type(T)
+        out = Array{T}(undef, size(arr))
+        isempty(out) && return out
+        fields = ntuple(fieldcount(T)) do i
+            projected = StructField{i}().(arr)
+            try
+                Array(projected)
+            finally
+                destroy!(projected)
+            end
+        end
+        for i in eachindex(out)
+            out[i] = StructConstructor{T}()(ntuple(j -> fields[j][i], fieldcount(T))...)
+        end
+        return out
+    end
     out = Array{T}(undef, size(arr))
     isempty(out) && return out
     store = Legate.attach_external_col_major(out)
@@ -245,11 +284,31 @@ end
 # Julia Arrays are column-major; Legate stores are row-major. For N>=2 we
 # materialize a C-ordered buffer via permutedims, attach it with the original
 # shape, and keep that buffer as `parent` for lifetime.
+function _nda_from_julia_struct_array(arr::Array{T,N}) where {T,N}
+    isempty(arr) && return nda_empty_array(size(arr), T)
+    # `map` keeps Bool fields as Array{Bool}; broadcasting would build a BitArray.
+    fields = ntuple(i -> NDArray(map(StructField{i}(), arr)), fieldcount(T))
+    try
+        return StructConstructor{T}().(fields...)
+    finally
+        foreach(destroy!, fields)
+    end
+end
+
+# A 0-d store cannot run the fused kernel, but can be filled with its element.
+function _nda_from_julia_struct_array(arr::Array{T,0}) where {T}
+    out = nda_empty_array((), T)
+    nda_fill_struct_array(out, arr[])
+    return out
+end
+
 function _nda_from_julia_array(arr::Array{T,0}) where {T}
+    _struct_storage_type(T) && return _nda_from_julia_struct_array(arr)
     return cuNumeric.nda_attach_external(arr)
 end
 
 function _nda_from_julia_array(arr::Array{T,1}) where {T}
+    _struct_storage_type(T) && return _nda_from_julia_struct_array(arr)
     # Prototype: the attachment borrows Julia memory only for this copy.
     # Preserve the source through completion, not just task submission.
     GC.@preserve arr begin
@@ -267,6 +326,7 @@ function _nda_from_julia_array(arr::Array{T,1}) where {T}
 end
 
 function _nda_from_julia_array(arr::Array{T,N}) where {T,N}
+    _struct_storage_type(T) && return _nda_from_julia_struct_array(arr)
     tmp = collect(permutedims(arr, reverse(ntuple(identity, Val(N)))))
     return cuNumeric.nda_attach_external(tmp; shape=size(arr))
 end
@@ -495,6 +555,39 @@ function _setindex!(
     return write(acc, arr.ptr, to_cpp_index(Int.(idxs)), value)
 end
 
+# Struct elements have no typed accessor; move one element through a slice.
+@inline _struct_element_slice(arr::NDArray{T,N}, idxs::Vararg{Integer,N}) where {T,N} =
+    nda_get_slice(arr, slice_array(map(_zero_based_index, idxs)...))
+
+function Base.getindex(arr::NDArray{T,0}) where {T}
+    _struct_storage_type(T) || throw(Base.CanonicalIndexError("getindex", typeof(arr)))
+    assertscalar("getindex")
+    return _copy_to_julia_array(arr)[]
+end
+
+@inline function Base.getindex(arr::NDArray{T,N}, idxs::Vararg{Integer,N}) where {T,N}
+    _struct_storage_type(T) || throw(Base.CanonicalIndexError("getindex", typeof(arr)))
+    @boundscheck checkbounds(arr, idxs...)
+    assertscalar("getindex")
+    element = _struct_element_slice(arr, idxs...)
+    try
+        return only(_copy_to_julia_array(element))
+    finally
+        destroy!(element)
+    end
+end
+
+function _setindex!(::Val{N}, arr::NDArray{T,N}, value::T, idxs::Vararg{Integer,N}) where {T,N}
+    _struct_storage_type(T) || throw(Base.CanonicalIndexError("setindex!", typeof(arr)))
+    N == 0 && return nda_fill_struct_array(arr, value)
+    element = _struct_element_slice(arr, idxs...)
+    try
+        return nda_fill_struct_array(element, value)
+    finally
+        destroy!(element)
+    end
+end
+
 #### START OF SLICING ####
 # LHS slices from `nda_get_slice` are invisible to `@accelerate`; destroy
 # the view handle after submitting the assign so they cannot pile up under Julia
@@ -679,8 +772,14 @@ end
     return destroy!(s)
 end
 
-@inline function Base.fill!(arr::NDArray{T}, val::T) where {T}
-    nda_fill_array(arr, val)
+@inline function Base.fill!(arr::NDArray{T}, val::SUPPORTED_ARRAY_TYPES) where {T}
+    nda_fill_array(arr, convert(T, val))
+    return arr
+end
+
+function Base.fill!(arr::NDArray{T}, val) where {T}
+    _struct_storage_type(T) || return invoke(fill!, Tuple{AbstractArray,Any}, arr, val)
+    nda_fill_struct_array(arr, convert(T, val))
     return arr
 end
 
@@ -701,11 +800,16 @@ function fill(val::T, dims::Dims) where {T<:SUPPORTED_TYPES}
     return nda_full_array(dims, val)
 end
 
-function fill(val::T, dims::Int...) where {T<:SUPPORTED_TYPES}
+function fill(val::T, dims::Dims) where {T}
+    _struct_storage_type(T) || throw(MethodError(fill, (val, dims)))
+    return fill!(nda_empty_array(dims, T), val)
+end
+
+function fill(val::T, dims::Int...) where {T}
     return fill(val, dims)
 end
 
-function fill(val::T, dim::Int) where {T<:SUPPORTED_TYPES}
+function fill(val::T, dim::Int) where {T}
     return fill(val, (dim,))
 end
 
@@ -844,7 +948,8 @@ reshape(arr, (3, 4); copy=Val(true))
 
 # `copy` is a type parameter via Val{C}, so the default path constant-folds
 # and stays type-stable (needed by solve's 1D-rhs reshape).
-function reshape(arr::NDArray, i::Dims{N}; copy::Val{C}=Val(false)) where {N,C}
+function reshape(arr::NDArray{T}, i::Dims{N}; copy::Val{C}=Val(false)) where {T,N,C}
+    _struct_storage_type(T) && return _reshape_struct(arr, i)
     reshaped = nda_reshape_array(arr, i)
     if C
         copied = Base.copy(reshaped)
@@ -852,6 +957,31 @@ function reshape(arr::NDArray, i::Dims{N}; copy::Val{C}=Val(false)) where {N,C}
         return copied
     end
     return reshaped
+end
+
+# cuPyNumeric copies non-view reshapes with a typed kernel that rejects records.
+# Reshape each numeric field and rebuild, so struct reshapes always copy.
+# TODO return a view when the reshape needs no copy, as numeric reshapes do.
+function _reshape_struct(arr::NDArray{T}, dims::Dims) where {T}
+    prod(dims) == length(arr) || throw(
+        DimensionMismatch(
+            "new dimensions $(dims) must be consistent with array length $(length(arr))"
+        ),
+    )
+    isempty(arr) && return nda_empty_array(dims, T)
+    fields = ntuple(fieldcount(T)) do i
+        projected = StructField{i}().(arr)
+        try
+            reshape(projected, dims; copy=Val(true))
+        finally
+            destroy!(projected)
+        end
+    end
+    try
+        return StructConstructor{T}().(fields...)
+    finally
+        foreach(destroy!, fields)
+    end
 end
 
 function reshape(arr::NDArray, i::Int...; copy::Val{C}=Val(false)) where {C}
@@ -890,7 +1020,28 @@ a == c
 """
 function Base.:(==)(a::NDArray, b::NDArray)
     size(a) == size(b) || return cnscalar(NDArray(false))
+    if _struct_storage_type(eltype(a)) || _struct_storage_type(eltype(b))
+        return _struct_array_equal(a, b)
+    end
     return cnscalar(_array_equal_impl(a, b))
+end
+
+struct StructEqual end
+@inline (::StructEqual)(x, y) = x == y
+
+# cuPyNumeric cannot compare records. Evaluate the element type's own `==`
+# in the fused kernel so user-defined equality and NaN semantics match Base.
+function _struct_array_equal(a::NDArray, b::NDArray)
+    isempty(a) && return cnscalar(NDArray(true))
+    if ndims(a) == 0
+        return cnscalar(NDArray(_copy_to_julia_array(a) == _copy_to_julia_array(b)))
+    end
+    equal = StructEqual().(a, b)
+    try
+        return all(equal)
+    finally
+        destroy!(equal)
+    end
 end
 
 function Base.:(!=)(a::NDArray, b::NDArray)

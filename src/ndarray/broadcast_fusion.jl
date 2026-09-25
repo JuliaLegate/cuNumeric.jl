@@ -77,6 +77,16 @@ function _push_static_arg!(static_args, arg_plan, x)
         ),
     )
 
+    # Static leaves are captured by the kernel closure, which the launcher does
+    # not pass to the device; only zero-size values (functions, `Val`) are safe.
+    # TODO pass isbits values such as structs as runtime scalars; the C++
+    # launcher would need to align each scalar in the argument buffer.
+    sizeof(x) == 0 || throw(
+        ArgumentError(
+            "Broadcast fusion cannot pass $(repr(x)) of type $(typeof(x)) to the GPU " *
+            "kernel; pass numbers or NDArrays instead",
+        ),
+    )
     push!(static_args, x)
     push!(arg_plan, StaticBroadcastArg{length(static_args)}())
     return nothing
@@ -343,7 +353,10 @@ end
 # checks stay in pre-flatten `_assert_fused_broadcast_promotion`.
 function _align_fused_runtime_args(runtime_args::Tuple)
     isempty(runtime_args) && return runtime_args
-    T_IN = __my_promote_type(map(eltype, runtime_args)...)
+    all(a -> !(a isa Number), runtime_args) && return runtime_args
+    numeric_types = filter(T -> T <: Number, map(eltype, runtime_args))
+    isempty(numeric_types) && return runtime_args
+    T_IN = __my_promote_type(numeric_types...)
     return map(a -> unchecked_promote_scalar(a, T_IN), runtime_args)
 end
 
@@ -465,7 +478,16 @@ function get_cuda_task(
 
     lock(_BCAST_PTX_CACHE_LOCK) do
         return get!(_BCAST_PTX_CACHE, key) do
-            ptx, threads, ctx = get_ptx(obj, DEST_T, ARG_TYPES...)
+            ptx, threads, ctx = try
+                get_ptx(obj, DEST_T, ARG_TYPES...)
+            catch err
+                err isa InterruptException && rethrow()
+                throw(
+                    ErrorException(
+                        "GPU broadcast function failed to fuse: $(sprint(showerror, err))"
+                    ),
+                )
+            end
 
             orig_name = extract_kernel_name(ptx)
             unique_name = orig_name * "_" * string(hash(ptx); base=16)
@@ -644,7 +666,15 @@ end
     else
         __checked_promote_op(bc.f, eltypes)
     end
-    __my_promote_type(eltypes.parameters...)
+    if bc.f isa StructConstructor
+        # Constructing a record keeps each field's declared type; its numeric
+        # inputs are not operands of a common arithmetic operation.
+    elseif bc.f === Base.literal_pow
+        __my_promote_type(eltypes.parameters...)
+    else
+        numeric_types = _numeric_broadcast_types(eltypes)
+        isempty(numeric_types) || __my_promote_type(numeric_types...)
+    end
     return T_OUT
 end
 
@@ -677,6 +707,19 @@ end
     return Tuple{T1,rest.parameters...}
 end
 
+# Like static leaves, the broadcast function is captured by the kernel closure,
+# which the launcher does not pass to the device.
+# TODO pass the closure's captured state to the kernel so closures can fuse.
+@inline function _assert_kernel_function_has_no_data(f)
+    sizeof(f) == 0 || throw(
+        ArgumentError(
+            "Broadcast fusion cannot pass the captured variables of $(typeof(f)) to " *
+            "the GPU kernel; pass them as broadcast arguments instead",
+        ),
+    )
+    return nothing
+end
+
 function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcast.Broadcasted}
     # Promotion checks use the pre-flatten tree (same shape as unfused unravel).
     _assert_fused_broadcast_promotion(dest, bc)
@@ -691,6 +734,7 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
     bc = Base.Broadcast.preprocess(dest, bc)
     bc = Base.Broadcast.instantiate(bc)
     bc = Base.Broadcast.flatten(bc)
+    _assert_kernel_function_has_no_data(bc.f)
 
     # Things like exponentiation generate arguments like Base.RefValue
     # which do not work with our pattern for making CUDA kernels as they are
@@ -904,6 +948,7 @@ end
 # `runtime_args` and static leaves into shared `static_args`.
 function _split_segment!(seg_bc, runtime_args, static_args, ndarray_idx)
     flat = Base.Broadcast.flatten(seg_bc)
+    _assert_kernel_function_has_no_data(flat.f)
     plan = Any[]
     for leaf in flat.args
         if leaf isa MatRef

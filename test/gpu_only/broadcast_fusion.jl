@@ -30,6 +30,12 @@
 =#
 
 _broadcast_fusion_user_add(x, y) = x + y
+_broadcast_fusion_absnorm(x, t) = abs(x)
+function _broadcast_fusion_residual(e, u0, u1, atol, rtol, norm, t)
+    return e / (atol + max(norm(u0, t), norm(u1, t)) * rtol)
+end
+_broadcast_fusion_bad_result(x) = string(x)
+_broadcast_fusion_bad_kernel(x) = parse(Float32, string(x))
 
 @testset "Broadcast Fusion" begin
     T=Float32
@@ -49,6 +55,75 @@ _broadcast_fusion_user_add(x, y) = x + y
     s1 = T(2.5)
     s2 = T(1.0)
     s3 = T(0.5)
+
+    @testset "single custom operation uses fusion" begin
+        dest = cuNumeric.zeros(T, N)
+        custom_bc = Base.broadcasted(_broadcast_fusion_user_add, a, b)
+        native_bc = Base.broadcasted(sin, a)
+        ref = Ref(_broadcast_fusion_absnorm)
+
+        @test cuNumeric.__materialize(ref) === ref
+        @test cuNumeric._should_attempt_broadcast_fusion(dest, custom_bc)
+        if cuNumeric.FUSE_BROADCAST_MIN_OPS > 1
+            @test !cuNumeric._should_attempt_broadcast_fusion(dest, native_bc)
+            @test !cuNumeric._should_attempt_broadcast_fusion(dest, Base.broadcasted(abs2, a))
+        end
+
+        if cuNumeric.FUSE_BROADCAST_EXPRS && cuNumeric._has_gpu_target()
+            result = _broadcast_fusion_user_add.(a, b)
+            @allowscalar @test safe_compare(julia_a .+ julia_b, result, atol, rtol)
+
+            for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
+                T <: Real || continue
+                values = T === Bool ? Bool[false, true] : T[0, 1, 2]
+                @test Array(abs2.(NDArray(values))) == abs2.(values)
+                @test Array(map(abs2, NDArray(values))) == abs2.(values)
+            end
+
+            for T in (ComplexF32, ComplexF64)
+                z_host = T[1 + 2im, 2 - 3im]
+                z = NDArray(z_host)
+                @test Array(abs2.(z)) ≈ abs2.(z_host)
+                @test Array(map(abs2, z)) ≈ abs2.(z_host)
+            end
+
+            residual = _broadcast_fusion_residual.(
+                a, b, c, s1, s2, ref, s3
+            )
+            expected = julia_a ./ (s1 .+ max.(abs.(julia_b), abs.(julia_c)) .* s2)
+            @allowscalar @test safe_compare(expected, residual, atol, rtol)
+
+            err = try
+                dest .= _broadcast_fusion_bad_result.(a)
+                nothing
+            catch caught
+                caught
+            end
+            @test err isa ArgumentError
+            @test occursin("unsupported result type String", sprint(showerror, err))
+
+            nested_err = try
+                dest .= _broadcast_fusion_bad_result.(a) .+ s1
+                nothing
+            catch caught
+                caught
+            end
+            @test nested_err isa ArgumentError
+            @test occursin(
+                "unsupported result type String",
+                sprint(showerror, nested_err),
+            )
+
+            compile_err = try
+                dest .= _broadcast_fusion_bad_kernel.(a)
+                nothing
+            catch caught
+                caught
+            end
+            @test compile_err isa ErrorException
+            @test occursin("GPU broadcast function failed to fuse", sprint(showerror, compile_err))
+        end
+    end
 
     @testset "Debug formatting" begin
         input_indices = Dict(objectid(a) => 0, objectid(b) => 1)
@@ -574,14 +649,25 @@ end
         expected[2:(end - 1), 2:(end - 1)] = ja .* s1 .+ s2
         @allowscalar @test safe_compare(expected, out, atol, rtol)
     end
+
+    @testset "kernel values with data are rejected" begin
+        # The launcher passes no closure state to the device, so these would
+        # otherwise read garbage kernel parameters and abort the GPU stream.
+        a = @allowscalar NDArray(rand(T, 8))
+        scale = s1
+        @test_throws ArgumentError (x -> x * scale).(a)
+        @test_throws ArgumentError ((x, t) -> x * t[1]).(a, Ref((s1, s2)))
+        # Values passed as broadcast arguments stay supported.
+        @allowscalar @test safe_compare(Array(a) .* s1, ((x, c) -> x * c).(a, s1), atol, rtol)
+    end
 end
 
 #= Broadcast fusion PTX compilation cache.
  * Verifies `_BCAST_PTX_CACHE` grows on first fused launch of a signature and
  * is reused (no new entry) on a second launch of the same signature.
  * Gated on `FUSE_BROADCAST_EXPRS` and an active GPU target; skips otherwise.
- * With `FUSE_BROADCAST_MIN_OPS > 1`, single-op exprs are unfused — tests
- * should set min ops to 1 (LocalPreferences / ENV) to exercise the cache.
+ * With `FUSE_BROADCAST_MIN_OPS > 1`, single native ops are unfused — tests
+ * should set min ops to 1 (LocalPreferences) to exercise the native-op cache.
 =#
 @testset "Broadcast Fusion PTX Cache" begin
     T=Float32
