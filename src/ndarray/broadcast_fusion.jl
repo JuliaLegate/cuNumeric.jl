@@ -465,7 +465,14 @@ function get_cuda_task(
 
     lock(_BCAST_PTX_CACHE_LOCK) do
         return get!(_BCAST_PTX_CACHE, key) do
-            ptx, threads, ctx = get_ptx(obj, DEST_T, ARG_TYPES...)
+            ptx, threads, ctx = try
+                get_ptx(obj, DEST_T, ARG_TYPES...)
+            catch err
+                err isa InterruptException && rethrow()
+                throw(ErrorException(
+                    "GPU broadcast function failed to fuse: $(sprint(showerror, err))"
+                ))
+            end
 
             orig_name = extract_kernel_name(ptx)
             unique_name = orig_name * "_" * string(hash(ptx); base=16)
@@ -644,7 +651,12 @@ end
     else
         __checked_promote_op(bc.f, eltypes)
     end
-    __my_promote_type(eltypes.parameters...)
+    if bc.f === Base.literal_pow
+        __my_promote_type(eltypes.parameters...)
+    else
+        numeric_types = _numeric_broadcast_types(eltypes)
+        isempty(numeric_types) || __my_promote_type(numeric_types...)
+    end
     return T_OUT
 end
 

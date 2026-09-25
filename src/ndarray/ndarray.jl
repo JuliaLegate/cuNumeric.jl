@@ -679,8 +679,8 @@ end
     return destroy!(s)
 end
 
-@inline function Base.fill!(arr::NDArray{T}, val::T) where {T}
-    nda_fill_array(arr, val)
+@inline function Base.fill!(arr::NDArray{T}, val::SUPPORTED_ARRAY_TYPES) where {T}
+    nda_fill_array(arr, convert(T, val))
     return arr
 end
 

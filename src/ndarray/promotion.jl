@@ -35,12 +35,55 @@ unchecked_promote_arr(::Base.RefValue{Val{V}}, ::Type{T}) where {T,V} = Val{V}
 __checked_promote_op(op, ::Type{Tuple{A}}) where {A} = __checked_promote_op(op, A)
 __checked_promote_op(op, ::Type{Tuple{A,B}}) where {A,B} = __checked_promote_op(op, A, B)
 
+# Ref-wrapped functions and other static broadcast arguments participate in
+# result-type inference, but they are not numeric inputs to promote.
+@inline function _numeric_broadcast_types(::Type{Args}) where {Args<:Tuple}
+    return filter(T -> T <: Number, tuple(Args.parameters...))
+end
+
+@inline function _smallest_numeric_broadcast_type(::Type{Args}) where {Args<:Tuple}
+    types = _numeric_broadcast_types(Args)
+    return isempty(types) ? nothing : foldl(smaller_type, types)
+end
+
+@inline function _broadcast_result_type(op, ::Type{T}) where {T}
+    T <: SUPPORTED_ARRAY_TYPES || throw(ArgumentError(
+        "Broadcast function $(op) cannot produce an NDArray: unsupported result type $(T)"
+    ))
+    return T
+end
+
 # Julia flattens dotted `+` and `*` chains into n-ary Broadcasted nodes. Fold
 # their input types pairwise, matching both the binary C API and fused path.
 @inline function __checked_promote_op(
     op::Union{typeof(+),typeof(*)}, ::Type{Args}
 ) where {Args<:Tuple{Any,Any,Any,Vararg{Any}}}
     return _checked_promote_associative(op, Args.parameters...)
+end
+
+# Resolve the 4+-argument overlap with the general custom-function method.
+@inline function __checked_promote_op(
+    op::Union{typeof(+),typeof(*)}, ::Type{Args}
+) where {Args<:Tuple{Any,Any,Any,Any,Vararg{Any}}}
+    return _checked_promote_associative(op, Args.parameters...)
+end
+
+@inline function __checked_promote_op(
+    op, ::Type{Tuple{A,B,C}}
+) where {A,B,C}
+    T = _broadcast_result_type(op, Base.promote_op(op, A, B, C))
+    S = _smallest_numeric_broadcast_type(Tuple{A,B,C})
+    S === nothing || (is_wider_type(T, S) && assertpromotion(op, S, T))
+    return T
+end
+
+@inline function __checked_promote_op(
+    op, ::Type{Args}
+) where {Args<:Tuple{Any,Any,Any,Any,Vararg{Any}}}
+    T = _broadcast_result_type(op, Base.promote_op(op, Args.parameters...))
+    S = _smallest_numeric_broadcast_type(Args)
+    S === nothing || (is_wider_type(T, S) && assertpromotion(op, S, T))
+    return T
 end
 
 # Path for literal powers
@@ -69,21 +112,21 @@ __recip_type(::Type{Int64}) = Float64
 __recip_type(::Type{Bool}) = DEFAULT_FLOAT
 
 @inline function __checked_promote_op(op, ::Type{A}) where {A}
-    T = Base.promote_op(op, A)
+    T = _broadcast_result_type(op, Base.promote_op(op, A))
     is_wider_type(T, A) && assertpromotion(op, A, T)
     return T
 end
 
 @inline function __checked_promote_op(op, ::Type{A}, ::Type{A}) where {A}
-    T = Base.promote_op(op, A, A)
+    T = _broadcast_result_type(op, Base.promote_op(op, A, A))
     is_wider_type(T, A) && assertpromotion(op, A, T)
     return T
 end
 
 @inline function __checked_promote_op(op, ::Type{A}, ::Type{B}) where {A,B}
-    T = Base.promote_op(op, A, B)
-    S = smaller_type(A, B)
-    is_wider_type(T, S) && assertpromotion(op, S, T)
+    T = _broadcast_result_type(op, Base.promote_op(op, A, B))
+    S = _smallest_numeric_broadcast_type(Tuple{A,B})
+    S === nothing || (is_wider_type(T, S) && assertpromotion(op, S, T))
     return T
 end
 

@@ -68,18 +68,20 @@ end
 
 function __broadcast(f::Function, _, args...)
     return error(
-        "Broadcasting $(f) is not supported by cuNumeric's unfused broadcast path.\n" *
-        "Single-operation broadcasts skip fusion when FUSE_BROADCAST_MIN_OPS > 1 " *
-        "(current: $(FUSE_BROADCAST_MIN_OPS); fusion enabled: $(FUSE_BROADCAST_EXPRS)).\n" *
-        "To enable GPU fusion for eligible single-operation broadcasts, set the " *
-        "FUSE_BROADCAST_MIN_OPS preference to 1:\n" *
-        "    using CNPreferences\n" *
-        "    CNPreferences.enable_broadcast_fusion!()\n" *
-        "    CNPreferences.set_broadcast_fusion_min_ops!(1)\n" *
-        "Then restart Julia and retry. This is a preference, not an environment variable.\n" *
-        "Fusion requires an active GPU, compatible array shapes, and a GPU-compilable function. " *
+        "Broadcasting $(f) is not supported by cuNumeric's unfused broadcast path. " *
+        "Functions without a native broadcast implementation require GPU fusion, compatible array shapes, " *
+        "and a GPU-compilable function (fusion enabled: $(FUSE_BROADCAST_EXPRS)). " *
         "Otherwise, rewrite the expression using supported broadcast operations.",
     )
+end
+
+# Low-storage Runge–Kutta methods use muladd. Express it as two supported
+# broadcasts so the unfused path works and GPU fusion can still combine them.
+@inline function __broadcast(
+    ::typeof(muladd), out::NDArray, a::NDArray, b::NDArray, c::NDArray
+)
+    out .= a .* b .+ c
+    return out
 end
 
 # Get depth of Broadcast tree recursively
@@ -124,6 +126,7 @@ __materialize(x::Base.RefValue{typeof(^)}) = x
 __materialize(x::Base.RefValue{Val{-1}}) = x # enables specialized reciprocal definition
 __materialize(x::Base.RefValue{Val{2}}) = x # enables specialized square definition
 __materialize(x::Base.RefValue{Val{V}}) where {V} = NDArray(V) # Use binary_op POWER for other literal powers
+__materialize(x::Base.RefValue) = x
 
 # Catch unknown things...
 __materialize(x) = error("Unrecognized leaf in broadcast expression: $(x)")
@@ -233,15 +236,28 @@ end
            _broadcast_tree_length_args(Base.tail(args))
 end
 
-# Prefer fusion only when the tree has at least `FUSE_BROADCAST_MIN_OPS` ops.
+# A single native operation uses the C API. Unknown functions need the GPU
+# broadcast kernel even when the preference normally skips single-op fusion.
+@inline _has_unfused_broadcast(f, ::Val) = false
+@inline _has_unfused_broadcast(::typeof(muladd), ::Val{3}) = true
+@inline _has_unfused_broadcast(::typeof(abs2), ::Val{1}) = true
+@inline _has_unfused_broadcast(bc::Broadcasted) =
+    _has_unfused_broadcast(bc.f, Val(length(bc.args)))
+
+# Prefer fusion when the tree has enough ops, or a single op has no native path.
 # When that const is <= 1, every Broadcasted qualifies and the length check
 # compiles out (`@static`).
 @inline function _should_attempt_broadcast_fusion(dest::NDArray, bc::Broadcasted)
     @static if FUSE_BROADCAST_MIN_OPS <= 1
         return can_fuse_linear_broadcast(dest, bc)
     else
-        return _broadcast_tree_length(bc) >= FUSE_BROADCAST_MIN_OPS &&
-               can_fuse_linear_broadcast(dest, bc)
+        operation_count = _broadcast_tree_length(bc)
+        meets_fusion_minimum = operation_count >= FUSE_BROADCAST_MIN_OPS
+        single_operation_needs_fusion =
+            operation_count == 1 && !_has_unfused_broadcast(bc)
+        worth_fusing = meets_fusion_minimum || single_operation_needs_fusion
+        worth_fusing || return false
+        return can_fuse_linear_broadcast(dest, bc)
     end
 end
 
@@ -258,9 +274,11 @@ end
 
     # Require an active GPU target so `--gpus 0` stays on the unfused path.
     # Fusion requires same-shaped NDArray leaves; otherwise fall back.
-    # Single-op exprs (length < `FUSE_BROADCAST_MIN_OPS`) stay unfused by default.
+    # Single native ops below `FUSE_BROADCAST_MIN_OPS` use the unfused C API.
     @static if FUSE_BROADCAST_EXPRS
-        if _has_gpu_target() && _should_attempt_broadcast_fusion(dest, bc)
+        gpu_available = _has_gpu_target()
+        should_fuse = gpu_available && _should_attempt_broadcast_fusion(dest, bc)
+        if should_fuse
             return fuse_broadcast_tree!(dest, bc)
         else
             return _copyto_unfused!(dest, unravel_broadcast_tree(bc))
