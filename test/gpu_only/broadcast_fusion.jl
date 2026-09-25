@@ -580,8 +580,6 @@ end
         a2d .= a2d .* s1 .+ b2d
         @allowscalar @test safe_compare(j2a .* s1 .+ j2b, a2d, atol, rtol)
 
-        # Distinct views of one store also alias, even when their NDArray
-        # wrappers have different identities. The parent must see the write.
         original = T.(1:10)
         parent = @allowscalar NDArray(copy(original))
         dst = parent[2:9]

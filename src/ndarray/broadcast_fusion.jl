@@ -743,10 +743,7 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
 
     input_ndarrays = tuple(unique_ndarrays...)
 
-    # Legion cannot launch a task with overlapping read and write region
-    # requirements. Evaluate in a separate store when an input shares the
-    # destination's store, then copy the result back so aliases of dest (and
-    # slice parents) observe the in-place update.
+    # Legion forbids overlapping input and output regions in one task.
     output = any(nda -> nda_overlaps(dest, nda), unique_ndarrays) ? similar(dest) : dest
 
     if BCAST_FUSION_DEBUG[]
@@ -786,7 +783,6 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
         output === dest || destroy!(output)
     end
 
-    # Promotion was checked before the launch; aliased destinations were copied back.
     return dest
 end
 
