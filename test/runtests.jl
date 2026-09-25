@@ -54,7 +54,8 @@ if filter_tests!(testsuite, test_args)
         filter!(
             test ->
                 !startswith(first(test), "gpu_only/broadcast_fusion") &&
-                !startswith(first(test), "gpu_only/struct_storage"),
+                !startswith(first(test), "gpu_only/struct_storage") &&
+                !startswith(first(test), "gpu_only/structarrays"),
             testsuite,
         )
     end
