@@ -289,11 +289,25 @@ end
         if should_fuse
             return fuse_broadcast_tree!(dest, bc)
         else
+            _assert_struct_broadcast_fused(dest)
             return _copyto_unfused!(dest, unravel_broadcast_tree(bc))
         end
     else
+        _assert_struct_broadcast_fused(dest)
         return _copyto_unfused!(dest, unravel_broadcast_tree(bc))
     end
+end
+
+# The unfused path runs cuPyNumeric operations, none of which produce records.
+@inline function _assert_struct_broadcast_fused(dest::NDArray{T}) where {T}
+    _struct_storage_type(T) && throw(
+        ArgumentError(
+            "Broadcasts producing struct element type $(T) require GPU broadcast " *
+            "fusion with same-shaped NDArray inputs of rank at least 1 " *
+            "(fusion enabled: $(FUSE_BROADCAST_EXPRS), GPU available: $(_has_gpu_target()))",
+        ),
+    )
+    return nothing
 end
 
 # Support .=
