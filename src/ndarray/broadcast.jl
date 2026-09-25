@@ -299,6 +299,7 @@ end
 end
 
 # The unfused path runs cuPyNumeric operations, none of which produce records.
+# TODO fuse struct results with size-1 extrusion and into 0-d destinations.
 @inline function _assert_struct_broadcast_fused(dest::NDArray{T}) where {T}
     _struct_storage_type(T) && throw(
         ArgumentError(
