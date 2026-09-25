@@ -269,6 +269,12 @@ end
     end
 end
 
+@inline function _identity_broadcast_source(bc::Broadcasted)
+    bc.f === identity && length(bc.args) == 1 || return nothing
+    source = only(bc.args)
+    return source isa NDArray ? source : nothing
+end
+
 @inline function _copyto!(dest::NDArray, bc::Broadcasted)
     axes(dest) == axes(bc) || Broadcast.throwdm(axes(dest), axes(bc))
     isempty(dest) && return dest
@@ -278,6 +284,15 @@ end
                 "Broadcast operation resulting in $(eltype(eltype(dest))) is not NDArray compatible"
             ),
         )
+    end
+
+    # A same-type identity broadcast is an array assignment. Use the native
+    # path only for disjoint stores; overlapping slices need the broadcast
+    # temporary to preserve the original values.
+    source = _identity_broadcast_source(bc)
+    if source isa NDArray && eltype(dest) === eltype(source) &&
+        axes(dest) == axes(source) && !nda_overlaps(dest, source)
+        return copyto!(dest, source)
     end
 
     # Require an active GPU target so `--gpus 0` stays on the unfused path.

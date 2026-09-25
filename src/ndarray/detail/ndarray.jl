@@ -317,6 +317,11 @@ function nda_get_slice(arr::NDArray{T,N}, slices::Vector{Slice}) where {T,N}
     return NDArray(ptr, T, Val(N), arr)
 end
 
+@inline nda_overlaps(lhs::NDArray, rhs::NDArray) =
+    ccall(
+        (:nda_overlaps, libnda), Cuchar, (NDArray_t, NDArray_t), lhs.ptr, rhs.ptr
+    ) != 0
+
 # queries
 nda_array_dim(arr::NDArray) = ccall((:nda_array_dim, libnda),
     Int32, (NDArray_t,), arr.ptr)
