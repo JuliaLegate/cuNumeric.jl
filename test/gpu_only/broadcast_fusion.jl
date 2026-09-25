@@ -579,6 +579,20 @@ end
         b2d = @allowscalar NDArray(j2b)
         a2d .= a2d .* s1 .+ b2d
         @allowscalar @test safe_compare(j2a .* s1 .+ j2b, a2d, atol, rtol)
+
+        # Distinct views of one store also alias, even when their NDArray
+        # wrappers have different identities. The parent must see the write.
+        original = T.(1:10)
+        parent = @allowscalar NDArray(copy(original))
+        dst = parent[2:9]
+        src = parent[1:8]
+        @test cuNumeric.nda_overlaps(dst, src)
+        dst .= src .* s1 .+ s2
+        expected = copy(original)
+        expected[2:9] .= original[1:8] .* s1 .+ s2
+        @allowscalar @test safe_compare(expected, parent, atol, rtol)
+        cuNumeric.destroy!(dst)
+        cuNumeric.destroy!(src)
     end
 
     @testset "cross-statement fusion into a slice" begin
