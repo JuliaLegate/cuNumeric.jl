@@ -935,7 +935,8 @@ reshape(arr, (3, 4); copy=Val(true))
 
 # `copy` is a type parameter via Val{C}, so the default path constant-folds
 # and stays type-stable (needed by solve's 1D-rhs reshape).
-function reshape(arr::NDArray, i::Dims{N}; copy::Val{C}=Val(false)) where {N,C}
+function reshape(arr::NDArray{T}, i::Dims{N}; copy::Val{C}=Val(false)) where {T,N,C}
+    _struct_storage_type(T) && return _reshape_struct(arr, i)
     reshaped = nda_reshape_array(arr, i)
     if C
         copied = Base.copy(reshaped)
@@ -943,6 +944,30 @@ function reshape(arr::NDArray, i::Dims{N}; copy::Val{C}=Val(false)) where {N,C}
         return copied
     end
     return reshaped
+end
+
+# cuPyNumeric copies non-view reshapes with a typed kernel that rejects records.
+# Reshape each numeric field and rebuild, so struct reshapes always copy.
+function _reshape_struct(arr::NDArray{T}, dims::Dims) where {T}
+    prod(dims) == length(arr) || throw(
+        DimensionMismatch(
+            "new dimensions $(dims) must be consistent with array length $(length(arr))"
+        ),
+    )
+    isempty(arr) && return nda_empty_array(dims, T)
+    fields = ntuple(fieldcount(T)) do i
+        projected = StructField{i}().(arr)
+        try
+            reshape(projected, dims; copy=Val(true))
+        finally
+            destroy!(projected)
+        end
+    end
+    try
+        return StructConstructor{T}().(fields...)
+    finally
+        foreach(destroy!, fields)
+    end
 end
 
 function reshape(arr::NDArray, i::Int...; copy::Val{C}=Val(false)) where {C}
@@ -981,7 +1006,28 @@ a == c
 """
 function Base.:(==)(a::NDArray, b::NDArray)
     size(a) == size(b) || return cnscalar(NDArray(false))
+    if _struct_storage_type(eltype(a)) || _struct_storage_type(eltype(b))
+        return _struct_array_equal(a, b)
+    end
     return cnscalar(_array_equal_impl(a, b))
+end
+
+struct StructEqual end
+@inline (::StructEqual)(x, y) = x == y
+
+# cuPyNumeric cannot compare records. Evaluate the element type's own `==`
+# in the fused kernel so user-defined equality and NaN semantics match Base.
+function _struct_array_equal(a::NDArray, b::NDArray)
+    isempty(a) && return cnscalar(NDArray(true))
+    if ndims(a) == 0
+        return cnscalar(NDArray(_copy_to_julia_array(a) == _copy_to_julia_array(b)))
+    end
+    equal = StructEqual().(a, b)
+    try
+        return all(equal)
+    finally
+        destroy!(equal)
+    end
 end
 
 function Base.:(!=)(a::NDArray, b::NDArray)
