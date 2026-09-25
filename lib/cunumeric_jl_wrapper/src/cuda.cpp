@@ -206,22 +206,18 @@ void pack_struct(char *&p, const legate::PhysicalArray &array,
   p += sizeof(desc);
 }
 
+struct PackStructDispatch {
+  template <int D>
+  void operator()(char *&p, const legate::PhysicalArray &array,
+                  AccessMode mode) const {
+    pack_struct<D>(p, array, mode);
+  }
+};
+
 void pack_struct(char *&p, const legate::PhysicalArray &array,
                  AccessMode mode) {
-  switch (array.dim()) {
-    case 1: {
-      return pack_struct<1>(p, array, mode);
-    }
-    case 2: {
-      return pack_struct<2>(p, array, mode);
-    }
-    case 3: {
-      return pack_struct<3>(p, array, mode);
-    }
-    default: {
-      throw std::runtime_error("struct broadcast supports ranks 1 through 3");
-    }
-  }
+  // Numeric stores reach every rank through double_dispatch; match that here.
+  legate::dim_dispatch(array.dim(), PackStructDispatch{}, p, array, mode);
 }
 
 struct PTXLaunchParams {
