@@ -21,6 +21,7 @@ _uses_component(x::Broadcasted, components) =
 function Base.copyto!(
     dest::StructArray{T}, bc::Broadcasted{<:cuNumeric.NDArrayStyle}
 ) where {T}
+    cuNumeric.assert_experimental()
     components = Tuple(StructArrays.components(dest))
     all(c -> c isa cuNumeric.NDArray, components) ||
         throw(ArgumentError("StructArray broadcast requires NDArray field storage"))
