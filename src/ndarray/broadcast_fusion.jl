@@ -77,6 +77,14 @@ function _push_static_arg!(static_args, arg_plan, x)
         ),
     )
 
+    # Static leaves are captured by the kernel closure, which the launcher does
+    # not pass to the device; only zero-size values (functions, `Val`) are safe.
+    sizeof(x) == 0 || throw(
+        ArgumentError(
+            "Broadcast fusion cannot pass $(repr(x)) of type $(typeof(x)) to the GPU " *
+            "kernel; pass numbers or NDArrays instead",
+        ),
+    )
     push!(static_args, x)
     push!(arg_plan, StaticBroadcastArg{length(static_args)}())
     return nothing
@@ -697,6 +705,18 @@ end
     return Tuple{T1,rest.parameters...}
 end
 
+# Like static leaves, the broadcast function is captured by the kernel closure,
+# which the launcher does not pass to the device.
+@inline function _assert_kernel_function_has_no_data(f)
+    sizeof(f) == 0 || throw(
+        ArgumentError(
+            "Broadcast fusion cannot pass the captured variables of $(typeof(f)) to " *
+            "the GPU kernel; pass them as broadcast arguments instead",
+        ),
+    )
+    return nothing
+end
+
 function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcast.Broadcasted}
     # Promotion checks use the pre-flatten tree (same shape as unfused unravel).
     _assert_fused_broadcast_promotion(dest, bc)
@@ -711,6 +731,7 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
     bc = Base.Broadcast.preprocess(dest, bc)
     bc = Base.Broadcast.instantiate(bc)
     bc = Base.Broadcast.flatten(bc)
+    _assert_kernel_function_has_no_data(bc.f)
 
     # Things like exponentiation generate arguments like Base.RefValue
     # which do not work with our pattern for making CUDA kernels as they are
@@ -924,6 +945,7 @@ end
 # `runtime_args` and static leaves into shared `static_args`.
 function _split_segment!(seg_bc, runtime_args, static_args, ndarray_idx)
     flat = Base.Broadcast.flatten(seg_bc)
+    _assert_kernel_function_has_no_data(flat.f)
     plan = Any[]
     for leaf in flat.args
         if leaf isa MatRef
