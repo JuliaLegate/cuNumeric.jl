@@ -143,3 +143,29 @@ end
         end
     end
 end
+
+# Issue #211
+@testset "Range assignment" begin
+    A = NDArray(Float32[1, 2, 3, 4])
+    A[2:3] = NDArray(Float32[10, 20])
+    @test Array(A) == Float32[1, 10, 20, 4]
+    A[1:4] = NDArray(Float32[5, 6, 7, 8])
+    @test Array(A) == Float32[5, 6, 7, 8]
+    A[3:2] = NDArray(Float32[])
+    @test Array(A) == Float32[5, 6, 7, 8]
+    A[2:3] = NDArray(Int64[1, 2])
+    @test Array(A) == Float32[5, 1, 2, 8]
+    @test_throws DimensionMismatch (A[2:3] = NDArray(Float32[1, 2, 3]))
+    @test_throws BoundsError (A[0:1] = NDArray(Float32[1, 2]))
+
+    M = NDArray(Float32[1 2; 3 4; 5 6])
+    M[2:3, :] = NDArray(Float32[30 40; 50 60])
+    @test Array(M) == Float32[1 2; 30 40; 50 60]
+    M[1, :] = NDArray(Float32[7, 8])
+    M[:, 2] = NDArray(Float32[0, 0, 0])
+    M[2:3, 1] = NDArray(Float32[9, 9])
+    @test Array(M) == Float32[7 0; 9 0; 9 0]
+    @test_throws DimensionMismatch (M[2:3, :] = NDArray(Float32[1 2 3; 4 5 6]))
+    @test_throws DimensionMismatch (M[:, 1] = NDArray(Float32[1, 2]))
+    @test Array(M) == Float32[7 0; 9 0; 9 0]
+end

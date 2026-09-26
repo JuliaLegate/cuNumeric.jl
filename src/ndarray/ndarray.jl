@@ -594,10 +594,20 @@ end
 # LHS slices from `nda_get_slice` are invisible to `@accelerate`; destroy
 # the view handle after submitting the assign so they cannot pile up under Julia
 # GC (which sees each NDArray as ~pointer-sized).
-function _setindex_slice!(lhs::NDArray, rhs::NDArray, slices)
+function _setindex_slice!(lhs::NDArray{T}, rhs::NDArray, slices) where {T}
     s = nda_get_slice(lhs, slices)
-    copyto!(s, rhs)
-    destroy!(s)
+    try
+        # cuPyNumeric's assign broadcasts rhs to the slice shape; check first so a
+        # mismatch raises DimensionMismatch as in Base instead of writing silently.
+        Base.setindex_shape_check(rhs, size(s)...)
+        src = checked_promote_arr(rhs, T)
+        shaped = size(src) == size(s) ? src : reshape(src, size(s))
+        copyto!(s, shaped)
+        shaped === src || destroy!(shaped)
+        src === rhs || destroy!(src)
+    finally
+        destroy!(s)
+    end
     return nothing
 end
 
@@ -672,6 +682,13 @@ end
     return _setindex_slice!(
         lhs, rhs, slice_array(_zero_based_range(i), _zero_based_range(j))
     )
+end
+
+@inline function Base.setindex!(
+    lhs::NDArray{T,1}, rhs::NDArray, i::AbstractUnitRange{<:Integer}
+) where {T}
+    @boundscheck checkbounds(lhs, i)
+    return _setindex_slice!(lhs, rhs, slice_array(_zero_based_range(i)))
 end
 
 @inline function Base.getindex(arr::NDArray{T,2}, ::Colon, j::Integer) where {T}
