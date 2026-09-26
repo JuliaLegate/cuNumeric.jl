@@ -4,6 +4,18 @@ Constructors for new `NDArray`s. Default floating-point type is `Float32`.
 
 ## Basic Initialization
 
+### Uninitialized arrays
+
+Use `NDArray{T}(undef, dims...)` or `NDArray{T}(undef, dims::Tuple)` when the
+next operation writes every element. `similar(A)` and `similar(A, T, dims)`
+also return uninitialized arrays. Assign all elements before reading them;
+use `cuNumeric.zeros` when the initial zero values are needed.
+
+```julia
+A = NDArray{Float32}(undef, 2, 3)
+fill!(A, 1f0)
+```
+
 ### zeros
 
 ```@docs

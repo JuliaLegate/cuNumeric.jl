@@ -342,7 +342,7 @@ _uniformscale_mul(::Type{T}, λ::NDArray{<:Any,0}, a::NDArray) where {T} =
     a .* _coefficient_as(T, λ)
 
 function NDArray{T}(J::LinearAlgebra.UniformScaling, dims::Dims{2}) where {T}
-    A = zeros(T, dims)
+    A = NDArray{T}(undef, dims)
     copyto!(A, J)
     return A
 end

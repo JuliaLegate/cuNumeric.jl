@@ -392,7 +392,7 @@ function contract(
     Am = _require_modes(A, Amodes)
     Bm = _require_modes(B, Bmodes)
     Cm, cshape = _free_output_modes(A, Am, B, Bm)
-    C = cuNumeric.zeros(T, cshape)
+    C = NDArray{T}(undef, cshape)
     return contract!(C, Cm, A, Am, B, Bm; α=α, β=zero(T))
 end
 

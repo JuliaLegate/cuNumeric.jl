@@ -134,7 +134,7 @@ end
 function Base.:(-)(rhs1::NDArray{A,N}, rhs2::NDArray{B,N}) where {A,B,N}
     promote_shape(size(rhs1), size(rhs2))
     T_OUT = __checked_promote_op(-, A, B)
-    out = cuNumeric.zeros(T_OUT, size(rhs1))
+    out = NDArray{T_OUT}(undef, size(rhs1))
     return _nda_binary_op_promoted!(out, cuNumeric.SUBTRACT, rhs1, rhs2)
 end
 
@@ -142,7 +142,7 @@ end
 function Base.:(+)(rhs1::NDArray{A,N}, rhs2::NDArray{B,N}) where {A,B,N}
     promote_shape(size(rhs1), size(rhs2))
     T_OUT = __checked_promote_op(+, A, B)
-    out = cuNumeric.zeros(T_OUT, size(rhs1))
+    out = NDArray{T_OUT}(undef, size(rhs1))
     return _nda_binary_op_promoted!(out, cuNumeric.ADD, rhs1, rhs2)
 end
 
@@ -183,7 +183,8 @@ function Base.:(*)(rhs1::NDArray{A,2}, rhs2::NDArray{B,2}) where {A,B}
     size(rhs1, 2) == size(rhs2, 1) ||
         throw(DimensionMismatch("Matrix dimensions incompatible: $(size(rhs1)) × $(size(rhs2))"))
     T = __my_promote_type(A, B)
-    out = cuNumeric.zeros(T, (size(rhs1, 1), size(rhs2, 2)))
+    dims = (size(rhs1, 1), size(rhs2, 2))
+    out = size(rhs1, 2) == 0 ? cuNumeric.zeros(T, dims) : NDArray{T}(undef, dims)
     return _nda_three_dot_promoted!(rhs1, rhs2, out)
 end
 
