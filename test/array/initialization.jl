@@ -1,7 +1,7 @@
 using Test, cuNumeric
 
 @testset "undef constructor types and ranks" begin
-    for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES), N in 0:6
+    for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES), N in 0:6
         dims = ntuple(_ -> 1, N)
         for a in (NDArray{T}(undef, dims), NDArray{T}(undef, dims...))
             @test eltype(a) === T

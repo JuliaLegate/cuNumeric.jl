@@ -678,9 +678,9 @@ end
 
 Allocate an uninitialized `NDArray{T}`. Every element must be assigned before it is read.
 """
-NDArray{T}(::UndefInitializer, dims::Dims{N}) where {T<:SUPPORTED_TYPES,N} =
+NDArray{T}(::UndefInitializer, dims::Dims{N}) where {T<:SUPPORTED_ARRAY_TYPES,N} =
     nda_empty_array(dims, T)
-NDArray{T}(::UndefInitializer, dims::Int...) where {T<:SUPPORTED_TYPES} =
+NDArray{T}(::UndefInitializer, dims::Int...) where {T<:SUPPORTED_ARRAY_TYPES} =
     NDArray{T}(undef, dims)
 
 @doc"""
