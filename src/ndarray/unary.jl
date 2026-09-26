@@ -46,6 +46,14 @@ const unary_op_map_no_args = Dict{Function,UnaryOpCode}(
     Base.round => cuNumeric.RINT,
 )
 
+for julia_fn in (keys(floaty_unary_ops_no_args)..., keys(unary_op_map_no_args)...,
+    identity, real, imag, conj, inv, !)
+    @eval @inline _has_unfused_broadcast(::typeof($julia_fn), ::Val{1}) = true
+end
+# Positional rounding modes are rejected by the native path, too.
+@inline _has_unfused_broadcast(::typeof(round), ::Val) = true
+@inline _has_unfused_broadcast(::typeof(Base.literal_pow), ::Val{3}) = true
+
 ### SPECIAL CASES ###
 
 # `dest .= src` lowers to `identity.(src)`. Treat identity like the native
@@ -53,6 +61,23 @@ const unary_op_map_no_args = Dict{Function,UnaryOpCode}(
 # NDArrays, including writable slices.
 @inline function __broadcast(::typeof(identity), out::NDArray, input::NDArray)
     return nda_unary_op!(out, cuNumeric.COPY, input)
+end
+
+# Real abs2 is a single native square.
+@inline function __broadcast(::typeof(abs2), out::NDArray{T}, input::NDArray{T}) where {T<:Real}
+    return nda_unary_op!(out, cuNumeric.SQUARE, input)
+end
+
+# Complex abs2 has no matching native opcode. Take the magnitude into a real
+# temporary and square it, keeping the unfused path available without a GPU.
+@inline function __broadcast(
+    ::typeof(abs2), out::NDArray{T}, input::NDArray{Complex{T}}
+) where {T<:SUPPORTED_FLOAT_TYPES}
+    magnitude = similar(out)
+    nda_unary_op!(magnitude, cuNumeric.ABSOLUTE, input)
+    nda_unary_op!(out, cuNumeric.SQUARE, magnitude)
+    destroy!(magnitude)
+    return out
 end
 
 # Needed to support !=
@@ -328,7 +353,15 @@ function _unary_reduction_axes_apply(op_code, input::NDArray, ::Type{U}, axes) w
     return result
 end
 
+@inline function _assert_numeric_reduction(base_func, ::Type{T}) where {T}
+    _struct_storage_type(T) && throw(
+        ArgumentError("$(base_func) does not support NDArrays of struct element type $(T)")
+    )
+    return nothing
+end
+
 function _unary_reduction_impl(base_func, op_code, input::NDArray{T}, ::Colon) where {T}
+    _assert_numeric_reduction(base_func, T)
     T_OUT = Base.promote_op(base_func, Vector{T})
     is_wider_type(T_OUT, T) && assertpromotion(base_func, T, T_OUT)
     out = cuNumeric.zeros(T_OUT)
@@ -336,6 +369,7 @@ function _unary_reduction_impl(base_func, op_code, input::NDArray{T}, ::Colon) w
 end
 
 function _unary_reduction_impl(base_func, op_code, input::NDArray{T,N}, dims::Integer) where {T,N}
+    _assert_numeric_reduction(base_func, T)
     T_OUT = Base.promote_op(base_func, Vector{T})
     is_wider_type(T_OUT, T) && assertpromotion(base_func, T, T_OUT)
     axes = Int32[dims - 1]

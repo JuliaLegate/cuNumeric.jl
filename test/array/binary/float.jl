@@ -26,3 +26,13 @@ run_binary_ops_tests(
     ),
 )
 run_array_equal_tests()
+
+@testset "map!" begin
+    lhs = ComplexF64[1 + 2im, 3 + 4im]
+    rhs = ComplexF64[5 + 6im, 7 + 8im]
+    dest = cuNumeric.zeros(ComplexF64, 2)
+    @test map!(*, dest, cuNumeric.NDArray(lhs), cuNumeric.NDArray(rhs)) === dest
+    allowscalar() do
+        @test Array(dest) == lhs .* rhs
+    end
+end

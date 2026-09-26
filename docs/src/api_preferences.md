@@ -8,7 +8,7 @@ Out of the box (no `LocalPreferences.toml` changes):
 |---|---|
 | Binary / build mode | **JLL** prebuilt binaries |
 | Broadcast fusion | **on** |
-| `FUSE_BROADCAST_MIN_OPS` | **2** (single-op broadcasts stay unfused) |
+| `FUSE_BROADCAST_MIN_OPS` | **2** (single native operations stay unfused) |
 | Task scope names | **off** |
 | `MIN_SOLVE_MATRIX_SIZE` | **2048** rows |
 | `MIN_SOLVE_TILE_SIZE` | **512** |
@@ -60,7 +60,7 @@ CNPreferences.set_broadcast_fusion_min_ops!(1)     # also fuse single-ops
 
 `set_broadcast_fusion_min_ops!` counts `Broadcasted` nodes (ops) in the tree:
 
-- **`2` (default):** fuse multi-op trees such as `y .= @. a * b + c`. Single-ops like `y .= cos.(x)` stay on the unfused C-API path.
+- **`2` (default):** fuse multi-op trees such as `y .= @. a * b + c`. Single native operations like `y .= cos.(x)` use the C-API path. Functions without a native implementation are fused on the GPU when their broadcast arguments are eligible.
 - **`1`:** fuse every eligible expression, including single-ops.
 
 Set the preference in one Julia process, then start a fresh process to use it.

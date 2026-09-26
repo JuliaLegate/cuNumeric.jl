@@ -1,5 +1,18 @@
 using Test
 
+@testset "copyto! from Array" begin
+    expected = reshape(ComplexF64.(1:8), 2, 2, 2)
+    source = copy(expected)
+    dest = cuNumeric.zeros(ComplexF64, size(source))
+    try
+        @test copyto!(dest, source) === dest
+        fill!(source, 0)
+        @test Array(dest) == expected
+    finally
+        cuNumeric.destroy!(dest)
+    end
+end
+
 @testset "1D conversion ownership" begin
     for T in (Float32, ComplexF32)
         expected = T[1, 2, 3, 4]
@@ -32,9 +45,9 @@ end
 @testset "Singleton vector host conversion" begin
     # Runtime-created singletons can use scalar futures; attached input
     # vectors do not exercise the same storage representation.
-    for (T, S, value) in ((Float32, Float64, -0f0),
-                          (ComplexF32, ComplexF64, ComplexF32(Inf, 0)),
-                          (Bool, Int32, true))
+    for (T, S, value) in ((Float32, Float64, -0.0f0),
+        (ComplexF32, ComplexF64, ComplexF32(Inf, 0)),
+        (Bool, Int32, true))
         a = cuNumeric.fill(value, (1,))
         try
             converted = Array(a)
