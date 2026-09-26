@@ -597,7 +597,8 @@ end
 function _setindex_slice!(lhs::NDArray{T}, rhs::NDArray, slices) where {T}
     s = nda_get_slice(lhs, slices)
     try
-        # Unchecked, the assign broadcasts a mismatched rhs into the slice.
+        # cuPyNumeric's assign broadcasts rhs to the slice shape; check first so a
+        # mismatch raises DimensionMismatch as in Base instead of writing silently.
         Base.setindex_shape_check(rhs, size(s)...)
         src = checked_promote_arr(rhs, T)
         shaped = size(src) == size(s) ? src : reshape(src, size(s))
