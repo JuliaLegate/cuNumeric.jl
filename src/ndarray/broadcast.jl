@@ -176,8 +176,9 @@ end
     return nothing
 end
 
-# Un-fused implementation of broadcast tree
-function unravel_broadcast_tree(bc::Broadcasted)
+# Un-fused implementation of broadcast tree. `dest`, when given, receives the
+# top-level result directly if its eltype matches and no input partially overlaps it.
+function unravel_broadcast_tree(bc::Broadcasted, dest=nothing)
     if length(bc.args) > 2 && _is_flattened_associative(bc.f)
         return _unravel_flattened_associative(bc.f, bc.args)
     end
@@ -194,8 +195,7 @@ function unravel_broadcast_tree(bc::Broadcasted)
     T_IN = __my_promote_type(eltypes.parameters...) # type input arrays are promoted to
     in_args = unchecked_promote_arr.(materialized_args, T_IN)
 
-    # Allocate output array of proper size/type
-    out = similar(NDArray{T_OUT}, axes(bc))
+    out = _unfused_output(dest, T_OUT, bc, in_args)
 
     # If the operation, "bc.f",  is supported by cuNumeric, this
     # dispatches to a function calling the C-API.
@@ -207,6 +207,23 @@ function unravel_broadcast_tree(bc::Broadcasted)
         _destroy_unfused_arg_temps!(bc.args[i], materialized_args[i], in_args[i])
     end
     return result
+end
+
+@inline _unfused_output(::Nothing, ::Type{T}, bc, in_args) where {T} =
+    similar(NDArray{T}, axes(bc))
+
+@inline function _unfused_output(dest::NDArray{S}, ::Type{T}, bc, in_args) where {S,T}
+    # Elementwise ops may read and write the same array; only partial overlap
+    # (e.g. shifted views of one store) needs a temporary.
+    S === T && !any(x -> x isa NDArray && x !== dest && nda_overlaps(dest, x), in_args) &&
+        return dest
+    return similar(NDArray{T}, axes(bc))
+end
+
+# Skips the temporary and store-back when the top-level op wrote into `dest`.
+@inline function _unfused_into!(dest::NDArray, bc::Broadcasted)
+    result = unravel_broadcast_tree(bc, dest)
+    return result === dest ? dest : _copyto_unfused!(dest, result)
 end
 
 # Slice destinations must assign into their parent store.
@@ -269,6 +286,12 @@ end
     end
 end
 
+@inline function _identity_broadcast_source(bc::Broadcasted)
+    bc.f === identity && length(bc.args) == 1 || return nothing
+    source = only(bc.args)
+    return source isa NDArray ? source : nothing
+end
+
 @inline function _copyto!(dest::NDArray, bc::Broadcasted)
     axes(dest) == axes(bc) || Broadcast.throwdm(axes(dest), axes(bc))
     isempty(dest) && return dest
@@ -278,6 +301,15 @@ end
                 "Broadcast operation resulting in $(eltype(eltype(dest))) is not NDArray compatible"
             ),
         )
+    end
+
+    # A same-type identity broadcast is an array assignment. Use the native
+    # path only for disjoint stores; overlapping slices need the broadcast
+    # temporary to preserve the original values.
+    source = _identity_broadcast_source(bc)
+    if source isa NDArray && eltype(dest) === eltype(source) &&
+        axes(dest) == axes(source) && !nda_overlaps(dest, source)
+        return copyto!(dest, source)
     end
 
     # Require an active GPU target so `--gpus 0` stays on the unfused path.
