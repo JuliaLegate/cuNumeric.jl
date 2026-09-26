@@ -141,7 +141,7 @@ end
 @inline function __broadcast(
     ::typeof(Base.literal_pow), out::NDArray{O}, _, input::NDArray{O}, ::Type{Val{-1}}
 ) where {O}
-    nda_move(out, O(1) ./ input) #! REPLACE WITH RECIP ONCE FIXED
+    _store_broadcast_result!(out, O(1) ./ input) #! REPLACE WITH RECIP ONCE FIXED
     return out
 end
 
@@ -149,19 +149,19 @@ end
     ::typeof(Base.literal_pow), out::NDArray{O}, _, input::NDArray, ::Type{Val{-1}}
 ) where {O}
     promoted = checked_promote_arr(input, O)  # always a new array when eltype ≠ O
-    nda_move(out, O(1) ./ promoted) #! REPLACE WITH RECIP ONCE FIXED
+    _store_broadcast_result!(out, O(1) ./ promoted) #! REPLACE WITH RECIP ONCE FIXED
     destroy!(promoted)
     return out
 end
 
 @inline function __broadcast(::typeof(Base.inv), out::NDArray{O}, input::NDArray{O}) where {O}
-    nda_move(out, O(1) ./ input) #! REPLACE WITH RECIP ONCE FIXED
+    _store_broadcast_result!(out, O(1) ./ input) #! REPLACE WITH RECIP ONCE FIXED
     return out
 end
 
 @inline function __broadcast(::typeof(Base.inv), out::NDArray{O}, input::NDArray) where {O}
     promoted = checked_promote_arr(input, O)  # always a new array when eltype ≠ O
-    nda_move(out, O(1) ./ promoted) #! REPLACE WITH RECIP ONCE FIXED
+    _store_broadcast_result!(out, O(1) ./ promoted) #! REPLACE WITH RECIP ONCE FIXED
     destroy!(promoted)
     return out
 end
