@@ -31,8 +31,9 @@
 
 _broadcast_fusion_user_add(x, y) = x + y
 _broadcast_fusion_absnorm(x, t) = abs(x)
-_broadcast_fusion_residual(e, u0, u1, atol, rtol, norm, t) =
-    e / (atol + max(norm(u0, t), norm(u1, t)) * rtol)
+function _broadcast_fusion_residual(e, u0, u1, atol, rtol, norm, t)
+    return e / (atol + max(norm(u0, t), norm(u1, t)) * rtol)
+end
 _broadcast_fusion_bad_result(x) = string(x)
 _broadcast_fusion_bad_kernel(x) = parse(Float32, string(x))
 
@@ -647,6 +648,17 @@ end
         expected = zeros(T, N + 2, N + 2)
         expected[2:(end - 1), 2:(end - 1)] = ja .* s1 .+ s2
         @allowscalar @test safe_compare(expected, out, atol, rtol)
+    end
+
+    @testset "kernel values with data are rejected" begin
+        # The launcher passes no closure state to the device, so these would
+        # otherwise read garbage kernel parameters and abort the GPU stream.
+        a = @allowscalar NDArray(rand(T, 8))
+        scale = s1
+        @test_throws ArgumentError (x -> x * scale).(a)
+        @test_throws ArgumentError ((x, t) -> x * t[1]).(a, Ref((s1, s2)))
+        # Values passed as broadcast arguments stay supported.
+        @allowscalar @test safe_compare(Array(a) .* s1, ((x, c) -> x * c).(a, s1), atol, rtol)
     end
 end
 

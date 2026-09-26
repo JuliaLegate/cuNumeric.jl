@@ -15,6 +15,7 @@ corresponding `Base` methods are missing, so calls fall through to
 
 **P0**
 - `Base.reshape`, `Base.vec`
+- 1-D range `setindex!` (`A[2:3] = B`); only 2-D range assignment exists
 - `fill!` (convertible eltypes)
 - `collect`
 
@@ -36,6 +37,13 @@ corresponding `Base` methods are missing, so calls fall through to
 - `floor` / `ceil` / `clamp`
 - 2D `permutedims`
 - `diff`
+
+## Broadcast fusion
+
+- Fused runtime scalars are promoted to one common type before launch, so
+  mixing e.g. `UInt64` and `Float32` scalars loses precision. Keeping each
+  scalar's type would also let struct `fill!` / `setindex!` use the fused
+  kernel instead of Legate's `issue_fill`.
 
 ## LinearAlgebra
 

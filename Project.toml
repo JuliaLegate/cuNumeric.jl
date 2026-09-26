@@ -30,10 +30,12 @@ cupynumeric_jll = "2862d674-414d-5b0b-a494-b21f8deca547"
 libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
 
 [weakdeps]
+StructArrays = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
 Krylov = "ba0b0d4f-ebba-5204-a429-3ac8c609bfb7"
 TensorOperations = "6aa20fa7-93e2-5fca-9bc0-fbd0db3c71a2"
 
 [extensions]
+cuNumericStructArraysExt = "StructArrays"
 cuNumericKrylovExt = "Krylov"
 cuNumericTensorOperationsExt = "TensorOperations"
 
@@ -56,6 +58,7 @@ Preferences = "1"
 Random = "1"
 StaticArrays = "1"
 StatsBase = "0.34"
+StructArrays = "0.7"
 TensorOperations = "5.8"
 cunumeric_jl_wrapper_jll = "26.6.4"
 cupynumeric_jll = "26.6.0"

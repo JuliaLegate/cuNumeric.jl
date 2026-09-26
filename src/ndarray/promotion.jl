@@ -47,9 +47,11 @@ end
 end
 
 @inline function _broadcast_result_type(op, ::Type{T}) where {T}
-    T <: SUPPORTED_ARRAY_TYPES || throw(ArgumentError(
-        "Broadcast function $(op) cannot produce an NDArray: unsupported result type $(T)"
-    ))
+    (T <: SUPPORTED_ARRAY_TYPES || _struct_storage_type(T)) || throw(
+        ArgumentError(
+            "Broadcast function $(op) cannot produce an NDArray: unsupported result type $(T)"
+        ),
+    )
     return T
 end
 
@@ -73,7 +75,7 @@ end
 ) where {A,B,C}
     T = _broadcast_result_type(op, Base.promote_op(op, A, B, C))
     S = _smallest_numeric_broadcast_type(Tuple{A,B,C})
-    S === nothing || (is_wider_type(T, S) && assertpromotion(op, S, T))
+    (S === nothing || !(T <: Number)) || (is_wider_type(T, S) && assertpromotion(op, S, T))
     return T
 end
 
@@ -82,7 +84,7 @@ end
 ) where {Args<:Tuple{Any,Any,Any,Any,Vararg{Any}}}
     T = _broadcast_result_type(op, Base.promote_op(op, Args.parameters...))
     S = _smallest_numeric_broadcast_type(Args)
-    S === nothing || (is_wider_type(T, S) && assertpromotion(op, S, T))
+    (S === nothing || !(T <: Number)) || (is_wider_type(T, S) && assertpromotion(op, S, T))
     return T
 end
 
@@ -113,20 +115,20 @@ __recip_type(::Type{Bool}) = DEFAULT_FLOAT
 
 @inline function __checked_promote_op(op, ::Type{A}) where {A}
     T = _broadcast_result_type(op, Base.promote_op(op, A))
-    is_wider_type(T, A) && assertpromotion(op, A, T)
+    T <: SUPPORTED_ARRAY_TYPES && is_wider_type(T, A) && assertpromotion(op, A, T)
     return T
 end
 
 @inline function __checked_promote_op(op, ::Type{A}, ::Type{A}) where {A}
     T = _broadcast_result_type(op, Base.promote_op(op, A, A))
-    is_wider_type(T, A) && assertpromotion(op, A, T)
+    T <: Number && is_wider_type(T, A) && assertpromotion(op, A, T)
     return T
 end
 
 @inline function __checked_promote_op(op, ::Type{A}, ::Type{B}) where {A,B}
     T = _broadcast_result_type(op, Base.promote_op(op, A, B))
     S = _smallest_numeric_broadcast_type(Tuple{A,B})
-    S === nothing || (is_wider_type(T, S) && assertpromotion(op, S, T))
+    (S === nothing || !(T <: Number)) || (is_wider_type(T, S) && assertpromotion(op, S, T))
     return T
 end
 
