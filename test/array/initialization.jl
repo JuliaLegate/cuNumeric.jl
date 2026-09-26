@@ -1,5 +1,16 @@
 using Test, cuNumeric
 
+@testset "undef constructor types and ranks" begin
+    for T in Base.uniontypes(cuNumeric.SUPPORTED_TYPES), N in 0:6
+        dims = ntuple(_ -> 1, N)
+        for a in (NDArray{T}(undef, dims), NDArray{T}(undef, dims...))
+            @test eltype(a) === T
+            @test size(a) == dims
+            cuNumeric.destroy!(a)
+        end
+    end
+end
+
 @testset "uninitialized NDArray construction" begin
     a = NDArray{Float32}(undef, 2, 3)
     @test size(a) == (2, 3)
