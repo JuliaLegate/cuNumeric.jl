@@ -75,7 +75,7 @@ LinearAlgebra.mul!(C::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, A::NDArray{<:SUPPORTED
 function Base.:*(A::NDArray{TA,2}, x::NDArray{TX,1}) where {TA<:SUPPORTED_ARRAY_TYPES,TX<:SUPPORTED_ARRAY_TYPES}
     T = _matmul_eltype(promote_type(TA, TX))
     size(A, 2) == length(x) || throw(DimensionMismatch("matrix-vector dimensions do not match"))
-    y = cuNumeric.zeros(T, size(A, 1))
+    y = NDArray{T}(undef, size(A, 1))
     return mul!(y, A, x)
 end
 

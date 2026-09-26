@@ -134,13 +134,13 @@ function random!(g::Generator, arr::NDArray{T}) where {T}
 end
 
 function random(g::Generator, ::Type{T}, dims::Dims) where {T<:SUPPORTED_FLOAT_TYPES}
-    arr = zeros(T, dims)
+    arr = NDArray{T}(undef, dims)
     random!(g, arr)
     return arr
 end
 
 function random(g::Generator, ::Type{T}, dims::Dims) where {T<:SUPPORTED_COMPLEX_TYPES}
-    arr = zeros(T, dims)
+    arr = NDArray{T}(undef, dims)
     random!(g, arr)
     return arr
 end
@@ -177,8 +177,8 @@ end
 # No loc/scale kwargs: shift or scale in user code (`μ .+ σ .* Z`).
 function randn!(g::Generator, arr::NDArray{Complex{T}}) where {T<:SUPPORTED_FLOAT_TYPES}
     s = 1 / sqrt(T(2))
-    re = zeros(T, size(arr))
-    imag_part = zeros(T, size(arr))
+    re = NDArray{T}(undef, size(arr))
+    imag_part = NDArray{T}(undef, size(arr))
     _randn!(g, re; scale=s)
     _randn!(g, imag_part; scale=s)
     _pack_complex!(arr, re, imag_part)
@@ -194,13 +194,13 @@ function randn!(g::Generator, arr::NDArray{T}) where {T}
 end
 
 function randn(g::Generator, ::Type{T}, dims::Dims) where {T<:SUPPORTED_FLOAT_TYPES}
-    arr = zeros(T, dims)
+    arr = NDArray{T}(undef, dims)
     randn!(g, arr)
     return arr
 end
 
 function randn(g::Generator, ::Type{T}, dims::Dims) where {T<:SUPPORTED_COMPLEX_TYPES}
-    arr = zeros(T, dims)
+    arr = NDArray{T}(undef, dims)
     randn!(g, arr)
     return arr
 end
@@ -232,7 +232,7 @@ end
 function randexp(
     g::Generator, ::Type{T}, dims::Dims; scale::Union{Real,DeviceScalar{<:Real}}=1
 ) where {T<:SUPPORTED_FLOAT_TYPES}
-    arr = zeros(T, dims)
+    arr = NDArray{T}(undef, dims)
     randexp!(g, arr; scale=scale)
     return arr
 end
@@ -264,7 +264,7 @@ end
 function integers(
     g::Generator, ::Type{T}, dims::Dims; low::Integer, high::Integer
 ) where {T<:_RNG_INT_TYPES}
-    arr = zeros(T, dims)
+    arr = NDArray{T}(undef, dims)
     integers!(g, arr; low=low, high=high)
     return arr
 end
