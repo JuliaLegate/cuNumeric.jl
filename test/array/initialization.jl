@@ -16,6 +16,10 @@ using Test, cuNumeric
     fill!(scalar, Int32(7))
     @test Array(scalar)[] == 7
 
+    scalar_like = similar(NDArray{Int32}, ())
+    fill!(scalar_like, Int32(9))
+    @test Array(scalar_like)[] == 9
+
     same = similar(a)
     @test size(same) == size(a)
     fill!(same, 3f0)
@@ -30,6 +34,10 @@ using Test, cuNumeric
     @test size(by_type) == (2, 3)
     fill!(by_type, 6f0)
     @test Array(by_type) == fill(6f0, 2, 3)
+
+    empty = similar(a, Float32, (0, 3))
+    @test size(empty) == (0, 3)
+    @test size(Array(empty)) == (0, 3)
 
     @test all(iszero, Array(cuNumeric.zeros(Float32, 2, 3)))
 end

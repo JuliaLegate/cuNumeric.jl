@@ -196,7 +196,7 @@ end
         C = contract(nda, "ik", ndb, "kj"; α=α2)
         _host_contract_compare(α2 * prod, C, T; n=nk, scale=α2 * scale)
 
-        out = cuNumeric.zeros(T, 4, 5)
+        out = NDArray{T}(undef, 4, 5)
         contract!(out, "ij", nda, "ik", ndb, "kj"; α=α3, β=0)
         _host_contract_compare(α3 * prod, out, T; n=nk, scale=α3 * scale)
 
@@ -218,7 +218,7 @@ end
         )
 
         α0 = NDArray(α2)
-        out = cuNumeric.zeros(T, 4, 5)
+        out = NDArray{T}(undef, 4, 5)
         contract!(out, "ij", nda, "ik", ndb, "kj"; α=α0, β=0)
         _host_contract_compare(α2 * prod, out, T; n=nk, scale=α2 * scale)
 
