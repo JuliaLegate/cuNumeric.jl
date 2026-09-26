@@ -289,26 +289,36 @@ end
         if should_fuse
             return fuse_broadcast_tree!(dest, bc)
         else
-            _assert_struct_broadcast_fused(dest)
+            _assert_struct_broadcast_fused(dest, bc)
             return _copyto_unfused!(dest, unravel_broadcast_tree(bc))
         end
     else
-        _assert_struct_broadcast_fused(dest)
+        _assert_struct_broadcast_fused(dest, bc)
         return _copyto_unfused!(dest, unravel_broadcast_tree(bc))
     end
 end
 
-# The unfused path runs cuPyNumeric operations, none of which produce records.
+# The unfused path runs cuPyNumeric operations, none of which read or produce records.
 # TODO fuse struct results with size-1 extrusion and into 0-d destinations.
-@inline function _assert_struct_broadcast_fused(dest::NDArray{T}) where {T}
-    _struct_storage_type(T) && throw(
+@inline function _assert_struct_broadcast_fused(dest::NDArray{T}, bc::Broadcasted) where {T}
+    role, S = _struct_storage_type(T) ? ("producing", T) : ("reading", _struct_leaf_type(bc))
+    S === nothing && return nothing
+    throw(
         ArgumentError(
-            "Broadcasts producing struct element type $(T) require GPU broadcast " *
+            "Broadcasts $(role) struct element type $(S) require GPU broadcast " *
             "fusion with same-shaped NDArray inputs of rank at least 1 " *
             "(fusion enabled: $(FUSE_BROADCAST_EXPRS), GPU available: $(_has_gpu_target()))",
         ),
     )
-    return nothing
+end
+
+@inline _struct_leaf_type(_) = nothing
+@inline _struct_leaf_type(::NDArray{T}) where {T} = _struct_storage_type(T) ? T : nothing
+@inline _struct_leaf_type(bc::Broadcasted) = _struct_leaf_type_args(bc.args)
+@inline _struct_leaf_type_args(::Tuple{}) = nothing
+@inline function _struct_leaf_type_args(args::Tuple)
+    S = _struct_leaf_type(first(args))
+    return S === nothing ? _struct_leaf_type_args(Base.tail(args)) : S
 end
 
 # Support .=

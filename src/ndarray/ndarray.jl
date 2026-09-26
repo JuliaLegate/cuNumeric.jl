@@ -243,6 +243,7 @@ function _copy_to_julia_array_impl(arr::NDArray{T,N}) where {T,N}
     if _struct_storage_type(T)
         out = Array{T}(undef, size(arr))
         isempty(out) && return out
+        _assert_struct_kernel("Host transfer", T)
         fields = ntuple(fieldcount(T)) do i
             projected = StructField{i}().(arr)
             try
@@ -286,6 +287,7 @@ end
 # shape, and keep that buffer as `parent` for lifetime.
 function _nda_from_julia_struct_array(arr::Array{T,N}) where {T,N}
     isempty(arr) && return nda_empty_array(size(arr), T)
+    _assert_struct_kernel("Construction from a host Array", T)
     # `map` keeps Bool fields as Array{Bool}; broadcasting would build a BitArray.
     fields = ntuple(i -> NDArray(map(StructField{i}(), arr)), fieldcount(T))
     try
@@ -969,6 +971,7 @@ function _reshape_struct(arr::NDArray{T}, dims::Dims) where {T}
         ),
     )
     isempty(arr) && return nda_empty_array(dims, T)
+    _assert_struct_kernel("Reshaping", T)
     fields = ntuple(fieldcount(T)) do i
         projected = StructField{i}().(arr)
         try
@@ -1033,6 +1036,7 @@ struct StructEqual end
 # in the fused kernel so user-defined equality and NaN semantics match Base.
 function _struct_array_equal(a::NDArray, b::NDArray)
     isempty(a) && return cnscalar(NDArray(true))
+    _assert_struct_kernel("Comparison", _struct_storage_type(eltype(a)) ? eltype(a) : eltype(b))
     if ndims(a) == 0
         return cnscalar(NDArray(_copy_to_julia_array(a) == _copy_to_julia_array(b)))
     end

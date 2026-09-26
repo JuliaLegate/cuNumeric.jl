@@ -27,6 +27,14 @@ function Base.copyto!(
         throw(ArgumentError("StructArray broadcast requires NDArray field storage"))
     axes(dest) == axes(bc) || Base.Broadcast.throwdm(axes(dest), axes(bc))
     isempty(dest) && return dest
+    # Each field is computed by the fused kernel; there is no unfused fallback.
+    cuNumeric._struct_kernel_available() || throw(
+        ArgumentError(
+            "StructArray broadcast requires GPU broadcast fusion " *
+            "(fusion enabled: $(cuNumeric.FUSE_BROADCAST_EXPRS), " *
+            "GPU available: $(cuNumeric._has_gpu_target()))",
+        ),
+    )
 
     # A field may read another field of dest. Stage results before replacing any
     # component so in-place broadcasts retain their usual simultaneous semantics.

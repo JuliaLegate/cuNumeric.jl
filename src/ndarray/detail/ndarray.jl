@@ -48,6 +48,21 @@ abstract type AbstractNDArray{T,N} <: AbstractArray{T,N} end
     fieldcount(T) > 0 &&
     all(F -> F <: SUPPORTED_ARRAY_TYPES, fieldtypes(T))
 
+# cuPyNumeric has no record-typed operations: struct stores are packed,
+# unpacked, copied and compared by the fused GPU broadcast kernel.
+# TODO CPU variants for struct pack/unpack so host transfer works without a GPU.
+@inline _struct_kernel_available() = FUSE_BROADCAST_EXPRS && _has_gpu_target()
+
+@inline function _assert_struct_kernel(op, ::Type{T}) where {T}
+    _struct_kernel_available() || throw(
+        ArgumentError(
+            "$(op) of NDArrays with struct element type $(T) requires GPU broadcast " *
+            "fusion (fusion enabled: $(FUSE_BROADCAST_EXPRS), GPU available: $(_has_gpu_target()))",
+        ),
+    )
+    return nothing
+end
+
 # Runtime padding uses an abstract field to break the recursive storage definition.
 abstract type AbstractPaddedStorage{T,N} end
 
@@ -391,6 +406,8 @@ function _nda_assign_struct(arr::NDArray{T}, other::NDArray{T}) where {T}
     size(arr) == size(other) || throw(
         DimensionMismatch("cannot copy an array of size $(size(other)) into size $(size(arr))")
     )
+    isempty(arr) && return nothing
+    _assert_struct_kernel("Copying", T)
     if ndims(arr) == 0
         # The fused kernel needs a rank; a 0-d reshape views the same element.
         dest, src = nda_reshape_array(arr, (1,)), nda_reshape_array(other, (1,))
