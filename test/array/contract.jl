@@ -72,7 +72,7 @@ end
         @test size(C) == (5, 6)
         _host_contract_compare(ref_ij, C, T; n=nk, scale)
 
-        out = cuNumeric.zeros(T, 5, 6)
+        out = NDArray{T}(undef, 5, 6)
         contract!(out, "ij", nda, "ik", ndb, "kj")
         _host_contract_compare(ref_ij, out, T; n=nk, scale)
 
@@ -244,6 +244,13 @@ end
         D = tensordot(nda, ndb, ([3], [1]))
         _host_contract_compare(ref, D, T; n=size(A, 3), scale=_contract_scale(A, B))
     end
+end
+
+@testset "contract with empty reduction axis" begin
+    A = cuNumeric.zeros(Float32, 2, 0)
+    B = cuNumeric.zeros(Float32, 0, 3)
+    C = contract(A, "ik", B, "kj")
+    @test Array(C) == zeros(Float32, 2, 3)
 end
 
 @testset "contract no cancellation" begin

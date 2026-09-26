@@ -286,7 +286,7 @@ function _contract_same_type!(
         return C
     end
     βT = convert(T, β)
-    tmp = cuNumeric.zeros(T, size(C))
+    tmp = similar(C)
     _nda_contract!(tmp, Cm, A, Am, B, Bm, extent_keys, extent_vals)
     C .= βT .* C .+ αT .* tmp
     destroy!(tmp)
@@ -312,7 +312,7 @@ function _contract_same_type!(
             C .= α′ .* C
             return C
         end
-        tmp = cuNumeric.zeros(T, size(C))
+        tmp = similar(C)
         _nda_contract!(tmp, Cm, A, Am, B, Bm, extent_keys, extent_vals)
         if isone(β)
             C .= C .+ α′ .* tmp
@@ -363,7 +363,7 @@ function _contract_same_type!(
     α′ = eltype(α) === T ? α : as_type(α, T)
     β′ = eltype(β) === T ? β : as_type(β, T)
     try
-        tmp = cuNumeric.zeros(T, size(C))
+        tmp = similar(C)
         _nda_contract!(tmp, Cm, A, Am, B, Bm, extent_keys, extent_vals)
         C .= β′ .* C .+ α′ .* tmp
         destroy!(tmp)
@@ -392,7 +392,7 @@ function contract(
     Am = _require_modes(A, Amodes)
     Bm = _require_modes(B, Bmodes)
     Cm, cshape = _free_output_modes(A, Am, B, Bm)
-    C = cuNumeric.zeros(T, cshape)
+    C = NDArray{T}(undef, cshape)
     return contract!(C, Cm, A, Am, B, Bm; α=α, β=zero(T))
 end
 
