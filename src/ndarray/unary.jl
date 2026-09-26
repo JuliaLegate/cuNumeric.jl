@@ -61,26 +61,26 @@ Base.:(!)(input::NDArray{Bool,1}) = nda_unary_op!(similar(input), cuNumeric.LOGI
 
 # Non-broadcasted version of negation
 function Base.:(-)(input::NDArray{T}) where {T}
-    out = cuNumeric.zeros(T, size(input))
+    out = NDArray{T}(undef, size(input))
     return nda_unary_op!(out, cuNumeric.NEGATIVE, input)
 end
 
 function Base.real(input::NDArray{T}) where {T<:Complex}
     T_OUT = Base.promote_op(real, T)
-    out = cuNumeric.zeros(T_OUT, size(input))
+    out = NDArray{T_OUT}(undef, size(input))
     return nda_unary_op!(out, cuNumeric.REAL, input)
 end
 Base.real(input::NDArray{<:Real}) = input
 
 function Base.imag(input::NDArray{T}) where {T<:Complex}
     T_OUT = Base.promote_op(imag, T)
-    out = cuNumeric.zeros(T_OUT, size(input))
+    out = NDArray{T_OUT}(undef, size(input))
     return nda_unary_op!(out, cuNumeric.IMAG, input)
 end
 Base.imag(input::NDArray{T}) where {T<:Real} = cuNumeric.zeros(T, size(input))
 
 function Base.conj(input::NDArray{T}) where {T<:Complex}
-    out = cuNumeric.zeros(T, size(input))
+    out = NDArray{T}(undef, size(input))
     return nda_unary_op!(out, cuNumeric.CONJ, input)
 end
 Base.conj(input::NDArray{<:Real}) = input

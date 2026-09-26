@@ -673,6 +673,17 @@ end
 
 #### INITIALIZATION OF NDARRAYS ####
 @doc"""
+    NDArray{T}(undef, dims::Int...)
+    NDArray{T}(undef, dims::Dims)
+
+Allocate an uninitialized `NDArray{T}`. Every element must be assigned before it is read.
+"""
+NDArray{T}(::UndefInitializer, dims::Dims{N}) where {T<:SUPPORTED_TYPES,N} =
+    nda_empty_array(dims, T)
+NDArray{T}(::UndefInitializer, dims::Int...) where {T<:SUPPORTED_TYPES} =
+    NDArray{T}(undef, dims)
+
+@doc"""
     cuNumeric.fill(val::T, dims::Dims)
     cuNumeric.fill(val::T, dims::Int...)
 
