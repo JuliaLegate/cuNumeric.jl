@@ -42,13 +42,12 @@ end
 
 Base.broadcastable(A::NDArray) = A
 
-#* IS THERE A BETTER WAY TO ALLOCATE THE NEW ARRAY???
 function _broadcast_allocate(::Type{T}, dims::Dims) where {T}
     if _struct_storage_type(T) ||
         (isbitstype(T) && !isprimitivetype(T) && !(T <: SUPPORTED_TYPES))
         return nda_empty_array(dims, T)
     end
-    return cuNumeric.zeros(T, dims)
+    return NDArray{T}(undef, dims)
 end
 
 Base.similar(arr::NDArray, ::Type{T}, dims::Dims{N}) where {T,N} = _broadcast_allocate(T, dims)
@@ -58,7 +57,6 @@ Base.similar(arr::NDArray{T}, dims::Tuple) where {T} = similar(arr, T, dims)
 Base.similar(arr::NDArray{T}, dims::Base.DimOrInd...) where {T} = similar(arr, T, dims)
 Base.similar(arr::NDArray, ::Type{T}) where {T} = similar(arr, T, size(arr))
 
-#* IS THERE A BETTER WAY TO ALLOCATE THE NEW ARRAY???
 # Prefer Dims over the axes catch-all: with StaticArrays loaded (GPU CI via CUDA),
 # `similar(::Type{<:AbstractArray}, ::Tuple{})` is otherwise ambiguous between
 # Base, StaticArrays, and our catch-all (0-d broadcast uses axes `()`).
