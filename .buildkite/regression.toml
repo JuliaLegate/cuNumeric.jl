@@ -9,6 +9,8 @@ n_iter = 5
 n_trial = 5
 check_correctness = true
 auto_size = false
+# Legate's pool is capped at CUNUMERIC_BENCH_FBMEM_MB (3 GB) on CI.
+mem_frac = 0.9
 
 [[gemm]]
 T = "Float32"
@@ -19,14 +21,14 @@ cpus = 8
 
 [[montecarlo]]
 T = "Float32"
-N = 100_000_000
+N = 50_000_000
 M = 1
 gpus = 1
 cpus = 8
 
 [[montecarlo_naive]]
 T = "Float32"
-N = 100_000_000
+N = 50_000_000
 M = 1
 gpus = 1
 cpus = 8

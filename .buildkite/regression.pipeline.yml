@@ -18,4 +18,4 @@ steps:
       LD_LIBRARY_PATH: ""
       LEGATE_AUTO_CONFIG: "0"
       # nvidia-smi cannot read GPU memory in the CI container; cap the harness budget.
-      CUNUMERIC_BENCH_FBMEM_MB: "10240"
+      CUNUMERIC_BENCH_FBMEM_MB: "3072"
