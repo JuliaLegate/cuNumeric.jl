@@ -1,5 +1,22 @@
 using Test
 
+@testset "Shape queries across ranks and shared handles" begin
+    for dims in ((), (0,), (5,), (2, 3), (2, 1, 3))
+        a = cuNumeric.zeros(Float32, dims)
+        @test size(a) === dims
+        @test axes(a) == map(Base.OneTo, dims)
+        @test length(a) == prod(dims)
+        cuNumeric.destroy!(a)
+    end
+    a = cuNumeric.zeros(Float32, 4, 5)
+    sliced = view(a, 2:3, 1:4)
+    reshaped = cuNumeric.reshape(a, (2, 2, 5))
+    @test size(sliced) === (2, 4)
+    @test size(reshaped) === (2, 2, 5)
+    @test size(a) === (4, 5)
+    foreach(cuNumeric.destroy!, (sliced, reshaped, a))
+end
+
 @testset "Full-colon views share storage and own their handles" begin
     for shape in ((4,), (2, 3), (2, 2, 3))
         a = cuNumeric.zeros(Float32, shape)

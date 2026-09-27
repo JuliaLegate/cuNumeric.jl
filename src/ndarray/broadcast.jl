@@ -148,15 +148,18 @@ function __materialize(bc::Broadcasted{<:NDArrayStyle})
 end
 
 # The C API is binary, so evaluate flattened `+` and `*` chains pairwise.
-function _unravel_flattened_associative(f, args::Tuple)
+function _unravel_flattened_associative(f, args::Tuple, dest)
     acc = first(args)
     owns_acc = false
-    for arg in Base.tail(args)
-        next = try
-            __materialize(Base.broadcasted(f, acc, arg))
-        finally
-            owns_acc && acc isa NDArray && destroy!(acc)
+    for (i, arg) in enumerate(Base.tail(args))
+        bc = Base.broadcasted(f, acc, arg)
+        # Only the final binary operation may overwrite the destination.
+        next = if i == length(args) - 1 && !isnothing(dest)
+            unravel_broadcast_tree(Base.Broadcast.instantiate(bc), dest)
+        else
+            __materialize(bc)
         end
+        owns_acc && acc isa NDArray && destroy!(acc)
         acc = next
         owns_acc = acc isa NDArray
     end
@@ -178,7 +181,7 @@ end
 # top-level result directly if its eltype matches and no input partially overlaps it.
 function unravel_broadcast_tree(bc::Broadcasted, dest=nothing)
     if length(bc.args) > 2 && _is_flattened_associative(bc.f)
-        return _unravel_flattened_associative(bc.f, bc.args)
+        return _unravel_flattened_associative(bc.f, bc.args, dest)
     end
 
     # Recursively materialize/unravel any nested broadcasts
