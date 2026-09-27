@@ -174,7 +174,10 @@ function Base.:\(D::DiagonalNDArray, B::NDArray{<:Any,2})
             "matrix is $(size(B,1))×$(size(B,2)), but diagonal is $(size(D,1))×$(size(D,2))"
         ),
     )
-    return B ./ _row_scale(_diag_vec(D))
+    d = _row_scale(_diag_vec(D))
+    result = B ./ d
+    destroy!(d)
+    return result
 end
 
 function Base.:/(A::NDArray{<:Any,2}, D::DiagonalNDArray)
@@ -183,15 +186,35 @@ function Base.:/(A::NDArray{<:Any,2}, D::DiagonalNDArray)
             "matrix is $(size(A,1))×$(size(A,2)), but diagonal is $(size(D,1))×$(size(D,2))"
         ),
     )
-    return A * inv(D)
+    d = _col_scale(_diag_vec(D))
+    result = A ./ d
+    destroy!(d)
+    return result
 end
 
-function LinearAlgebra.ldiv!(D::DiagonalNDArray, B::NDArray)
-    return copyto!(B, D \ B)
+function LinearAlgebra.ldiv!(D::DiagonalNDArray, B::NDArray{<:Any,1})
+    length(B) == size(D, 1) ||
+        throw(DimensionMismatch("vector length $(length(B)) does not match diagonal $(size(D,1))"))
+    B ./= _diag_vec(D)
+    return B
 end
 
-function LinearAlgebra.rdiv!(A::NDArray, D::DiagonalNDArray)
-    return copyto!(A, A / D)
+function LinearAlgebra.ldiv!(D::DiagonalNDArray, B::NDArray{<:Any,2})
+    size(B, 1) == size(D, 1) ||
+        throw(DimensionMismatch("diagonal division dimensions do not match"))
+    d = _row_scale(_diag_vec(D))
+    B ./= d
+    destroy!(d)
+    return B
+end
+
+function LinearAlgebra.rdiv!(A::NDArray{<:Any,2}, D::DiagonalNDArray)
+    size(A, 2) == size(D, 1) ||
+        throw(DimensionMismatch("diagonal division dimensions do not match"))
+    d = _col_scale(_diag_vec(D))
+    A ./= d
+    destroy!(d)
+    return A
 end
 
 function Base.inv(D::DiagonalNDArray{T}) where {T}

@@ -1,5 +1,78 @@
 using Test, LinearAlgebra
 
+@testset "Diagonal division writes existing destination storage" begin
+    @allowpromotion for T in (Float32, Float64, ComplexF32, ComplexF64)
+        dh = T <: Complex ? T[2 + im, 3 - im, 4 + 2im] : T[2, 3, 4]
+        D = Diagonal(NDArray(dh))
+        for ah in (T[2, 6, 12], reshape(T.(1:6), 3, 2))
+            a = NDArray(ah)
+            alias = view(a, ntuple(_ -> Colon(), ndims(a))...)
+            expected = ah ./ (ndims(ah) == 1 ? dh : reshape(dh, 3, 1))
+            @test Array(D \ a) ≈ expected
+            @test ldiv!(D, a) === a
+            @test Array(alias) ≈ expected
+        end
+        ah = reshape(T.(1:6), 2, 3)
+        a = NDArray(ah)
+        alias = view(a, :, :)
+        expected = ah ./ reshape(dh, 1, 3)
+        @test Array(a / D) ≈ expected
+        @test rdiv!(a, D) === a
+        @test Array(alias) ≈ expected
+        @test Array(D.diag) == dh
+    end
+
+    # A shared diagonal must be read completely before its storage is overwritten.
+    for divide! in (ldiv!, rdiv!)
+        host = reshape(Float32.(1:9), 3, 3)
+        a = NDArray(host)
+        # NDArray slicing retains singleton dimensions; Diagonal needs a vector.
+        D = Diagonal(cuNumeric.reshape(view(a, :, 1), (3,)))
+        @test cuNumeric.nda_overlaps(a, D.diag)
+        dh = copy(host[:, 1])
+        expected = host ./ reshape(dh, divide! === ldiv! ? (3, 1) : (1, 3))
+        divide! === ldiv! ? ldiv!(D, a) : rdiv!(a, D)
+        @test Array(a) ≈ expected
+        @test Array(D.diag) ≈ expected[:, 1]
+    end
+    parent = NDArray(Float32[2, 4, 8, 16])
+    @test ldiv!(Diagonal(view(parent, 1:3)), view(parent, 2:4)) isa NDArray
+    @test Array(parent) == Float32[2, 2, 2, 2]
+
+    @allowpromotion for (AType, DType) in ((Float32, Float64), (Float64, Float32), (Int32, Float32))
+        dh = DType[2, 4]
+        ah = AType[4 8; 8 16]
+        D = Diagonal(NDArray(dh))
+        a, b = NDArray(ah), NDArray(ah)
+        @test ldiv!(D, a) === a
+        @test rdiv!(b, D) === b
+        @test Array(a) == AType.(ah ./ reshape(dh, 2, 1))
+        @test Array(b) == AType.(ah ./ reshape(dh, 1, 2))
+    end
+
+    for T in (Float32, Float64)
+        dh = T[0, -0.0, Inf, NaN]
+        ah = reshape(T[1, 0, -1, Inf, 0, 1, Inf, NaN], 2, 4)
+        D = Diagonal(NDArray(dh))
+        a = NDArray(ah)
+        expected = ah ./ reshape(dh, 1, 4)
+        @test isequal(Array(a / D), expected)
+        @test rdiv!(a, D) === a
+        @test isequal(Array(a), expected)
+        b = NDArray(copy(permutedims(ah)))
+        @test ldiv!(D, b) === b
+        @test isequal(Array(b), permutedims(expected))
+    end
+
+    D = Diagonal(NDArray(Float32[2]))
+    @test_throws DimensionMismatch ldiv!(D, cuNumeric.ones(Float32, 3))
+    @test_throws DimensionMismatch ldiv!(D, cuNumeric.ones(Float32, 3, 2))
+    @test_throws DimensionMismatch rdiv!(cuNumeric.ones(Float32, 2, 3), D)
+    empty = Diagonal(NDArray(Float32[]))
+    @test size(ldiv!(empty, cuNumeric.zeros(Float32, 0, 2))) == (0, 2)
+    @test size(rdiv!(cuNumeric.zeros(Float32, 2, 0), empty)) == (2, 0)
+end
+
 @testset "Diagonal products write existing destination storage" begin
     @allowpromotion for T in (Float32, Float64, ComplexF32, ComplexF64)
         dh = T[2, 3, 4]
