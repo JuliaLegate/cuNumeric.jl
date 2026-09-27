@@ -2,9 +2,9 @@
 #
 #     julia compare_regression.jl <base_root> <candidate_root> [--threshold=10] [--base=main] [--out=report.md]
 #
-# Each root holds one harness run directory per fusion setting (`fusion-on`,
-# `fusion-off`). Exits 1 on a slowdown above the threshold or a failed candidate
-# run; base failures are only reported so a PR can fix them.
+# Each root holds the harness run directory for that side. Exits 1 on a
+# slowdown above the threshold or a failed candidate run; base failures are
+# only reported so a PR can fix them.
 
 using Printf
 using Statistics
@@ -17,7 +17,7 @@ function load_runs(root)
         manifest_path = joinpath(dir, "manifest.toml")
         isfile(manifest_path) || continue
         for r in TOML.parsefile(manifest_path)["runs"]
-            key = (r["name"], r["fusion"] ? "on" : "off", r["T"], r["N"], r["M"])
+            key = (r["name"], r["T"], r["N"], r["M"])
             runs[key] = r["status"] == "complete" ? median_time(dir, r) : nothing
         end
     end
@@ -26,10 +26,16 @@ end
 
 # Median trial time in ms, or `nothing` when rows are missing or incorrect.
 function median_time(dir, r)
-    path = joinpath(dir, r["results_subdir"], "$(r["name"])_$(r["model"]).csv")
-    isfile(path) || return nothing
+    # The harness writes `<name>_<save_as>.csv`, where save_as extends the model
+    # (e.g. `cunumeric_nofusion`, `cunumeric_struct`).
+    results = joinpath(dir, r["results_subdir"])
+    isdir(results) || return nothing
+    prefix = "$(r["name"])_$(r["model"])"
+    files = filter(readdir(results)) do f
+        return f == "$prefix.csv" || (startswith(f, "$(prefix)_") && endswith(f, ".csv"))
+    end
     times = Float64[]
-    for line in eachline(path)
+    for path in joinpath.(results, files), line in eachline(path)
         f = split(strip(line), ',')
         length(f) == 8 || continue
         (parse(Int, f[3]), parse(Int, f[4])) == (r["N"], r["M"]) || continue
@@ -39,7 +45,7 @@ function median_time(dir, r)
     return isempty(times) ? nothing : median(times)
 end
 
-label(key) = "$(key[1]) ($(key[3]), $(key[4])×$(key[5]))"
+label(key) = "$(key[1]) ($(key[2]), $(key[3])×$(key[4]))"
 
 function report(base_root, candidate_root, threshold, base_name)
     base = load_runs(base_root)
@@ -48,27 +54,27 @@ function report(base_root, candidate_root, threshold, base_name)
 
     lines = [
         "## Benchmark regression vs. `$base_name`", "",
-        "| Benchmark | Fusion | `$base_name` (ms) | PR (ms) | Change |",
-        "| --- | --- | ---: | ---: | ---: |",
+        "| Benchmark | `$base_name` (ms) | PR (ms) | Change |",
+        "| --- | ---: | ---: | ---: |",
     ]
     regressions, failed, uncompared = String[], String[], String[]
     for key in sort!(collect(keys(candidate)))
         after = candidate[key]
         before = get(base, key, nothing)
         if after === nothing
-            push!(failed, "$(label(key)), fusion $(key[2])")
+            push!(failed, label(key))
         elseif before === nothing
-            push!(uncompared, "$(label(key)), fusion $(key[2])")
+            push!(uncompared, label(key))
         else
             change = 100 * (after / before - 1)
             flag = change > threshold ? " ⚠️" : ""
             push!(
                 lines,
-                @sprintf("| %s | %s | %.3f | %.3f | %+.1f%%%s |",
-                    label(key), key[2], before, after, change, flag)
+                @sprintf("| %s | %.3f | %.3f | %+.1f%%%s |",
+                    label(key), before, after, change, flag)
             )
-            change > threshold && push!(regressions,
-                @sprintf("%s, fusion %s: %.1f%% slower", label(key), key[2], change))
+            change > threshold &&
+                push!(regressions, @sprintf("%s: %.1f%% slower", label(key), change))
         end
     end
     for (title, items) in (("Slower than the threshold", regressions),

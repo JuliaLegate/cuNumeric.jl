@@ -68,18 +68,16 @@ run_side() {
     [[ "$side" == base ]] && limit=(timeout --signal=KILL "$BASE_TIMEOUT")
     echo "--- :julia: $side ($mode wrapper)"
     bind_checkout "$source" "$mode" "$([[ "$side" == base ]] && echo "$BASE_BRANCH")"
-    for fusion in on off; do
-        local before new
-        before="$(result_dirs)"
-        (cd "$harness" && "${limit[@]}" julia --color=yes --project=. run.jl \
-            --config="$candidate/.buildkite/regression.toml" --fusion="$fusion") ||
-            echo "Harness reported failures ($side, fusion $fusion)."
-        new="$(comm -13 <(sort <<<"$before") <(result_dirs | sort) | head -1)"
-        if [[ -n "$new" ]]; then
-            mkdir -p "$out/$side"
-            mv "$harness/results/$new" "$out/$side/fusion-$fusion"
-        fi
-    done
+    local before new
+    before="$(result_dirs)"
+    (cd "$harness" && "${limit[@]}" julia --color=yes --project=. run.jl \
+        --config="$candidate/.buildkite/regression.toml" --fusion=on) ||
+        echo "Harness reported failures ($side)."
+    new="$(comm -13 <(sort <<<"$before") <(result_dirs | sort) | head -1)"
+    if [[ -n "$new" ]]; then
+        mkdir -p "$out/$side"
+        mv "$harness/results/$new" "$out/$side/results"
+    fi
 }
 
 # Build a side's wrapper from source when it differs from the release its own
