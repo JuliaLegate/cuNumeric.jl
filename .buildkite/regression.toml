@@ -1,0 +1,83 @@
+# Opt-in performance regression suite ([regression-ci]): cuNumeric on the base
+# branch vs. this commit. Sizes are pinned so both sides run identical problems.
+# gemm, montecarlo(_naive), grayscott_plain and cg_plain avoid @accelerate and
+# newer APIs, so they are the entries comparable against main.
+[Global]
+models = ["cunumeric"]
+n_warmup = 2
+n_iter = 5
+n_trial = 5
+check_correctness = true
+auto_size = false
+
+[[gemm]]
+T = "Float32"
+N = 4096
+M = 4096
+gpus = 1
+cpus = 8
+
+[[montecarlo]]
+T = "Float32"
+N = 100_000_000
+M = 1
+gpus = 1
+cpus = 8
+
+[[montecarlo_naive]]
+T = "Float32"
+N = 100_000_000
+M = 1
+gpus = 1
+cpus = 8
+
+[[grayscott]]
+T = "Float32"
+N = 1024
+M = 1024
+gpus = 1
+cpus = 8
+
+[[grayscott_plain]]
+T = "Float32"
+N = 1024
+M = 1024
+gpus = 1
+cpus = 8
+
+[[cg]]
+T = "Float64"
+N = 65536
+M = 1
+gpus = 1
+cpus = 8
+kwargs = { check_every = 10, max_iter = 1000 }
+
+[[cg_plain]]
+T = "Float64"
+N = 65536
+M = 1
+gpus = 1
+cpus = 8
+kwargs = { check_every = 10, max_iter = 1000 }
+
+[[nas_ep]]
+T = "Float64"
+n_iter = 1
+gpus = 1
+cpus = 8
+kwargs = { class = "A" }
+
+[[nas_mg]]
+T = "Float64"
+n_iter = 1
+gpus = 1
+cpus = 8
+kwargs = { class = "A" }
+
+[[nas_ft]]
+T = "Float64"
+n_iter = 1
+gpus = 1
+cpus = 8
+kwargs = { class = "A" }
