@@ -195,6 +195,20 @@ function fft_task!(
     size(out) == size(inp) ||
         throw(DimensionMismatch("FFT output size $(size(out)) != input size $(size(inp))"))
 
+    # cuPyNumeric maps an aliased input's store non-exactly, so once the task
+    # partitions across GPUs the output can land in a non-dense instance, which
+    # the GPU kernel rejects. Transform out of place and copy back instead.
+    if inp === out && _LINALG_RUNTIME[].gpus > 1
+        tmp = similar(out)
+        try
+            fft_task!(tmp, inp, dims, direction; scale)
+            copyto!(out, tmp)
+        finally
+            destroy!(tmp)
+        end
+        return out
+    end
+
     axes0 = ntuple(i -> Int64(dims[i] - 1), Val(R))
     unique_axes = _unique_axes(axes0)
     operate_over = _operate_over_axes(axes0, N)
