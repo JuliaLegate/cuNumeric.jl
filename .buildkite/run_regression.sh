@@ -38,8 +38,14 @@ bind_checkout() {
     rm -rf "$depot"/packages/*/*/override \
            "$depot"/compiled/v*/{cuNumeric,Legate,cunumeric_jl_wrapper_jll,legate_jl_wrapper_jll}
     rm -f "$env_dir/Manifest.toml" "$env_dir/LocalPreferences.toml"
+    # The harness pins the current cuNumeric/CNPreferences; each side develops
+    # its own checkout, so drop those pins to let an older base resolve.
     julia --color=yes --project="$env_dir" -e '
-        using Pkg
+        using Pkg, TOML
+        project = Base.active_project()
+        toml = TOML.parsefile(project)
+        foreach(p -> delete!(get(toml, "compat", Dict()), p), ("cuNumeric", "CNPreferences"))
+        open(io -> TOML.print(io, toml), project, "w")
         Pkg.develop([PackageSpec(path = ARGS[1]), PackageSpec(path = ARGS[2])])
         Pkg.instantiate()
     ' "$source" "$source/lib/CNPreferences"
