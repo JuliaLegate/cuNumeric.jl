@@ -372,7 +372,9 @@ function LinearAlgebra.cond(D::DiagonalNDArray, p::Real=2)
     end
     isempty(D) && return cnscalar(NDArray(float(one(real(eltype(D))))))
     dabs = abs.(_diag_vec(D))
-    return maximum(dabs) / minimum(dabs)
+    result = maximum(dabs) / minimum(dabs)
+    destroy!(dabs)
+    return result
 end
 
 function Base.:+(A::NDArray{T,2}, D::DiagonalNDArray) where {T}

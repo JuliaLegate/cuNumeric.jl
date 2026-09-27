@@ -127,6 +127,22 @@ end
     end
 end
 
+@testset "Diagonal condition results survive temporary cleanup" begin
+    @allowpromotion for T in (Float32, Float64, ComplexF32, ComplexF64)
+        dh = T <: Complex ? T[1 + im, 2 - im, 4 + im] : T[1, 2, 4]
+        D = Diagonal(NDArray(dh))
+        orders = (1, 2, Inf)
+        results = map(p -> cond(D, p), orders)
+        # Fetch only after temporary handles have been released and collected.
+        GC.gc()
+        cuNumeric.drain_pending_frees!()
+        for (p, result) in zip(orders, results)
+            @test fetch(result) ≈ cond(Diagonal(dh), p)
+        end
+        @test Array(D.diag) == dh
+    end
+end
+
 @testset "Diagonal zero and negative norms" begin
     @allowpromotion for T in (Float32, Float64, ComplexF32, ComplexF64)
         for dh in (T[], T[2], T[0], T[2, 3], T[2, 0], T[NaN, 2], T[Inf, 2])
