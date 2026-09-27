@@ -116,11 +116,30 @@ function rewrite_broadcast_lifetimes(scope)
     return _prepend_statements(rewritten, temps), assigned_vars
 end
 
+# Scalars/immutable scalar parameter records cannot share mutable array storage.
+_fusion_disjoint(a, b) = isbitstype(typeof(a)) || isbitstype(typeof(b))
+_fusion_disjoint(a::AbstractArray, b::AbstractArray) = !Base.mightalias(a, b)
+_fusion_disjoint(a::NDArray, b::AbstractArray) = false
+_fusion_disjoint(a::AbstractArray, b::NDArray) = false
+_fusion_disjoint(a::NDArray, b::NDArray) = !nda_overlaps(a, b)
+
 function process_broadcast_lifetime_scope(
     scope; on_rewrite=nothing, protected_roots=Set{Symbol}()
 )
     # Returned producers and caller-owned roots stay materialized: exempt from fusion.
     protected = union(_returned_symbols(scope), protected_roots)
-    scope = InterBroadcastFusion.rewrite_scope(scope; on_rewrite, protected)
-    return _process_lifetime_scope(scope, rewrite_broadcast_lifetimes; protected_roots)
+    checks = Tuple{Symbol,Symbol}[]
+    guard_roots = setdiff(protected_roots, _assigned_symbols(scope))
+    rewritten = InterBroadcastFusion.rewrite_scope(scope;
+        on_rewrite, protected, guard_roots, alias_checks=checks)
+    fast = _process_lifetime_scope(rewritten, rewrite_broadcast_lifetimes; protected_roots)
+    isempty(checks) && return fast
+
+    # Analyze each straight-line branch separately, then wrap the complete
+    # lifetime-managed bodies. Overlapping inputs retain materialized producers.
+    fallback = InterBroadcastFusion.rewrite_scope(scope; protected)
+    slow = _process_lifetime_scope(fallback, rewrite_broadcast_lifetimes; protected_roots)
+    conditions = [:(cuNumeric._fusion_disjoint($a, $b)) for (a, b) in checks]
+    condition = reduce((a, b) -> Expr(:&&, a, b), conditions)
+    return Expr(:if, condition, fast, slow)
 end
