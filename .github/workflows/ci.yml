@@ -52,15 +52,11 @@ jobs:
       wrapper_changed: ${{ steps.wrapper-changes.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Compare wrapper against main
+      - name: Compare wrapper against the released JLL source
         id: wrapper-changes
         shell: bash
         run: |
-          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-
-          if git diff --quiet origin/main...HEAD -- lib/cunumeric_jl_wrapper; then
+          if scripts/wrapper_changed.sh; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             status=$?
@@ -86,7 +82,7 @@ jobs:
   jll_tests:
     name: JLL wrapper tests - Julia ${{ matrix.julia }} - ${{ matrix.os }}
     needs: [resolve, wrapper_changes]
-    if: ${{ !contains(toJSON(github.event), '[skip ci]') && !contains(toJSON(github.event), '[skip jll]') && (github.base_ref == 'main' || needs.wrapper_changes.outputs.wrapper_changed != 'true') }}
+    if: ${{ !contains(toJSON(github.event), '[skip ci]') && !contains(toJSON(github.event), '[skip jll]') && (github.event_name != 'pull_request' || github.base_ref == 'main' || needs.wrapper_changes.outputs.wrapper_changed != 'true') }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
