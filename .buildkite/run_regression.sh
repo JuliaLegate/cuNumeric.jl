@@ -32,7 +32,7 @@ mkdir -p "$harness/results"
 # Point the harness's cuNumeric environment at one checkout. Wrapper overrides
 # and precompiled wrapper bindings from the other side must not leak across.
 bind_checkout() {
-    local source=$1 mode=$2
+    local source=$1 mode=$2 pins=${3:-}
     local depot
     depot="$(julia --startup-file=no -e 'print(DEPOT_PATH[1])')"
     rm -rf "$depot"/packages/*/*/override \
@@ -47,8 +47,10 @@ bind_checkout() {
         foreach(p -> delete!(get(toml, "compat", Dict()), p), ("cuNumeric", "CNPreferences"))
         open(io -> TOML.print(io, toml), project, "w")
         Pkg.develop([PackageSpec(path = ARGS[1]), PackageSpec(path = ARGS[2])])
+        pins = isempty(ARGS[4]) ? Dict() : get(TOML.parsefile(ARGS[3]), ARGS[4], Dict())
+        isempty(pins) || Pkg.add([PackageSpec(name = k, version = v) for (k, v) in pins])
         Pkg.instantiate()
-    ' "$source" "$source/lib/CNPreferences"
+    ' "$source" "$source/lib/CNPreferences" "$candidate/.buildkite/regression_base_pins.toml" "$pins"
     if [[ "$mode" == developer ]]; then
         julia --color=yes --project="$env_dir" -e '
             using CNPreferences, Pkg
@@ -65,7 +67,7 @@ run_side() {
     local limit=()
     [[ "$side" == base ]] && limit=(timeout --signal=KILL "$BASE_TIMEOUT")
     echo "--- :julia: $side ($mode wrapper)"
-    bind_checkout "$source" "$mode"
+    bind_checkout "$source" "$mode" "$([[ "$side" == base ]] && echo "$BASE_BRANCH")"
     for fusion in on off; do
         local before new
         before="$(result_dirs)"
