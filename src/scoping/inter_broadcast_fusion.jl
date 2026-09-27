@@ -23,33 +23,6 @@ function _substitute_symbols(expr, replacements::Dict{Symbol,Any})
     return :($(assignment.lhs) = $rhs)
 end
 
-function _indexed_assignment_base(stmt)
-    assignment = _assignment(stmt)
-    isnothing(assignment) && return nothing
-    reference = _reference(assignment.lhs)
-    isnothing(reference) && return nothing
-    reference.array isa Symbol || return nothing
-    return reference.array
-end
-
-function _safe_to_delay_broadcast(
-    stmts, def_idx::Int, use_idx::Int, dependencies::Set{Symbol}, lazy_defs::Set{Int}
-)
-    for i in (def_idx + 1):(use_idx - 1)
-        stmt = stmts[i]
-        i in lazy_defs && continue
-
-        # An indexed write to an unrelated array does not invalidate the lazy
-        # producer. Any other intervening statement is conservatively a barrier.
-        mutated = _indexed_assignment_base(stmt)
-        if !isnothing(mutated) && !(mutated in dependencies)
-            continue
-        end
-        return false
-    end
-    return true
-end
-
 function _single_use_index(stmts, symbol::Symbol, def_idx::Int)
     use_idx = nothing
     for i in (def_idx + 1):length(stmts)
@@ -94,13 +67,11 @@ function _rewrite_scope(scope, protected)
     isnothing(stmts) && return scope, NamedTuple[]
 
     definitions = Dict{Symbol,Tuple{Int,Any}}()
-    lazy_defs = Set{Int}()
     for (i, stmt) in enumerate(stmts)
         assignment = _assignment(stmt)
         if !isnothing(assignment) && assignment.lhs isa Symbol &&
             _is_broadcast_syntax(assignment.rhs)
             definitions[assignment.lhs] = (i, assignment.rhs)
-            push!(lazy_defs, i)
         end
     end
 
@@ -110,10 +81,10 @@ function _rewrite_scope(scope, protected)
         sym in protected && continue
         use_idx = _single_use_index(stmts, sym, def_idx)
         isnothing(use_idx) && continue
-        dependencies = Set(walk_symbols(rhs))
-        if !_safe_to_delay_broadcast(stmts, def_idx, use_idx, dependencies, lazy_defs)
-            continue
-        end
+        # Without alias/dependency analysis, only adjacent statements are safe:
+        # a differently named destination can alias an input, and a broadcast
+        # assignment can rebind a dependency. _scope_statements removes lines.
+        use_idx == def_idx + 1 || continue
         inlineable[sym] = (def_idx, rhs)
     end
 

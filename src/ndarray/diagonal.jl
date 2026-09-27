@@ -130,19 +130,35 @@ function Base.:*(D::DiagonalNDArray, v::NDArray{<:Any,1})
 end
 
 function LinearAlgebra.lmul!(D::DiagonalNDArray, B::NDArray)
-    return copyto!(B, D * B)
+    return mul!(B, D, B)
 end
 
 function LinearAlgebra.rmul!(A::NDArray, D::DiagonalNDArray)
-    return copyto!(A, A * D)
+    return mul!(A, A, D)
 end
 
-function LinearAlgebra.mul!(C::NDArray, D::DiagonalNDArray, A::NDArray)
-    return copyto!(C, D * A)
+function LinearAlgebra.mul!(
+    C::NDArray, D::DiagonalNDArray, A::Union{NDArray{<:Any,1},NDArray{<:Any,2}}
+)
+    size(C) == size(A) ||
+        throw(DimensionMismatch("diagonal product destination must have size $(size(A))"))
+    size(A, 1) == size(D, 1) ||
+        throw(DimensionMismatch("diagonal product dimensions do not match"))
+    d = ndims(A) == 1 ? _diag_vec(D) : _row_scale(_diag_vec(D))
+    C .= d .* A
+    d === _diag_vec(D) || destroy!(d)
+    return C
 end
 
-function LinearAlgebra.mul!(C::NDArray, A::NDArray, D::DiagonalNDArray)
-    return copyto!(C, A * D)
+function LinearAlgebra.mul!(C::NDArray, A::NDArray{<:Any,2}, D::DiagonalNDArray)
+    size(C) == size(A) ||
+        throw(DimensionMismatch("diagonal product destination must have size $(size(A))"))
+    size(A, 2) == size(D, 1) ||
+        throw(DimensionMismatch("diagonal product dimensions do not match"))
+    d = _col_scale(_diag_vec(D))
+    C .= A .* d
+    destroy!(d)
+    return C
 end
 
 function Base.:\(D::DiagonalNDArray, B::NDArray{<:Any,1})
@@ -188,13 +204,17 @@ LinearAlgebra.det(D::DiagonalNDArray) = prod(_diag_vec(D))
 LinearAlgebra.tr(D::DiagonalNDArray{<:Number}) = sum(_diag_vec(D))
 Base.sum(D::DiagonalNDArray) = sum(_diag_vec(D))
 
-# Generic `prod(::AbstractMatrix)` walks every entry (scalar-indexing). For n>1 a
-# Diagonal has off-diagonal zeros, so the product is zero — match Base, as 0D.
+# Include structural zeros before reducing so nonfinite entries propagate,
+# without overflowing a product of finite diagonal entries first.
 function Base.prod(D::DiagonalNDArray{T}) where {T<:Number}
     n = size(D, 1)
     n == 0 && return cnscalar(NDArray(one(T)))
-    n == 1 && return prod(_diag_vec(D))
-    return cnscalar(NDArray(zero(T)))
+    n == 1 && return sum(_diag_vec(D))
+    values = zero(T) .* _diag_vec(D)
+    # All finite terms are zero; sum also supports complex backend types.
+    result = sum(values)
+    destroy!(values)
+    return result
 end
 
 function Base.maximum(D::DiagonalNDArray{T}) where {T<:Number}
@@ -286,19 +306,40 @@ end
 
 function LinearAlgebra.norm(D::DiagonalNDArray, p::Real=2)
     p = _maybe_fetch(p)
-    # Off-diagonals are zero, so the matrix vec-norm equals the diag vec-norm.
+    R = float(real(eltype(D)))
+    isempty(D) && return cnscalar(NDArray(zero(R)))
     d = abs.(_diag_vec(D))
-    if p == 2
-        return sqrt(sum(d .^ 2))
-    elseif p == 1
-        return sum(d)
-    elseif p == Inf
-        return isempty(D) ? cnscalar(NDArray(float(real(zero(eltype(D)))))) : maximum(d)
-    elseif p == -Inf
-        return isempty(D) ? cnscalar(NDArray(float(real(zero(eltype(D)))))) : minimum(d)
-    else
-        return sum(d .^ p) ^ (one(p) / p)
-    end
+    # Canonicalize host orders, including signed zero, to share specializations.
+    result = _diagonal_norm(d, Val(Float64(p) + 0.0), R)
+    destroy!(d)
+    return result
+end
+
+function _diagonal_norm(d, ::Val{0.0}, ::Type{R}) where {R}
+    mask = d .!= zero(eltype(d))
+    values = as_type(mask, R)
+    result = sum(values)
+    destroy!(values)
+    destroy!(mask)
+    return result
+end
+
+_diagonal_norm(d, ::Val{1.0}, ::Type) = sum(d)
+_diagonal_norm(d, ::Val{2.0}, ::Type) = sqrt(sum(d .^ 2))
+_diagonal_norm(d, ::Val{Inf}, ::Type) = maximum(d)
+
+function _diagonal_norm(d, ::Val{-Inf}, ::Type{R}) where {R}
+    # With structural zeros, every negative norm is zero (or NaN). Reuse the
+    # -1 case to propagate NaNs, which the backend minimum would discard.
+    return length(d) > 1 ? _diagonal_norm(d, Val(-1.0), R) : minimum(d)
+end
+
+function _diagonal_norm(d, ::Val{P}, ::Type{R}) where {P,R}
+    total = sum(d .^ R(P))
+    # Each structural zero contributes Inf for a finite negative p.
+    # Adding that contribution retains NaNs from diagonal entries.
+    length(d) > 1 && P < 0 && (total = total + R(Inf))
+    return total ^ inv(R(P))
 end
 
 function LinearAlgebra.cond(D::DiagonalNDArray, p::Real=2)

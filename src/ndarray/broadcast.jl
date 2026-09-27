@@ -224,16 +224,12 @@ end
     return result === dest ? dest : _copyto_unfused!(dest, result)
 end
 
-# Slice destinations must assign into their parent store.
+# Preserve the destination store: other handles may already view it.
 @inline function _store_broadcast_result!(
     dest::NDArray{T}, temp_result::NDArray{T}
 ) where {T}
-    if _is_ndarray_slice(dest)
-        nda_assign(dest, temp_result)
-        destroy!(temp_result)
-    else
-        nda_move(dest, temp_result)
-    end
+    nda_assign(dest, temp_result)
+    destroy!(temp_result)
     return dest
 end
 
@@ -320,11 +316,11 @@ end
             return fuse_broadcast_tree!(dest, bc)
         else
             _assert_struct_broadcast_fused(dest, bc)
-            return _copyto_unfused!(dest, unravel_broadcast_tree(bc))
+            return _unfused_into!(dest, bc)
         end
     else
         _assert_struct_broadcast_fused(dest, bc)
-        return _copyto_unfused!(dest, unravel_broadcast_tree(bc))
+        return _unfused_into!(dest, bc)
     end
 end
 
