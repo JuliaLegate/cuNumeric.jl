@@ -82,4 +82,4 @@ mkdir -p "$JULIA_CXXWRAP"
 
 cmake -S "$JULIA_CXXWRAP_SRC" -B "$JULIA_CXXWRAP" \
     -DJulia_EXECUTABLE="$JULIA_PATH" -DCMAKE_BUILD_TYPE=Release
-cmake --build "$JULIA_CXXWRAP" --parallel 16
+cmake --build "$JULIA_CXXWRAP" --parallel "${JULIA_CPU_THREADS:-2}"
