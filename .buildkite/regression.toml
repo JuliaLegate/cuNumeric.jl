@@ -11,48 +11,49 @@ check_correctness = true
 auto_size = false
 # Legate's pool is capped at CUNUMERIC_BENCH_FBMEM_MB (3 GB) on CI.
 mem_frac = 0.9
+# cpus = 4: 8 CPU procs + GPU/util threads exceed the CI agent's cores.
 
 [[gemm]]
 T = "Float32"
 N = 4096
 M = 4096
 gpus = 1
-cpus = 8
+cpus = 4
 
 [[montecarlo]]
 T = "Float32"
 N = 50_000_000
 M = 1
 gpus = 1
-cpus = 8
+cpus = 4
 
 [[montecarlo_naive]]
 T = "Float32"
 N = 50_000_000
 M = 1
 gpus = 1
-cpus = 8
+cpus = 4
 
 [[grayscott]]
 T = "Float32"
 N = 1024
 M = 1024
 gpus = 1
-cpus = 8
+cpus = 4
 
 [[grayscott_plain]]
 T = "Float32"
 N = 1024
 M = 1024
 gpus = 1
-cpus = 8
+cpus = 4
 
 [[cg]]
 T = "Float64"
 N = 65536
 M = 1
 gpus = 1
-cpus = 8
+cpus = 4
 kwargs = { check_every = 10, max_iter = 1000 }
 
 [[cg_plain]]
@@ -60,26 +61,26 @@ T = "Float64"
 N = 65536
 M = 1
 gpus = 1
-cpus = 8
+cpus = 4
 kwargs = { check_every = 10, max_iter = 1000 }
 
 [[nas_ep]]
 T = "Float64"
 n_iter = 1
 gpus = 1
-cpus = 8
+cpus = 4
 kwargs = { class = "A" }
 
 [[nas_mg]]
 T = "Float64"
 n_iter = 1
 gpus = 1
-cpus = 8
+cpus = 4
 kwargs = { class = "A" }
 
 [[nas_ft]]
 T = "Float64"
 n_iter = 1
 gpus = 1
-cpus = 8
+cpus = 4
 kwargs = { class = "A" }
