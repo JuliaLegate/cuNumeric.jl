@@ -50,8 +50,22 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       wrapper_changed: ${{ steps.wrapper-changes.outputs.changed }}
+      skip_dev: ${{ steps.skip-flags.outputs.skip_dev }}
+      skip_jll: ${{ steps.skip-flags.outputs.skip_jll }}
     steps:
       - uses: actions/checkout@v4
+      # pull_request payloads carry no commit messages, so read the PR head commit directly.
+      - name: Read skip flags from head commit message
+        id: skip-flags
+        shell: bash
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          git fetch --depth=1 origin "$HEAD_SHA"
+          message="$(git log -1 --format=%B FETCH_HEAD)"
+          [[ "$message" == *"[skip dev]"* ]] && echo "skip_dev=true" >> "$GITHUB_OUTPUT"
+          [[ "$message" == *"[skip jll]"* ]] && echo "skip_jll=true" >> "$GITHUB_OUTPUT"
+          true
       - name: Compare wrapper against the released JLL source
         id: wrapper-changes
         shell: bash
@@ -70,7 +84,7 @@ jobs:
   developer_tests:
     name: Developer wrapper tests
     needs: [resolve, wrapper_changes]
-    if: ${{ !contains(toJSON(github.event), '[skip ci]') && !contains(toJSON(github.event), '[skip dev]') && (github.event_name != 'pull_request' || github.base_ref == 'main' || needs.wrapper_changes.outputs.wrapper_changed == 'true') }}
+    if: ${{ !contains(toJSON(github.event), '[skip ci]') && !contains(toJSON(github.event), '[skip dev]') && needs.wrapper_changes.outputs.skip_dev != 'true' && (github.event_name != 'pull_request' || github.base_ref == 'main' || needs.wrapper_changes.outputs.wrapper_changed == 'true') }}
     permissions:
       contents: read
       packages: write
@@ -82,7 +96,7 @@ jobs:
   jll_tests:
     name: JLL wrapper tests - Julia ${{ matrix.julia }} - ${{ matrix.os }}
     needs: [resolve, wrapper_changes]
-    if: ${{ !contains(toJSON(github.event), '[skip ci]') && !contains(toJSON(github.event), '[skip jll]') && (github.event_name != 'pull_request' || github.base_ref == 'main' || needs.wrapper_changes.outputs.wrapper_changed != 'true') }}
+    if: ${{ !contains(toJSON(github.event), '[skip ci]') && !contains(toJSON(github.event), '[skip jll]') && needs.wrapper_changes.outputs.skip_jll != 'true' && (github.event_name != 'pull_request' || github.base_ref == 'main' || needs.wrapper_changes.outputs.wrapper_changed != 'true') }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
