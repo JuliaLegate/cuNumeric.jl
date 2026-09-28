@@ -843,8 +843,11 @@ end
 Return the size of the given `NDArray`.
 """
 function shape(arr::NDArray{<:Any,N}) where {N}
-    shp = cuNumeric.nda_array_shape(arr)
-    return ntuple(i -> Int(shp[i]), Val(N))
+    # Rank is known from the type; avoid a rank query and temporary shape Vector.
+    shp = Ref{NTuple{N,UInt64}}()
+    ccall((:nda_array_shape, libnda),
+        Cvoid, (NDArray_t, Ref{NTuple{N,UInt64}}), arr.ptr, shp)
+    return map(Int, shp[])
 end
 
 @doc"""

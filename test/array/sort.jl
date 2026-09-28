@@ -132,6 +132,18 @@ end
     end
 end
 
+@testset "Scalar search preserves query precision" begin
+    for (h, queries) in ((Int64[1, 3, 5], (2.5, -0.5, 5.5)),
+                         (Float32[1, 2, 3], (1.0 + eps(Float64), 2.0 - eps(Float64), 4.0)))
+        a = NDArray(h)
+        for q in queries
+            @test fetch(cuNumeric.searchsortedfirst(a, q)) == Base.searchsortedfirst(h, q)
+            @test fetch(cuNumeric.searchsortedlast(a, q)) == Base.searchsortedlast(h, q)
+            @test cuNumeric.searchsorted(a, q) == Base.searchsorted(h, q)
+        end
+    end
+end
+
 @testset "unique" begin
     @testset verbose = true for T in SORT_TYPES
         A = _unique_fixture(T)

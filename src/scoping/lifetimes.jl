@@ -39,7 +39,13 @@ function rewrite_eager_lifetimes(scope)
         if !isnothing(broadcast_assignment)
             (; lhs, rhs) = broadcast_assignment
             op = expr.head
-            new_lhs, lhs_temps = rewrite(lhs)
+            # Indexed broadcast assignment needs a view even when getindex
+            # copies (notably all-colon indexing).
+            new_lhs, lhs_temps = if isnothing(_reference(lhs))
+                rewrite(lhs)
+            else
+                fresh_tmp(:(Base.@view $lhs))
+            end
             # Do not hoist the top-level call of the RHS to preserve fusion.
             call = _call(rhs)
             if !isnothing(call)

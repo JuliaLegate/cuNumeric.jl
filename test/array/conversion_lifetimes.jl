@@ -1,5 +1,23 @@
 using Test
 
+@testset "Direct host-vector copy ownership" begin
+    for T in (Float32, Float64, ComplexF32, Int32, Bool), n in (0, 1, 4)
+        source = fill(one(T), n)
+        dest = cuNumeric.zeros(T, n)
+        @test copyto!(dest, source) === dest
+        fill!(source, zero(T))
+        GC.gc(true)
+        @test Array(dest) == fill(one(T), n)
+        @test_throws DimensionMismatch copyto!(dest, fill(one(T), n + 1))
+    end
+    parent = cuNumeric.zeros(Float32, 6)
+    dest = view(parent, 2:5)
+    source = Float32[1, 2, 3, 4]
+    copyto!(dest, source)
+    fill!(source, 9f0)
+    @test Array(parent) == Float32[0, 1, 2, 3, 4, 0]
+end
+
 @testset "copyto! from Array" begin
     expected = reshape(ComplexF64.(1:8), 2, 2, 2)
     source = copy(expected)
