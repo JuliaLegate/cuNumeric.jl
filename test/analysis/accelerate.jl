@@ -25,6 +25,33 @@
 
 using InteractiveUtils: code_typed
 
+@testset "@accelerate respects rebindings and alias writes" begin
+    @accelerate function _acc_rebind(a, b)
+        t = a .+ 1f0
+        a = b .+ 2f0
+        t .+ a
+    end
+    @accelerate function _acc_aliaswrite(a, b)
+        t = a .+ 1f0
+        b[1] = 9f0
+        t .+ 0f0
+    end
+    for make in (identity, NDArray)
+        @test Array(_acc_rebind(make(Float32[1]), make(Float32[10]))) == Float32[14]
+        a = make(Float32[1, 2])
+        @allowscalar result = _acc_aliaswrite(a, a)
+        @test Array(result) == Float32[2, 3]
+    end
+    # Adjacent chains still inline their single-use intermediates.
+    ex = cuNumeric.InterBroadcastFusion.rewrite_scope(quote
+        t = a .+ 1f0
+        u = t .* 2f0
+        u .+ 3f0
+    end)
+    @test !(:t in cuNumeric.ScopingUtils.walk_symbols(ex))
+    @test !(:u in cuNumeric.ScopingUtils.walk_symbols(ex))
+end
+
 @testset "@accelerate — four forms" begin
     T = Float32
     N = 64

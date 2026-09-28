@@ -92,7 +92,7 @@ function searchsortedfirst(a::NDArray{T,1}, v::NDArray) where {T}
 end
 
 function searchsortedfirst(a::NDArray{T,1}, x::Number) where {T}
-    needle = NDArray(convert(T, x))
+    needle = NDArray(x)
     result = searchsortedfirst(a, needle)
     destroy!(needle)
     return result
@@ -103,7 +103,7 @@ function searchsortedlast(a::NDArray{T,1}, v::NDArray) where {T}
 end
 
 function searchsortedlast(a::NDArray{T,1}, x::Number) where {T}
-    needle = NDArray(convert(T, x))
+    needle = NDArray(x)
     result = searchsortedlast(a, needle)
     destroy!(needle)
     return result

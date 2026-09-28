@@ -215,7 +215,14 @@ end
 Optimize straight-line array code by coordinating CUDA broadcast fusion within
 expressions, fusion across broadcast statements, and scope-aware cleanup of
 materialized temporaries. Control flow and nested/anonymous functions are
-rejected. Four forms determine which values must remain valid:
+rejected.
+
+Single-use producers may fuse across intervening read-only calculations when
+their inputs are unchanged. Unknown calls remain barriers. Function-form fusion
+across writes to other array arguments checks storage overlap at runtime and
+retains materialized intermediates when those arguments overlap.
+
+Four forms determine which values must remain valid:
 
   * **function** (preferred): arguments and returned values are protected;
     non-returned locals may fuse into consumers or be freed after their last use.

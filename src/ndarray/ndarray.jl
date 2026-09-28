@@ -162,6 +162,22 @@ function Base.copyto!(dest::NDArray{T,N}, src::Array{T,N}) where {T,N}
     return dest
 end
 
+# Borrow a host vector only until the copy completes; avoid the constructor's
+# separate owned copy and fence. Struct packing keeps its existing path.
+function Base.copyto!(dest::NDArray{T,1}, src::Vector{T}) where {T<:SUPPORTED_ARRAY_TYPES}
+    size(dest) == size(src) || throw(DimensionMismatch("source and destination sizes differ"))
+    isempty(src) && return dest
+    GC.@preserve src begin
+        attached = nda_attach_external(src)
+        GC.@preserve attached dest begin
+            copyto!(dest, attached)
+            issue_execution_fence(; block=true)
+        end
+        destroy!(attached)
+    end
+    return dest
+end
+
 @doc"""
     as_type(arr::NDArray, t::Type{T}) where {T}
 
@@ -424,6 +440,13 @@ Base.IndexStyle(::Type{<:NDArray}) = IndexCartesian()
 Base.axes(arr::NDArray) = Base.OneTo.(size(arr))
 Base.view(arr::NDArray, inds...) = arr[inds...] # NDArray slices are views by default.
 
+# All-colon getindex copies, but view/dotview must retain the original store.
+# A separate handle is required because @accelerate frees temporary views.
+function Base.view(arr::NDArray{T,N}, ::Vararg{Colon,N}) where {T,N}
+    return nda_get_slice(arr, slice_array((nothing, nothing)))
+end
+Base.view(arr::NDArray{T,0}) where {T} = nda_reshape_array(arr, ())
+
 function Base.show(io::IO, arr::NDArray{T,0}) where {T}
     print(io, summary(arr), "(")
     @allowscalar show(io, arr[])
@@ -462,7 +485,10 @@ end
 Overloads `Base.getindex` and `Base.setindex!` to support multidimensional indexing and slicing on `cuNumeric.NDArray`s.
 
 Slicing supports combinations of `Integer`, `UnitRange`, and `Colon()` for selecting ranges of rows and columns.
-The use of all colons (`arr[:]`, `arr[:, :]`, etc.) returns a new Julia `Array` containing a copy of the data.
+Using one colon per dimension (`v[:]`, `A[:, :]`, etc.) returns an `NDArray`
+copy. `view` and dotted assignment share the original storage instead.
+Linear range/colon indexing of multidimensional arrays is unsupported; use one
+index per dimension.
 
 Assignment also supports:
 - Writing NDArray slices to NDArray regions
@@ -751,24 +777,50 @@ end
 end
 
 @inline function Base.getindex(
-    arr::NDArray, i::AbstractUnitRange{<:Integer}
-)
+    arr::NDArray{T,1}, i::AbstractUnitRange{<:Integer}
+) where {T}
     @boundscheck checkbounds(arr, i)
     return nda_get_slice(arr, slice_array(_zero_based_range(i)))
 end
 
+function Base.getindex(arr::NDArray, i::AbstractUnitRange{<:Integer})
+    throw(ArgumentError(
+        "linear range indexing of multidimensional NDArrays is unsupported; " *
+        "use one index per dimension"
+    ))
+end
+
+function Base.setindex!(arr::NDArray, rhs::NDArray, i::AbstractUnitRange{<:Integer})
+    throw(ArgumentError(
+        "linear range assignment to multidimensional NDArrays is unsupported; " *
+        "use one index per dimension"
+    ))
+end
+
 @inline function Base.getindex(
-    arr::NDArray{T}, c::Vararg{Colon,N}
+    arr::NDArray{T,N}, c::Vararg{Colon,N}
 ) where {T,N}
-    @boundscheck checkbounds(arr, c...)
     return Base.copy(arr)
 end
 
+function Base.getindex(arr::NDArray, ::Vararg{Colon})
+    throw(ArgumentError(
+        "linear colon indexing of multidimensional NDArrays is unsupported; " *
+        "use one colon per dimension"
+    ))
+end
+
 @inline function Base.setindex!(
-    arr::NDArray{T}, rhs::NDArray{T}, c::Vararg{Colon,N}
+    arr::NDArray{T,N}, rhs::NDArray{T}, c::Vararg{Colon,N}
 ) where {T,N}
-    @boundscheck checkbounds(arr, c...)
     return Base.copyto!(arr, rhs)
+end
+
+function Base.setindex!(arr::NDArray{T}, rhs::NDArray{T}, ::Vararg{Colon}) where {T}
+    throw(ArgumentError(
+        "linear colon assignment to multidimensional NDArrays is unsupported; " *
+        "use one colon per dimension"
+    ))
 end
 
 @inline function Base.setindex!(
