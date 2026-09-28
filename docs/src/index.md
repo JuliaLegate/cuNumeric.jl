@@ -5,7 +5,7 @@
 </h1>
 ```
 
-[![Documentation dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://julialegate.github.io/cuNumeric.jl/dev) [![codecov](https://codecov.io/github/julialegate/cuNumeric.jl/branch/main/graph/badge.svg)](https://app.codecov.io/github/JuliaLegate/cuNumeric.jl) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Documentation stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://julialegate.github.io/cuNumeric.jl/stable) [![Documentation dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://julialegate.github.io/cuNumeric.jl/dev) [![codecov](https://codecov.io/github/julialegate/cuNumeric.jl/branch/main/graph/badge.svg)](https://app.codecov.io/github/JuliaLegate/cuNumeric.jl) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
 cuNumeric.jl wraps and extends the [cuPyNumeric](https://github.com/nv-legate/cupynumeric) library from NVIDIA to bring distributed array computing on GPUs and CPUs to Julia. The central type is `NDArray`, which behaves like Julia's `Array` or the `CuArray` from [CUDA.jl](https://github.com/juliagpu/cuda.jl), but executes across multiple GPUs/CPUs. We implement array-level operations on `NDArray` which can be composed into larger programs without the need for explicit MPI calls or writing CUDA kernels.
 
@@ -20,7 +20,7 @@ using Pkg
 Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "main")
 ```
 
-The first installation can take a while because it includes several large dependencies, such as the CUDA SDK. To use a local cupynumeric build, see [Build Modes](https://julialegate.github.io/cuNumeric.jl/dev/install).
+The first installation can take a while because it includes several large dependencies, such as the CUDA SDK. To use a local cupynumeric build, see [Build Modes](install.md).
 
 ```julia
 using cuNumeric
@@ -30,7 +30,7 @@ cuNumeric.versioninfo()
 > [!WARNING]
 > Starting more than one instance of cuNumeric.jl can lead to a hard-crash. The default hardware configuration reserves all available resources.
 
-For more details, see [Hardware](https://julialegate.github.io/cuNumeric.jl/dev/configuration/hardware).
+For more details, see [Hardware](configuration/hardware.md).
 
 ### How `NDArray`s work
 
@@ -59,15 +59,15 @@ Nested broadcast expressions fuse into a single kernel by default when on GPU. P
 y .= @. -a + b * c
 ```
 
-See [Kernel Fusion](https://julialegate.github.io/cuNumeric.jl/dev/perf/kernel_fusion) and [Debugging](https://julialegate.github.io/cuNumeric.jl/dev/debugging) for controls and diagnostics.
+See [Kernel Fusion](perf/kernel_fusion.md) and [Debugging](debugging.md) for controls and diagnostics.
 
 ### The `@accelerate` macro
 
-`@accelerate` fuses eligible GPU broadcasts within and across statements, then releases materialized temporary `NDArray`s after their last use on CPU or GPU. See [The `@accelerate` Macro](https://julialegate.github.io/cuNumeric.jl/dev/perf/reduce_allocations) for usage guidance.
+`@accelerate` fuses eligible GPU broadcasts within and across statements, then releases materialized temporary `NDArray`s after their last use on CPU or GPU. See [The `@accelerate` Macro](perf/reduce_allocations.md) for usage guidance.
 
 ### Benchmarks
 
-Results and reproduction instructions live under [Benchmark Results](https://julialegate.github.io/cuNumeric.jl/dev/benchmarks/results) and [How to Benchmark](https://julialegate.github.io/cuNumeric.jl/dev/benchmarks/howto).
+Results and reproduction instructions live under [Benchmark Results](benchmarks/results.md) and [How to Benchmark](benchmarks/howto.md).
 
 ### Try an example
 
