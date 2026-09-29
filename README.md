@@ -1,9 +1,9 @@
 <h1>
   <img src="docs/src/assets/logo.png" alt="cuNumeric.jl" width="50">
-  <a href="https://julialegate.github.io/cuNumeric.jl/dev">cuNumeric.jl</a>
+  <a href="https://julialegate.github.io/cuNumeric.jl/stable">cuNumeric.jl</a>
 </h1>
 
-[![Documentation dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://julialegate.github.io/cuNumeric.jl/dev) [![codecov](https://codecov.io/github/julialegate/cuNumeric.jl/branch/main/graph/badge.svg)](https://app.codecov.io/github/JuliaLegate/cuNumeric.jl) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Documentation stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://julialegate.github.io/cuNumeric.jl/stable) [![Documentation dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://julialegate.github.io/cuNumeric.jl/dev) [![codecov](https://codecov.io/github/julialegate/cuNumeric.jl/branch/main/graph/badge.svg)](https://app.codecov.io/github/JuliaLegate/cuNumeric.jl) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
 cuNumeric.jl wraps and extends the [cuPyNumeric](https://github.com/nv-legate/cupynumeric) library from NVIDIA to bring distributed array computing on GPUs and CPUs to Julia. The central type is `NDArray`, which behaves like Julia's `Array` or the `CuArray` from [CUDA.jl](https://github.com/juliagpu/cuda.jl), but executes across multiple GPUs/CPUs. We implement array-level operations on `NDArray` which can be composed into larger programs without the need for explicit MPI calls or writing CUDA kernels.
 
@@ -18,7 +18,7 @@ using Pkg
 Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "main")
 ```
 
-The first installation can take a while because it includes several large dependencies, such as the CUDA SDK. To use a local cupynumeric build, see [Build Modes](https://julialegate.github.io/cuNumeric.jl/dev/install).
+The first installation can take a while because it includes several large dependencies, such as the CUDA SDK. To use a local cupynumeric build, see [Build Modes](https://julialegate.github.io/cuNumeric.jl/stable/install).
 
 ```julia
 using cuNumeric
@@ -28,7 +28,7 @@ cuNumeric.versioninfo()
 > [!WARNING]
 > Starting more than one instance of cuNumeric.jl can lead to a hard-crash. The default hardware configuration reserves all available resources.
 
-For more details, see [Hardware](https://julialegate.github.io/cuNumeric.jl/dev/configuration/hardware).
+For more details, see [Hardware](https://julialegate.github.io/cuNumeric.jl/stable/configuration/hardware).
 
 ### How `NDArray`s work
 
@@ -45,7 +45,7 @@ s = sum(A)          # CNScalar
 x = fetch(s)        # native Julia scalar, e.g. Float32
 ```
 
-Use `allowautofetch() do ... end` or `@allowautofetch` to permit host comparisons and numeric conversions of device scalars. Permission is task-local and disabled by default; arithmetic remains on the backend. See [Device scalars](https://julialegate.github.io/cuNumeric.jl/dev/api_cnscalar).
+Use `allowautofetch() do ... end` or `@allowautofetch` to permit host comparisons and numeric conversions of device scalars. Permission is task-local and disabled by default; arithmetic remains on the backend. See [Device scalars](https://julialegate.github.io/cuNumeric.jl/stable/api_cnscalar).
 
 **0D arrays support scalar-shaped arithmetic.** Use `+`, `-`, `*`, `/`, and `^`
 with two 0D NDArrays or with a 0D NDArray and a Julia number. Results stay as
@@ -53,7 +53,7 @@ with two 0D NDArrays or with a 0D NDArray and a Julia number. Results stay as
 
 **The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into a task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them [for example `println`, `fetch`, or communicating with the Julia runtime (i.e., `Array(A)`)]. Hiding latency enables performant code.
 
-For API details see [Initialization](https://julialegate.github.io/cuNumeric.jl/dev/api_initialization) and [NDArray Reference](https://julialegate.github.io/cuNumeric.jl/dev/api). For common performance pitfalls, see [Patterns to Avoid](https://julialegate.github.io/cuNumeric.jl/dev/perf/patterns_to_avoid).
+For API details see [Initialization](https://julialegate.github.io/cuNumeric.jl/stable/api_initialization) and [NDArray Reference](https://julialegate.github.io/cuNumeric.jl/stable/api). For common performance pitfalls, see [Patterns to Avoid](https://julialegate.github.io/cuNumeric.jl/stable/perf/patterns_to_avoid).
 
 ### Kernel Fusion
 
@@ -63,15 +63,15 @@ Nested broadcast expressions fuse into a single kernel by default when on GPU. P
 y .= @. -a + b * c
 ```
 
-See [Kernel Fusion](https://julialegate.github.io/cuNumeric.jl/dev/perf/kernel_fusion) and [Debugging](https://julialegate.github.io/cuNumeric.jl/dev/debugging) for controls and diagnostics.
+See [Kernel Fusion](https://julialegate.github.io/cuNumeric.jl/stable/perf/kernel_fusion) and [Debugging](https://julialegate.github.io/cuNumeric.jl/stable/debugging) for controls and diagnostics.
 
 ### The `@accelerate` macro
 
-`@accelerate` fuses eligible GPU broadcasts within and across statements, then releases materialized temporary `NDArray`s after their last use on CPU or GPU. See [The `@accelerate` Macro](https://julialegate.github.io/cuNumeric.jl/dev/perf/reduce_allocations) for usage guidance.
+`@accelerate` fuses eligible GPU broadcasts within and across statements, then releases materialized temporary `NDArray`s after their last use on CPU or GPU. See [The `@accelerate` Macro](https://julialegate.github.io/cuNumeric.jl/stable/perf/reduce_allocations) for usage guidance.
 
 ### Benchmarks
 
-Results and reproduction instructions live under [Benchmark Results](https://julialegate.github.io/cuNumeric.jl/dev/benchmarks/results) and [How to Benchmark](https://julialegate.github.io/cuNumeric.jl/dev/benchmarks/howto).
+Results and reproduction instructions live under [Benchmark Results](https://julialegate.github.io/cuNumeric.jl/stable/benchmarks/results) and [How to Benchmark](https://julialegate.github.io/cuNumeric.jl/stable/benchmarks/howto).
 
 ### TensorOperations.jl Integration
 

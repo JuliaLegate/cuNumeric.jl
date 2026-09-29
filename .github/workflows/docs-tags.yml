@@ -6,6 +6,8 @@ on:
   push:
     tags:
       - 'v*'
+  # gh workflow run "Docs (tags)" --ref vX.Y.Z
+  workflow_dispatch:
 jobs:
   docs:
     name: Documentation
@@ -20,6 +22,9 @@ jobs:
       LEGATE_AUTO_CONFIG: 0
     steps:
       - uses: actions/checkout@v4
+        with:
+          # all tags needed to pick `stable`
+          fetch-depth: 0
       - uses: julia-actions/setup-julia@v2
         with:
           version: '1.11'
