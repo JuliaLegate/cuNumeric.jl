@@ -60,7 +60,7 @@ StaticArrays = "1"
 StatsBase = "0.34"
 StructArrays = "0.7"
 TensorOperations = "5.8"
-cunumeric_jl_wrapper_jll = "26.6.4"
+cunumeric_jl_wrapper_jll = "26.6.5"
 cupynumeric_jll = "26.6.1"
 julia = "1.10"
 
