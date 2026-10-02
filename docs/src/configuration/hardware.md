@@ -1,6 +1,6 @@
 # Hardware Configuration
 
-There is no programmatic way to set the hardware configuration used by CuPyNumeric (as of 26.01). By default, the hardware configuration is set automatically by Legate. This configuration can be manipulated through the following environment variables:
+Legate chooses the hardware configuration automatically by default. Set these environment variables before starting Julia to override it:
 
 - `LEGATE_SHOW_CONFIG` : When set to 1, the Legate config is printed to stdout
 - `LEGATE_AUTO_CONFIG`: When set to 1, Legate will automatically choose the hardware configuration

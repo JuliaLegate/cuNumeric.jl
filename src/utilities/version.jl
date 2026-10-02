@@ -28,7 +28,9 @@ end
     versioninfo()
 
 Prints the cuNumeric build configuration summary, including package
-metadata, Julia and compiler version, and paths to core dependencies.
+metadata, Julia and compiler version, paths to core dependencies, and
+cuSolverMp availability and linear algebra tuning constants. Runtime GPU
+eligibility is reported separately from the per-operation size/shape policy.
 """
 function versioninfo(io::IO=stdout)
     name = string(Base.nameof(@__MODULE__))
@@ -48,11 +50,22 @@ function versioninfo(io::IO=stdout)
     dirs2 = Legate.find_dependency_paths(typeof(legate_mode))
     other_dirs = merge(dirs1, dirs2)
 
-    hardware_str = HAS_CUDA ? "CPU + GPU" : "CPU Only"
+    active = runtime_started()
+    hardware_str =
+        active ?
+        (_has_gpu_target() ? "CPU + GPU" : "CPU Only") :
+        "not queried (runtime inactive)"
 
     legate_auto_config = get(ENV, "LEGATE_AUTO_CONFIG", "1")
     is_auto_config = legate_auto_config != "0" ? true : false
     legate_config = is_auto_config ? "auto" : get(ENV, "LEGATE_CONFIG", "not set")
+
+    # versioninfo is also called by the test driver with LEGATE_SKIP_RUNTIME.
+    # Do not start the runtime or query its machine just to print diagnostics.
+    not_queried = "not queried (runtime inactive)"
+    mp_available = active ? _LINALG_RUNTIME[].available : not_queried
+    active_gpus = active ? _LINALG_RUNTIME[].gpus : not_queried
+    mp_eligible = active ? _LINALG_RUNTIME[].mp_eligible : not_queried
 
     str = """
     ───────────────────────────────────────────────
@@ -67,6 +80,18 @@ function versioninfo(io::IO=stdout)
 
     Brodcast Fusion:   $(FUSE_BROADCAST_EXPRS)
     Brodcast Min Ops:  $(FUSE_BROADCAST_MIN_OPS)
+
+    cuSolverMp / Linear Algebra:
+      Library support:            $mp_available
+      Active GPUs:                $active_gpus
+      MP eligible before size/shape checks: $mp_eligible
+      MIN_SOLVE_MATRIX_SIZE:      $MIN_SOLVE_MATRIX_SIZE (dimension)
+      MIN_SOLVE_TILE_SIZE:        $MIN_SOLVE_TILE_SIZE
+      MIN_CHOLESKY_MATRIX_SIZE:   $MIN_CHOLESKY_MATRIX_SIZE (dimension)
+      MIN_CHOLESKY_TILE_SIZE:     $MIN_CHOLESKY_TILE_SIZE
+      MIN_QR_MATRIX_SIZE:         $MIN_QR_MATRIX_SIZE (elements)
+      QR_TILE_SIZE:               $QR_TILE_SIZE
+      MAX_CHOLESKY_TILES_PER_PROC: $MAX_CHOLESKY_TILES_PER_PROC
 
     Hostname:         $hostname
     Julia Version:    $(VERSION)
