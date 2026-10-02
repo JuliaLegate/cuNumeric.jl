@@ -60,6 +60,26 @@ end
     end
 end
 
+@testset "Multidimensional conversion ownership" begin
+    for T in (Float32, Float64, ComplexF32, Int32), dims in ((2, 3), (2, 3, 4))
+        expected = reshape(T.(1:prod(dims)), dims)
+        source = copy(expected)
+        a = cuNumeric.NDArray(source)
+        try
+            # Conversion must retain its own dense buffer, with the original
+            # logical shape and element order, after the input is released.
+            fill!(source, zero(T))
+            source = nothing
+            GC.gc(true)
+            @test eltype(a) === T
+            @test size(a) == dims
+            @test Array(a) == expected
+        finally
+            cuNumeric.destroy!(a)
+        end
+    end
+end
+
 @testset "Singleton vector host conversion" begin
     # Runtime-created singletons can use scalar futures; attached input
     # vectors do not exercise the same storage representation.
