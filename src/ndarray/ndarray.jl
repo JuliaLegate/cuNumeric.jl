@@ -345,7 +345,7 @@ end
 
 function _nda_from_julia_array(arr::Array{T,N}) where {T,N}
     _struct_storage_type(T) && return _nda_from_julia_struct_array(arr)
-    tmp = collect(permutedims(arr, reverse(ntuple(identity, Val(N)))))
+    tmp = permutedims(arr, reverse(ntuple(identity, Val(N))))
     return cuNumeric.nda_attach_external(tmp; shape=size(arr))
 end
 
