@@ -902,6 +902,12 @@ Base.@propagate_inbounds @inline @generated function _run_segments(
     return body
 end
 
+# Split `args` at compile time; range-slicing the heterogeneous tuple
+# (`args[1:NOUT]`) can spill every kernel argument to local memory.
+@inline _take(args::Tuple, ::Val{N}) where {N} = ntuple(i -> getfield(args, i), Val(N))
+@inline _drop(args::Tuple, ::Val{0}) = args
+@inline _drop(args::Tuple, ::Val{N}) where {N} = _drop(Base.tail(args), Val(N - 1))
+
 # Dimension-dispatched (mirrors the single-output linear/cartesian kernels).
 # `args` = (outputs[1:NOUT]..., runtime_args...); bounds from the first output.
 function make_multi_output_kernel(segs, ::Val{NOUT}, static_args, ::Val{2}) where {NOUT}
@@ -911,7 +917,9 @@ function make_multi_output_kernel(segs, ::Val{NOUT}, static_args, ::Val{2}) wher
         dest = getfield(args, 1)
         @inbounds while I[2] <= size(dest, 2)
             while I[1] <= size(dest, 1)
-                _run_segments(segs, args[1:NOUT], args[(NOUT + 1):end], static_args, (), I)
+                _run_segments(
+                    segs, _take(args, Val(NOUT)), _drop(args, Val(NOUT)), static_args, (), I
+                )
                 I += CartesianIndex(_broadcast_grid_stride(:y), 0)
             end
             I = CartesianIndex(start[1], I[2] + _broadcast_grid_stride(:x))
@@ -928,7 +936,9 @@ function make_multi_output_kernel(segs, ::Val{NOUT}, static_args, ::Val{3}) wher
         @inbounds while I[3] <= size(dest, 3)
             while I[2] <= size(dest, 2)
                 while I[1] <= size(dest, 1)
-                    _run_segments(segs, args[1:NOUT], args[(NOUT + 1):end], static_args, (), I)
+                    _run_segments(
+                        segs, _take(args, Val(NOUT)), _drop(args, Val(NOUT)), static_args, (), I
+                    )
                     I += CartesianIndex(_broadcast_grid_stride(:z), 0, 0)
                 end
                 I = CartesianIndex(start[1], I[2] + _broadcast_grid_stride(:y), I[3])
@@ -944,7 +954,7 @@ function make_multi_output_kernel(segs, ::Val{NOUT}, static_args, ::Val) where {
     @kernel unsafe_indices = true function broadcast_kernel_multi_linear(args...)
         I = _broadcast_linear_work_id()
         @inbounds while I <= length(getfield(args, 1))
-            _run_segments(segs, args[1:NOUT], args[(NOUT + 1):end], static_args, (), I)
+            _run_segments(segs, _take(args, Val(NOUT)), _drop(args, Val(NOUT)), static_args, (), I)
             I += _broadcast_grid_stride(:x)
         end
     end
