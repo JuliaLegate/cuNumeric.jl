@@ -335,6 +335,30 @@ static inline void align8(char *&ptr) {
 //   CuStridedDeviceArray) val < 0 → scalar at index -(val + 1) in
 //   trailing scalars
 
+// Limit the grid to a few waves of resident blocks. Broadcast kernels
+// grid-stride, so each thread then loops over many elements and amortizes its
+// per-argument setup instead of paying it for a single element.
+static void cap_broadcast_blocks(PTXLaunchParams &lp) {
+  constexpr std::uint64_t waves = 4;
+  int per_sm = 0, sms = 0;
+  CUdevice dev;
+  if (cuOccupancyMaxActiveBlocksPerMultiprocessor(
+          &per_sm, lp.func, lp.tx * lp.ty * lp.tz, 0) != CUDA_SUCCESS ||
+      cuCtxGetDevice(&dev) != CUDA_SUCCESS ||
+      cuDeviceGetAttribute(&sms, CU_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT,
+                           dev) != CUDA_SUCCESS ||
+      per_sm <= 0 || sms <= 0)
+    return;
+  const std::uint64_t target = waves * per_sm * sms;
+  const auto cap = [](std::uint32_t b, std::uint64_t limit) {
+    return static_cast<std::uint32_t>(
+        std::min<std::uint64_t>(b, std::max<std::uint64_t>(1, limit)));
+  };
+  lp.bx = cap(lp.bx, target);
+  lp.by = cap(lp.by, target / lp.bx);
+  lp.bz = cap(lp.bz, target / (std::uint64_t(lp.bx) * lp.by));
+}
+
 static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
                                             const legate::PhysicalArray &out) {
   const std::uint32_t budget = std::max(lp.tx, 1u);
@@ -362,6 +386,7 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
     lp.bx = blocks(cols, lp.tx, 2147483647);
     lp.by = blocks(rows, lp.ty, 65535);
     lp.bz = 1;
+    cap_broadcast_blocks(lp);
 
 #ifdef CUDA_DEBUG
     std::cerr << "[RunPTXBroadcastTask] local shape=" << rows << "x" << cols
@@ -390,6 +415,7 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
     lp.bx = blocks(dim3, lp.tx, 2147483647);
     lp.by = blocks(dim2, lp.ty, 65535);
     lp.bz = blocks(dim1, lp.tz, 65535);
+    cap_broadcast_blocks(lp);
 
 #ifdef CUDA_DEBUG
     std::cerr << "[RunPTXBroadcastTask] local shape=" << dim1 << "x" << dim2
@@ -436,6 +462,7 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
   lp.tx = threads;
   lp.ty = 1;
   lp.tz = 1;
+  cap_broadcast_blocks(lp);
 
 #ifdef CUDA_DEBUG
   std::cerr << "[RunPTXBroadcastTask] local volume=" << volume << " dim=" << dim
