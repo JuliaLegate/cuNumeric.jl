@@ -179,11 +179,11 @@ function ptx_task(ptx::String, kernel_name)
     return issue_execution_fence(; block=false)
 end
 
-function _emit_compatible_ptx(io, f, types)
+function _emit_compatible_ptx(io, f, types; kwargs...)
     ptx_version = _COMPATIBLE_PTX_VERSION[]
     # dump_module=true keeps linked libdevice helpers in the emitted module.
     return CUDATools.code_ptx(
-        io, f, types; raw=false, dump_module=true, kernel=true, ptx=ptx_version
+        io, f, types; raw=false, dump_module=true, kernel=true, ptx=ptx_version, kwargs...
     )
 end
 
