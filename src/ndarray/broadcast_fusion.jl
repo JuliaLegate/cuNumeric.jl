@@ -412,6 +412,7 @@ function _threads_from_occupancy(
     ::Type{DEST_T},
     ARG_TYPES...;
     ndrange=(1024,),
+    always_inline=KA.backend(obj).always_inline,
 ) where {DEST_T}
     backend = KA.backend(obj)
 
@@ -432,7 +433,7 @@ function _threads_from_occupancy(
         tt;
         kernel=true,
         maxthreads=maxthreads,
-        always_inline=backend.always_inline,
+        always_inline,
     )
     config = CUDACore.launch_configuration(host_kernel.fun; max_threads=prod(ndrange))
     threads = Int(config.threads)
@@ -456,12 +457,13 @@ function get_ptx(
     obj::KA.Kernel{CUDACore.CUDAKernels.CUDABackend},
     ::Type{DEST_T},
     arg_types...;
+    always_inline=KA.backend(obj).always_inline,
 ) where {DEST_T}
-    threads, ctx = _threads_from_occupancy(obj, DEST_T, arg_types...)
+    threads, ctx = _threads_from_occupancy(obj, DEST_T, arg_types...; always_inline)
     threads == 0 && return "", 0, ctx
 
     buf = IOBuffer()
-    _emit_compatible_ptx(buf, obj.f, (typeof(ctx), DEST_T, arg_types...))
+    _emit_compatible_ptx(buf, obj.f, (typeof(ctx), DEST_T, arg_types...); always_inline)
 
     return String(take!(buf)), threads, ctx
 end
@@ -997,7 +999,9 @@ function get_multi_cuda_task(obj, out_arrs, runtime_args)
     key = (typeof(obj), arg_types)
     lock(_MULTI_PTX_CACHE_LOCK) do
         return get!(_MULTI_PTX_CACHE, key) do
-            ptx, threads, ctx = get_ptx(obj, arg_types...)
+            # Inline the per-segment helpers: an outlined call passes every
+            # kernel argument through local memory.
+            ptx, threads, ctx = get_ptx(obj, arg_types...; always_inline=true)
             threads == 0 && return (ctx, 0, nothing)
             orig = extract_kernel_name(ptx)
             uname = orig * "_" * string(hash(ptx); base=16)
