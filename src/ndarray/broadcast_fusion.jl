@@ -1178,3 +1178,57 @@ function copyto_fused_multi_alloc!(seg_bcs::Tuple)
     _fused_multi_launch!(outs, seg_bcs)
     return outs
 end
+
+# Sibling fusion (`@accelerate aggressive=true`): independent updates
+# `dests[i] .= bcs[i]` in one launch, so shared inputs are read once. Runs them
+# in order instead when shapes differ, a segment would not fuse on its own, or
+# an output overlaps another output or an input (Legion forbids that in a task).
+
+function copyto_fused_siblings!(dests::Tuple, bcs::Tuple)
+    @static if FUSE_BROADCAST_EXPRS
+        segs = _sibling_segments(dests, bcs)
+        if !isnothing(segs)
+            _fused_multi_launch!(dests, segs)
+            return dests
+        end
+    end
+    foreach(Base.materialize!, dests, bcs)
+    return dests
+end
+
+_plan_leaf(::RuntimeBroadcastArg{J}, rt, st) where {J} = rt[J]
+_plan_leaf(::StaticBroadcastArg{J}, rt, st) where {J} = st[J]
+
+# Segments for one launch, or `nothing` to fall back. Mirrors `_copyto!` and
+# `fuse_broadcast_tree!` so each segment computes what its own launch would.
+function _sibling_segments(dests::Tuple, bcs::Tuple)
+    all(d -> d isa NDArray, dests) && _has_gpu_target() || return nothing
+    shape = axes(first(dests))
+    inputs = NDArray[]
+    insts = Any[]
+    for (dest, bc) in zip(dests, bcs)
+        axes(dest) == shape && !isempty(dest) || return nothing
+        eltype(dest) <: BrokenBroadcast && return nothing
+        bc = Base.Broadcast.instantiate(Base.Broadcast.Broadcasted(bc.f, bc.args, shape))
+        _identity_broadcast_source(bc) === nothing || return nothing
+        _should_attempt_broadcast_fusion(dest, bc) || return nothing
+        _assert_fused_broadcast_promotion(dest, bc)
+        for leaf in Base.Broadcast.flatten(bc).args
+            leaf isa NDArray && push!(inputs, leaf)
+        end
+        push!(insts, bc)
+    end
+    for dest in dests   # vs every input and every earlier output
+        any(x -> nda_overlaps(dest, x), inputs) && return nothing
+        push!(inputs, dest)
+    end
+    return Tuple(
+        map(insts) do bc
+            flat = Base.Broadcast.flatten(_fold_fused_scalar_broadcasts(bc))
+            _assert_kernel_function_has_no_data(flat.f)
+            rt, st, plan = split_broadcast_args_for_kernel(_unwrap_fusion_args(flat.args))
+            rt = _align_fused_runtime_args(rt)
+            return Base.Broadcast.Broadcasted(flat.f, map(p -> _plan_leaf(p, rt, st), plan))
+        end,
+    )
+end
