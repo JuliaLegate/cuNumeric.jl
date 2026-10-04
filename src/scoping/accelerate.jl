@@ -41,22 +41,24 @@ end
 
 # Function form: validate, expand `@.`, normalize trailing `return`, run the
 # lifetime/fusion passes protecting `protected_roots` (the args).
-function _accelerate_rewrite(body, caller::Module, protected_roots::Set{Symbol})
+function _accelerate_rewrite(
+    body, caller::Module, protected_roots::Set{Symbol}; aggressive::Bool=false
+)
     _reject_nonstraightline(body)
     body = _normalize_return(_expand_dot_macros(body, caller))
     on_rewrite = BCAST_FUSION_DEBUG[] ? InterBroadcastFusion.log_rewrite : nothing
-    return process_ndarray_scope(body; on_rewrite, protected_roots)
+    return process_ndarray_scope(body; on_rewrite, protected_roots, aggressive)
 end
 
 # `begin`/expr form: 1:1 Julia scope (no `let`) — named bindings stay live.
 # On GPU, same-shape chains fuse into one multi-output launch; otherwise only
 # anonymous temporaries (slices) are freed.
-function _accelerate_block_soft(block, caller::Module)
+function _accelerate_block_soft(block, caller::Module; aggressive::Bool=false)
     _reject_nonstraightline(block)
     nb = _normalize_return(_expand_dot_macros(block, caller))
     on_rewrite = BCAST_FUSION_DEBUG[] ? InterBroadcastFusion.log_rewrite : nothing
     fallback = process_ndarray_scope(
-        nb; on_rewrite, protected_roots=_assigned_symbols(nb)
+        nb; on_rewrite, protected_roots=_assigned_symbols(nb), aggressive
     )
     @static if FUSE_BROADCAST_EXPRS
         fused = _try_fuse_block_multi(nb)
@@ -91,12 +93,14 @@ end
 
 # `let` form: hard scope. Full analysis — combine single-use producers, free
 # every non-returned temp — re-wrapped in a `let` so only the result escapes.
-function _accelerate_block_hard(letexpr, caller::Module)
+function _accelerate_block_hard(letexpr, caller::Module; aggressive::Bool=false)
     body = _let_body(letexpr)
     _reject_nonstraightline(body)
     nb = _normalize_return(_expand_dot_macros(body, caller))
     on_rewrite = BCAST_FUSION_DEBUG[] ? InterBroadcastFusion.log_rewrite : nothing
-    rewritten = process_ndarray_scope(nb; on_rewrite, protected_roots=Set{Symbol}())
+    rewritten = process_ndarray_scope(
+        nb; on_rewrite, protected_roots=Set{Symbol}(), aggressive
+    )
     bindings = union(_assigned_symbols(nb), _assigned_symbols(rewritten))
     return _lexical_scope(rewritten, bindings)
 end
@@ -195,15 +199,28 @@ end
 
 # AST `@accelerate` emits (pre-`esc`); shared with `@show_lifetimes`. Dispatch:
 # function def / `let` (hard scope) / `begin`-expr (soft, 1:1 Julia scope).
-function _accelerate_expand(input, caller::Module)
+function _accelerate_expand(input, caller::Module; aggressive::Bool=false)
     if MacroTools.isdef(input)
         def = MacroTools.splitdef(input)
-        def[:body] = _accelerate_rewrite(def[:body], caller, _argument_symbols(def))
+        def[:body] = _accelerate_rewrite(
+            def[:body], caller, _argument_symbols(def); aggressive
+        )
         return MacroTools.combinedef(def)
     elseif input isa Expr && input.head === :let
-        return _accelerate_block_hard(input, caller)
+        return _accelerate_block_hard(input, caller; aggressive)
     end
-    return _accelerate_block_soft(input, caller)
+    return _accelerate_block_soft(input, caller; aggressive)
+end
+
+function _accelerate_options(options)
+    aggressive = false
+    for option in options
+        MacroTools.@capture(option, aggressive = value_) && value isa Bool || error(
+            "@accelerate: unknown option `$option`; expected `aggressive=true` or `aggressive=false`"
+        )
+        aggressive = value
+    end
+    return (; aggressive)
 end
 
 @doc"""
@@ -211,6 +228,7 @@ end
     @accelerate begin ... end
     @accelerate let ... end
     @accelerate expr
+    @accelerate aggressive=true function f(args...) ... end
 
 Optimize straight-line array code by coordinating CUDA broadcast fusion within
 expressions, fusion across broadcast statements, and scope-aware cleanup of
@@ -245,9 +263,16 @@ a, b = @accelerate begin          # a and b both stay live, one GPU launch
 end
 result = @accelerate (x .+ y .* z)
 ```
+
+`aggressive=true` also merges adjacent in-place updates of different arrays,
+e.g. `u_new[...] .= f(u, v)` then `v_new[...] .= g(u, v)`, into one launch that
+reads shared inputs once. Off by default since the launch maps every input and
+output at once, raising peak memory.
 """
-macro accelerate(input)
-    return esc(_accelerate_expand(input, __module__))
+macro accelerate(args...)
+    input = last(args)
+    options = _accelerate_options(args[1:(end - 1)])
+    return esc(_accelerate_expand(input, __module__; options...))
 end
 
 @doc"""
@@ -258,7 +283,9 @@ end
 Print the exact expansion [`@accelerate`](@ref) produces for the same input
 (all forms), without running it; inserted frees are highlighted. Pure AST work.
 """
-macro show_lifetimes(input)
-    expansion = _accelerate_expand(input, __module__)
+macro show_lifetimes(args...)
+    input = last(args)
+    options = _accelerate_options(args[1:(end - 1)])
+    expansion = _accelerate_expand(input, __module__; options...)
     return :(print_lifetime_analysis($(QuoteNode(expansion))))
 end
