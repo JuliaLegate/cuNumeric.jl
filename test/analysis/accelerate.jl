@@ -60,7 +60,9 @@ end
     fn = Expr(:function, :(_acc_siblings(u, v, un, vn)), step)
     merged(ex) = occursin("copyto_fused_siblings!", string(ex))
     @test !merged(cuNumeric._accelerate_expand(fn, @__MODULE__))
-    @test merged(cuNumeric._accelerate_expand(fn, @__MODULE__; aggressive=true))
+    # Only the fusion pipeline merges; without fusion `aggressive` is a no-op.
+    @test merged(cuNumeric._accelerate_expand(fn, @__MODULE__; aggressive=true)) ==
+        cuNumeric.FUSE_BROADCAST_EXPRS
     @test_throws ErrorException cuNumeric._accelerate_options((:(fast = true),))
 
     @accelerate aggressive=true function _acc_siblings(u, v, un, vn)
