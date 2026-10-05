@@ -171,7 +171,15 @@ function _slice_root(stmt)
     return reference.array
 end
 
-# Slice binds, then `d .= rhs` (or `name = (d .= rhs)`), then frees.
+# Constant scalar bind such as `tmp = Int8(2)`; reads no array, so it can move.
+function _const_bind(stmt)
+    assignment = _assignment(stmt)
+    isnothing(assignment) && return false
+    call = _call(assignment.rhs)
+    return !isnothing(call) && all(a -> a isa Number, call.args)
+end
+
+# Slice and constant binds, then `d .= rhs` (or `name = (d .= rhs)`), then frees.
 function _update_group(stmts, i)
     assignment = _assignment(stmts[i])
     result, update = isnothing(assignment) ? (nothing, stmts[i]) : (assignment.lhs, assignment.rhs)
@@ -181,7 +189,7 @@ function _update_group(stmts, i)
     call = _to_broadcasted(rhs, Dict{Symbol,Int}(), Pair{Symbol,Any}[])
     isnothing(call) && return nothing
     first, last = i, i
-    while first > 1 && !isnothing(_slice_root(stmts[first - 1]))
+    while first > 1 && (!isnothing(_slice_root(stmts[first - 1])) || _const_bind(stmts[first - 1]))
         first -= 1
     end
     while last < length(stmts) && !isnothing(_delete_argument(stmts[last + 1]))
@@ -189,7 +197,8 @@ function _update_group(stmts, i)
     end
     binds = stmts[first:(i - 1)]
     any(b -> _assignment(b).lhs === dest, binds) || return nothing
-    return (; first, last, binds, roots=_slice_root.(binds), result, dest, call,
+    roots = filter(!isnothing, _slice_root.(binds))
+    return (; first, last, binds, roots, result, dest, call,
         deletes=stmts[(i + 1):last])
 end
 

@@ -60,8 +60,17 @@ end
     fn = Expr(:function, :(_acc_siblings(u, v, un, vn)), step)
     merged(ex) = occursin("copyto_fused_siblings!", string(ex))
     @test !merged(cuNumeric._accelerate_expand(fn, @__MODULE__))
-    @test merged(cuNumeric._accelerate_expand(fn, @__MODULE__; aggressive=true))
+    # Only the fusion pipeline merges; without fusion `aggressive` is a no-op.
+    @test merged(cuNumeric._accelerate_expand(fn, @__MODULE__; aggressive=true)) ==
+        cuNumeric.FUSE_BROADCAST_EXPRS
     @test_throws ErrorException cuNumeric._accelerate_options((:(fast = true),))
+    # Hoisted constants such as `Int8(2)` do not block the merge.
+    consts = Expr(:function, :(_acc_consts(P)), quote
+        P[3:4, :] .= P[1:2, :] .* Int8(2)
+        P[5:6, :] .= P[1:2, :] .- Int8(1)
+    end)
+    @test merged(cuNumeric._accelerate_expand(consts, @__MODULE__; aggressive=true)) ==
+        cuNumeric.FUSE_BROADCAST_EXPRS
 
     @accelerate aggressive=true function _acc_siblings(u, v, un, vn)
         un[2:(end - 1)] .= u[2:(end - 1)] .* 2.0f0 .+ v[2:(end - 1)]

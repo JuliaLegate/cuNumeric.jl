@@ -45,7 +45,7 @@ s = sum(A)          # CNScalar
 x = fetch(s)        # native Julia scalar, e.g. Float32
 ```
 
-Use `allowautofetch() do ... end` or `@allowautofetch` to permit host comparisons and numeric conversions of device scalars. Permission is task-local and disabled by default; arithmetic remains on the backend. See [Device scalars](https://julialegate.github.io/cuNumeric.jl/stable/api_cnscalar).
+Use `allowfetch() do ... end` or `@allowfetch` to permit host comparisons and numeric conversions of device scalars. Permission is task-local and disabled by default; arithmetic remains on the backend. See [Device scalars](https://julialegate.github.io/cuNumeric.jl/stable/api_cnscalar).
 
 **0D arrays support scalar-shaped arithmetic.** Use `+`, `-`, `*`, `/`, and `^`
 with two 0D NDArrays or with a 0D NDArray and a Julia number. Results stay as

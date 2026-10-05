@@ -8,7 +8,7 @@ struct CNScalarNumberSlot{T<:Number}
 end
 
 @testset "CNScalar storage and arithmetic" begin
-    allowautofetch(false)
+    allowfetch(false)
     cuNumeric.allowscalar(false)
     cuNumeric.allowpromotion() do
         for T in Base.uniontypes(cuNumeric.SUPPORTED_ARRAY_TYPES)
@@ -30,7 +30,7 @@ end
             @test fetch(a) == one(T)
             @test only(x) == fetch(x)
             @test_throws ErrorException x[]
-            @test_throws ErrorException (@allowautofetch x[])
+            @test_throws ErrorException (@allowfetch x[])
             cuNumeric.allowscalar() do
                 @test x[] === a[]
                 @test x[] == one(T)
@@ -49,9 +49,9 @@ end
                 @test fetch(op(x)) ≈ op(one(T))
             end
             @test_throws ArgumentError convert(T, x)
-            @test allowautofetch(() -> convert(T, x)) == one(T)
+            @test allowfetch(() -> convert(T, x)) == one(T)
             @test_throws ArgumentError x == one(T)
-            @test (@allowautofetch x == one(T))
+            @test (@allowfetch x == one(T))
             @test_throws ArgumentError x == one(T)
         end
         x = sum(NDArray([1.0, 2.0, 3.0]))
@@ -60,9 +60,9 @@ end
         @test fetch(sqrt(x)) ≈ sqrt(6.0)
         @test Array(NDArray([1.0, 2.0]) .* x) == [6.0, 12.0]
         @test fetch(max(x, 2.0)) == 6.0
-        @test (@allowautofetch x > 2.0)
-        @test (@allowautofetch isless(2.0, x))
-        @test (@allowautofetch 2x) isa CNScalar
+        @test (@allowfetch x > 2.0)
+        @test (@allowfetch isless(2.0, x))
+        @test (@allowfetch 2x) isa CNScalar
         p, q = promote(x, 2.0)
         @test p isa CNScalar && q isa CNScalar
         @test fetch(p) == 6.0 && fetch(q) == 2.0
@@ -73,10 +73,10 @@ end
         end
         fractional = cnscalar(NDArray(1.5))
         @test_throws ArgumentError CNInt{Int64}(fractional)
-        @test_throws InexactError @allowautofetch CNInt{Int64}(fractional)
+        @test_throws InexactError @allowfetch CNInt{Int64}(fractional)
         imaginary = cnscalar(NDArray(1.0 + 2.0im))
         @test_throws ArgumentError CNFloat{Float64}(imaginary)
-        @test_throws InexactError @allowautofetch CNFloat{Float64}(imaginary)
+        @test_throws InexactError @allowfetch CNFloat{Float64}(imaginary)
     end
 end
 
@@ -110,29 +110,29 @@ end
     @test Array(a) == Float32[2, 2]
 end
 
-@testset "Scoped allowautofetch" begin
+@testset "Scoped allowfetch" begin
     x = cnscalar(NDArray(2.0))
-    @test allowautofetch(() -> 42) == 42
-    @test (@allowautofetch 43) == 43
-    @test_throws ErrorException allowautofetch() do
+    @test allowfetch(() -> 42) == 42
+    @test (@allowfetch 43) == 43
+    @test_throws ErrorException allowfetch() do
         error("scope test")
     end
     @test_throws ArgumentError Float64(x)
-    @allowautofetch begin
+    @allowfetch begin
         @test Float64(x) == 2.0
-        allowautofetch(false) do
+        allowfetch(false) do
             @test_throws ArgumentError Float64(x)
         end
         @test Float64(x) == 2.0
         # Independent tasks do not inherit this permission.
-        @test fetch(@async get(task_local_storage(), :cuNumericAllowAutoFetch, false)) == false
+        @test fetch(@async get(task_local_storage(), :cuNumericAllowFetch, false)) == false
     end
     @test_throws ArgumentError Float64(x)
-    @test_throws ErrorException @allowautofetch error("macro scope test")
+    @test_throws ErrorException @allowfetch error("macro scope test")
     @test_throws ArgumentError Float64(x)
-    allowautofetch(true)
+    allowfetch(true)
     @test Float64(x) == 2.0
-    allowautofetch(false)
+    allowfetch(false)
     @test_throws ArgumentError Float64(x)
 end
 

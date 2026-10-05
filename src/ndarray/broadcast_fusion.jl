@@ -8,6 +8,33 @@ end
 
 Base.@propagate_inbounds _gpu_broadcast_getindex(x::Number, I) = x
 
+# Index for sibling launches (`@accelerate aggressive=true`) that use 32-bit
+# offsets, which halves per-argument registers. RunPTXBroadcastTask launches this
+# variant only when every local offset fits in Int32.
+struct Narrow{N}
+    I::CartesianIndex{N}
+end
+_narrow(I::CartesianIndex) = Narrow(I)   # a function, so kernels can capture it
+
+@inline function _offset32(strides::Dims{N}, I::CartesianIndex{N}) where {N}
+    off = Int32(0)
+    @inbounds for d in 1:N
+        off += ((I[d] % Int32) - Int32(1)) * (strides[d] % Int32)
+    end
+    return Int(off)
+end
+
+Base.@propagate_inbounds _gpu_broadcast_getindex(x::Number, ::Narrow) = x
+Base.@propagate_inbounds _gpu_broadcast_getindex(x, I::Narrow) = _gpu_broadcast_getindex(x, I.I)
+Base.@propagate_inbounds @inline _gpu_broadcast_getindex(x::CuStridedDeviceArray, I::Narrow) =
+    unsafe_load(pointer(x), _offset32(x.strides, I.I) + 1, Val(_strided_align(x)))
+
+@inline _ml_store!(A, v, I) = (@inbounds A[I] = v; nothing)
+@inline function _ml_store!(A::CuStridedDeviceArray, v, I::Narrow)
+    unsafe_store!(pointer(A), v, _offset32(A.strides, I.I) + 1, Val(_strided_align(A)))
+    return nothing
+end
+
 # Same-shaped fused operands already use the destination index.
 Base.@propagate_inbounds @inline function _gpu_broadcast_getindex(
     x::CuStridedDeviceArray, I::Union{Integer,CartesianIndex}
@@ -894,7 +921,7 @@ Base.@propagate_inbounds @inline @generated function _run_segments(
                 $value = Base.Broadcast._broadcast_getindex_evalf(
                     getfield($seg, 1), $vals...
                 )
-                @inbounds getfield(outs, $k)[I] = $value
+                _ml_store!(getfield(outs, $k), $value, I)
             end,
         )
         push!(local_values, value)
@@ -912,7 +939,10 @@ end
 
 # Dimension-dispatched (mirrors the single-output linear/cartesian kernels).
 # `args` = (outputs[1:NOUT]..., runtime_args...); bounds from the first output.
-function make_multi_output_kernel(segs, ::Val{NOUT}, static_args, ::Val{2}) where {NOUT}
+# `wrap = _narrow` selects 32-bit offsets (cartesian kernels only).
+function make_multi_output_kernel(
+    segs, ::Val{NOUT}, static_args, ::Val{2}, wrap=identity
+) where {NOUT}
     @kernel unsafe_indices = true function broadcast_kernel_multi_2d(args...)
         start = _broadcast_cartesian_work_id()
         I = start
@@ -920,7 +950,8 @@ function make_multi_output_kernel(segs, ::Val{NOUT}, static_args, ::Val{2}) wher
         @inbounds while I[2] <= size(dest, 2)
             while I[1] <= size(dest, 1)
                 _run_segments(
-                    segs, _take(args, Val(NOUT)), _drop(args, Val(NOUT)), static_args, (), I
+                    segs, _take(args, Val(NOUT)), _drop(args, Val(NOUT)), static_args, (),
+                    wrap(I),
                 )
                 I += CartesianIndex(_broadcast_grid_stride(:y), 0)
             end
@@ -930,7 +961,9 @@ function make_multi_output_kernel(segs, ::Val{NOUT}, static_args, ::Val{2}) wher
     return broadcast_kernel_multi_2d
 end
 
-function make_multi_output_kernel(segs, ::Val{NOUT}, static_args, ::Val{3}) where {NOUT}
+function make_multi_output_kernel(
+    segs, ::Val{NOUT}, static_args, ::Val{3}, wrap=identity
+) where {NOUT}
     @kernel unsafe_indices = true function broadcast_kernel_multi_3d(args...)
         start = _broadcast_cartesian_work_id_3d()
         I = start
@@ -939,7 +972,8 @@ function make_multi_output_kernel(segs, ::Val{NOUT}, static_args, ::Val{3}) wher
             while I[2] <= size(dest, 2)
                 while I[1] <= size(dest, 1)
                     _run_segments(
-                        segs, _take(args, Val(NOUT)), _drop(args, Val(NOUT)), static_args, (), I
+                        segs, _take(args, Val(NOUT)), _drop(args, Val(NOUT)), static_args, (),
+                        wrap(I),
                     )
                     I += CartesianIndex(_broadcast_grid_stride(:z), 0, 0)
                 end
@@ -1099,7 +1133,7 @@ end
 
 # Launch one kernel writing each segment into preallocated `out_arrs[i]`
 # (dependency order; `out_arrs[end]` is the root).
-function _fused_multi_launch!(out_arrs::Tuple, seg_bcs::Tuple)
+function _fused_multi_launch!(out_arrs::Tuple, seg_bcs::Tuple; narrow::Bool=false)
     NOUT = length(seg_bcs)
     runtime_args = Any[]
     static_args = Any[]
@@ -1115,6 +1149,16 @@ function _fused_multi_launch!(out_arrs::Tuple, seg_bcs::Tuple)
     bck = kernel(CUDACore.CUDAKernels.CUDABackend())
     ctx, threads, task = get_multi_cuda_task(bck, out_arrs, tuple(runtime_args...))
     isnothing(task) && return out_arrs
+    if narrow && ndims(out_arrs[1]) in (2, 3)
+        nkernel = make_multi_output_kernel(
+            segs, Val(NOUT), static_args, Val(ndims(out_arrs[1])), _narrow
+        )
+        _, _, ntask = get_multi_cuda_task(
+            nkernel(CUDACore.CUDAKernels.CUDABackend()), out_arrs, tuple(runtime_args...)
+        )
+        # "narrow|wide": the launcher picks narrow when every offset fits in Int32.
+        isnothing(ntask) || (task = CUDATask(ntask.func * "|" * task.func, task.argtypes))
+    end
 
     # arg_map: kernel args in order (outputs..., runtime_args...).
     argmap = Int32[Int32(i) for i in 0:(NOUT - 1)]
@@ -1188,7 +1232,7 @@ function copyto_fused_siblings!(dests::Tuple, bcs::Tuple)
     @static if FUSE_BROADCAST_EXPRS
         segs = _sibling_segments(dests, bcs)
         if !isnothing(segs)
-            _fused_multi_launch!(dests, segs)
+            _fused_multi_launch!(dests, segs; narrow=true)
             return dests
         end
     end

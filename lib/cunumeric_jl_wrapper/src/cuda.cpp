@@ -225,6 +225,7 @@ struct PTXLaunchParams {
   CUstream custream;
   CUfunction func;
   std::string kernel_name;
+  std::string narrow_name;  // 32-bit-offset variant, from "narrow|wide"
   std::uint32_t bx, by, bz;
   std::uint32_t tx, ty, tz;
 };
@@ -235,6 +236,10 @@ static PTXLaunchParams read_launch_params(legate::TaskContext &context) {
   PTXLaunchParams p;
   p.stream = context.get_task_stream();
   p.kernel_name = context.scalar(0).value<std::string>();
+  if (const auto bar = p.kernel_name.find('|'); bar != std::string::npos) {
+    p.narrow_name = p.kernel_name.substr(0, bar);
+    p.kernel_name = p.kernel_name.substr(bar + 1);
+  }
 
   p.bx = context.scalar(BLOCK_START + 0).value<std::uint32_t>();
   p.by = context.scalar(BLOCK_START + 1).value<std::uint32_t>();
@@ -471,6 +476,21 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
 #endif
 }
 
+// Whether every offset of a packed CuStridedDeviceArray<dim> fits in Int32,
+// as the narrow (32-bit) kernel variant computes them.
+static bool fits_int32(const char *desc, int dim) {
+  std::int64_t dims[REALM_MAX_DIM], strides[REALM_MAX_DIM];
+  const char *q = desc + sizeof(void *) + sizeof(std::int64_t);  // ptr, maxsize
+  memcpy(dims, q, dim * sizeof(std::int64_t));
+  memcpy(strides, q + dim * sizeof(std::int64_t), dim * sizeof(std::int64_t));
+  std::int64_t max_offset = 0;
+  for (int d = 0; d < dim; ++d) {
+    if (dims[d] > INT32_MAX) return false;
+    max_offset += (dims[d] - 1) * (strides[d] < 0 ? -strides[d] : strides[d]);
+  }
+  return max_offset <= INT32_MAX;
+}
+
 /*static*/ void RunPTXBroadcastTask::gpu_variant(legate::TaskContext context) {
   auto lp = read_launch_params(context);
 
@@ -479,7 +499,7 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
   const std::size_t num_scalars = context.num_scalars();
 
   assert(num_outputs >= 1);
-  broadcast_launch_dims_from_tile(lp, context.output(0));
+  bool narrow = !lp.narrow_name.empty();
 
   // Read num_kernel_args first so we can size the buffer precisely
   std::int32_t num_kernel_args =
@@ -516,18 +536,24 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
       auto ps = context.output(val);
       if (ps.type().code() == legate::Type::Code::STRUCT) {
         pack_struct(p, ps, ufi::AccessMode::WRITE);
+        narrow = false;
       } else {
+        const char *desc = p;
         legate::double_dispatch(ps.dim(), ps.type().code(), ufiStridedFunctor{},
                                 ufi::AccessMode::WRITE, p, ps);
+        narrow = narrow && fits_int32(desc, ps.dim());
       }
     } else if (val >= static_cast<std::int32_t>(num_outputs)) {
       align8(p);
       auto ps = context.input(val - num_outputs);
       if (ps.type().code() == legate::Type::Code::STRUCT) {
         pack_struct(p, ps, ufi::AccessMode::READ);
+        narrow = false;
       } else {
+        const char *desc = p;
         legate::double_dispatch(ps.dim(), ps.type().code(), ufiStridedFunctor{},
                                 ufi::AccessMode::READ, p, ps);
+        narrow = narrow && fits_int32(desc, ps.dim());
       }
     } else {
       std::size_t scalar_idx = static_cast<std::size_t>(-(val + 1));
@@ -537,6 +563,12 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
     }
   }
 
+  if (narrow) {
+    lp.kernel_name = lp.narrow_name;
+    lp.func = lookup_ptx(lp.kernel_name, lp.stream);
+  }
+  // After choosing the kernel: the block cap queries its occupancy.
+  broadcast_launch_dims_from_tile(lp, context.output(0));
   launch_kernel(lp, arg_buffer, p - arg_buffer.data());
 }
 

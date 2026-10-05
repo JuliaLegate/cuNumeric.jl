@@ -369,10 +369,10 @@ using cuNumeric, Krylov
 
 A = NDArray([4.0 1.0; 1.0 3.0])
 b = NDArray([1.0, 2.0])
-x, stats = @allowautofetch Krylov.cg(A, b; rtol=1e-8)
+x, stats = @allowfetch Krylov.cg(A, b; rtol=1e-8)
 ```
 
-For complex systems, use `@allowpromotion @allowautofetch Krylov.cg(...)`:
+For complex systems, use `@allowpromotion @allowfetch Krylov.cg(...)`:
 CG computes real scalar coefficients that must promote when scaling complex
 vectors.
 
@@ -383,7 +383,7 @@ The `HaloVector` in that example illustrates a custom vector type; this
 extension defines the corresponding methods for `NDArray`.
 
 To reuse allocations, construct `workspace = Krylov.CgWorkspace(A, b)` and call
-`@allowautofetch Krylov.cg!(workspace, A, b)`. Other Krylov solvers may require
+`@allowfetch Krylov.cg!(workspace, A, b)`. Other Krylov solvers may require
 additional integration methods.
 
 ## Not available yet
