@@ -109,6 +109,35 @@ end
     end
 end
 
+@testset "@accelerate let guards read-only free variables like arguments" begin
+    # `t` may move past the write to `y` only when `y` and `x` do not overlap.
+    function run_let(x, y)
+        return @accelerate let
+            t = x .+ 1.0f0
+            y[1:2] .= x[3:4] .* 2.0f0
+            t .* 3.0f0
+        end
+    end
+    function reference(x, y)
+        t = x .+ 1.0f0
+        y[1:2] .= x[3:4] .* 2.0f0
+        return t .* 3.0f0
+    end
+    for make in (identity, NDArray)
+        x0 = Float32[1, 2, 3, 4]
+        @test Array(run_let(make(copy(x0)), make(zeros(Float32, 4)))) ==
+            reference(copy(x0), zeros(Float32, 4))
+        x = make(copy(x0))                                   # y aliases x
+        @test Array(run_let(x, x)) == (xr=copy(x0); reference(xr, xr))
+    end
+    body = quote
+        un[2:(end - 1)] .= u[2:(end - 1)] .* 2.0f0 .+ v[2:(end - 1)]
+        vn[2:(end - 1)] .= v[2:(end - 1)] .* 3.0f0 .- u[1:(end - 2)]
+    end
+    expanded = cuNumeric._accelerate_block_hard(Expr(:let, body), @__MODULE__; aggressive=true)
+    @test occursin("copyto_fused_siblings!", string(expanded)) == cuNumeric.FUSE_BROADCAST_EXPRS
+end
+
 @testset "@accelerate — four forms" begin
     T = Float32
     N = 64
