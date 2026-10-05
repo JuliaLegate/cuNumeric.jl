@@ -218,7 +218,7 @@ function _accelerate_expand(input, caller::Module; aggressive::Bool=false)
 end
 
 function _accelerate_options(options)
-    aggressive = false
+    aggressive = true   # `aggressive=false` opts out
     for option in options
         MacroTools.@capture(option, aggressive = value_) && value isa Bool || error(
             "@accelerate: unknown option `$option`; expected `aggressive=true` or `aggressive=false`"
@@ -269,10 +269,10 @@ end
 result = @accelerate (x .+ y .* z)
 ```
 
-`aggressive=true` also merges adjacent in-place updates of different arrays,
-e.g. `u_new[...] .= f(u, v)` then `v_new[...] .= g(u, v)`, into one launch that
-reads shared inputs once. Off by default since the launch maps every input and
-output at once, raising peak memory.
+`aggressive=true` (the default) also merges adjacent in-place updates of different
+arrays, e.g. `u_new[...] .= f(u, v)` then `v_new[...] .= g(u, v)`, into one launch
+that reads shared inputs once. The launch maps every input and output at once,
+raising peak memory; `aggressive=false` opts out.
 """
 macro accelerate(args...)
     input = last(args)

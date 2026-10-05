@@ -64,6 +64,8 @@ end
     @test merged(cuNumeric._accelerate_expand(fn, @__MODULE__; aggressive=true)) ==
         cuNumeric.FUSE_BROADCAST_EXPRS
     @test_throws ErrorException cuNumeric._accelerate_options((:(fast = true),))
+    @test cuNumeric._accelerate_options(()).aggressive               # on by default
+    @test !cuNumeric._accelerate_options((:(aggressive = false),)).aggressive
     # Hoisted constants such as `Int8(2)` do not block the merge.
     consts = Expr(:function, :(_acc_consts(P)), quote
         P[3:4, :] .= P[1:2, :] .* Int8(2)
