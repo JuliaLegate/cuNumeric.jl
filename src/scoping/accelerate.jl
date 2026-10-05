@@ -39,6 +39,10 @@ function _argument_symbols(def)
     return names
 end
 
+# Symbols a scope reads but never assigns. Like function arguments they are
+# stable throughout, so cross-write fusion may guard them with alias checks.
+_free_symbols(body) = setdiff(Set{Symbol}(walk_symbols(body)), _assigned_symbols(body))
+
 # Function form: validate, expand `@.`, normalize trailing `return`, run the
 # lifetime/fusion passes protecting `protected_roots` (the args).
 function _accelerate_rewrite(
@@ -58,7 +62,8 @@ function _accelerate_block_soft(block, caller::Module; aggressive::Bool=false)
     nb = _normalize_return(_expand_dot_macros(block, caller))
     on_rewrite = BCAST_FUSION_DEBUG[] ? InterBroadcastFusion.log_rewrite : nothing
     fallback = process_ndarray_scope(
-        nb; on_rewrite, protected_roots=_assigned_symbols(nb), aggressive
+        nb; on_rewrite, protected_roots=union(_assigned_symbols(nb), _free_symbols(nb)),
+        aggressive,
     )
     @static if FUSE_BROADCAST_EXPRS
         fused = _try_fuse_block_multi(nb)
@@ -99,7 +104,7 @@ function _accelerate_block_hard(letexpr, caller::Module; aggressive::Bool=false)
     nb = _normalize_return(_expand_dot_macros(body, caller))
     on_rewrite = BCAST_FUSION_DEBUG[] ? InterBroadcastFusion.log_rewrite : nothing
     rewritten = process_ndarray_scope(
-        nb; on_rewrite, protected_roots=Set{Symbol}(), aggressive
+        nb; on_rewrite, protected_roots=_free_symbols(nb), aggressive
     )
     bindings = union(_assigned_symbols(nb), _assigned_symbols(rewritten))
     return _lexical_scope(rewritten, bindings)
