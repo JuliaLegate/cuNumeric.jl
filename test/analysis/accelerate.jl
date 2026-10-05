@@ -27,14 +27,14 @@ using InteractiveUtils: code_typed
 
 @testset "@accelerate respects rebindings and alias writes" begin
     @accelerate function _acc_rebind(a, b)
-        t = a .+ 1f0
-        a = b .+ 2f0
+        t = a .+ 1.0f0
+        a = b .+ 2.0f0
         t .+ a
     end
     @accelerate function _acc_aliaswrite(a, b)
-        t = a .+ 1f0
-        b[1] = 9f0
-        t .+ 0f0
+        t = a .+ 1.0f0
+        b[1] = 9.0f0
+        t .+ 0.0f0
     end
     for make in (identity, NDArray)
         @test Array(_acc_rebind(make(Float32[1]), make(Float32[10]))) == Float32[14]
@@ -44,12 +44,62 @@ using InteractiveUtils: code_typed
     end
     # Adjacent chains still inline their single-use intermediates.
     ex = cuNumeric.InterBroadcastFusion.rewrite_scope(quote
-        t = a .+ 1f0
-        u = t .* 2f0
-        u .+ 3f0
+        t = a .+ 1.0f0
+        u = t .* 2.0f0
+        u .+ 3.0f0
     end)
     @test !(:t in cuNumeric.ScopingUtils.walk_symbols(ex))
     @test !(:u in cuNumeric.ScopingUtils.walk_symbols(ex))
+end
+
+@testset "@accelerate aggressive=true merges sibling updates" begin
+    step = quote
+        un[2:(end - 1)] .= u[2:(end - 1)] .* 2.0f0 .+ v[2:(end - 1)]
+        vn[2:(end - 1)] .= v[2:(end - 1)] .* 3.0f0 .- u[1:(end - 2)]
+    end
+    fn = Expr(:function, :(_acc_siblings(u, v, un, vn)), step)
+    merged(ex) = occursin("copyto_fused_siblings!", string(ex))
+    @test !merged(cuNumeric._accelerate_expand(fn, @__MODULE__))
+    # Only the fusion pipeline merges; without fusion `aggressive` is a no-op.
+    @test merged(cuNumeric._accelerate_expand(fn, @__MODULE__; aggressive=true)) ==
+        cuNumeric.FUSE_BROADCAST_EXPRS
+    @test_throws ErrorException cuNumeric._accelerate_options((:(fast = true),))
+
+    @accelerate aggressive=true function _acc_siblings(u, v, un, vn)
+        un[2:(end - 1)] .= u[2:(end - 1)] .* 2.0f0 .+ v[2:(end - 1)]
+        vn[2:(end - 1)] .= v[2:(end - 1)] .* 3.0f0 .- u[1:(end - 2)]
+    end
+    function reference!(u, v, un, vn)
+        un[2:(end - 1)] .= u[2:(end - 1)] .* 2.0f0 .+ v[2:(end - 1)]
+        vn[2:(end - 1)] .= v[2:(end - 1)] .* 3.0f0 .- u[1:(end - 2)]
+    end
+    N = 64
+    u0, v0 = rand(Float32, N), rand(Float32, N)
+    for make in (identity, NDArray)
+        un, vn = make(zeros(Float32, N)), make(zeros(Float32, N))
+        _acc_siblings(make(u0), make(v0), un, vn)
+        ref_un, ref_vn = zeros(Float32, N), zeros(Float32, N)
+        reference!(u0, v0, ref_un, ref_vn)
+        @test Array(un) ≈ ref_un
+        @test Array(vn) ≈ ref_vn
+
+        # Aliased outputs fall back.
+        a, b = make(copy(u0)), make(copy(v0))
+        _acc_siblings(a, b, a, b)
+        ra, rb = copy(u0), copy(v0)
+        reference!(ra, rb, ra, rb)
+        @test Array(a) ≈ ra
+        @test Array(b) ≈ rb
+    end
+    if cuNumeric.FUSE_BROADCAST_EXPRS && cuNumeric._has_gpu_target()
+        u, v = NDArray(u0), NDArray(v0)
+        dests = (NDArray(zeros(Float32, N))[2:(end - 1)], NDArray(zeros(Float32, N))[2:(end - 1)])
+        bcs = (Base.broadcasted(+, Base.broadcasted(*, u[2:(end - 1)], 2.0f0), v[2:(end - 1)]),
+            Base.broadcasted(-, Base.broadcasted(*, v[2:(end - 1)], 3.0f0), u[1:(end - 2)]))
+        @test !isnothing(cuNumeric._sibling_segments(dests, bcs))      # one launch
+        mismatched = (dests[1], NDArray(zeros(Float32, N - 4)))      # shapes differ
+        @test isnothing(cuNumeric._sibling_segments(mismatched, bcs))
+    end
 end
 
 @testset "@accelerate — four forms" begin
