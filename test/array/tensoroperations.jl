@@ -219,7 +219,7 @@ using TensorOperations: TensorOperations as TO
         reduced = sum(C)
         @test reduced isa CNScalar
         @test ndims(reduced) == 0
-        allowautofetch(false) do
+        allowfetch(false) do
             for α in (NDArray(sum(hostC)), reduced)
                 @tensor scaled[i, j] := α * C[i, j]
                 @test Array(scaled) ≈ sum(hostC) .* hostC

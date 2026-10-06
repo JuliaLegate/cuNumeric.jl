@@ -27,7 +27,7 @@ linear algebra coefficients use this shared storage path. `Ref(s)` in broadcast
 also preserves device storage for either representation.
 
 Host control parameters, including a norm's `p`, random distribution parameters,
-and `isapprox` tolerances, require allowautofetch permission for either representation.
+and `isapprox` tolerances, require allowfetch permission for either representation.
 The `searchsorted` convenience function explicitly extracts its result indices
 to construct a Julia range;
 use `searchsortedfirst`/`searchsortedlast` to retain device results.
@@ -44,35 +44,35 @@ value = fetch(t)              # explicit synchronization, always permitted
 `cnscalar(a)` wraps an existing 0D NDArray; `s.value` accesses its backend array
 without synchronizing. Use `fetch(s)` for explicit host extraction.
 This extends Julia's `Base.fetch`; ordinary Julia values retain their existing
-`fetch(x) == x` behavior. Explicit `fetch` does not require `allowautofetch`.
+`fetch(x) == x` behavior. Explicit `fetch` does not require `allowfetch`.
 Arithmetic, `min`/`max`, and promotion between numeric types keep results on the
 backend. Showing a wrapper uses the backing 0D NDArray's display and extracts
-its value, including in the REPL, without requiring allowautofetch permission. End
+its value, including in the REPL, without requiring allowfetch permission. End
 an expression with `;` to suppress REPL display and that synchronization.
 The existing promotion policy still applies.
 
 Device scalars can also be coefficients in `contract!`, `mul!`, `axpy!`,
-`axpby!`, and TensorOperations calls without enabling allowautofetch.
+`axpby!`, and TensorOperations calls without enabling allowfetch.
 
 Value-dependent conversions, such as floating point to integer or complex to
-real, require allowautofetch permission even when the target is another CNScalar.
+real, require allowfetch permission even when the target is another CNScalar.
 They preserve Julia's `InexactError` checks instead of silently truncating values.
 
 ## Scoped permission
 
 Implicit host extraction is disabled by default. Comparisons, scalar predicates,
-and conversion to supported host numeric types require `allowautofetch` permission:
+and conversion to supported host numeric types require `allowfetch` permission:
 
 ```julia
-@allowautofetch s > 0              # Julia Bool
-allowautofetch() do
+@allowfetch s > 0              # Julia Bool
+allowfetch() do
     Float64(s)                 # Julia Float64
 end
 ```
 
 The scope returns the body's result and restores the previous permission even
-when the body throws. Nested `allowautofetch(false) do ... end` disables extraction
-temporarily. `allowautofetch(true)` / `allowautofetch(false)` set the calling task's
+when the body throws. Nested `allowfetch(false) do ... end` disables extraction
+temporarily. `allowfetch(true)` / `allowfetch(false)` set the calling task's
 permission until changed again. Independent tasks do not inherit permission.
 This permission is separate from `allowscalar` and `allowpromotion`.
 
@@ -85,11 +85,11 @@ function host_residual(x)
     return Float64(r)          # permission checked here, inside this function
 end
 
-residual = @allowautofetch host_residual(x)
+residual = @allowfetch host_residual(x)
 # host_residual(x)             # errors outside the scope
 ```
 
-Arithmetic remains asynchronous even inside an allowautofetch scope. There is no
+Arithmetic remains asynchronous even inside an allowfetch scope. There is no
 general fallback that fetches arguments when Julia cannot find a method.
 For example, a function accepting only `Float64` still needs `f(Float64(s))`.
 Julia also requires an actual Bool in `if`: use `Bool(all(A))` within the scope,

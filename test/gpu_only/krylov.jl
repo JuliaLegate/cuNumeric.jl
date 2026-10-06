@@ -11,7 +11,7 @@ using Krylov
         α, β = sum(NDArray([a])), sum(NDArray([b]))
         x = NDArray(hostx)
         # Neither helpers nor coefficient dispatch should implicitly fetch.
-        allowautofetch(false) do
+        allowfetch(false) do
             for s in (α, α.value)
                 y = NDArray(copy(hosty))
                 @test Krylov.kaxpy!(3, s, x, y) === y
@@ -32,11 +32,11 @@ using Krylov
         workspace = Krylov.CgWorkspace(Krylov.KrylovConstructor(rhs))
         tol = 20 * eps(R)
         # Complex CG has real coefficients; permit their promotion to complex.
-        @allowpromotion @allowautofetch Krylov.cg!(workspace, A, rhs; atol=zero(R), rtol=tol, itmax=100, history=true)
+        @allowpromotion @allowfetch Krylov.cg!(workspace, A, rhs; atol=zero(R), rtol=tol, itmax=100, history=true)
         @test workspace.stats.solved
         @test norm(hostA * Array(workspace.x) - hostb) / norm(hostb) <= 5tol
         @test !isempty(workspace.stats.residuals)
-        solution, stats = @allowpromotion @allowautofetch Krylov.cg(A, rhs; atol=zero(R), rtol=tol, itmax=100)
+        solution, stats = @allowpromotion @allowfetch Krylov.cg(A, rhs; atol=zero(R), rtol=tol, itmax=100)
         @test stats.solved
         @test solution isa NDArray
         @test norm(hostA * Array(solution) - hostb) / norm(hostb) <= 5tol
@@ -45,7 +45,7 @@ using Krylov
         nonsymmetric = Matrix(Tridiagonal(fill(T(-0.3), n - 1), fill(T(4), n), fill(T(-0.8), n - 1)))
         B = NDArray(nonsymmetric)
         biworkspace = Krylov.BicgstabWorkspace(B, rhs)
-        @allowpromotion @allowautofetch Krylov.bicgstab!(biworkspace, B, rhs; atol=zero(R), rtol=tol, itmax=100)
+        @allowpromotion @allowfetch Krylov.bicgstab!(biworkspace, B, rhs; atol=zero(R), rtol=tol, itmax=100)
         @test biworkspace.stats.solved
         @test norm(nonsymmetric * Array(biworkspace.x) - hostb) / norm(hostb) <= 5tol
     end
