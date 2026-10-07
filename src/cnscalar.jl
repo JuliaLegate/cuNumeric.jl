@@ -1,5 +1,5 @@
 export CNFloat, CNInt, CNUInt, CNBool, CNReal, CNComplex, CNScalar, DeviceScalar,
-    cnscalar, allowautofetch, @allowautofetch
+    cnscalar, allowfetch, @allowfetch
 
 "A floating-point device scalar; wrapping its 0D storage does not synchronize."
 struct CNFloat{T<:AbstractFloat,P} <: AbstractFloat
@@ -55,7 +55,7 @@ _host_isone(::CNScalar) = false
 # permission-checked for both wrapped and unwrapped device scalars.
 _maybe_fetch(x) = x
 function _maybe_fetch(x::DeviceScalar{<:Real})
-    _assert_allowautofetch()
+    _assert_allowfetch()
     return only(_scale_storage(x))
 end
 
@@ -79,9 +79,9 @@ fill(x::DeviceScalar, dims::Int...) = fill(x, dims)
 fill(x::DeviceScalar, dim::Int) = fill(x, (dim,))
 
 """
-    allowautofetch(f, allow=true)
-    allowautofetch(allow::Bool=true)
-    @allowautofetch expression
+    allowfetch(f, allow=true)
+    allowfetch(allow::Bool=true)
+    @allowfetch expression
 
 Permit implicit host extraction of CNScalars for comparisons, predicates, and
 conversion to host numeric types. Arithmetic stays on the backend. The do-block
@@ -89,27 +89,27 @@ and macro restore the calling task's previous permission, including on errors.
 Permission is task-local and separate from scalar indexing and promotion.
 This is not a fallback for arbitrary functions with unsupported argument types.
 """
-allowautofetch(f::F, allow::Bool=true) where {F} =
-    task_local_storage(f, :cuNumericAllowAutoFetch, allow)
-allowautofetch(allow::Bool=true) = (task_local_storage(:cuNumericAllowAutoFetch, allow); nothing)
+allowfetch(f::F, allow::Bool=true) where {F} =
+    task_local_storage(f, :cuNumericAllowFetch, allow)
+allowfetch(allow::Bool=true) = (task_local_storage(:cuNumericAllowFetch, allow); nothing)
 
-macro allowautofetch(ex)
+macro allowfetch(ex)
     quote
-        local previous = get(task_local_storage(), :cuNumericAllowAutoFetch, nothing)
-        task_local_storage(:cuNumericAllowAutoFetch, true)
+        local previous = get(task_local_storage(), :cuNumericAllowFetch, nothing)
+        task_local_storage(:cuNumericAllowFetch, true)
         @__tryfinally($(esc(ex)),
             if isnothing(previous)
-                delete!(task_local_storage(), :cuNumericAllowAutoFetch)
+                delete!(task_local_storage(), :cuNumericAllowFetch)
             else
-                task_local_storage(:cuNumericAllowAutoFetch, previous)
+                task_local_storage(:cuNumericAllowFetch, previous)
             end)
     end
 end
 
-function _assert_allowautofetch()
-    get(task_local_storage(), :cuNumericAllowAutoFetch, false) && return nothing
+function _assert_allowfetch()
+    get(task_local_storage(), :cuNumericAllowFetch, false) && return nothing
     throw(ArgumentError("Implicit CNScalar host extraction is disabled. Use " *
-                        "allowautofetch() do ... end or @allowautofetch, or explicitly call fetch(x)."))
+                        "allowfetch() do ... end or @allowfetch, or explicitly call fetch(x)."))
 end
 
 """
@@ -118,7 +118,7 @@ end
 
 Retrieve a native Julia scalar, waiting for the result as needed. An NDArray
 must contain exactly one element. Explicit fetching does not require
-`allowautofetch` or `allowscalar` permission.
+`allowfetch` or `allowscalar` permission.
 """
 Base.fetch(x::CNScalar) = only(x.value)
 Base.only(x::CNScalar) = fetch(x)
@@ -139,7 +139,7 @@ _scalar_operand(x::Number) = x
 _scalar_operand(x::NDArray{<:Any,0}) = x
 _scalar_binary(f, x, y) = cnscalar(broadcast(f, _scalar_operand(x), _scalar_operand(y)))
 function _scalar_compare(f, x, y)
-    _assert_allowautofetch()
+    _assert_allowfetch()
     result = broadcast(f, _scalar_operand(x), _scalar_operand(y))
     value = only(result)
     destroy!(result)
@@ -148,7 +148,7 @@ end
 _scalar_host(x::CNScalar) = fetch(x)
 _scalar_host(x::Number) = x
 function _scalar_compare(f::Union{typeof(isless),typeof(isequal)}, x, y)
-    _assert_allowautofetch()
+    _assert_allowfetch()
     return f(_scalar_host(x), _scalar_host(y))
 end
 
@@ -231,7 +231,7 @@ Base.abs2(x::CNComplex) = real(x * conj(x))
 Base.:!(x::CNReal{Bool}) = _scalar_unary(!, x)
 for op in (:iszero, :isone, :isfinite, :isinf, :isnan), W in _SCALAR_WRAPPERS
     @eval function Base.$op(x::$W)
-        _assert_allowautofetch()
+        _assert_allowfetch()
         return $op(fetch(x))
     end
 end
@@ -241,7 +241,7 @@ _scalar_convert(::Type{T}, x::Number) where {T} = cnscalar(NDArray(convert(T, x)
 function _checked_scalar_convert(::Type{T}, x::CNScalar) where {T}
     # These conversions can throw InexactError based on the value. A backend
     # dtype cast would silently truncate or discard an imaginary component.
-    _assert_allowautofetch()
+    _assert_allowfetch()
     return cnscalar(NDArray(convert(T, fetch(x))))
 end
 _scalar_convert(::Type{T}, x::CNComplex) where {T<:Real} = _checked_scalar_convert(T, x)
@@ -272,7 +272,7 @@ Base.float(::Type{S}) where {S<:CNScalar} = _scalar_type(float(_scalar_eltype(S)
 
 for T in Base.uniontypes(SUPPORTED_ARRAY_TYPES), W in _SCALAR_WRAPPERS
     @eval function Base.convert(::Type{$T}, x::$W)
-        _assert_allowautofetch()
+        _assert_allowfetch()
         return convert($T, fetch(x))
     end
     @eval (::Type{$T})(x::$W) = convert($T, x)

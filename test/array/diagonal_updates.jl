@@ -122,7 +122,7 @@ end
     end
     for p in (NDArray(2), cnscalar(NDArray(2)))
         @test_throws "Implicit CNScalar host extraction is disabled" norm(D, p)
-        @allowautofetch @test fetch(norm(D, p)) ≈ 5f0
+        @allowfetch @test fetch(norm(D, p)) ≈ 5f0
         @test fetch(norm(D, fetch(p))) ≈ 5f0
     end
 end
