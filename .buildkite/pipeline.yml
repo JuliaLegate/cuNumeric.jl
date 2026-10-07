@@ -10,6 +10,6 @@ steps:
     command: ".buildkite/upload_gpu_ci.sh"
     agents:
       queue: "cuda"
-    if: build.message !~ /\[skip tests\]/
+    if: build.message !~ /\[skip ci\]/
     if_changed: "{src/**,scripts/**,deps/build.jl,Project.toml,lib/CNPreferences/src/**,lib/cunumeric_jl_wrapper/**}"
     timeout_in_minutes: 5

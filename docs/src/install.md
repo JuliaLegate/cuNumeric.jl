@@ -1,6 +1,6 @@
 # Build Modes
 
-cuNumeric.jl gets its cupynumeric / Legate binaries from one of three providers, chosen through `CNPreferences` (writes `LocalPreferences.toml`; **restart Julia** after changing mode):
+cuNumeric.jl gets its cupynumeric / Legate binaries from one of three providers, chosen through `CNPreferences` (writes `LocalPreferences.toml`, **restart Julia** after changing mode):
 
 | Mode | When to use |
 |---|---|

@@ -47,7 +47,7 @@ set(SOURCES
 
 if(LEGATE_WRAPPER_ENABLE_CUDA)
     find_package(CUDAToolkit 13.0 REQUIRED)
-    list(APPEND SOURCES src/cuda.cpp)
+    list(APPEND SOURCES src/cuda.cpp src/mapreduce.cpp)
     message(STATUS "LEGATE_WRAPPER_ENABLE_CUDA=ON: adding src/cuda.cpp")
 else()
     # only disables find_package requirement for CUDAToolkit.
@@ -71,6 +71,7 @@ target_link_libraries(${CXX_CUNUMERICJL_WRAPPER} PRIVATE
 target_include_directories(${CXX_CUNUMERICJL_WRAPPER} PRIVATE include)
 if(LEGATE_WRAPPER_ENABLE_CUDA)
     target_include_directories(${CXX_CUNUMERICJL_WRAPPER} PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+    target_link_libraries(${CXX_CUNUMERICJL_WRAPPER} PRIVATE CUDA::cuda_driver CUDA::cudart)
 endif()
 
 install(TARGETS ${CXX_CUNUMERICJL_WRAPPER} DESTINATION lib)

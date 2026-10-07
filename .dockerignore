@@ -1,0 +1,47 @@
+# Local Julia environments and generated build configuration.
+**/*Manifest.toml
+**/*LocalPreferences.toml
+dev/Project.toml
+deps/deps.jl
+build_wrapper.sh
+compile_wrapper.sh
+
+# Local caches, logs, and editor configuration.
+**/__pycache__
+**/*.pyc
+**/*.log
+**/*.err
+**/*.prof
+**/node_modules
+.vscode
+.envrc
+.localenv
+docs/.vitepress
+docs/src/.vitepress/cache
+docs/src/.vitepress/dist
+
+benchmark/results
+benchmark/plots
+# Host build products must not overwrite artifacts built inside the image.
+**/build
+**/*.o
+**/*.obj
+**/*.so
+**/*.so.*
+**/*.dylib
+**/*.dll
+**/*.a
+**/*.lib
+**/*.exe
+deps/cupynumeric-*
+deps/lapacke_build
+libcupynumeric
+install-libcupynumeric
+install-cupynumeric
+libcxxwrap-julia
+lapacke
+
+# Keep root repository metadata intact, including files matching rules above.
+**/.git
+!.git
+!.git/**

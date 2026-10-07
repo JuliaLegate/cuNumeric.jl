@@ -77,6 +77,16 @@ function _push_static_arg!(static_args, arg_plan, x)
         ),
     )
 
+    # Static leaves are captured by the kernel closure, which the launcher does
+    # not pass to the device; only zero-size values (functions, `Val`) are safe.
+    # TODO pass isbits values such as structs as runtime scalars; the C++
+    # launcher would need to align each scalar in the argument buffer.
+    sizeof(x) == 0 || throw(
+        ArgumentError(
+            "Broadcast fusion cannot pass $(repr(x)) of type $(typeof(x)) to the GPU " *
+            "kernel; pass numbers or NDArrays instead",
+        ),
+    )
     push!(static_args, x)
     push!(arg_plan, StaticBroadcastArg{length(static_args)}())
     return nothing
@@ -127,16 +137,21 @@ end
            Int(CUDACore.threadIdx().x)
 end
 
+# Widen before multiplying. C++ caps the grid; loops must still visit every element.
+@inline _broadcast_grid_stride(axis) =
+    Int(getproperty(CUDACore.gridDim(), axis)) * Int(getproperty(CUDACore.blockDim(), axis))
+
 function make_linear_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args)
     f = bc.f
 
     @kernel unsafe_indices = true function broadcast_kernel_linear_splat(dest, runtime_args...)
         I = _broadcast_linear_work_id()
-        if I <= length(dest)
+        while I <= length(dest)
             @inbounds args_modified = _materialize_broadcast_args(
                 arg_plan, runtime_args, static_args, I
             )
             @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+            I += _broadcast_grid_stride(:x)
         end
     end
 
@@ -159,12 +174,17 @@ function make_cartesian_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, s
     @kernel unsafe_indices = true function broadcast_kernel_cartesian_splat(
         dest, runtime_args...
     )
-        I = _broadcast_cartesian_work_id()
-        if I[1] <= size(dest, 1) && I[2] <= size(dest, 2)
-            @inbounds args_modified = _materialize_broadcast_args(
-                arg_plan, runtime_args, static_args, I
-            )
-            @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+        start = _broadcast_cartesian_work_id()
+        I = start
+        while I[2] <= size(dest, 2)
+            while I[1] <= size(dest, 1)
+                @inbounds args_modified = _materialize_broadcast_args(
+                    arg_plan, runtime_args, static_args, I
+                )
+                @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+                I += CartesianIndex(_broadcast_grid_stride(:y), 0)
+            end
+            I = CartesianIndex(start[1], I[2] + _broadcast_grid_stride(:x))
         end
     end
 
@@ -192,12 +212,22 @@ function make_cartesian_kernel_3d(
     @kernel unsafe_indices = true function broadcast_kernel_cartesian_3d_splat(
         dest, runtime_args...
     )
-        I = _broadcast_cartesian_work_id_3d()
-        if I[1] <= size(dest, 1) && I[2] <= size(dest, 2) && I[3] <= size(dest, 3)
-            @inbounds args_modified = _materialize_broadcast_args(
-                arg_plan, runtime_args, static_args, I
-            )
-            @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+        start = _broadcast_cartesian_work_id_3d()
+        I = start
+        while I[3] <= size(dest, 3)
+            while I[2] <= size(dest, 2)
+                while I[1] <= size(dest, 1)
+                    @inbounds args_modified = _materialize_broadcast_args(
+                        arg_plan, runtime_args, static_args, I
+                    )
+                    @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(
+                        f, args_modified...
+                    )
+                    I += CartesianIndex(_broadcast_grid_stride(:z), 0, 0)
+                end
+                I = CartesianIndex(start[1], I[2] + _broadcast_grid_stride(:y), I[3])
+            end
+            I = CartesianIndex(start[1], start[2], I[3] + _broadcast_grid_stride(:x))
         end
     end
 
@@ -270,8 +300,22 @@ Also refuses 0-d destinations: `RunPTXBroadcastTask` only supports dims in
 end
 
 # Same-shaped operands do not need Broadcast's dynamic index projection.
+#
+# Size-1 dimensions are special: Broadcast marks them `keeps=false` even when the
+# leaf shape matches `dest` (e.g. length-1 vectors). Linear `I` is still valid in
+# that case because the dimension only has index 1.
+@inline function _extruded_ok_for_fusion(x::Base.Broadcast.Extruded)
+    keeps = x.keeps
+    for i in eachindex(keeps)
+        if !keeps[i] && size(x.x, i) != 1
+            return false
+        end
+    end
+    return true
+end
+
 @inline function _unwrap_fusion_arg(x::Base.Broadcast.Extruded)
-    if all(x.keeps)
+    if _extruded_ok_for_fusion(x)
         return x.x
     end
     throw(
@@ -309,7 +353,10 @@ end
 # checks stay in pre-flatten `_assert_fused_broadcast_promotion`.
 function _align_fused_runtime_args(runtime_args::Tuple)
     isempty(runtime_args) && return runtime_args
-    T_IN = __my_promote_type(map(eltype, runtime_args)...)
+    all(a -> !(a isa Number), runtime_args) && return runtime_args
+    numeric_types = filter(T -> T <: Number, map(eltype, runtime_args))
+    isempty(numeric_types) && return runtime_args
+    T_IN = __my_promote_type(numeric_types...)
     return map(a -> unchecked_promote_scalar(a, T_IN), runtime_args)
 end
 
@@ -431,7 +478,16 @@ function get_cuda_task(
 
     lock(_BCAST_PTX_CACHE_LOCK) do
         return get!(_BCAST_PTX_CACHE, key) do
-            ptx, threads, ctx = get_ptx(obj, DEST_T, ARG_TYPES...)
+            ptx, threads, ctx = try
+                get_ptx(obj, DEST_T, ARG_TYPES...)
+            catch err
+                err isa InterruptException && rethrow()
+                throw(
+                    ErrorException(
+                        "GPU broadcast function failed to fuse: $(sprint(showerror, err))"
+                    ),
+                )
+            end
 
             orig_name = extract_kernel_name(ptx)
             unique_name = orig_name * "_" * string(hash(ptx); base=16)
@@ -605,8 +661,20 @@ end
     bc::Base.Broadcast.Broadcasted{S,Ax,F,Args}
 ) where {S,Ax,F,Args}
     eltypes = _fused_checked_eltypes(bc.args)
-    T_OUT = __checked_promote_op(bc.f, eltypes)
-    __my_promote_type(eltypes.parameters...)
+    T_OUT = if length(bc.args) > 2 && _is_flattened_associative(bc.f)
+        _checked_promote_associative(bc.f, eltypes.parameters...)
+    else
+        __checked_promote_op(bc.f, eltypes)
+    end
+    if bc.f isa StructConstructor
+        # Constructing a record keeps each field's declared type; its numeric
+        # inputs are not operands of a common arithmetic operation.
+    elseif bc.f === Base.literal_pow
+        __my_promote_type(eltypes.parameters...)
+    else
+        numeric_types = _numeric_broadcast_types(eltypes)
+        isempty(numeric_types) || __my_promote_type(numeric_types...)
+    end
     return T_OUT
 end
 
@@ -639,6 +707,19 @@ end
     return Tuple{T1,rest.parameters...}
 end
 
+# Like static leaves, the broadcast function is captured by the kernel closure,
+# which the launcher does not pass to the device.
+# TODO pass the closure's captured state to the kernel so closures can fuse.
+@inline function _assert_kernel_function_has_no_data(f)
+    sizeof(f) == 0 || throw(
+        ArgumentError(
+            "Broadcast fusion cannot pass the captured variables of $(typeof(f)) to " *
+            "the GPU kernel; pass them as broadcast arguments instead",
+        ),
+    )
+    return nothing
+end
+
 function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcast.Broadcasted}
     # Promotion checks use the pre-flatten tree (same shape as unfused unravel).
     _assert_fused_broadcast_promotion(dest, bc)
@@ -653,6 +734,7 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
     bc = Base.Broadcast.preprocess(dest, bc)
     bc = Base.Broadcast.instantiate(bc)
     bc = Base.Broadcast.flatten(bc)
+    _assert_kernel_function_has_no_data(bc.f)
 
     # Things like exponentiation generate arguments like Base.RefValue
     # which do not work with our pattern for making CUDA kernels as they are
@@ -705,6 +787,9 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
 
     input_ndarrays = tuple(unique_ndarrays...)
 
+    # Legion forbids overlapping input and output regions in one task.
+    output = any(nda -> nda_overlaps(dest, nda), unique_ndarrays) ? similar(dest) : dest
+
     if BCAST_FUSION_DEBUG[]
         tree_str = _bcast_runtime_tree_str(
             bc_scope, ndarray_to_input_idx, actual_scalars
@@ -721,23 +806,371 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
         )
     end
 
-    @task_scope _bcast_scope_name(bc_scope, ndarray_to_input_idx, actual_scalars) begin
-        # `blocks=1` is a placeholder; RunPTXBroadcastTask overwrites grid dims
-        # from the local PhysicalArray. `threads` is only the occupancy budget (tx).
-        # Scalars after ctx: num_kernel_args, arg_map...
-        launch(
-            fkm.cuda_task,
-            input_ndarrays,
-            (dest,),
-            (Int32(length(arg_map)), arg_map..., actual_scalars...);
-            blocks=1,
-            threads=fkm.threads,
-            taskid=cuNumeric.RUN_PTX_BROADCAST,
-            ctx=fkm.ctx,
-            validate_shapes=false,
+    try
+        @task_scope _bcast_scope_name(bc_scope, ndarray_to_input_idx, actual_scalars) begin
+            # `blocks=1` is a placeholder; RunPTXBroadcastTask overwrites grid dims
+            # from the local PhysicalArray. `threads` is only the occupancy budget (tx).
+            # Scalars after ctx: num_kernel_args, arg_map...
+            launch(
+                fkm.cuda_task,
+                input_ndarrays,
+                (output,),
+                (Int32(length(arg_map)), arg_map..., actual_scalars...);
+                blocks=1,
+                threads=fkm.threads,
+                taskid=cuNumeric.RUN_PTX_BROADCAST,
+                ctx=fkm.ctx,
+            )
+        end
+        output === dest || nda_assign(dest, output)
+    finally
+        output === dest || destroy!(output)
+    end
+
+    return dest
+end
+
+# ============================================================================
+# Multi-output fused broadcast: materialize named intermediates in one launch.
+# Segments (dependency order, root last) are flattened independently; a
+# `MatRef{K}` leaf reads the K-th segment's per-element local. One kernel
+# computes each segment into a local, stores it to that segment's output buffer,
+# and chains locals into parents (segmented flatten + chained-local multi-store).
+# ============================================================================
+
+# Opaque scalar-like leaf that survives `Base.Broadcast.flatten` (never descended
+# into, never wrapped in a Ref).
+struct MatRef{K} end
+MatRef(k::Int) = MatRef{k}()
+Base.broadcastable(m::MatRef) = m
+Base.Broadcast.BroadcastStyle(::Type{<:MatRef}) = Base.Broadcast.DefaultArrayStyle{0}()
+Base.axes(::MatRef) = ()
+Base.ndims(::Type{<:MatRef}) = 0
+
+# Third arg-plan variant (alongside Runtime/Static): read the K-th chained local.
+struct LocalBroadcastArg{K} end
+
+Base.@propagate_inbounds @inline _materialize_ml_arg(
+    ::RuntimeBroadcastArg{J}, rt, sa, locals, I
+) where {J} = _gpu_broadcast_getindex(getfield(rt, J), I)
+Base.@propagate_inbounds @inline _materialize_ml_arg(
+    ::StaticBroadcastArg{J}, rt, sa, locals, I
+) where {J} = getfield(sa, J)
+Base.@propagate_inbounds @inline _materialize_ml_arg(
+    ::LocalBroadcastArg{K}, rt, sa, locals, I
+) where {K} = getfield(locals, K)
+
+Base.@propagate_inbounds @inline _materialize_ml_args(::Tuple{}, rt, sa, locals, I) = ()
+Base.@propagate_inbounds @inline function _materialize_ml_args(plan::Tuple, rt, sa, locals, I)
+    return (
+        @inbounds(_materialize_ml_arg(getfield(plan, 1), rt, sa, locals, I)),
+        @inbounds(_materialize_ml_args(Base.tail(plan), rt, sa, locals, I))...,
+    )
+end
+
+# Device-side: run each segment in order, store to its output, chain the local.
+# Generate straight-line code because recursive tuple traversal eventually hits
+# Julia's inference limit and leaves a dynamic call in GPU kernels on Julia 1.10.
+Base.@propagate_inbounds @inline @generated function _run_segments(
+    segs::S, outs, rt, sa, locals::L, I
+) where {S<:Tuple,L<:Tuple}
+    body = Expr(:block)
+    local_values = Any[:(getfield(locals, $k)) for k in 1:fieldcount(L)]
+
+    for k in 1:fieldcount(S)
+        seg = gensym(:seg)
+        vals = gensym(:vals)
+        value = gensym(:value)
+        local_tuple = Expr(:tuple, local_values...)
+        push!(
+            body.args,
+            quote
+                $seg = getfield(segs, $k)
+                $vals = _materialize_ml_args(
+                    getfield($seg, 2), rt, sa, $local_tuple, I
+                )
+                $value = Base.Broadcast._broadcast_getindex_evalf(
+                    getfield($seg, 1), $vals...
+                )
+                @inbounds getfield(outs, $k)[I] = $value
+            end,
+        )
+        push!(local_values, value)
+    end
+
+    push!(body.args, :(nothing))
+    return body
+end
+
+# Split `args` at compile time; range-slicing the heterogeneous tuple
+# (`args[1:NOUT]`) can spill every kernel argument to local memory.
+@inline _take(args::Tuple, ::Val{N}) where {N} = ntuple(i -> getfield(args, i), Val(N))
+@inline _drop(args::Tuple, ::Val{0}) = args
+@inline _drop(args::Tuple, ::Val{N}) where {N} = _drop(Base.tail(args), Val(N - 1))
+
+# Dimension-dispatched (mirrors the single-output linear/cartesian kernels).
+# `args` = (outputs[1:NOUT]..., runtime_args...); bounds from the first output.
+function make_multi_output_kernel(segs, ::Val{NOUT}, static_args, ::Val{2}) where {NOUT}
+    @kernel unsafe_indices = true function broadcast_kernel_multi_2d(args...)
+        start = _broadcast_cartesian_work_id()
+        I = start
+        dest = getfield(args, 1)
+        @inbounds while I[2] <= size(dest, 2)
+            while I[1] <= size(dest, 1)
+                _run_segments(
+                    segs, _take(args, Val(NOUT)), _drop(args, Val(NOUT)), static_args, (), I
+                )
+                I += CartesianIndex(_broadcast_grid_stride(:y), 0)
+            end
+            I = CartesianIndex(start[1], I[2] + _broadcast_grid_stride(:x))
+        end
+    end
+    return broadcast_kernel_multi_2d
+end
+
+function make_multi_output_kernel(segs, ::Val{NOUT}, static_args, ::Val{3}) where {NOUT}
+    @kernel unsafe_indices = true function broadcast_kernel_multi_3d(args...)
+        start = _broadcast_cartesian_work_id_3d()
+        I = start
+        dest = getfield(args, 1)
+        @inbounds while I[3] <= size(dest, 3)
+            while I[2] <= size(dest, 2)
+                while I[1] <= size(dest, 1)
+                    _run_segments(
+                        segs, _take(args, Val(NOUT)), _drop(args, Val(NOUT)), static_args, (), I
+                    )
+                    I += CartesianIndex(_broadcast_grid_stride(:z), 0, 0)
+                end
+                I = CartesianIndex(start[1], I[2] + _broadcast_grid_stride(:y), I[3])
+            end
+            I = CartesianIndex(start[1], start[2], I[3] + _broadcast_grid_stride(:x))
+        end
+    end
+    return broadcast_kernel_multi_3d
+end
+
+# 1-D and any other rank: linear indexing (matches the single-output default).
+function make_multi_output_kernel(segs, ::Val{NOUT}, static_args, ::Val) where {NOUT}
+    @kernel unsafe_indices = true function broadcast_kernel_multi_linear(args...)
+        I = _broadcast_linear_work_id()
+        @inbounds while I <= length(getfield(args, 1))
+            _run_segments(segs, _take(args, Val(NOUT)), _drop(args, Val(NOUT)), static_args, (), I)
+            I += _broadcast_grid_stride(:x)
+        end
+    end
+    return broadcast_kernel_multi_linear
+end
+
+# Flatten a segment and classify its leaves, deduping NDArrays into shared
+# `runtime_args` and static leaves into shared `static_args`.
+function _split_segment!(seg_bc, runtime_args, static_args, ndarray_idx)
+    flat = Base.Broadcast.flatten(seg_bc)
+    _assert_kernel_function_has_no_data(flat.f)
+    plan = Any[]
+    for leaf in flat.args
+        if leaf isa MatRef
+            push!(plan, LocalBroadcastArg{_matref_k(leaf)}())
+        elseif leaf isa Base.RefValue
+            v = leaf[]
+            if v isa Number
+                push!(runtime_args, v)
+                push!(plan, RuntimeBroadcastArg{length(runtime_args)}())
+            else
+                _push_static_arg!(static_args, plan, v)
+            end
+        elseif leaf isa NDArray || leaf isa Base.Broadcast.Extruded
+            nda = get_ndarray(leaf)
+            j = get!(() -> (push!(runtime_args, leaf); length(runtime_args)),
+                ndarray_idx, objectid(nda))
+            push!(plan, RuntimeBroadcastArg{j}())
+        elseif leaf isa Number
+            push!(runtime_args, leaf)
+            push!(plan, RuntimeBroadcastArg{length(runtime_args)}())
+        elseif isbits(leaf)
+            _push_static_arg!(static_args, plan, leaf)
+        else
+            throw(ArgumentError("multi-output fusion: cannot lower leaf $(typeof(leaf))"))
+        end
+    end
+    return (flat.f, tuple(plan...))
+end
+
+_matref_k(::MatRef{K}) where {K} = K
+
+const _MULTI_PTX_CACHE = Dict{Any,Any}()
+const _MULTI_PTX_CACHE_LOCK = ReentrantLock()
+
+# Compile + register the multi-output kernel -> (ctx, threads, CUDATask). Cached
+# by (closure type, arg types) so a repeated fusion signature compiles once.
+function get_multi_cuda_task(obj, out_arrs, runtime_args)
+    arg_types = (map_cuda_type.(typeof.(out_arrs))..., map_cuda_type.(typeof.(runtime_args))...)
+    key = (typeof(obj), arg_types)
+    lock(_MULTI_PTX_CACHE_LOCK) do
+        return get!(_MULTI_PTX_CACHE, key) do
+            ptx, threads, ctx = get_ptx(obj, arg_types...)
+            threads == 0 && return (ctx, 0, nothing)
+            orig = extract_kernel_name(ptx)
+            uname = orig * "_" * string(hash(ptx); base=16)
+            ptx = replace(ptx, orig => uname)
+            ptx_task(ptx, uname)
+            return (ctx, threads, CUDATask(uname, arg_types))
+        end
+    end
+end
+
+# First NDArray leaf across all segments; used as an allocation template.
+function _first_ndarray(seg_bcs::Tuple)
+    for seg_bc in seg_bcs
+        for leaf in Base.Broadcast.flatten(seg_bc).args
+            leaf isa NDArray && return leaf
+            leaf isa Base.Broadcast.Extruded && return get_ndarray(leaf)
+        end
+    end
+    return throw(ArgumentError("multi-output fusion: no NDArray leaf to size buffers from"))
+end
+
+# Result eltype of a segment, resolving `MatRef{k}` to `eltype(bufs[k])` (earlier
+# segments already allocated). Lets each intermediate use its own eltype.
+function _segment_eltype(flat, bufs)
+    ets = map(flat.args) do leaf
+        if leaf isa MatRef
+            eltype(bufs[_matref_k(leaf)])
+        elseif leaf isa NDArray
+            eltype(leaf)
+        elseif leaf isa Base.Broadcast.Extruded
+            eltype(leaf.x)
+        else
+            typeof(leaf)
+        end
+    end
+    T = Base.promote_op(flat.f, ets...)
+    # Fall back to promoting the leaf eltypes when promote_op can't infer.
+    return isconcretetype(T) ? T : promote_type(ets...)
+end
+
+# Render a segment's broadcast tree, showing `MatRef{k}` leaves as `seg{k}`.
+function _bcast_multi_tree_str(bc)
+    return _bcast_tree_str(bc) do x
+        x isa MatRef && return "seg{$(_matref_k(x))}"
+        x isa NDArray && return "NDArray"
+        x isa Base.Broadcast.Extruded && return "NDArray"
+        x isa Number && return repr(x)
+        x isa Base.RefValue && return string("^", repr(x[]))
+        return string("<", typeof(x), ">")
+    end
+end
+
+# Fused multi-output introspection (mirrors `_describe_fused_broadcast`). Enable
+# with `cuNumeric.BCAST_FUSION_DEBUG[] = true`.
+function _describe_fused_multi(
+    out_arrs, seg_bcs, input_ndarrays, actual_scalars, argmap, threads, ndrange
+)
+    io = IOBuffer()
+    field(k, v) = println(io, "  ", rpad(k, 8), v)
+    NOUT = length(out_arrs)
+    println(io, "\n", "="^40, " fused multi-output broadcast ($NOUT outputs)")
+    println(io, "  segments (each materialized to its own output):")
+    for (i, seg) in enumerate(seg_bcs)
+        role = i == NOUT ? "root" : "seg{$i}"
+        println(
+            io, "    ", rpad(role, 7), _ndarray_debug_summary(out_arrs[i]),
+            "  <- ", _bcast_multi_tree_str(seg),
+        )
+    end
+    field("inputs", "input{N} ($(length(input_ndarrays)) unique)")
+    for (i, nd) in enumerate(input_ndarrays)
+        println(io, "    ", rpad(string(i - 1), 4), _ndarray_debug_summary(nd))
+    end
+    isempty(actual_scalars) || field("scalars", join(repr.(actual_scalars), ", "))
+    indexing = ndims(out_arrs[1]) in (2, 3) ? "cartesian" : "linear"
+    field(
+        "launch",
+        "host thread budget=$threads, indexing=$indexing, num_outputs=$NOUT, " *
+        "blocks=device(local tile), global_ndrange=$ndrange",
+    )
+    field("arg_map", string(argmap))
+    print(String(take!(io)))
+    return nothing
+end
+
+# Launch one kernel writing each segment into preallocated `out_arrs[i]`
+# (dependency order; `out_arrs[end]` is the root).
+function _fused_multi_launch!(out_arrs::Tuple, seg_bcs::Tuple)
+    NOUT = length(seg_bcs)
+    runtime_args = Any[]
+    static_args = Any[]
+    ndarray_idx = Dict{UInt,Int}()
+    segs = Any[]
+    for seg_bc in seg_bcs
+        push!(segs, _split_segment!(seg_bc, runtime_args, static_args, ndarray_idx))
+    end
+    segs = tuple(segs...)
+    static_args = tuple(static_args...)
+
+    kernel = make_multi_output_kernel(segs, Val(NOUT), static_args, Val(ndims(out_arrs[1])))
+    bck = kernel(CUDACore.CUDAKernels.CUDABackend())
+    ctx, threads, task = get_multi_cuda_task(bck, out_arrs, tuple(runtime_args...))
+    isnothing(task) && return out_arrs
+
+    # arg_map: kernel args in order (outputs..., runtime_args...).
+    argmap = Int32[Int32(i) for i in 0:(NOUT - 1)]
+    input_ndarrays = NDArray[]
+    ndinput_idx = Dict{UInt,Int}()
+    actual_scalars = Any[]
+    for arg in runtime_args
+        if stores_cudevicearray(map_cuda_type(typeof(arg)))
+            nda = get_ndarray(arg)
+            j = get!(() -> (push!(input_ndarrays, nda); length(input_ndarrays) - 1),
+                ndinput_idx, objectid(nda))
+            push!(argmap, Int32(NOUT + j))
+        else
+            push!(argmap, Int32(-1 - length(actual_scalars)))
+            push!(actual_scalars, arg)
+        end
+    end
+
+    if BCAST_FUSION_DEBUG[]
+        ndrange = ndims(out_arrs[1]) > 0 ? size(out_arrs[1]) : (1,)
+        _describe_fused_multi(
+            out_arrs, seg_bcs, input_ndarrays, actual_scalars, argmap, threads, ndrange
         )
     end
 
-    # Fused kernel already wrote `dest` in place; promotion was checked pre-launch.
-    return dest
+    launch(
+        task, tuple(input_ndarrays...), out_arrs,
+        (Int32(length(argmap)), argmap..., actual_scalars...);
+        blocks=1, threads=threads, taskid=cuNumeric.RUN_PTX_BROADCAST, ctx=ctx,
+    )
+    return out_arrs
+end
+
+# Allocate a typed tuple so callers retain each segment's concrete NDArray type.
+function _alloc_segment_buffers(template::NDArray, seg_bcs::Tuple, dims)
+    return _alloc_segment_buffers(template, seg_bcs, dims, ())
+end
+
+@inline _alloc_segment_buffers(template, ::Tuple{}, dims, bufs::Tuple) = bufs
+
+@inline function _alloc_segment_buffers(template, seg_bcs::Tuple, dims, bufs::Tuple)
+    flat = Base.Broadcast.flatten(first(seg_bcs))
+    buf = similar(template, _segment_eltype(flat, bufs), dims)
+    return _alloc_segment_buffers(template, Base.tail(seg_bcs), dims, (bufs..., buf))
+end
+
+# `seg_bcs[1:end-1]` are materialized producers (dependency order); `seg_bcs[end]`
+# writes `dest`. Producer buffers are allocated (returned so callers bind names).
+function copyto_fused_multi!(dest::NDArray, seg_bcs::Tuple)
+    bufs = _alloc_segment_buffers(dest, seg_bcs[1:(end - 1)], size(dest))
+    outs = (bufs..., dest)
+    _fused_multi_launch!(outs, seg_bcs)
+    return outs
+end
+
+# Every segment gets a fresh buffer (all named results stay live). Returns the
+# buffers in segment order so callers can bind each user name.
+function copyto_fused_multi_alloc!(seg_bcs::Tuple)
+    tmpl = _first_ndarray(seg_bcs)
+    outs = _alloc_segment_buffers(tmpl, seg_bcs, size(tmpl))
+    _fused_multi_launch!(outs, seg_bcs)
+    return outs
 end

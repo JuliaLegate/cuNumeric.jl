@@ -41,23 +41,46 @@ end
 
 get_n_dim(ptr::NDArray_t) = Int(ccall((:nda_array_dim, libnda), Int32, (NDArray_t,), ptr))
 
-abstract type AbstractNDArray{T<:SUPPORTED_TYPES,N} end
+abstract type AbstractNDArray{T,N} <: AbstractArray{T,N} end
+
+@inline _struct_storage_type(::Type{T}) where {T} =
+    isbitstype(T) && !(T <: SUPPORTED_TYPES) && !isprimitivetype(T) &&
+    fieldcount(T) > 0 &&
+    all(F -> F <: SUPPORTED_ARRAY_TYPES, fieldtypes(T))
+
+# cuPyNumeric has no record-typed operations: struct stores are packed,
+# unpacked, copied and compared by the fused GPU broadcast kernel.
+# TODO CPU variants for struct pack/unpack so host transfer works without a GPU.
+@inline _struct_kernel_available() = FUSE_BROADCAST_EXPRS && _has_gpu_target()
+
+@inline function _assert_struct_kernel(op, ::Type{T}) where {T}
+    _struct_kernel_available() || throw(
+        ArgumentError(
+            "$(op) of NDArrays with struct element type $(T) requires GPU broadcast " *
+            "fusion (fusion enabled: $(FUSE_BROADCAST_EXPRS), GPU available: $(_has_gpu_target()))",
+        ),
+    )
+    return nothing
+end
+
+# Runtime padding uses an abstract field to break the recursive storage definition.
+abstract type AbstractPaddedStorage{T,N} end
 
 @doc"""
 The NDArray type represents a multi-dimensional array in cuNumeric.
 It is a wrapper around a Legate array and provides various methods for array manipulation and operations.
 Finalizer calls `nda_destroy_array` to clean up the underlying Legate array when the NDArray is garbage collected.
 """
-mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
+mutable struct NDArray{T,N,P} <: AbstractNDArray{T,N}
     ptr::NDArray_t
     nbytes::Int64
-    padding::Union{Nothing,NTuple{N,Int}}
+    padding::Union{Nothing,AbstractPaddedStorage{T,N}}
     parent::P
 
     function NDArray(ptr::NDArray_t, ::Type{T}, ::Val{N}) where {T,N}
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
-        handle = new{T,N,false,Nothing}(ptr, nbytes, nothing, nothing)
+        handle = new{T,N,Nothing}(ptr, nbytes, nothing, nothing)
         finalizer(_finalize_ndarray!, handle)
         return handle
     end
@@ -66,26 +89,53 @@ mutable struct NDArray{T,N,PADDED,P} <: AbstractNDArray{T,N}
     function NDArray(ptr::NDArray_t, ::Type{T}, ::Val{N}, parent::P) where {T,N,P}
         nbytes = cuNumeric.nda_nbytes(ptr)
         cuNumeric.register_alloc!(nbytes)
-        handle = new{T,N,false,P}(ptr, nbytes, nothing, parent)
+        handle = new{T,N,P}(ptr, nbytes, nothing, parent)
         finalizer(_finalize_ndarray!, handle)
         return handle
     end
+end
+
+struct PaddedStorage{T,N} <: AbstractPaddedStorage{T,N}
+    backing::NDArray{T,N,Nothing}
+    staging::Union{Nothing,NDArray{T,N,NDArray{T,N,Nothing}}}
+    shape::NTuple{N,Int}
+end
+
+# Narrow the abstract field to its concrete storage type.
+@inline _padding(arr::NDArray{T,N}) where {T,N} =
+    arr.padding::Union{Nothing,PaddedStorage{T,N}}
+
+function _finalize_padded_storage!(storage::PaddedStorage)
+    !isnothing(storage.staging) && finalize(storage.staging)
+    finalize(storage.backing)
+    return nothing
+end
+
+function _destroy_padded_storage!(storage::PaddedStorage)
+    !isnothing(storage.staging) && destroy!(storage.staging)
+    destroy!(storage.backing)
+    return nothing
 end
 
 # May run off the launch thread, so defer the Legate free to drain_pending_frees!.
 # Accounting is atomic and safe to do here immediately.
 function _finalize_ndarray!(arr::NDArray)
     ptr = arr.ptr
-    ptr == C_NULL && return nothing
     arr.ptr = Ptr{Cvoid}(0)
     nbytes = arr.nbytes
     arr.nbytes = 0
-    nbytes > 0 && register_free!(nbytes)
-    _enqueue_free!(ptr)
+    padding = _padding(arr)
+    arr.padding = nothing
+
+    if ptr != C_NULL
+        nbytes > 0 && register_free!(nbytes)
+        _enqueue_free!(ptr)
+    end
+    !isnothing(padding) && _finalize_padded_storage!(padding)
     return nothing
 end
 
-@inline _is_ndarray_slice(arr::NDArray) = arr.parent isa NDArray
+@inline _is_ndarray_slice(arr::NDArray) = arr.parent isa NDArray || !isnothing(_padding(arr))
 
 """
     destroy!(arr::NDArray)
@@ -102,6 +152,9 @@ function destroy!(arr::NDArray)
         arr.nbytes = 0
         nbytes > 0 && register_free!(nbytes)
     end
+    padding = _padding(arr)
+    arr.padding = nothing
+    !isnothing(padding) && _destroy_padded_storage!(padding)
     return arr
 end
 
@@ -130,6 +183,44 @@ _scope_op(kind, op_code) = string(kind, "#", Int32(op_code))
 NDArray(value::T) where {T<:SUPPORTED_TYPES} = nda_full_array((), value)
 
 # construction
+# Internal outputs only: callers must overwrite every element before any read.
+function nda_empty_array(dims::Dims{N}, ::Type{T}) where {T,N}
+    shape = collect(UInt64, dims)
+    if _struct_storage_type(T)
+        fields = fieldtypes(T)
+        codes = Int32[Int32(Legate.code(Legate.to_legate_type(F))) for F in fields]
+        offsets = UInt32[UInt32(fieldoffset(T, i)) for i in eachindex(fields)]
+        layout_matches = ccall((:nda_struct_layout_matches, libnda), Bool,
+            (Int32, Ptr{Int32}, UInt32, Ptr{UInt32}),
+            Int32(length(fields)), codes, UInt32(sizeof(T)), offsets)
+        layout_matches || throw(
+            ArgumentError(
+                "Legate cannot store $T: its field offsets or size differ from Julia's layout"
+            ),
+        )
+        ptr = @task_scope "empty_struct" begin
+            ccall((:nda_empty_struct_array, libnda), NDArray_t,
+                (Int32, Ptr{UInt64}, Int32, Ptr{Int32}, UInt32, Ptr{UInt32}),
+                Int32(N), shape, Int32(length(fields)), codes, UInt32(sizeof(T)), offsets)
+        end
+        return NDArray(ptr, T, Val(N))
+    end
+    if isbitstype(T) && !isprimitivetype(T) && !(T <: SUPPORTED_TYPES)
+        throw(
+            ArgumentError(
+                "Unsupported isbits element type $T: struct fields must be supported scalar types"
+            ),
+        )
+    end
+    legate_type = Legate.to_legate_type(T)
+    ptr = @task_scope "empty" begin
+        ccall((:nda_empty_array, libnda),
+            NDArray_t, (Int32, Ptr{UInt64}, Legate.LegateTypeAllocated),
+            Int32(N), shape, legate_type)
+    end
+    return NDArray(ptr, T, Val(N))
+end
+
 function nda_zeros_array(dims::Dims{N}, ::Type{T}) where {T,N}
     shape = collect(UInt64, dims)
     legate_type = Legate.to_legate_type(T)
@@ -155,22 +246,79 @@ function nda_full_array(dims::Dims{N}, value::T) where {T,N}
     return NDArray(ptr, T, Val(N))
 end
 
-function nda_random(arr::NDArray, gen_code)
-    @task_scope "rand!" begin
-        ccall((:nda_random, libnda),
-            Cvoid, (NDArray_t, Int32),
-            arr.ptr, Int32(gen_code))
+# Legacy Float64-only CUPYNUMERIC_RAND wrappers; unused after BitGenerator.
+# function nda_random(arr::NDArray, gen_code)
+#     @task_scope "rand!" begin
+#         ccall((:nda_random, libnda),
+#             Cvoid, (NDArray_t, Int32),
+#             arr.ptr, Int32(gen_code))
+#     end
+# end
+#
+# function nda_random_array(dims::Dims{N}) where {N}
+#     shape = collect(UInt64, dims)
+#     ptr = @task_scope "rand" begin
+#         ccall((:nda_random_array, libnda),
+#             NDArray_t, (Int32, Ptr{UInt64}),
+#             Int32(N), shape)
+#     end
+#     return NDArray(ptr, Float64, Val(N)) #* T is always Float64 cause of cupynumeric
+# end
+
+# Pack an SVector as a Legate fixed-array scalar. Empty vectors pass a null ptr.
+function _add_vector_scalar!(add!, task, ::SVector{0,T}) where {T}
+    add!(task, Ptr{T}(C_NULL), Int32(0))
+    return nothing
+end
+function _add_vector_scalar!(add!, task, v::SVector{N,T}) where {N,T}
+    ref = Ref(v)
+    GC.@preserve ref begin
+        add!(task, Ptr{T}(Base.unsafe_convert(Ptr{SVector{N,T}}, ref)), Int32(N))
     end
+    return nothing
 end
 
-function nda_random_array(dims::Dims{N}) where {N}
-    shape = collect(UInt64, dims)
-    ptr = @task_scope "rand" begin
-        ccall((:nda_random_array, libnda),
-            NDArray_t, (Int32, Ptr{UInt64}),
-            Int32(N), shape)
+# Match cupynumeric/_thunk/deferred.py::bitgenerator_distribution via Julia
+# Legate tasking. Vector scalars still go through tiny C++ helpers because
+# Legate.jl Scalar has no std::vector constructors.
+function nda_bitgenerator_distribution!(
+    arr::NDArray,
+    handle::Int32,
+    generator_type::UInt32,
+    seed::UInt64,
+    flags::UInt32,
+    distribution::UInt32,
+    strides::SVector{N,Int64},
+    intparams::SVector{NI,Int64},
+    floatparams::SVector{NF,Float32},
+    doubleparams::SVector{ND,Float64},
+) where {N,NI,NF,ND}
+    isempty(arr) && return arr
+
+    @task_scope "bitgenerator" begin
+        rt = Legate.get_runtime()
+        lib = cuNumeric.get_lib()
+        task = Legate.create_auto_task(rt, lib, cuNumeric.BITGENERATOR)
+
+        st = cuNumeric.get_store(arr)
+        Legate.add_output(task, st)
+        finalize(st)
+
+        Legate.add_scalar(task, Legate.Scalar(Int32(cuNumeric.BITGENOP_DISTRIBUTION)))
+        Legate.add_scalar(task, Legate.Scalar(handle))
+        Legate.add_scalar(task, Legate.Scalar(generator_type))
+        Legate.add_scalar(task, Legate.Scalar(seed))
+        Legate.add_scalar(task, Legate.Scalar(flags))
+        Legate.add_scalar(task, Legate.Scalar(distribution))
+
+        _add_vector_scalar!(cuNumeric.add_vector_scalar_i64, task, strides)
+        _add_vector_scalar!(cuNumeric.add_vector_scalar_i64, task, intparams)
+        _add_vector_scalar!(cuNumeric.add_vector_scalar_f32, task, floatparams)
+        _add_vector_scalar!(cuNumeric.add_vector_scalar_f64, task, doubleparams)
+
+        Legate.submit_auto_task(rt, task)
     end
-    return NDArray(ptr, Float64, Val(N)) #* T is always Float64 cause of cupynumeric
+    return arr
 end
 
 function nda_get_slice(arr::NDArray{T,N}, slices::Vector{Slice}) where {T,N}
@@ -184,11 +332,16 @@ function nda_get_slice(arr::NDArray{T,N}, slices::Vector{Slice}) where {T,N}
     return NDArray(ptr, T, Val(N), arr)
 end
 
+@inline nda_overlaps(lhs::NDArray, rhs::NDArray) =
+    ccall(
+        (:nda_overlaps, libnda), Cuchar, (NDArray_t, NDArray_t), lhs.ptr, rhs.ptr
+    ) != 0
+
 # queries
 nda_array_dim(arr::NDArray) = ccall((:nda_array_dim, libnda),
     Int32, (NDArray_t,), arr.ptr)
 nda_array_size(arr::NDArray) = ccall((:nda_array_size, libnda),
-    Int32, (NDArray_t,), arr.ptr)
+    UInt64, (NDArray_t,), arr.ptr) # C API returns uint64_t, not an axis/count int32_t.
 function nda_array_type_code(arr::NDArray)
     return ccall((:nda_array_type_code, libnda),
         Int32, (NDArray_t,), arr.ptr)
@@ -236,7 +389,47 @@ function nda_fill_array(arr::NDArray{T}, value::T) where {T}
     return nothing
 end
 
+# Struct stores are filled from the value's bytes; Legate has their layout.
+# TODO fill!, fill, and struct setindex! call Legate's issue_fill directly. Move
+# them onto the fused broadcast kernel, as struct copies are, once runtime
+# scalar arguments keep their own types instead of promoting to a common one.
+function nda_fill_struct_array(arr::NDArray{T}, value::T) where {T}
+    val = Ref(value)
+    GC.@preserve val begin
+        @task_scope "fill!" begin
+            ccall((:nda_fill_struct_array, libnda),
+                Cvoid, (NDArray_t, Ptr{Cvoid}, UInt64),
+                arr.ptr, Base.unsafe_convert(Ptr{T}, val), UInt64(sizeof(T)))
+        end
+    end
+    return nothing
+end
+
+# cuPyNumeric has no record kernels, so struct copies run the fused broadcast
+# kernel, which already packs struct stores, slices, and views.
+function _nda_assign_struct(arr::NDArray{T}, other::NDArray{T}) where {T}
+    size(arr) == size(other) || throw(
+        DimensionMismatch("cannot copy an array of size $(size(other)) into size $(size(arr))")
+    )
+    isempty(arr) && return nothing
+    _assert_struct_kernel("Copying", T)
+    if ndims(arr) == 0
+        # The fused kernel needs a rank; a 0-d reshape views the same element.
+        dest, src = nda_reshape_array(arr, (1,)), nda_reshape_array(other, (1,))
+        try
+            _nda_assign_struct(dest, src)
+        finally
+            destroy!(dest)
+            destroy!(src)
+        end
+    else
+        arr .= StructIdentity().(other)
+    end
+    return nothing
+end
+
 function nda_assign(arr::NDArray{T}, other::NDArray{T}) where {T}
+    _struct_storage_type(T) && return _nda_assign_struct(arr, other)
     @task_scope "copyto!" begin
         ccall((:nda_assign, libnda),
             Cvoid, (NDArray_t, NDArray_t),
@@ -245,6 +438,11 @@ function nda_assign(arr::NDArray{T}, other::NDArray{T}) where {T}
 end
 
 function nda_copy(arr::NDArray{T,N}) where {T,N}
+    if _struct_storage_type(T)
+        out = nda_empty_array(size(arr), T)
+        _nda_assign_struct(out, arr)
+        return out
+    end
     ptr = @task_scope "copy" begin
         ccall((:nda_copy, libnda),
             NDArray_t, (NDArray_t,),
@@ -274,6 +472,17 @@ end
 function nda_binary_op!(out::NDArray, op_code::BinaryOpCode, rhs1::NDArray, rhs2::NDArray)
     @task_scope _scope_op("binary", op_code) begin
         ccall((:nda_binary_op, libnda),
+            Cvoid, (NDArray_t, BinaryOpCode, NDArray_t, NDArray_t),
+            out.ptr, op_code, rhs1.ptr, rhs2.ptr)
+    end
+    return out
+end
+
+function nda_binary_reduction!(
+    out::NDArray, op_code::BinaryOpCode, rhs1::NDArray, rhs2::NDArray
+)
+    @task_scope _scope_op("binary_red", op_code) begin
+        ccall((:nda_binary_reduction, libnda),
             Cvoid, (NDArray_t, BinaryOpCode, NDArray_t, NDArray_t),
             out.ptr, op_code, rhs1.ptr, rhs2.ptr)
     end
@@ -338,6 +547,42 @@ function nda_unique(arr::NDArray{T}) where {T}
             arr.ptr)
     end
     return NDArray(ptr, T, Val(1))
+end
+
+function nda_sort(arr::NDArray{T,N}, axis::Int32, stable::Bool) where {T,N}
+    ptr = @task_scope "sort" begin
+        ccall((:nda_sort, libnda),
+            NDArray_t, (NDArray_t, Int32, Bool),
+            arr.ptr, axis, stable)
+    end
+    return NDArray(ptr, T, Val(N))
+end
+
+function nda_sort_inplace(arr::NDArray, axis::Int32, stable::Bool)
+    @task_scope "sort!" begin
+        ccall((:nda_sort_inplace, libnda),
+            Cvoid, (NDArray_t, Int32, Bool),
+            arr.ptr, axis, stable)
+    end
+    return arr
+end
+
+function nda_argsort(arr::NDArray{<:Any,N}, axis::Int32, stable::Bool) where {N}
+    ptr = @task_scope "argsort" begin
+        ccall((:nda_argsort, libnda),
+            NDArray_t, (NDArray_t, Int32, Bool),
+            arr.ptr, axis, stable)
+    end
+    return NDArray(ptr, Int64, Val(N))
+end
+
+function nda_searchsorted(a::NDArray, v::NDArray{<:Any,N}, left::Bool) where {N}
+    ptr = @task_scope "searchsorted" begin
+        ccall((:nda_searchsorted, libnda),
+            NDArray_t, (NDArray_t, NDArray_t, Bool),
+            a.ptr, v.ptr, left)
+    end
+    return NDArray(ptr, Int64, Val(N))
 end
 
 function nda_ravel(arr::NDArray)
@@ -418,7 +663,7 @@ function nda_trace(
             (NDArray_t, Int32, Int32, Int32, Legate.LegateTypeAllocated),
             arr.ptr, offset, a1, a2, legate_type)
     end
-    return NDArray(ptr, T, Val(1))
+    return NDArray(ptr, T, Val(0))
 end
 
 # transpose reverses the axes: element type and rank are preserved
@@ -429,6 +674,62 @@ function nda_transpose(arr::NDArray{T,N}) where {T,N}
             arr.ptr)
     end
     return NDArray(ptr, T, Val(N))
+end
+
+# Arbitrary axis permutation; rank is preserved. `axes` are 0-based.
+function nda_transpose_axes(arr::NDArray{T,N}, axes::Vector{Int32}) where {T,N}
+    axes_c = collect(Int32, axes)
+    ptr = @task_scope "permutedims" begin
+        ccall((:nda_transpose_axes, libnda),
+            NDArray_t, (NDArray_t, Ptr{Int32}, Int32),
+            arr.ptr, axes_c, Int32(length(axes_c)))
+    end
+    return NDArray(ptr, T, Val(N))
+end
+
+# Rank-changing: drop size-1 axes. Empty `axes` drops every size-1 axis.
+function nda_squeeze(arr::NDArray, axes::Vector{Int32})
+    axes_c = collect(Int32, axes)
+    ptr = @task_scope "squeeze" begin
+        ccall((:nda_squeeze, libnda),
+            NDArray_t, (NDArray_t, Ptr{Int32}, Int32),
+            arr.ptr, axes_c, Int32(length(axes_c)))
+    end
+    return NDArray(ptr)
+end
+
+function nda_diagonal(arr::NDArray, offset::Int32, axis1::Int32, axis2::Int32)
+    ptr = @task_scope "diagonal" begin
+        ccall((:nda_diagonal, libnda),
+            NDArray_t, (NDArray_t, Int32, Int32, Int32),
+            arr.ptr, offset, axis1, axis2)
+    end
+    return NDArray(ptr)
+end
+
+function nda_contract(
+    out::NDArray,
+    lhs_modes::Vector{UInt8},
+    rhs1::NDArray,
+    rhs1_modes::Vector{UInt8},
+    rhs2::NDArray,
+    rhs2_modes::Vector{UInt8},
+    extent_keys::Vector{UInt8},
+    extents::Vector{Int32},
+)
+    @task_scope "contract" begin
+        ccall((:nda_contract, libnda),
+            Cvoid,
+            (
+                NDArray_t, Ptr{UInt8}, Int32, NDArray_t, Ptr{UInt8}, Int32,
+                NDArray_t, Ptr{UInt8}, Int32, Ptr{UInt8}, Ptr{Int32}, Int32,
+            ),
+            out.ptr, lhs_modes, Int32(length(lhs_modes)),
+            rhs1.ptr, rhs1_modes, Int32(length(rhs1_modes)),
+            rhs2.ptr, rhs2_modes, Int32(length(rhs2_modes)),
+            extent_keys, extents, Int32(length(extents)))
+    end
+    return out
 end
 
 function nda_attach_external(arr::Array{T,N}; shape::Dims{N}=size(arr)) where {T,N}
@@ -453,7 +754,14 @@ function get_ptr(arr::NDArray{T,N}) where {T,N}
     # store with the NDArray; finalize after use (same pin class as `_add_task_array!`).
     st_handle = get_store(arr) # LogicalArrayImplAllocated (returned by value)
     la = Legate.LogicalArray{T,N}(st_handle, size(arr))
-    ptr = Legate.get_ptr(la)
+    # Legate.get_ptr(::LogicalArray) leaves PhysicalArray/PhysicalStore handles
+    # to GC. Their destructors can unmap regions, which must run on the runtime
+    # thread, just like the logical handle below. Keep and release them here.
+    physical = Legate.get_physical_array(la)
+    data = Legate.data(physical)
+    ptr = Legate.get_ptr(data)
+    finalize(data)
+    finalize(physical)
     finalize(st_handle)
     return ptr
 end
@@ -534,11 +842,12 @@ end
 
 Return the size of the given `NDArray`.
 """
-shape(arr::NDArray{<:Any,N,true}) where {N} = arr.padding
-
-function shape(arr::NDArray{<:Any,N,false}) where {N}
-    shp = cuNumeric.nda_array_shape(arr)
-    return ntuple(i -> Int(shp[i]), Val(N))
+function shape(arr::NDArray{<:Any,N}) where {N}
+    # Rank is known from the type; avoid a rank query and temporary shape Vector.
+    shp = Ref{NTuple{N,UInt64}}()
+    ccall((:nda_array_shape, libnda),
+        Cvoid, (NDArray_t, Ref{NTuple{N,UInt64}}), arr.ptr, shp)
+    return map(Int, shp[])
 end
 
 @doc"""
