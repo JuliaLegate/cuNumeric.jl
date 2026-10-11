@@ -67,7 +67,7 @@ See [Kernel Fusion](https://julialegate.github.io/cuNumeric.jl/stable/perf/kerne
 
 ### The `@accelerate` macro
 
-`@accelerate` fuses eligible GPU broadcasts within and across statements, then releases materialized temporary `NDArray`s after their last use on CPU or GPU. See [The `@accelerate` Macro](https://julialegate.github.io/cuNumeric.jl/stable/perf/reduce_allocations) for usage guidance.
+`@accelerate` fuses eligible GPU broadcasts within and across statements, then releases materialized temporary `NDArray`s after their last use on CPU or GPU. See [The `@accelerate` Macro](https://julialegate.github.io/cuNumeric.jl/stable/perf/accelerate/) for usage guidance.
 
 ### Benchmarks
 

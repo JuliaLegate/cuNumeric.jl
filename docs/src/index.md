@@ -69,7 +69,7 @@ See [Kernel Fusion](perf/kernel_fusion.md) and [Debugging](debugging.md) for con
 
 ### The `@accelerate` macro
 
-`@accelerate` fuses eligible GPU broadcasts within and across statements, then releases materialized temporary `NDArray`s after their last use on CPU or GPU. See [The `@accelerate` Macro](perf/reduce_allocations.md) for usage guidance.
+`@accelerate` fuses eligible GPU broadcasts within and across statements, then releases materialized temporary `NDArray`s after their last use on CPU or GPU. See [The `@accelerate` Macro](perf/accelerate.md) for usage guidance.
 
 ### Benchmarks
 
