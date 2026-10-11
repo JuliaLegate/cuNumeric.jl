@@ -1,56 +1,50 @@
 # FFT
 
-cuNumeric.jl exposes GPU-only [`fft`](@ref) / [`ifft`](@ref) (and in-place
-[`fft!`](@ref) / [`ifft!`](@ref)) on `NDArray`. The functions follow
-[AbstractFFTs.jl](https://github.com/JuliaMath/AbstractFFTs.jl) / FFTW
-conventions, not NumPy's defaults:
+GPU-only FFTs on `NDArray`, following
+[AbstractFFTs.jl](https://github.com/JuliaMath/AbstractFFTs.jl) conventions
+rather than NumPy's:
 
-- every dimension is transformed unless you pass `dims`
-- `fft` is unnormalized; `ifft` divides by the product of the transformed lengths
-- real input is promoted to complex (`Float32` → `ComplexF32`, otherwise `ComplexF64`)
+- Every dimension is transformed unless `dims` is given.
+- `fft` and `bfft!` are unnormalized; `ifft` divides by the transformed length.
+- Real input is promoted to complex (`Float32` → `ComplexF32`, else `ComplexF64`).
 
-There is no `plan_fft`, and we cannot control the cuFFT plan. cupynumeric never
-returns a `cufftHandle` (or any other plan object). Each `fft` / `ifft` call
-launches the `CUPYNUMERIC_FFT` task; cuFFT planning and any internal plan cache
-live entirely inside that GPU task. A Julia `Plan` that only stored sizes and
-re-called `fft` would not be a real plan, so `plan_fft` is not implemented.
-`using AbstractFFTs; fft(A)` dispatches, but `plan_fft` will not.
+| Function | Result |
+|---|---|
+| `fft(A, [dims])`, `ifft(A, [dims])` | new array |
+| `fft!(A, [dims])`, `ifft!(A, [dims])`, `bfft!(A, [dims])` | overwrites `A` |
+| `bfft!(dest, src)` | unnormalized inverse of `src` into `dest` |
 
 ```julia
-using AbstractFFTs
 using cuNumeric
 
 A = cuNumeric.rand(ComplexF32, 64, 64)
-Y = fft(A)            # all dimensions
-Z = fft(A, 1)         # first dimension only
-ifft(Y)               # ≈ A
+Y = fft(A)       # all dimensions
+Z = fft(A, 1)    # first dimension only
+ifft(Y)          # ≈ A
 
-fft!(copy(A))         # overwrites a complex array
+fft!(A)          # in place
+bfft!(A)         # ≈ length(A) * original A
 ```
 
-`fft!` / `ifft!` require `ComplexF32` or `ComplexF64`. Real arrays must go
-through out-of-place `fft`.
+In-place functions require a `ComplexF32` or `ComplexF64` array.
 
-A stack of independent transforms uses [`batched_fft`](@ref): the leading
-dimension is the batch, and every trailing dimension is transformed. That is
-the same task as `fft(A, 2:ndims(A))`. The batch axis is the one that can
-split across GPUs; an all-axes `fft(A)` cannot.
+## Batched transforms
+
+`batched_fft`, `batched_ifft` and their `!` forms treat dimension 1 as the
+batch and transform the rest. The batch axis can split across GPUs; an all-axes
+`fft(A)` cannot.
 
 ```julia
-signals = cuNumeric.rand(ComplexF32, 32, 1024)   # 32 length-1024 traces
+signals = cuNumeric.rand(ComplexF32, 32, 1024)   # 32 traces
 batched_fft(signals)                             # FFT along dim 2
-
-fields = cuNumeric.rand(ComplexF32, 8, 64, 64)   # 8 images
-batched_fft(fields)                              # 2-d FFT of each
 ```
 
-FFT is GPU-only. A CPU-only runtime raises an error. Multi-GPU use is limited
-to batching over dimensions that are not transformed (the same restriction as
-cupynumeric).
+## Limitations
 
-Awkward lengths whose prime factors exceed 131 make cuFFT take the Bluestein
-path; a warning is emitted. Padding to a nearby highly composite size avoids
-that.
+- GPU only; a CPU-only runtime raises an error.
+- No `plan_fft`: cupynumeric plans inside its FFT task and exposes no plan.
+- Lengths with prime factors above 131 take cuFFT's slower Bluestein path and
+  warn. Pad to a highly composite size to avoid it.
 
 ```@autodocs
 Modules = [cuNumeric]
