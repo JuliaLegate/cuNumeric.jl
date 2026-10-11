@@ -8,7 +8,7 @@ Accessing elements of an NDArray one at a time (e.g., `arr[5]`) is slow and shou
 `NDArray`, waiting for the result as needed. Prefer a native Julia number when
 you already have one, and leave reductions / fully contracted `@tensor` results
 in runtime-managed storage until you need the host value.
-See [Scalars](../api_tensor.md#Scalars).
+See [Scalars](../examples/tensoroperations.md#Scalars).
 
 ## Implicit promotion
 

@@ -41,7 +41,11 @@ makedocs(;
             "Dynamic Mode Decomposition" => "examples/dmd.md",
             "Periodic Poisson (FFT)" => "examples/poisson_fft.md",
             "Conjugate Gradient" => "examples/cg.md",
-            "Tensor Network Contraction" => "examples/tensor_network.md",
+            "Package Integrations" => [
+                "TensorOperations.jl" => "examples/tensoroperations.md",
+                "Krylov.jl" => "examples/krylov.md",
+                "OrdinaryDiffEq.jl" => "examples/ordinarydiffeq.md",
+            ],
         ],
         "Performance Tips" => [
             "Kernel Fusion" => "perf/kernel_fusion.md",
@@ -70,7 +74,14 @@ makedocs(;
             "Device Scalars" => "api_cnscalar.md",
             "Struct Arrays" => "api_structs.md",
             "Binary Operations" => "api_binary.md",
-            "Linear Algebra" => "linalg.md",
+            "Linear Algebra" => [
+                "Overview" => "linalg.md",
+                "Standard functions" => "linalg/operations.md",
+                "Factorizations" => "linalg/factorizations.md",
+                "Batched operations" => "linalg/batched.md",
+                "Diagonal and identity" => "linalg/diagonal.md",
+                "Tuning" => "linalg/tuning.md",
+            ],
             "Tensor Contractions" => "api_tensor.md",
             "FFT" => "fft.md",
             "HDF5" => "api_hdf5.md",

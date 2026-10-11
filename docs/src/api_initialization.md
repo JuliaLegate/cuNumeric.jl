@@ -67,7 +67,7 @@ I32 = NDArray{Float32}(I, 5, 5)           # dense Float32 identity
 Ib = NDArray(I, 5, 5)                     # Bool identity
 ```
 
-See [Linear Algebra](./linalg.md#diagonal-and-identity) for preferred patterns.
+See [Diagonal and identity](./linalg/diagonal.md) for preferred patterns.
 
 ## Random Numbers
 

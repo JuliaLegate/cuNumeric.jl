@@ -30,7 +30,7 @@ the new constants. `cuNumeric.versioninfo()` shows the effective values.
 CNPreferences.set_linalg!(; MIN_SOLVE_MATRIX_SIZE=4096, MIN_SOLVE_TILE_SIZE=512)
 ```
 
-See [Distributed solves and factorizations](./linalg.md#distributed-solves-and-factorizations)
+See [Tuning](./linalg/tuning.md)
 for selection rules and tuning details.
 
 ```@docs
