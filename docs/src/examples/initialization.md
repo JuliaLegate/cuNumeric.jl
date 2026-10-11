@@ -12,6 +12,10 @@ Z64 = cuNumeric.zeros(Float64, 4, 4)
 O = cuNumeric.ones(3, 3)
 F = cuNumeric.fill(7.5f0, (2, 3))
 
+# Uninitialized: write every element before reading
+U = NDArray{Float32}(undef, 4, 4)
+S = similar(U)                            # same type and shape, also uninitialized
+
 # Boolean arrays
 T = cuNumeric.trues(2, 3)
 Fbool = cuNumeric.falses(2, 3)
