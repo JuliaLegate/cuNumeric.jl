@@ -13,7 +13,13 @@ storage so that the result can immediately be displayed or converted with `Array
 ```julia
 A = NDArray{Float32}(undef, 2, 3)
 fill!(A, 1f0)
+copyto!(A, rand(Float32, 2, 3))   # or fill from a host Array
 ```
+
+### From host data
+
+`NDArray(host)` makes a new array from a Julia `Array`. `copyto!(A, host)`
+refills an existing one without allocating.
 
 ### zeros
 
