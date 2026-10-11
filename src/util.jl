@@ -25,7 +25,7 @@ Insert a Legate mapping fence (DAG-only; does not block the Julia caller).
 issue_mapping_fence() = Legate.issue_mapping_fence()
 
 """
-    issue_execution_fence(block::Bool)
+    issue_execution_fence(; block::Bool=false)
 
 Insert a Legate execution fence. `block=true` waits until prior ops finish;
 `block=false` only inserts a DAG node (Julia can keep submitting).

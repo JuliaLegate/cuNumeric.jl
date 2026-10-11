@@ -17,6 +17,18 @@ synchronize. The harness synchronizes after warmup, starts the clock, runs
 `n_iter` iterations, synchronizes again, and stops the clock. BenchmarkTools'
 allocation counts also miss Legate and CUDA buffers.
 
+To time code yourself, use `get_time_microseconds()` (or
+`get_time_nanoseconds()`), which waits for all earlier work before reading the
+clock. `issue_execution_fence(; block=true)` waits without reading it.
+
+```julia
+start = get_time_microseconds()
+for _ in 1:100
+    step!(state)
+end
+elapsed_ms = (get_time_microseconds() - start) / 1e3
+```
+
 ## Setup
 
 ```bash
