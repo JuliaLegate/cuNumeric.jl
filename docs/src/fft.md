@@ -1,8 +1,7 @@
 # FFT
 
 GPU-only FFTs on `NDArray`, following
-[AbstractFFTs.jl](https://github.com/JuliaMath/AbstractFFTs.jl) conventions
-rather than NumPy's:
+[AbstractFFTs.jl](https://github.com/JuliaMath/AbstractFFTs.jl) conventions:
 
 - Every dimension is transformed unless `dims` is given.
 - `fft` and `bfft!` are unnormalized; `ifft` divides by the transformed length.
@@ -43,8 +42,9 @@ batched_fft(signals)                             # FFT along dim 2
 
 - GPU only; a CPU-only runtime raises an error.
 - No `plan_fft`: cupynumeric plans inside its FFT task and exposes no plan.
-- Lengths with prime factors above 131 take cuFFT's slower Bluestein path and
-  warn. Pad to a highly composite size to avoid it.
+- On lengths with a prime factor above 131 (e.g. 137), cuFFT is much slower
+  and uses more memory. This is a cuFFT implementation detail; cuNumeric warns
+  when it applies. Zero-padding to a power of two avoids it.
 
 ```@autodocs
 Modules = [cuNumeric]
