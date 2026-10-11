@@ -48,3 +48,8 @@ end
 Without `allowfetch`, device scalars work as broadcast operands, `Ref(s)`,
 fill values, and coefficients for `mul!`, `axpy!`, `axpby!`, `contract!` and
 TensorOperations.
+
+```@autodocs
+Modules = [cuNumeric]
+Pages = ["cnscalar.jl"]
+```
