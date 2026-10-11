@@ -36,6 +36,12 @@ For more details, see [Hardware](configuration/hardware.md).
 
 The semantics of `NDArray` closely mirror Julia's `Array`, and in most cases it is a drop-in replacement. You can use the same constructors (i.e., `zeros`, `ones`, `rand`), broadcasting, slicing, and linear algebra. Under the hood a few details differ from Base, and knowing them can help you write fast code.
 
+**`NDArray <: AbstractArray`.** Generic Julia code written for `AbstractArray`
+accepts an `NDArray`, so packages such as Krylov.jl and OrdinaryDiffEq.jl run on
+it unchanged. A generic fallback that loops over elements one at a time hits
+the scalar indexing error described below; such code needs an array-level
+(broadcast or reduction) method instead.
+
 **Data may live across many devices.** An `NDArray` is a logical array whose physical buffers can be partitioned over GPUs and CPUs by the Legate runtime. You write ordinary array code and Legate decides where the data lives and how/when it is communicated between devices. As a result, elementwise indexing (i.e. `arr[1]`) is slow (and is prevented by default). Scalar indexing like this forces synchronization and blocks other tasks from executing.
 
 **Slices are views.** Indexing an `NDArray` with ranges returns a view onto the same store, not a copy. That differs from Base Julia, where `A[1:n]` allocates a new `Array`. Mutations through an `NDArray` slice are visible through other aliases of the same data.
