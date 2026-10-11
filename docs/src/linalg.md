@@ -45,3 +45,10 @@ operations, not matrix inverse.
 
 Also missing: `eigh` / Hermitian eigen (needs `Hermitian` and `Symmetric`
 support on `NDArray`), and batched SVD and QR.
+
+## Reference
+
+```@autodocs
+Modules = [cuNumeric]
+Pages = ["ndarray/linalg.jl", "ndarray/batched_linalg.jl", "ndarray/vector_linalg.jl", "ndarray/diagonal.jl"]
+```

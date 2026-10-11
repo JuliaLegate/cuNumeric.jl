@@ -85,7 +85,7 @@ makedocs(;
             "Tensor Contractions" => "api_tensor.md",
             "FFT" => "fft.md",
             "HDF5" => "api_hdf5.md",
-            "NDArray Reference" => "api.md",
+            "Indexing, Sorting & Utilities" => "api_util.md",
             "CUDA.jl Tasking" => "api_cuda.md",
             "Internal API" => "api_internal.md",
         ],

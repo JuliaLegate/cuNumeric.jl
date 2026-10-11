@@ -55,7 +55,7 @@ x = fetch(s)        # native Julia scalar, e.g. Float32
 
 **The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into Legate's task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them (for example `println`, `fetch`, or converting with `Array(A)`). Hiding latency enables performant code.
 
-For API details see [Initialization](./api_initialization.md), [Random](./api_random.md), [FFT](./fft.md), and [NDArray Reference](./api.md). For anti-patterns that kill performance, see [Patterns to Avoid](./perf/patterns_to_avoid.md).
+For API details see [Initialization](./api_initialization.md), [Random](./api_random.md), [FFT](./fft.md), and [Indexing, Sorting & Utilities](./api_util.md). For anti-patterns that kill performance, see [Patterns to Avoid](./perf/patterns_to_avoid.md).
 
 ### Kernel Fusion
 
