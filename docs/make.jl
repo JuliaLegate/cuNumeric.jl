@@ -68,6 +68,7 @@ makedocs(;
             "Unary Operations" => "api_unary.md",
             "Mapped Reductions" => "api_mapreduce.md",
             "Device Scalars" => "api_cnscalar.md",
+            "Struct Arrays" => "api_structs.md",
             "Binary Operations" => "api_binary.md",
             "Linear Algebra" => "linalg.md",
             "Tensor Contractions" => "api_tensor.md",
