@@ -1,173 +1,83 @@
 # How to Benchmark
 
-The benchmark harness lives in the `benchmark/` submodule, maintained in [JuliaLegate/benchmarking](https://github.com/JuliaLegate/benchmarking). Configs are declared in `benchmarks.toml`. `run.jl` expands those configs and launches one worker process per run. Workers never share a GPU runtime within a measurement.
+The harness lives in the `benchmark/` submodule
+([JuliaLegate/benchmarking](https://github.com/JuliaLegate/benchmarking)). It
+compares cuNumeric.jl with CUDA.jl, JACC.jl and Dagger.jl, each in
+its own process and environment. This page covers the essentials.
 
-> [!WARNING]
-> We do not commit to maintaining the benchmark scripts forever. The harness evolves with the package. The ideas here (declare configs in TOML, one process per run, time with Legate fences) should still apply even if file names move.
+!!! tip
+    For every option, config key and benchmark, see the harness
+    [README](https://github.com/JuliaLegate/benchmarking/blob/main/README.md).
 
 ## Why not BenchmarkTools.jl?
 
-cuNumeric ops are asynchronous. A Julia call usually returns before the GPU work finishes, so tools like [BenchmarkTools.jl](https://github.com/JuliaCI/BenchmarkTools.jl), [Chairmarks.jl](https://github.com/LilithHafner/Chairmarks.jl), or even a bare `Base.@time` will under-report time unless you force a fence. The harness uses `get_time_microseconds` / `get_time_nanoseconds`, which block until preceding Legate work completes. Allocations reported by BenchmarkTools will also not reflect Legion / CUDA buffers.
+cuNumeric operations are asynchronous: a call returns before the GPU finishes.
+BenchmarkTools.jl, Chairmarks.jl or `@time` therefore under-report unless you
+synchronize. The harness synchronizes after warmup, starts the clock, runs
+`n_iter` iterations, synchronizes again, and stops the clock. BenchmarkTools'
+allocation counts also miss Legate and CUDA buffers.
 
-## Quick start
-
-From the repo:
+## Setup
 
 ```bash
 git submodule update --init --recursive
 cd benchmark
-./instantiate_projects.sh
-julia --project=. run.jl
+./deps-install/instantiate_projects.sh    # Julia environments
 ```
 
-The setup script develops `CNPreferences` and `cuNumeric` from the parent checkout. See the harness README for cuPyNumeric's Conda setup. With no extra args, `run.jl` reads `benchmarks.toml` and runs every expanded config:
+Setup develops cuNumeric.jl from the parent checkout. It uses `julia` from your
+`PATH`, or `CUNUMERIC_BENCH_JULIA` if set.
 
-1. Sets the broadcast-fusion preference if needed and precompiles
-2. Calls `run_benchmark.sh`, which exports `LEGATE_CONFIG` from `--gpus` / `--cpus` **before** Julia starts
-3. Launches `src/single.jl` for the cuNumeric backend (and optional comparison backends)
+## Run
 
-After the sweep, it launches `plot_results.jl` on the result CSVs. One-off CLI runs skip plotting. Add `-v` / `--verbose` for more plumbing output.
+```bash
+julia --project=. run.jl --config=configs/single_gpu/smoke.toml   # quick check
+julia --project=. run.jl --config=configs/multi_gpu/gemm.toml --models=cunumeric,cudajl
+julia --project=. run.jl --only=grayscott --models=cunumeric --fusion=both --dry-run
+```
 
-## `benchmarks.toml`
+| Option | Meaning |
+|---|---|
+| `--config` | TOML config (default `configs/multi_gpu/all.toml`) |
+| `--only` | benchmarks to run |
+| `--models` | any of `cunumeric`, `cudajl`, `jacc`, `dagger` |
+| `--fusion` | `on`, `off` or `both` (cuNumeric only) |
+| `--output` | result directory (default: timestamped under `results/`) |
+| `--dry-run` | print the plan without running |
 
-`[Global]` sets defaults shared by every run:
+Each run launches a fresh worker with `LEGATE_CONFIG` set before Julia starts,
+so GPU and CPU counts never change mid-process.
+
+## Configs
 
 ```toml
 [Global]
-n_warmup = 5
-n_iter = 1000
+models = ["cunumeric", "cudajl"]
+n_warmup = 2
+n_iter = 10
 n_trial = 5
-cupynumeric = true   # also run Python cupynumeric (needs install_cupynumeric.sh)
-cuda = true          # also run CUDA.jl (single-GPU configs only)
-check_correctness = true
-n_correctness_iter = 5
-auto_size = true
-mem_frac = 0.5       # fraction of the smallest visible GPU's total RAM
-```
 
-- `n_warmup`: untimed iterations (hide compile / first-touch cost)
-- `n_iter`: timed iterations per trial (build task queue depth)
-- `n_trial`: independent trials; mean ± stddev across trials is what gets printed / saved
-- `cupynumeric` / `cuda`: optional comparison backends. `cuda = true` still
-  **times** CUDA.jl on configs with `gpus == 1` (GEMM, Monte Carlo, Gray-Scott,
-  DMD, Poisson FFT, and the TensorOperations kernels).
-- `check_correctness`: when `gpus == 1`, the cuNumeric worker also compares a
-  tiny problem against CUDA.jl (not CPU). The CUDA.jl timing run is unchanged
-  and records `skipped` for correctness. Multi-GPU and cupynumeric skip.
-- `auto_size` / `mem_frac`: when `auto_size` is true and a block omits `N`
-  (or sets `N = "auto"`), the harness RAM-fits the 1-GPU problem then scales
-  with GPU count. `mem_frac` is a fraction of the *smallest* visible GPU's
-  total RAM; override it with `CUNUMERIC_BENCH_MEM_FRAC`. Peak bytes are
-  `total_space` on each Julia benchmark type (live arrays including tensor
-  intermediates), not the seed array. Legion / cuSOLVER scratch is the rest of
-  `mem_frac`. Pin `N = [20000, …]` on a block to keep paper sizes.
-
-Each `[[name]]` block is a registered benchmark (`gemm`, `montecarlo`,
-`dmd_baseline`, `dmd_accelerated`, `grayscott_baseline`, the Gray-Scott
-`@accelerate` forms, `poisson_fft`, `tensor_projection3`, …). Names must match
-what `src/benchmarks/*.jl` registers.
-
-DMD's `N` is the number of spatial degrees of freedom (rows of the snapshot matrix), not a grid side length. The SVD is of the tall-skinny `N × (M-1)` matrix `X1`. Thin SVD plus the rank-`r` lift is `Θ(N)` when `M` and `r` are fixed, so weak scaling is `N ∝ P` (same idea as Monte Carlo, not GEMM's `N ∝ P^{1/3}`). Auto-sizing only scales to `P>1` when the 1-GPU `N` is at least `10 M`; otherwise the 1-GPU run still happens and larger `P` is skipped. `M` stays in the toml (intensity knob). The flop count is in `src/benchmarks/dmd.jl`.
-
-`poisson_fft` solves ``M`` independent periodic Poisson problems on an ``N \times N`` grid (FFT, divide by ``-|k|^2``, inverse FFT). The transform is over the last two axes, so the leading batch axis can split across GPUs. Weak scaling is ``M \propto P`` with ``N`` **held constant across the GPU sweep** — growing `N` would change the FFT size. `N` itself may be RAM-fitted (one grid filling the 1-GPU budget, then `M = P`) or pinned (`N = 1024` and `M = "auto"` to search the batch). A single all-axes 2-d `fft` of one grid is single-GPU and would not scale that way.
-
-```toml
 [[gemm]]
-T = ["Float32"]
+T = "Float32"
 gpus = [1, 2, 4, 8]
-cpus = 16
-# omit N → RAM-fit, then N ∝ P^{1/3}
+N = [43408, 54688, 68904, 86816]
 ```
 
-### How lists expand
+- `gpus`, `cpus`, `N` and `M` pair up by position; `T` and `fusion` multiply.
+- `auto_size = true` with `N` omitted fits the problem to `mem_frac` of the
+  smallest GPU's memory.
+- `single_gpu = true` sweeps problem size on one GPU instead of GPU count.
 
-Any of `T`, `fusion`, `gpus`, `cpus`, `N`, `M` may be a scalar or a list.
+See `configs/single_gpu/` and `configs/multi_gpu/` for working examples.
 
-- **`T` and `fusion` multiply.** The sweep runs once per type and once per fusion setting (`fusion = [true, false]` sweeps both).
-- **`gpus`, `cpus`, `N`, `M` zip** in lockstep. Element `i` of each is paired together. A scalar broadcasts to every position.
+## Results
 
-```toml
-[[gemm]]
-T    = ["Float64", "Float32"]   # multiplies
-gpus = [1, 2, 4]
-cpus = 2                        # zip -> (1,2,150,150), (2,2,300,300), (4,2,600,600)
-N    = [150, 300, 600]
-M    = [150, 300, 600]
-```
-
-That is 2 types × 3 sweep points = **6 runs**.
-
-`fusion` toggles cuNumeric broadcast fusion (`true`/`false` or `"on"`/`"off"`,
-default `true`). Comparison backends ignore fusion and run once (on the fused
-pass), not per variant. Entries ending in `_accelerated` are cuNumeric-only.
-The Gray-Scott function, `begin`, `let`, and expression entries compare the
-four `@accelerate` scope contracts on the same step; `dmd_accelerated` applies
-the recommended function form to the DMD projection.
-
-Gotcha: when `T = ["Float32", "Float64"]` and a length-2 `N`/`M` sweep you get all **4** combinations, not a paired `Float32 -> N[1]`. To pin a type to a size, use separate `[[name]]` blocks.
-
-## One-off runs
-
-You can dispatch a single config without editing the TOML:
+Each run writes CSVs and a manifest to `results/<run-id>/` with mean time,
+GFLOPS and a correctness check (`pass`, `fail` or `skipped`) per trial.
 
 ```bash
-julia --project=. run.jl <gpus> <cpus> <name> <T> <N> <M> <n_iter> <n_warmup> <n_trial> [fusion]
+julia --project=. plotter/plot_results.jl results/<run-id> --format=pdf
 ```
 
-`N` and `M` may be integers or `auto`:
-
-```bash
-julia --project=. run.jl 1 16 gemm Float32 20000 20000 1000 5 5 true
-CUNUMERIC_BENCH_MEM_FRAC=0.1 julia --project=. run.jl 8 8 gemm Float32 auto auto 3 1 1 true
-```
-
-`run.jl` still goes through `run_benchmark.sh` so Legate sees the right GPU/CPU count at process start.
-
-## Comparison backends
-
-- **CUDA.jl:** set `cuda = true` in `[Global]`. Timed on configs with `gpus == 1`.
-  Every registered kernel has a `CuArray` path (GEMM / broadcast / FFT /
-  SVD via cuBLAS, cuFFT, cuSOLVER; tensor contractions use TensorOperations'
-  cuTENSOR extension). That timed run is separate from the tiny cuNumeric vs
-  CUDA.jl correctness check.
-- **cupynumeric (Python):** set `cupynumeric = true`, then build a matching conda env once:
-
-```bash
-./install_cupynumeric.sh   # creates cupynumeric-bench-<major.minor>
-```
-
-`run.jl` picks the env from the resolved `cupynumeric_jll` version. Override with `CUPYNUMERIC_ENV`.
-
-## Results and timing
-
-Each worker prints mean ± stddev run time (ms) and GFLOPS, plus a correctness tag (`pass` / `fail` / `skipped`). On one GPU the cuNumeric tag is the tiny CUDA.jl compare; CUDA.jl and cupynumeric record `skipped`. CSVs append under `benchmark/results/`.
-
-Unfused cuNumeric runs are labeled and saved separately (for example `cunumeric_nofusion`) so they stay a distinct series from fused runs.
-
-## Plotting
-
-`[plot.groups]` in `benchmarks.toml` names the figures. Related kernels share one PNG:
-
-```toml
-[plot.groups]
-grayscott = [
-    "grayscott_baseline",
-    "grayscott_function_accelerated",
-    "grayscott_begin_accelerated",
-    "grayscott_let_accelerated",
-    "grayscott_expression_accelerated",
-]
-dmd = ["dmd_baseline", "dmd_accelerated"]
-```
-
-Any `[[benchmark]]` table not listed (GEMM, Poisson, Monte Carlo, tensors) is its own figure. CUDA.jl (single GPU) and cupynumeric overlay from the group's baseline CSV — the member ending in `_baseline`, or the only / first name. Accelerated variants are cuNumeric-only; their CUDA.jl and Python points still come from the baseline.
-
-Fused and unfused cuNumeric share a color (solid vs dashed). A full `run.jl` pass writes `plots/<group>_weak_scaling.png` at the end. To plot existing CSVs:
-
-```bash
-julia --project=. plot_results.jl
-```
-
-## Hardware notes
-
-`LEGATE_CONFIG` must be set before Julia / Legate starts. The harness does that for you via `run_benchmark.sh`. For manual REPL experiments, see [Hardware Configuration](../configuration/hardware.md). Do not expect to change GPU count mid-session without restarting Julia.
+For manual REPL timing, set `LEGATE_CONFIG` before starting Julia; see
+[Hardware Configuration](../configuration/hardware.md).

@@ -1,6 +1,12 @@
-# Benchmark Results
+# Benchmarking
 
-These historical JuliaCon 2025 results compare cuNumeric.jl with cuPyNumeric and problem-specific alternatives on one node with eight A100 GPUs. All plots show weak scaling. See [How to Benchmark](./howto.md) for the current harness and its baseline, `@accelerate`, fused, and unfused variants.
+> [!NOTE]
+> We currently have a paper under submission. Once it is accepted, we will update this page with the current results and figures.
+> See [How to Benchmark](./howto.md) for the current harness to compare cuNumeric.jl with other Julia multi-GPU frameworks and cuPyNumeric.
+
+# Historical Benchmark Results (JuliaCon 2025)
+
+These historical JuliaCon 2025 results compare cuNumeric.jl with cuPyNumeric and problem-specific alternatives on one node with eight A100 GPUs. All plots show weak scaling.
 
 ## SGEMM
 
