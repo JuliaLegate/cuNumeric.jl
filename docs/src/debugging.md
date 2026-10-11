@@ -3,7 +3,7 @@
 Debug the layer that matches the problem:
 
 | Question | Tool |
-|---|---|
+|:---|:---|
 | Which operations did Legate submit, and when did they run? | [Legate logs and profiles](#trace-legate-runtime-work) |
 | How were broadcasts fused? | [`BCAST_FUSION_DEBUG`](#inspect-fused-broadcasts-with-bcast_fusion_debug) |
 | How does `@accelerate` rewrite code and free temporaries? | [`@show_lifetimes`](#inspect-lifetime-rewrites-with-show_lifetimes) |
@@ -15,7 +15,7 @@ Legate records provenance on submitted operations. cuNumeric can provide that pr
 Choose one output format for a run:
 
 | Goal | `LEGATE_CONFIG` flags | Output |
-|---|---|---|
+|:---|:---|:---|
 | Read runtime decisions as text | `--logging legate=debug --log-to-file` | `legate_*.log` |
 | Inspect an execution timeline | `--profile` | `legate_*.prof` |
 

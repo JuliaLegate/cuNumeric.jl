@@ -5,7 +5,7 @@ Function reference for [`CNPreferences`](https://github.com/JuliaLegate/cuNumeri
 Out of the box (no `LocalPreferences.toml` changes):
 
 | Setting | Default |
-|---|---|
+|:---|:---|
 | Binary / build mode | **JLL** prebuilt binaries |
 | Broadcast fusion | **on** |
 | `FUSE_BROADCAST_MIN_OPS` | **2** (single native operations stay unfused) |

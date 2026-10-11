@@ -3,7 +3,7 @@
 cuNumeric.jl gets its cupynumeric / Legate binaries from one of three providers, chosen through `CNPreferences` (writes `LocalPreferences.toml`, **restart Julia** after changing mode):
 
 | Mode | When to use |
-|---|---|
+|:---|:---|
 | **JLL (default)** | Normal installs; prebuilt artifacts from the Julia package server |
 | **Developer** | Building or hacking the in-tree C++ wrapper, or a custom cupynumeric tree |
 | **Conda** | Linking against an existing conda env that already has cupynumeric |

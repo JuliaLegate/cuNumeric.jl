@@ -23,7 +23,7 @@ called in the loop, not around the loop.
 ## Forms
 
 | Form | What stays valid afterwards |
-|---|---|
+|:---|:---|
 | `@accelerate function ... end` (recommended) | arguments and the returned value |
 | `@accelerate let ... end` | the result only |
 | `@accelerate begin ... end` | every named variable |

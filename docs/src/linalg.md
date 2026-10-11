@@ -17,7 +17,7 @@ standard factorization objects. Stacks of matrices have no `LinearAlgebra`
 equivalent, so they get their own `batched_*` names.
 
 | Single matrix (2D) | Returns | Stack of matrices (3D) |
-| --- | --- | --- |
+| :--- | :--- | :--- |
 | `LinearAlgebra.cholesky(A)` | `Cholesky` | `cuNumeric.batched_cholesky(A)` |
 | `LinearAlgebra.eigen(A)` | `Eigen` | `cuNumeric.batched_eigen(A)` |
 | `LinearAlgebra.eigvals(A)` | `NDArray` | `cuNumeric.batched_eigvals(A)` |
@@ -31,7 +31,7 @@ The existing `A \ b`, `cuNumeric.solve`, `cholesky`, and `qr` APIs select
 distributed tasks automatically. Selection follows cuPyNumeric 26.06:
 
 | Operation | cuSolverMp cutoff | Internal block size |
-| --- | --- | --- |
+| :--- | :--- | :--- |
 | Square solve | dimension ≥ 2048 | 512 |
 | Lower Cholesky | dimension ≥ 8192 | 2048 |
 | Reduced QR | matrix contains ≥ 1048576 elements | 128 |

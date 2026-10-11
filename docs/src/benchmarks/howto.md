@@ -62,7 +62,7 @@ julia --project=. run.jl --only=grayscott --models=cunumeric --fusion=both --dry
 ```
 
 | Option | Meaning |
-|---|---|
+|:---|:---|
 | `--config` | TOML config (default `configs/multi_gpu/all.toml`) |
 | `--only` | benchmarks to run |
 | `--models` | any of `cunumeric`, `cupynumeric`, `cudajl`, `jacc`, `dagger` |

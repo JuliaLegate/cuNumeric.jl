@@ -8,7 +8,7 @@ GPU-only FFTs on `NDArray`, following
 - Real input is promoted to complex (`Float32` → `ComplexF32`, else `ComplexF64`).
 
 | Function | Result |
-|---|---|
+|:---|:---|
 | `fft(A, [dims])`, `ifft(A, [dims])` | new array |
 | `fft!(A, [dims])`, `ifft!(A, [dims])`, `bfft!(A, [dims])` | overwrites `A` |
 | `bfft!(dest, src)` | unnormalized inverse of `src` into `dest` |

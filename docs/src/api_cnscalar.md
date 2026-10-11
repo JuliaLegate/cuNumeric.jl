@@ -16,7 +16,7 @@ fetch(t)          # 18.0, a Julia Float64
 ## Types
 
 | Type | Subtype of |
-|---|---|
+|:---|:---|
 | `CNFloat` | `AbstractFloat` |
 | `CNInt`, `CNUInt` | `Signed`, `Unsigned` |
 | `CNBool` | `Integer` |
