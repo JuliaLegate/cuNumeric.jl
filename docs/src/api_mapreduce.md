@@ -1,4 +1,18 @@
-# Mapped Reductions
+# Map and Mapped Reductions
+
+## `map` and `map!`
+
+`map(f, A)` and `map(f, A, B)` are the same as `f.(A)` and `f.(A, B)`.
+`map!(op, dest, A, B)` writes into `dest` for built-in binary operators
+(`+`, `*`, `max`, …); all three arrays must have the same shape.
+
+```julia
+A, B = cuNumeric.rand(1024), cuNumeric.rand(1024)
+C = map(sin, A)
+map!(*, C, A, B)
+```
+
+## `mapreduce`
 
 `mapreduce(f, op, A; dims=:, init=...)` maps and reduces an NDArray in one
 pass, without a mapped copy. `op` can be `+`, `*`, `min` or `max`. Mapped `sum`,

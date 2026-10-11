@@ -3,7 +3,7 @@
 Indexing, reshaping, reductions, comparisons, memory helpers, lifetime macros, and related utilities. For constructors (`zeros`, `ones`, `rand`, …) see [Initialization](./api_initialization.md). For RNG engines and `default_rng`, see [Random](./api_random.md). For `fft` / `ifft` / `fft!` / `ifft!` and `batched_fft`, see [FFT](./fft.md). There is no `plan_fft`: cupynumeric does not expose a cuFFT handle.
 
 For `mapreduce` and the mapped forms of `sum`, `prod`, `minimum`, and `maximum`,
-see [Mapped Reductions](./api_mapreduce.md).
+see [Map and Reduce](./api_mapreduce.md).
 
 ```@autodocs
 Modules = [cuNumeric]

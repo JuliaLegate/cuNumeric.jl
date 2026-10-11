@@ -8,6 +8,10 @@ The following unary operations are supported and can be broadcast over `NDArray`
 
 - `-`, `!`, `~`, `abs`, `acos`, `acosh`, `asin`, `asinh`, `atan`, `atanh`, `cbrt`, `ceil`, `conj`, `cos`, `cosh`, `deg2rad`, `exp`, `exp2`, `expm1`, `floor`, `imag`, `isfinite`, `isinf`, `isnan`, `log`, `log10`, `log1p`, `log2`, `rad2deg`, `real`, `round`, `sign`, `signbit`, `sin`, `sinh`, `sqrt`, `tan`, `tanh`, `trunc`, `^2`, `^-1` or `inv`
 
+Reductions, with optional `dims` except `argmax` / `argmin`:
+
+- `sum`, `prod`, `maximum`, `minimum`, `mean`, `var`, `std`, `all`, `any`, `argmax`, `argmin`
+
 ## Differences from Base Julia
 
 - The `acosh` function in Julia will error on inputs outside of the domain (`x >= 1`), but cuNumeric.jl will return `NaN`.
@@ -19,7 +23,7 @@ The following unary operations are supported and can be broadcast over `NDArray`
 - `argmax` / `argmin` are 1-d fetch (matching Base's `Int` return, not `CartesianIndex`). The result is a 0-d `NDArray{Int64}` of the 1-based index. Complex is not supported.
 
 For `mapreduce` and mapped `sum`, `prod`, `minimum`, and `maximum`, see
-[Mapped Reductions](./api_mapreduce.md).
+[Map and Reduce](./api_mapreduce.md).
 
 ```@autodocs
 Modules = [cuNumeric]
