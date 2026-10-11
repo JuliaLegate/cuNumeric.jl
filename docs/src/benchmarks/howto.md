@@ -23,10 +23,23 @@ allocation counts also miss Legate and CUDA buffers.
 git submodule update --init --recursive
 cd benchmark
 ./deps-install/instantiate_projects.sh    # Julia environments
+./deps-install/install_cupynumeric.sh     # cuPyNumeric Conda env
 ```
 
 Setup develops cuNumeric.jl from the parent checkout. It uses `julia` from your
 `PATH`, or `CUNUMERIC_BENCH_JULIA` if set.
+
+### Container
+
+The benchmark image comes with every environment set up, including cuPyNumeric:
+
+```bash
+docker pull ghcr.io/julialegate/benchmarking:latest
+docker run -it --rm --gpus=all ghcr.io/julialegate/benchmarking:latest
+```
+
+This opens a shell in the benchmark checkout, ready for the commands below. Published tags are listed under
+[packages](https://github.com/JuliaLegate/benchmarking/pkgs/container/benchmarking).
 
 ## Run
 
@@ -40,7 +53,7 @@ julia --project=. run.jl --only=grayscott --models=cunumeric --fusion=both --dry
 |---|---|
 | `--config` | TOML config (default `configs/multi_gpu/all.toml`) |
 | `--only` | benchmarks to run |
-| `--models` | any of `cunumeric`, `cudajl`, `jacc`, `dagger` |
+| `--models` | any of `cunumeric`, `cupynumeric`, `cudajl`, `jacc`, `dagger` |
 | `--fusion` | `on`, `off` or `both` (cuNumeric only) |
 | `--output` | result directory (default: timestamped under `results/`) |
 | `--dry-run` | print the plan without running |
