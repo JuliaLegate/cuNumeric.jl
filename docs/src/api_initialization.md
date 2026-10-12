@@ -63,8 +63,8 @@ using LinearAlgebra
 using cuNumeric
 
 D = Diagonal(cuNumeric.ones(Float32, 5))  # preferred for diagonal work
-I32 = NDArray{Float32}(I, 5, 5)           # dense Float32 identity
-Ib = NDArray(I, 5, 5)                     # Bool identity
+I32 = NDArray{Float32}(LinearAlgebra.I, 5, 5)           # dense Float32 identity
+Ib = NDArray(LinearAlgebra.I, 5, 5)                     # Bool identity
 ```
 
 See [Diagonal and identity](./linalg/diagonal.md) for preferred patterns.

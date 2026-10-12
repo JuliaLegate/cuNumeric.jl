@@ -100,12 +100,6 @@ println("mode   |λ|      cycles/snapshot")
 for i in order[1:min(5, end)]
     @printf("%4d   %6.4f   %+8.4f\n", i, abs(vals[i]), angle(vals[i]) / 2π)
 end
-
-# The slowest-decaying mode is the pattern the simulation settles into.
-lead = order[1]
-mode = cuNumeric.reshape(abs.(Φ[:, lead:lead]), (N, N))
-cuNumeric.h5write("dmd-mode.h5", "leading", mode)
-cuNumeric.Legate.runtime_sync()
 ```
 
 On 100 snapshots of a ``100 \times 100`` grid this prints something like:
@@ -121,9 +115,7 @@ mode   |λ|      cycles/snapshot
   20   0.9825    -0.0202
 ```
 
-Every ``|\lambda|`` sits just below 1, which is the pattern settling rather than
-growing, and the oscillatory modes come in the conjugate pairs a real operator
-must produce.
+Every ``|\lambda|`` sits around 1.
 
 ## Notes
 

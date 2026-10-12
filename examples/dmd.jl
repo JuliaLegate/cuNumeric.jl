@@ -39,9 +39,9 @@ function dmd(X::NDArray{Float32,2}, r::Int)
 
     # X2 V Σ⁻¹ appears in both the projected operator and the exact modes.
     B = X2 * cuNumeric.transpose(Vt) * Sinv
-    A_tilde = cuNumeric.transpose(U) * B
+    Ã = cuNumeric.transpose(U) * B
 
-    E = eigen(A_tilde) # always complex, even for a real Ã
+    E = eigen(Ã) # always complex, even for a real Ã
     Φ = cuNumeric.as_type(B, ComplexF32) * E.vectors
 
     return E.values, Φ
@@ -66,13 +66,6 @@ function main()
     for i in order[1:min(5, end)]
         @printf("%4d   %6.4f   %+8.4f\n", i, abs(vals[i]), angle(vals[i]) / 2π)
     end
-
-    # The slowest-decaying mode is the pattern the simulation settles into.
-    lead = order[1]
-    mode = cuNumeric.reshape(abs.(Φ[:, lead:lead]), (N, N))
-    cuNumeric.h5write("dmd-mode.h5", "leading", mode)
-    cuNumeric.Legate.runtime_sync()
-    println("\nwrote leading mode $lead to dmd-mode.h5")
 
     return λ, Φ
 end

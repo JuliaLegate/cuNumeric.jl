@@ -22,8 +22,8 @@ Fbool = cuNumeric.falses(2, 3)
 
 # Identity: prefer Diagonal / I; densify only when needed (no eye)
 D = Diagonal(cuNumeric.ones(Float32, 5))
-I32 = NDArray{Float32}(I, 5, 5)   # dense identity
-Ib = NDArray(I, 5, 5)             # Bool identity
+I32 = NDArray{Float32}(LinearAlgebra.I, 5, 5)   # dense identity
+Ib = NDArray(LinearAlgebra.I, 5, 5)             # Bool identity
 
 # Uniform / normal random values (native Float32 and Float64)
 R = cuNumeric.rand(4, 4)
@@ -32,7 +32,7 @@ cuNumeric.rand!(R64)                      # fill an existing Float64 array
 N = cuNumeric.randn(Float32, 8, 8)
 C = cuNumeric.rand(ComplexF32, 8, 8)      # independent real/imag uniforms
 E = cuNumeric.randexp(Float64, 1000)      # exponential, scale 1 (real only)
-I = cuNumeric.rand(0:9, 4, 4)             # Int64 in 0:9 (inclusive)
+Ints = cuNumeric.rand(0:9, 4, 4)             # Int64 in 0:9 (inclusive)
 Coin = cuNumeric.rand(Bool, 8)            # fair coin flips
 
 # Private stream / non-default engine (see Random in the Public API)
