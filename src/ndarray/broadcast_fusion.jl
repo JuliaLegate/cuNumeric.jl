@@ -788,7 +788,11 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
     input_ndarrays = tuple(unique_ndarrays...)
 
     # Legion forbids overlapping input and output regions in one task.
-    output = any(nda -> nda_overlaps(dest, nda), unique_ndarrays) ? similar(dest) : dest
+    output = if any(nda -> nda_overlaps(dest, nda), unique_ndarrays)
+        _undef_array(dest)
+    else
+        dest
+    end
 
     if BCAST_FUSION_DEBUG[]
         tree_str = _bcast_runtime_tree_str(
@@ -1153,7 +1157,7 @@ end
 
 @inline function _alloc_segment_buffers(template, seg_bcs::Tuple, dims, bufs::Tuple)
     flat = Base.Broadcast.flatten(first(seg_bcs))
-    buf = similar(template, _segment_eltype(flat, bufs), dims)
+    buf = _undef_array(template, _segment_eltype(flat, bufs), dims)
     return _alloc_segment_buffers(template, Base.tail(seg_bcs), dims, (bufs..., buf))
 end
 

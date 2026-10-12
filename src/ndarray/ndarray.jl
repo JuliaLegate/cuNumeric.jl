@@ -302,7 +302,7 @@ end
 # materialize a C-ordered buffer via permutedims, attach it with the original
 # shape, and keep that buffer as `parent` for lifetime.
 function _nda_from_julia_struct_array(arr::Array{T,N}) where {T,N}
-    isempty(arr) && return nda_empty_array(size(arr), T)
+    isempty(arr) && return _undef_array(T, size(arr))
     _assert_struct_kernel("Construction from a host Array", T)
     # `map` keeps Bool fields as Array{Bool}; broadcasting would build a BitArray.
     fields = ntuple(i -> NDArray(map(StructField{i}(), arr)), fieldcount(T))
@@ -315,7 +315,7 @@ end
 
 # A 0-d store cannot run the fused kernel, but can be filled with its element.
 function _nda_from_julia_struct_array(arr::Array{T,0}) where {T}
-    out = nda_empty_array((), T)
+    out = _undef_array(T, ())
     nda_fill_struct_array(out, arr[])
     return out
 end
@@ -859,10 +859,10 @@ end
     NDArray{T}(undef, dims::Int...)
     NDArray{T}(undef, dims::Dims)
 
-Allocate an uninitialized `NDArray{T}`. Every element must be assigned before it is read.
+Allocate an `NDArray{T}`. Storage is zero-initialized so it can be read immediately.
 """
 NDArray{T}(::UndefInitializer, dims::Dims{N}) where {T<:SUPPORTED_ARRAY_TYPES,N} =
-    nda_empty_array(dims, T)
+    nda_zeros_array(dims, T)
 NDArray{T}(::UndefInitializer, dims::Int...) where {T<:SUPPORTED_ARRAY_TYPES} =
     NDArray{T}(undef, dims)
 
@@ -884,7 +884,7 @@ end
 
 function fill(val::T, dims::Dims) where {T}
     _struct_storage_type(T) || throw(MethodError(fill, (val, dims)))
-    return fill!(nda_empty_array(dims, T), val)
+    return fill!(_undef_array(T, dims), val)
 end
 
 function fill(val::T, dims::Int...) where {T}
@@ -1050,7 +1050,7 @@ function _reshape_struct(arr::NDArray{T}, dims::Dims) where {T}
             "new dimensions $(dims) must be consistent with array length $(length(arr))"
         ),
     )
-    isempty(arr) && return nda_empty_array(dims, T)
+    isempty(arr) && return _undef_array(T, dims)
     _assert_struct_kernel("Reshaping", T)
     fields = ntuple(fieldcount(T)) do i
         projected = StructField{i}().(arr)
@@ -1133,7 +1133,7 @@ function Base.:(!=)(a::NDArray, b::NDArray)
 end
 
 function _array_equal_impl(a::NDArray{T}, b::NDArray{T}) where {T}
-    out = cuNumeric.zeros(Bool)
+    out = _undef_array(Bool, ())
     return nda_binary_reduction!(out, cuNumeric.EQUAL, a, b)
 end
 

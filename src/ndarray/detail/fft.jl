@@ -199,7 +199,7 @@ function fft_task!(
     # partitions across GPUs the output can land in a non-dense instance, which
     # the GPU kernel rejects. Transform out of place and copy back instead.
     if inp === out && _LINALG_RUNTIME[].gpus > 1
-        tmp = similar(out)
+        tmp = _undef_array(out)
         try
             fft_task!(tmp, inp, dims, direction; scale)
             copyto!(out, tmp)

@@ -107,6 +107,21 @@ function _check_struct_storage(f::F, ::Type{T}, input) where {F,T}
     end
 end
 
+@testset "Readable similar arrays of records without zero(T)" begin
+    for T in (
+        StructStorageTriple{Float32}, StructStorageTriple{UInt64}, StructStoragePacked,
+        StructStoragePadded, StructStorageComplex, typeof(_struct_storage_named(0)),
+    )
+        output = similar(NDArray{T}, (2,))
+        try
+            host = Array(output)
+            @test all(x -> all(i -> iszero(getfield(x, i)), 1:fieldcount(T)), host)
+        finally
+            cuNumeric.destroy!(output)
+        end
+    end
+end
+
 @testset "Struct element storage" begin
     input = NDArray(Int64[0, 1, 2, 3])
     try

@@ -114,7 +114,7 @@ function _solve(a::NDArray{T,N}, b::NDArray{S,N}) where {T,S,N}
         )
     size(a)[1:(end - 2)] == size(b)[1:(end - 2)] ||
         throw(ArgumentError("Batched matrices must have matching batch dimensions"))
-    x = NDArray{T}(undef, size(b))
+    x = _undef_array(b, T)
     isempty(x) && return x
     _solve!(_linalg_backend(Val(:solve), a), x, a, b)
     return x
@@ -246,9 +246,9 @@ function _svd(a::NDArray{T,2}, full_matrices::Bool) where {T}
     k = min(m, n)
     S = real(T)
 
-    u_buf = NDArray{T}(undef, m, full_matrices ? m : k)
-    s = NDArray{S}(undef, k)
-    vh_buf = NDArray{T}(undef, full_matrices ? n : k, n)
+    u_buf = _undef_array(T, (m, full_matrices ? m : k))
+    s = _undef_array(S, (k,))
+    vh_buf = _undef_array(T, (full_matrices ? n : k, n))
     svd_single(a, u_buf, s, vh_buf)
     return u_buf, s, vh_buf
 end
@@ -283,8 +283,8 @@ function _qr(a::NDArray{T,2}) where {T}
     k = min(m, n)
     # CQR writes dense column-major economy factors with leading dimensions
     # m for Q and k for R. Square buffers give R the wrong stride when m < n.
-    q = NDArray{T}(undef, m, k)
-    r = NDArray{T}(undef, k, n)
+    q = _undef_array(T, (m, k))
+    r = _undef_array(T, (k, n))
     k == 0 && return q, r
     _qr!(_linalg_backend(Val(:qr), a), q, r, a)
     return q, r
@@ -336,7 +336,7 @@ assumed Hermitian without being checked, matching cupynumeric.
 """
 function _cholesky(a::NDArray{T,N}) where {T,N}
     _check_square_matrices(:cholesky, a)
-    out = NDArray{T}(undef, size(a))
+    out = _undef_array(a, T)
     _cholesky!(_linalg_backend(Val(:cholesky), a), out, a)
     return out
 end
@@ -349,7 +349,7 @@ are always complex.
 """
 function _eig(a::NDArray{T,N}) where {T,N}
     ew = _alloc_eigenvalues(a)
-    ev = NDArray{_eig_complex_eltype(T)}(undef, size(a))
+    ev = _undef_array(a, _eig_complex_eltype(T))
     geev!(a, ew, ev)
     return ew, ev
 end
@@ -369,7 +369,7 @@ end
 function _alloc_eigenvalues(a::NDArray{T,N}) where {T,N}
     _check_square_matrices(:eigen, a)
     _assert_geev_available()
-    return NDArray{_eig_complex_eltype(T)}(undef, size(a)[1:(end - 1)])
+    return _undef_array(_eig_complex_eltype(T), size(a)[1:(end - 1)])
 end
 
 function _assert_geev_available()

@@ -408,7 +408,7 @@ _uniformscale_mul(::Type{T}, λ::NDArray{<:Any,0}, a::NDArray) where {T} =
     a .* _coefficient_as(T, λ)
 
 function NDArray{T}(J::LinearAlgebra.UniformScaling, dims::Dims{2}) where {T}
-    A = NDArray{T}(undef, dims)
+    A = _undef_array(T, dims)
     copyto!(A, J)
     return A
 end
@@ -608,11 +608,10 @@ function Base.similar(
     n = length(inds[1])
     if _has_diagonal_ndarray(bc)
         if _diagonal_broadcast_preserves_structure(bc)
-            d = _first_diagonal_ndarray_diag(bc)
-            return Diagonal(similar(d, ElType, (n,)))
+            return Diagonal(_undef_array(ElType, (n,)))
         end
         # Match Base: densify out-of-place to a dense array (NDArray, not Matrix).
-        return similar(NDArray{ElType}, inds)
+        return _undef_array(ElType, inds)
     elseif _diagonal_broadcast_preserves_structure(bc)
         return LinearAlgebra.structured_broadcast_alloc(bc, Diagonal, ElType, n)
     else

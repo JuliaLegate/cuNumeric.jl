@@ -42,15 +42,25 @@ end
 
 Base.broadcastable(A::NDArray) = A
 
-function _broadcast_allocate(::Type{T}, dims::Dims) where {T}
+# Internal allocation: callers must write every element before reading it.
+_undef_array(::Type{T}, dims::Tuple) where {T} =
+    nda_empty_array(map(Int, Base.to_shape.(dims)), T)
+_undef_array(arr::NDArray, ::Type{T}=eltype(arr), dims::Tuple=size(arr)) where {T} =
+    _undef_array(T, dims)
+
+function _similar_allocate(::Type{T}, dims::Dims) where {T}
     if _struct_storage_type(T) ||
         (isbitstype(T) && !isprimitivetype(T) && !(T <: SUPPORTED_TYPES))
-        return nda_empty_array(dims, T)
+        arr = nda_empty_array(dims, T)
+        # Supported records contain numeric fields, but need not define zero(T).
+        value = reinterpret(T, Base.zeros(UInt8, sizeof(T)))[1]
+        nda_fill_struct_array(arr, value)
+        return arr
     end
     return NDArray{T}(undef, dims)
 end
 
-Base.similar(arr::NDArray, ::Type{T}, dims::Dims{N}) where {T,N} = _broadcast_allocate(T, dims)
+Base.similar(arr::NDArray, ::Type{T}, dims::Dims{N}) where {T,N} = _similar_allocate(T, dims)
 Base.similar(arr::NDArray, ::Type{T}, dims::Base.DimOrInd...) where {T} = similar(arr, T, dims)
 Base.similar(arr::NDArray{T,N}) where {T,N} = similar(arr, T, size(arr))
 Base.similar(arr::NDArray{T}, dims::Tuple) where {T} = similar(arr, T, dims)
@@ -60,16 +70,17 @@ Base.similar(arr::NDArray, ::Type{T}) where {T} = similar(arr, T, size(arr))
 # Prefer Dims over the axes catch-all: with StaticArrays loaded (GPU CI via CUDA),
 # `similar(::Type{<:AbstractArray}, ::Tuple{})` is otherwise ambiguous between
 # Base, StaticArrays, and our catch-all (0-d broadcast uses axes `()`).
-Base.similar(::Type{NDArray{T}}, dims::Dims{N}) where {T,N} = _broadcast_allocate(T, dims)
+Base.similar(::Type{NDArray{T}}, dims::Dims{N}) where {T,N} = _similar_allocate(T, dims)
 function Base.similar(
     ::Type{NDArray{T}},
     shape::Tuple{Union{Integer,Base.OneTo},Vararg{Union{Integer,Base.OneTo}}},
 ) where {T}
-    return _broadcast_allocate(T, map(Int, Base.to_shape.(shape)))
+    return _similar_allocate(T, map(Int, Base.to_shape.(shape)))
 end
-Base.similar(::Type{NDArray{T}}, axes) where {T} = _broadcast_allocate(T, Base.to_shape.(axes))
+Base.similar(::Type{NDArray{T}}, axes) where {T} = _similar_allocate(T, Base.to_shape.(axes))
 function Base.similar(bc::Broadcasted{NDArrayStyle{N}}, ::Type{ElType}) where {N,ElType}
-    return similar(NDArray{ElType}, axes(bc))
+    # Broadcast fills this allocation before exposing it to the caller.
+    return _undef_array(ElType, axes(bc))
 end
 
 function __broadcast(f::Function, _, args...)
@@ -211,14 +222,14 @@ function unravel_broadcast_tree(bc::Broadcasted, dest=nothing)
 end
 
 @inline _unfused_output(::Nothing, ::Type{T}, bc, in_args) where {T} =
-    similar(NDArray{T}, axes(bc))
+    _undef_array(T, axes(bc))
 
 @inline function _unfused_output(dest::NDArray{S}, ::Type{T}, bc, in_args) where {S,T}
     # Elementwise ops may read and write the same array; only partial overlap
     # (e.g. shifted views of one store) needs a temporary.
     S === T && !any(x -> x isa NDArray && x !== dest && nda_overlaps(dest, x), in_args) &&
         return dest
-    return similar(NDArray{T}, axes(bc))
+    return _undef_array(T, axes(bc))
 end
 
 # Skips the temporary and store-back when the top-level op wrote into `dest`.
