@@ -2,7 +2,7 @@
 
 ## Matrix multiply
 
-For two 2D arrays, `*` performs matrix multiplication; use `.*` for an
+For two 2D arrays, `*` performs matrix multiplication. Use `.*` for an
 elementwise product.
 
 ```julia
@@ -26,7 +26,7 @@ Filter = t -> t isa Function && nameof(t) === :mul!
 
 Supported `LinearAlgebra` operations include:
 
-- `mul!(y, A, x)` and `mul!(y, A, x, α, β)` for matrix-vector products; `A * x` is also supported.
+- `mul!(y, A, x)` and `mul!(y, A, x, α, β)` for matrix-vector products. `A * x` is also supported.
 - `mul!(C, A, B, α, β)` for matrix-matrix products.
 - `dot(x, y)` and entrywise `norm(A, p)` (dense-array norms currently require a GPU).
 - `axpy!`, `axpby!`, `lmul!`, and `rmul!`.

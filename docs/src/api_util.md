@@ -17,7 +17,7 @@ Differences from Base:
 
 - A slice with an integer index keeps that dimension: `A[:, 2]` is `n×1` and
   `A[2, :]` is `1×n`, not a vector.
-- Assign a scalar to a slice with `.=`; `A[1:2, :] = 0f0` errors.
+- Assign a scalar to a slice with `.=`. `A[1:2, :] = 0f0` errors.
 - Not supported: step ranges (`1:2:n`), index or Boolean arrays, and slicing
   arrays with 3 or more dimensions.
 - Single elements (`A[2, 3]`) need [`@allowscalar`](./perf/patterns_to_avoid.md).

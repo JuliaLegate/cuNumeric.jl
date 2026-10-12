@@ -17,7 +17,7 @@ The zero mode is dropped so ``u`` has mean zero (the potential is only defined
 up to a constant). One forward [`fft`](@ref), a broadcasted divide, and one
 [`ifft`](@ref) is the whole solve. That is the electrostatics / gravitational
 potential of a periodic charge density, not an FFT round-trip. There is no
-reusable plan to hold across the two transforms; each call launches
+reusable plan to hold across the two transforms. Each call launches
 `CUPYNUMERIC_FFT` and cuFFT planning stays inside that task.
 
 A manufactured solution ``u = \sin(2\pi x)\sin(2\pi y)`` has
@@ -54,7 +54,7 @@ u = real(ifft(fft(f) .* invk))
 
 A stack of right-hand sides (several charge distributions, several snapshots)
 uses [`batched_fft`](@ref). The leading axis is the batch and is the one that
-can split across GPUs; a single all-axes `fft` of one grid cannot.
+can split across GPUs. A single all-axes `fft` of one grid cannot.
 
 ```julia
 f_batch = NDArray(repeat(reshape(Array(f), 1, n, n), 4, 1, 1))

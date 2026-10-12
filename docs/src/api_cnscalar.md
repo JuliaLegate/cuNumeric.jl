@@ -1,8 +1,8 @@
 # Device Scalars
 
 Full reductions (`sum(A)`, `dot(x, y)`, `norm(x)`) return a `CNScalar`: a
-number that stays on the device, backed by a 0D NDArray. Using it in further
-math launches no copy and no synchronization.
+number that stays on the device, backed by a 0D NDArray. Further arithmetic
+needs no host transfer or synchronization.
 
 ```julia
 using cuNumeric, LinearAlgebra

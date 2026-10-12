@@ -64,5 +64,5 @@ Use `batched_eigen` when you need eigenvectors.
 
 The package also provides `batched_fft`, `batched_ifft`, `batched_fft!`,
 and `batched_ifft!`. These transform the trailing dimensions while treating
-dimension 1 as the batch; the in-place forms require complex arrays.
+dimension 1 as the batch. The in-place forms require complex arrays.
 See [Batched transforms](../fft.md#Batched-transforms) for usage.

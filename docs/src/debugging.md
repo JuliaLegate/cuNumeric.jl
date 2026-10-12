@@ -133,8 +133,8 @@ The fused kernel is reported separately:
 
 How to read it:
 
-- `expr` is the fused op tree. Its `input{N}` names index the `inputs` table;
-  scalar arguments appear directly as their runtime values.
+- `expr` is the fused op tree. Its `input{N}` names index the `inputs` table.
+  Scalar arguments appear directly as their runtime values.
 - `inputs` summarizes each runtime array without exposing internal `NDArray`
   type parameters. A slice includes its parent shape. Source names such as `A`
   are available in the static lifetime rewrite, but Julia does not retain those

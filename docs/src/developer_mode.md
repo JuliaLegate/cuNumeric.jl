@@ -17,13 +17,13 @@ Developer mode builds the Julia C++ wrapper from the sources in this repo under 
 -->
 `````
 
-- You want faster iterate-rebuild cycles on the wrapper without waiting on a JLL release.
+- You want faster edit-and-rebuild cycles on the wrapper without waiting on a JLL release.
 
 Ordinary Julia-only changes under `src/` do **not** require developer mode. Restart or re-`using` as usual.
 
 ## Enable developer mode
 
-From an environment that can load `CNPreferences` (the docs project or a develop checkout of cuNumeric.jl):
+From an environment that can load `CNPreferences` (the docs project or a development checkout of cuNumeric.jl):
 
 ```julia
 using CNPreferences
@@ -53,11 +53,11 @@ Pkg.build("cuNumeric")
 That runs `deps/build.jl`, which in developer mode:
 
 1. Resolves the prebuilt cuPyNumeric binary
-2. Builds / refreshes the CxxWrap pieces as needed
+2. Builds or updates the CxxWrap dependencies as needed
 3. Compiles `lib/cunumeric_jl_wrapper` via `scripts/build_cpp_wrapper.sh` into `lib/cunumeric_jl_wrapper/build/`
 4. Points the package at that local library (artifact override)
 
-Then restart Julia (or at least reload cuNumeric) so the new shared library is picked up.
+Restart Julia to load the rebuilt shared library.
 
 If the build fails, check CMake / g++ (C++20) / CUDA toolkit availability as described on [Build Modes](./install.md). Build logs from the helper scripts are written under `deps/`.
 

@@ -44,7 +44,7 @@ println(Array(x))
 ```
 
 `rho` holds the squared residual norm. Reductions and the coefficients `alpha`
-and `beta` remain in cuNumeric's computation graph; `only(rho)` reads a value
+and `beta` remain in cuNumeric's computation graph. `only(rho)` reads a value
 back to the host at a convergence check. Increasing `check_every` lets the host
 submit more iterations ahead, at the cost of potentially doing extra work
 before observing convergence. A check also occurs at the iteration limit.

@@ -29,7 +29,7 @@ Build-mode setup (JLL / developer) is documented under [Build Modes](./install.m
 ## Linear algebra
 
 `set_linalg!` accepts the constant names above as keywords. All values must be
-positive integers; unspecified settings are unchanged. Restart Julia to load
+positive integers. Unspecified settings are unchanged. Restart Julia to load
 the new constants. `cuNumeric.versioninfo()` shows the effective values.
 
 ```julia
@@ -61,7 +61,7 @@ CNPreferences.use_developer_mode()  # build the wrapper against prebuilt depende
 ```
 
 Restart Julia after selecting the mode. For developer mode, rebuild the
-wrapper with `Pkg.build("cuNumeric")`; see [Developer Mode](./developer_mode.md).
+wrapper with `Pkg.build("cuNumeric")`. See [Developer Mode](./developer_mode.md).
 
 ## Broadcast fusion
 
@@ -92,7 +92,7 @@ CNPreferences.set_broadcast_fusion_min_ops!
 
 ## Task scope names
 
-Default: **off**. Optional Legate task-scope naming for debugging. When on, cuNumeric wraps many ops in `Legate.with_scope` so provenance strings (for example `matmul`, `zeros`, or fused `broadcast.<expr>`) appear in Legate logs and profiles. Pair this with `--logging legate=debug --log-to-file` (or `--profile`) in `LEGATE_CONFIG`; see [Debugging](./debugging.md#trace-legate-runtime-work).
+Default: **off**. Optional Legate task-scope naming for debugging. When on, cuNumeric wraps many ops in `Legate.with_scope` so provenance strings (for example `matmul`, `zeros`, or fused `broadcast.<expr>`) appear in Legate logs and profiles. Pair this with `--logging legate=debug --log-to-file` (or `--profile`) in `LEGATE_CONFIG`. See [Debugging](./debugging.md#trace-legate-runtime-work).
 
 ```julia
 using CNPreferences

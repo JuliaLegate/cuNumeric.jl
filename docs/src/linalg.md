@@ -25,7 +25,7 @@ pass through silently while `Int32`, smaller integers, and `Bool` do not.
 ## Which entry point to use
 
 Single matrices use familiar `LinearAlgebra` functions. Most decompositions
-return standard factorization objects; QR returns cuNumeric's `NDArrayQR`. Stacks of matrices have no `LinearAlgebra`
+return standard factorization objects. QR returns cuNumeric's `NDArrayQR`. Stacks of matrices have no `LinearAlgebra`
 equivalent, so they get their own `batched_*` names.
 
 | Single matrix (2D) | Returns | Stack of matrices (3D) |

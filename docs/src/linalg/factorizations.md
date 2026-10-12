@@ -23,7 +23,7 @@ L = F.L          # LowerTriangular view of F.factors
 
 Three things differ from Base:
 
-- The input is **not** checked for being Hermitian; only its lower triangle is
+- The input is **not** checked for being Hermitian. Only its lower triangle is
   read. There are no `Hermitian` / `Symmetric` overloads.
 - A non-positive-definite input raises an `ErrorException` carrying the task's
   `"Matrix is not positive definite"` message, not a `PosDefException`. The
@@ -34,7 +34,7 @@ Three things differ from Base:
 
 ## Eigendecomposition
 
-`LinearAlgebra.eigen(A)` returns an `Eigen` object; `eigvals` and `eigvecs`
+`LinearAlgebra.eigen(A)` returns an `Eigen` object. `eigvals` and `eigvecs`
 return the pieces individually. Column `j` of the eigenvector matrix is the
 eigenvector for eigenvalue `j`.
 
@@ -55,8 +55,8 @@ On a GPU this requires `cusolverDnXgeev`, added in CUDA 12.6.2. When it is
 missing, the eigen entry points throw an error rather than silently falling back
 to host execution.
 
-The symmetric/Hermitian path (`eigh`, backed by the `SYEV` task) is not wired up
-yet; it needs `Hermitian` / `Symmetric` support on `NDArray` first.
+Symmetric and Hermitian eigendecomposition (`eigh`) is not supported yet.
+It requires `Hermitian` / `Symmetric` support on `NDArray`.
 
 ## Singular value decomposition
 
@@ -75,8 +75,7 @@ With `k = min(m, n)`, the output shapes are:
   is `k × n`.
 - Full (`full=true`): `U` is `m × m`, `S` has length `k`, and `Vt` is `n × n`.
 
-Note that `full=false` is the Julia default, whereas numpy's
-`full_matrices=True` is not. Destructuring as `U, S, V = F` also gives you the
+The default `full=false` returns thin factors. Destructuring as `U, S, V = F` also gives you the
 *adjoint* of `F.Vt`, and `F.V` is a lazy `Adjoint` wrapper, so operating on it
 falls back to scalar indexing until `adjoint(::NDArray)` is implemented. Prefer
 `F.Vt`.
@@ -98,10 +97,8 @@ F = qr(A)
 Q, R = F                 # or: F.Q, F.R
 ```
 
-`NDArrayQR` is a `LinearAlgebra.Factorization` but not one of Base's QR types.
-Base's default `QRCompactWY` stores a blocked Householder representation and
-`QR` stores `factors` plus `τ`; the backend runs `geqrf` followed by `orgqr` and
-discards `τ`, so neither is constructible. The practical difference is that
-`F.Q` is a materialized `NDArray` rather than a lazy `QRCompactWYQ`.
+`NDArrayQR` is a `LinearAlgebra.Factorization` with explicit `Q` and `R` arrays.
+Unlike Base's default QR factorization, `F.Q` is a materialized `NDArray`
+rather than a lazy `QRCompactWYQ`.
 
-SVD and QR accept only 2D arrays; there are no batched versions.
+SVD and QR accept only 2D arrays. There are no batched versions.

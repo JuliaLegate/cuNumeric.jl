@@ -31,7 +31,7 @@ end
 
 ## Scalars
 
-Prefer a Julia `Number` for scale factors when possible (i.e., `2.0f0`, `randn()`, …). This allows TensorOperations.jl to perform optimizations for special values like zero and one.
+Prefer a Julia `Number` for scale factors when possible (e.g., `2.0f0`, `randn()`, …). This allows TensorOperations.jl to perform optimizations for special values like zero and one.
 
 A `CNScalar`, such as `sum(C)`, or a raw 0D `NDArray`, such as a
 fully contracted `@tensor` result, is also accepted as a scale. Keep these results in runtime-managed storage when reusing them in tensor contractions. `fetch` retrieves a native Julia scalar and waits for the result, so only fetch

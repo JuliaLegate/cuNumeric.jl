@@ -86,12 +86,10 @@ a fourth-order low-storage Runge-Kutta method with fixed time steps.
   ordinary Julia `Array` storage.
 - `save_everystep=false` avoids retaining every intermediate time step.
 - `unstable_check=(dt, u, p, t) -> false` disables the default per-step
-  instability scan, which can fall back to scalar iteration on custom arrays.
+  instability scan, which can loop over individual elements of custom arrays.
   This also removes that automatic check: validate the result separately and
   choose a stable time step when changing the grid spacing or diffusivity.
 
 The [benchmark version](https://github.com/JuliaLegate/benchmarking/tree/main/composability/ordinarydiffeq)
 checks the final state against the known decay of the discrete sine mode.
-Its run notes report this example on an H100 with Julia 1.13. These checks
-cover this heat problem and the tested configurations, rather than the full
-OrdinaryDiffEq solver and option set.
+Its run notes report this example on an H100 with Julia 1.13.

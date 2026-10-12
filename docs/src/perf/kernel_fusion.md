@@ -29,7 +29,7 @@ CNPreferences.disable_broadcast_fusion!()        # enable_broadcast_fusion!() is
 CNPreferences.set_broadcast_fusion_min_ops!(1)   # fuse single operations too (default 2)
 ```
 
-Restart Julia after changing a preference; see [CNPreferences](../api_preferences.md).
+Restart Julia after changing a preference. See [CNPreferences](../api_preferences.md).
 
 ## Fusing across statements
 

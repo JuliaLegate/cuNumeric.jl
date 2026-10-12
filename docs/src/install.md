@@ -13,11 +13,11 @@ cuNumeric.jl gets its cuPyNumeric / Legate binaries from one of three providers,
 `````
 
 cuNumeric.jl uses prebuilt cuPyNumeric and Legate binaries. Choose the wrapper
-build mode through `CNPreferences`; restart Julia after changing it.
+build mode through `CNPreferences`. Restart Julia after changing it.
 
 | Mode | When to use |
 |:---|:---|
-| **JLL (default)** | Normal installs; prebuilt artifacts from the Julia package server |
+| **JLL (default)** | Normal installs using prebuilt artifacts from the Julia package server |
 | **Developer** | Building the cuNumeric.jl C++ wrapper against the prebuilt dependencies |
 
 Install `CNPreferences` on its own if you want to set the mode before adding `cuNumeric`:
@@ -27,7 +27,7 @@ using Pkg
 Pkg.add("CNPreferences")
 ```
 
-## Default Build (jlls)
+## Default build (JLLs)
 
 ```julia
 using Pkg
@@ -51,17 +51,16 @@ Then restart Julia.
 
 ## Developer mode
 > [!TIP]
-> This gives the most flexibility in installs. It is meant for developing on cuNumeric.jl.
-> For rebuilding `lib/cunumeric_jl_wrapper` after C++ changes, see [Developer Mode](./developer_mode.md).
+> Use developer mode to rebuild the cuNumeric.jl C++ wrapper after making changes.
+> See [Developer Mode](./developer_mode.md) for the full workflow.
 
-We support developer mode which allows you to make changes to the cuNumeric.jl wrapper.
-
-To use developer mode,
+Enable developer mode with:
 ```julia
 using CNPreferences; CNPreferences.use_developer_mode()
 ```
 
-After enabling developer mode (and after any wrapper edits), rebuild with `Pkg.build("cuNumeric")` and restart Julia. Details are on [Developer Mode](./developer_mode.md).
+After enabling developer mode or editing the wrapper, rebuild with
+`Pkg.build("cuNumeric")` and restart Julia.
 
 `````@raw html
 <!-- ## Link Against Existing Conda Environment

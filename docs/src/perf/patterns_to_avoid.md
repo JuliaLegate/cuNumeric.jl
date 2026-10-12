@@ -1,6 +1,6 @@
 # Patterns to Avoid
 
-By default behaviors which hinder performance, like scalar indexing,
+By default, behaviors that hinder performance, like scalar indexing,
 converting a 0D NDArray to a Julia scalar, and implicit type promotion, are
 disabled. The `@allow` macros permit users to selectively opt in to these
 behaviors despite the potential performance loss. They are useful for
@@ -23,7 +23,7 @@ being used. The [Krylov.jl example](../examples/krylov.md) uses `@allowfetch`
 for convergence decisions and also `@allowpromotion` for complex CG.
 [OrdinaryDiffEq.jl](../examples/ordinarydiffeq.md) can likewise encounter
 host-side checks or generic array operations, depending on the solver and
-options; the documented heat example uses settings that need no `@allow`
+options. The documented heat example uses settings that need no `@allow`
 macros. Enabling a permission does not implement missing methods or establish
 that an untested solver is compatible. Check correctness and performance for
 your configuration.
@@ -32,7 +32,7 @@ your configuration.
 
 Accessing an `NDArray` one element at a time, such as `A[5]`, requires a
 host value and can be expensive, especially in a loop. Prefer broadcasting,
-reductions, and array operations. For a deliberate inspection while debugging:
+reductions, and array operations. To inspect an element while debugging:
 
 ```julia
 using cuNumeric
@@ -49,7 +49,7 @@ fallbacks in otherwise generic Julia code.
 
 Reductions such as `sum(A)` return a `CNScalar` that stays in runtime-managed
 storage. Keep it there when using it in further arithmetic. Call `fetch`
-when you deliberately need a native Julia number; it waits for the result
+when you deliberately need a native Julia number. It waits for the result
 and needs neither `@allowfetch` nor `@allowscalar`.
 
 ```julia
@@ -69,9 +69,8 @@ host_sum = allowfetch() do
 end
 ```
 
-Arithmetic inside the scope still runs on the backend; values are fetched
-only where host extraction is required. Repeated comparisons can repeatedly
-synchronize, so keep them out of inner loops when array operations can express
+Arithmetic inside the scope still runs on the backend. Values are fetched
+only where host extraction is required. Repeated comparisons can force synchronization, so keep them out of inner loops when array operations can express
 the same calculation. `@allowfetch` does not automatically convert arguments
 for arbitrary methods: a function requiring a `Float32` still needs an
 explicit `Float32(s)` conversion.
@@ -93,5 +92,5 @@ C = @allowpromotion A .+ 1.0 # deliberately allow widening to Float64
 
 Use `@allowpromotion` (or `allowpromotion() do ... end`) when the conversion
 is intentional, including where an external algorithm mixes coefficient
-types. The macro permits the conversion; it does not remove its allocation
+types. The macro permits the conversion. It does not remove its allocation
 or performance cost.

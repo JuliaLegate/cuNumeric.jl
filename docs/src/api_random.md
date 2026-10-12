@@ -8,10 +8,10 @@ stack: BitGenerators, `Generator`, and `default_rng`.
 Random draws use cuRAND with the [`XORWOW`](@ref cuNumeric.XORWOW) random
 number generator by default. We support `Float32` and `Float64` uniforms,
 normals, and exponentials (`randexp`), `ComplexF32` / `ComplexF64` uniforms
-and normals (independent real/imag parts; no `randexp`), `Bool` coin flips,
+and normals (independent real/imag parts, without `randexp`), `Bool` coin flips,
 and signed `Int16` / `Int32` / `Int64`. There is no native Bool or complex
 distribution, so `rand(Bool, …)` draws `Int16` values in `{0,1}` and compares
-them to zero, and complex draws two real arrays packed as `re + i*imag`.
+them to zero. Complex arrays combine two real arrays as `re + i*imag`.
 
 `Random.seed!` is not implemented. Use [`default_rng`](@ref cuNumeric.default_rng)
 with an explicit seed (or a specific BitGenerator) when you need a private

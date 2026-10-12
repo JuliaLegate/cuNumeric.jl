@@ -29,7 +29,7 @@ size-1 extrusion, 0D broadcasts, and reductions.
 !!! warning "Experimental Feature"
     StructArray broadcasting requires `cuNumeric.Experimental(true)`.
 
-Each field is an NDArray; one broadcast fills them all.
+Each field is an NDArray. One broadcast fills them all.
 
 ```julia
 using cuNumeric, StructArrays

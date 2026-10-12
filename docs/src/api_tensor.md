@@ -10,7 +10,7 @@ For Einstein-index notation, supported operations, and scalar handling, see the
 > extension calls. They do not parse einsum strings, pick a contraction order,
 > or free intermediates for you.
 
-Mode labels are not einsum strings: `"ik"` with `"kj"` is a GEMM; `"ijk"` with
+Mode labels are not einsum strings: `"ik"` with `"kj"` is a GEMM. `"ijk"` with
 `"ikl"` and explicit output `"ijl"` is a batched product. Labels may be ASCII
 strings, `Char` tuples, or integers (`1` maps to `'a'`).
 
@@ -29,10 +29,10 @@ contract!(CC, "ijl", AA, "ijk", BB, "ikl")
 tensordot(AA, BB, ([3], [2]))               # same contraction, axes form
 ```
 
-`α` and `β` implement `C = β*C + α*(A ⋆ B)` in Julia. Prefer a Julia `Number`;
-a 0D `NDArray` is also accepted. The C++ kernel always writes the unscaled
-product; `β ≠ 0` uses a temporary. Duplicate labels inside one array are not
-allowed — use `cuNumeric.diagonal` first.
+`α` and `β` implement `C = β*C + α*(A ⋆ B)` in Julia. Prefer a Julia `Number`.
+A 0D `NDArray` is also accepted. The C++ kernel always writes the unscaled
+product. `β ≠ 0` uses a temporary. Duplicate labels inside one array are not
+allowed. Use `cuNumeric.diagonal` first.
 
 This path is multi-GPU via Legate tiling (per-tile cuTENSOR or TBLIS), not
 cuTensorMp. Integer and `Bool` inputs promote to `Float64` like other linalg.

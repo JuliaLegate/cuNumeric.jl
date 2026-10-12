@@ -96,7 +96,7 @@ gpus = [1, 2, 4, 8]
 N = [43408, 54688, 68904, 86816]
 ```
 
-- `gpus`, `cpus`, `N` and `M` pair up by position; `T` and `fusion` multiply.
+- `gpus`, `cpus`, `N` and `M` pair up by position. `T` and `fusion` multiply.
 - `auto_size = true` with `N` omitted fits the problem to `mem_frac` of the
   smallest GPU's memory.
 - `single_gpu = true` sweeps problem size on one GPU instead of GPU count.
@@ -112,5 +112,5 @@ GFLOPS and a correctness check (`pass`, `fail` or `skipped`) per trial.
 julia --project=. plotter/plot_results.jl results/<run-id> --format=pdf
 ```
 
-For manual REPL timing, set `LEGATE_CONFIG` before starting Julia; see
+For manual REPL timing, set `LEGATE_CONFIG` before starting Julia. See
 [Hardware Configuration](../configuration/hardware.md).

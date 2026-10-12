@@ -1,6 +1,7 @@
 # Gray-Scott Reaction Diffusion
 
-The runnable example in `examples/gray-scott.jl` evolves two chemical fields with periodic boundaries. Its update is a straight-line function, so the recommended function form of `@accelerate` can release reaction and Laplacian temporaries after their final use and fuse eligible CUDA broadcasts.
+The runnable example in `examples/gray-scott.jl` evolves two chemical fields with periodic boundaries. The update function uses `@accelerate` to fuse eligible CUDA broadcasts and
+free temporary arrays after their last use.
 
 ```julia
 @accelerate function step!(u, v, u_new, v_new, args::Params)

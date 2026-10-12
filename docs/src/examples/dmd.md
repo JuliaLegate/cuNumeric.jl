@@ -127,10 +127,10 @@ must produce.
 
 ## Notes
 
-- `svd`, `eigen`, and matrix multiply all run on device; see
+- `svd`, `eigen`, and matrix multiply all run on device. See
   [Factorizations](../linalg/factorizations.md).
 - `Diagonal(1.0f0 ./ F.S[1:r])` scales by ``\Sigma^{-1}`` without building a
-  dense ``r \times r`` matrix. Note the `1.0f0` — an `Int` literal would try to
+  dense ``r \times r`` matrix. Note the `1.0f0`: an `Int` literal would try to
   widen the `Float32` singular values.
 - `eigen` is always complex, so `B` is converted with `cuNumeric.as_type` before
   multiplying by the eigenvectors.

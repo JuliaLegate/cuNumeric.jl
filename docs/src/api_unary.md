@@ -15,12 +15,12 @@ Reductions, with optional `dims` except `argmax` / `argmin`:
 ## Differences from Base Julia
 
 - The `acosh` function in Julia will error on inputs outside of the domain (`x >= 1`), but cuNumeric.jl will return `NaN`.
-- `round.(A)` uses IEEE round-to-nearest-even (the `RINT` kernel), matching Julia `round(x)` / `RoundNearest`. Only that 1-arg path is wired. `digits`, `sigdigits`, and `RoundingMode` are not supported (`round.(A; digits=n)` errors).
-- `floor`, `ceil`, `trunc`, and `signbit` are float-only kernels. `round` also supports complex values. Bool and integer inputs are not accepted (Julia's `floor`/`ceil`/`trunc`/`round` on integers are identity).
+- `round.(A)` uses IEEE round-to-nearest-even (the `RINT` kernel), matching Julia `round(x)` / `RoundNearest`. Only the single-argument form is supported. `digits`, `sigdigits`, and `RoundingMode` are not supported (`round.(A; digits=n)` errors).
+- `floor`, `ceil`, `trunc`, and `signbit` are float-only kernels. `round` also supports complex values. Bool and integer inputs are not accepted (Julia's `floor`/`ceil`/`trunc`/`round` return integer inputs unchanged).
 - `~` is bitwise not on integers. On `Bool` it matches `!` (the invert kernel rejects `Bool`, so we use logical not).
 - Full reductions (`sum`, `mean`, `var`, `std`, …) return a `CNScalar` backed by a 0D NDArray. Use `fetch` to read a native Julia scalar.
-- `var` / `std` match Julia / StatsBase sample statistics (`corrected=true`, divisor `n-1`). Complex is not supported.
-- `argmax` / `argmin` are 1D fetch (matching Base's `Int` return, not `CartesianIndex`). The result is a 0D `NDArray{Int64}` of the 1-based index. Complex is not supported.
+- `var` / `std` match Julia / StatsBase sample statistics (`corrected=true`, divisor `n-1`). Complex inputs are not supported.
+- `argmax` / `argmin` are 1D fetch (matching Base's `Int` return, not `CartesianIndex`). The result is a 0D `NDArray{Int64}` of the 1-based index. Complex inputs are not supported.
 
 For `mapreduce` and mapped `sum`, `prod`, `minimum`, and `maximum`, see
 [Map and Reduce](./api_mapreduce.md).

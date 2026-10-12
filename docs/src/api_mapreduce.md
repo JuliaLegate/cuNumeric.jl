@@ -4,7 +4,7 @@
 
 `map(f, A)` and `map(f, A, B)` are the same as `f.(A)` and `f.(A, B)`.
 `map!(op, dest, A, B)` writes into `dest` for built-in binary operators
-(`+`, `*`, `max`, …); all three arrays must have the same shape.
+(`+`, `*`, `max`, …). All three arrays must have the same shape.
 
 ```julia
 A, B = cuNumeric.rand(1024), cuNumeric.rand(1024)
@@ -33,9 +33,9 @@ largest = maximum(abs, A; init=0f0)
 
 ## Types and `init`
 
-- `sum` and `prod` widen integers like Base; `mapreduce` with `+` or `*` does
+- `sum` and `prod` widen integers like Base. `mapreduce` with `+` or `*` does
   not. Implicit widening is subject to `allowpromotion`.
-- `init` must be a neutral element; it is applied once and sets the output
+- `init` must be a neutral element. It is applied once and sets the output
   type. For `dims` reductions it must not narrow the accumulator.
 - Empty inputs follow Base, so arbitrary mappings may need `init`.
 
