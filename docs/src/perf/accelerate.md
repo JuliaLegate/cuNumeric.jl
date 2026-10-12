@@ -43,7 +43,11 @@ can still run as one GPU kernel that writes all of them.
 
 The form also affects how much memory is left for Julia's garbage collector to reclaim. In this Gray-Scott benchmark, the `function` and `let` forms have the lowest step times and leave no temporary arrays for the GC. The colors show the amount of memory left to the GC per GPU per step. `plain` is the version without `@accelerate`.
 
-[![Gray-Scott step times for plain code and the expression, begin, let, and function forms of accelerate, colored by memory left to the garbage collector.](../images/benchmarks/accelerate_gc.png)](../images/benchmarks/grayscott_time_fused.pdf)
+```@raw html
+<object data="../images/benchmarks/grayscott_time_fused.pdf" type="application/pdf" style="width: 100%; aspect-ratio: 480 / 208;" aria-label="Gray-Scott step times for plain code and the expression, begin, let, and function forms of accelerate, colored by memory left to the garbage collector.">
+  <a href="../images/benchmarks/grayscott_time_fused.pdf">Gray-Scott step times for plain code and the expression, begin, let, and function forms of accelerate, colored by memory left to the garbage collector.</a>
+</object>
+```
 
 ## Writing the body
 
