@@ -1,67 +1,15 @@
 # Benchmarking
 
-> [!NOTE]
-> We currently have a paper under submission. Once it is accepted, we will update this page with the current results and figures.
-> See [How to Benchmark](./howto.md) for the current harness to compare cuNumeric.jl with other Julia multi-GPU frameworks and cuPyNumeric.
+The code and configurations are in our [benchmarking repository](https://github.com/JuliaLegate/benchmarking). Run `./run_all.sh` from the repository root, or read its [README](https://github.com/JuliaLegate/benchmarking#readme) for setup and individual benchmarks.
 
-# Historical Benchmark Results (JuliaCon 2025)
+## Package Integrations
 
-These historical JuliaCon 2025 results compare cuNumeric.jl with cuPyNumeric and problem-specific alternatives on one node with eight A100 GPUs. All plots show weak scaling.
+The [Krylov.jl CG](../examples/krylov.md) and [OrdinaryDiffEq.jl heat diffusion](../examples/ordinarydiffeq.md) benchmarks compare cuNumeric.jl, CUDA.jl, and Dagger.jl arrays. The left panels vary the problem size on one GPU. The right panels show weak scaling, where cuNumeric.jl keeps solve and step times nearly constant as the GPU count grows.
 
-## SGEMM
+Lower times are better. Click the figure to open the PDF.
 
-Code Outline:
-```julia
-mul!(C, A, B)
-```
+[![Krylov.jl CG solve times and OrdinaryDiffEq.jl heat diffusion step times on one and multiple GPUs.](../images/benchmarks/composability_cunumeric.png)](../images/benchmarks/composability.pdf)
 
-```@raw html
-<table>
-  <tr>
-    <th>GEMM Efficiency</th>
-    <th>GEMM GFLOPS</th>
-  </tr>
-  <tr>
-    <td><img src="../images/gemm_efficiency.svg" alt="GEMM Efficiency"/></td>
-    <td><img src="../images/gemm_gflops.svg" alt="GEMM GFLOPS"/></td>
-  </tr>
-</table>
-```
+## cuNumeric Kernels and Applications
 
-## Monte-Carlo Integration
-
-Monte-Carlo integration is embarrassingly parallel. Because the exact operation count of `exp` is implementation-dependent, the plotted operation rate is scaled by an approximate constant.
-
-Code Outline:
-```julia
-integrand = (x) -> exp.(-x.^2)
-val = (V/N) * sum(integrand(x))
-```
-
-```@raw html
-<table>
-  <tr>
-    <th>MC Efficiency</th>
-    <th>MC GFLOPS</th>
-  </tr>
-  <tr>
-    <td><img src="../images/mc_eff.svg" alt="MC Efficiency"/></td>
-    <td><img src="../images/mc_ops.svg" alt="MC GFLOPS"/></td>
-  </tr>
-</table>
-```
-
-## Gray-Scott (2D)
-
-Solving a PDE requires halo exchanges and lots of data movement. In this benchmark we fall an order of magnitude short of the `ImplicitGlobalGrid.jl` library which specifically targets multi-node, multi-GPU halo exchanges. Broadcast fusion helps on the elementwise update, but communication and stencil data movement still dominate the gap.
-
-```@raw html
-<table>
-  <tr>
-    <th>GS GFLOPS</th>
-  </tr>
-  <tr>
-    <td><img src="../images/gs_gflops_diffeq.svg" alt="GS GFLOPS"/></td>
-  </tr>
-</table>
-```
+Results for kernels and applications written entirely with cuNumeric are coming soon!

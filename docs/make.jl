@@ -57,10 +57,7 @@ makedocs(;
             "Build Modes" => "install.md",
             "CNPreferences" => "api_preferences.md",
         ],
-        "Benchmarks" => [
-            "Results" => "benchmarks/results.md",
-            "How to Benchmark" => "benchmarks/howto.md",
-        ],
+        "Benchmarks" => "benchmarks/results.md",
         "Developer" => [
             "Developer Mode" => "developer_mode.md",
             "Debugging" => "debugging.md",

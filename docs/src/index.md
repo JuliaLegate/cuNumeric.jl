@@ -82,7 +82,7 @@ See [Kernel Fusion](perf/kernel_fusion.md) and [Debugging](debugging.md) for con
 
 ### Benchmarks
 
-Results and reproduction instructions live under [Benchmark Results](benchmarks/results.md) and [How to Benchmark](benchmarks/howto.md).
+See [Benchmarks](benchmarks/results.md) for package integration results and reproduction instructions.
 
 ### Try an example
 

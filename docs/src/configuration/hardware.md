@@ -17,4 +17,4 @@ for more options.
 
 The same `LEGATE_CONFIG` string can carry logging / profiling flags (for example `--logging legate=debug --log-to-file`). Those are covered under [Debugging](../debugging.md#trace-legate-runtime-work), including how they pair with [CNPreferences](../api_preferences.md#task-scope-names) task-scope naming.
 
-The benchmark harness (`benchmark/run.jl` via `run_benchmark.sh`) sets `LEGATE_CONFIG` from `--gpus` / `--cpus` before each worker starts. See [How to Benchmark](../benchmarks/howto.md).
+The benchmark harness (`benchmark/run.jl` via `run_benchmark.sh`) sets `LEGATE_CONFIG` from `--gpus` / `--cpus` before each worker starts. See the [benchmarking repository](https://github.com/JuliaLegate/benchmarking).
