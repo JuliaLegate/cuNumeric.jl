@@ -56,19 +56,6 @@ export default defineConfig({
     ['script', {src: `${baseTemp.base}siteinfo.js`}]
   ],
 
-  // Bundle PDFs embedded with <object data>; the list replaces Vue's defaults, so they are repeated.
-  vue: {
-    template: {
-      transformAssetUrls: {
-        video: ['src', 'poster'],
-        source: ['src'],
-        img: ['src'],
-        image: ['xlink:href', 'href'],
-        use: ['xlink:href', 'href'],
-        object: ['data'],
-      },
-    },
-  },
   vite: {
     define: {
       __DEPLOY_ABSPATH__: JSON.stringify('REPLACE_ME_DOCUMENTER_VITEPRESS_DEPLOY_ABSPATH'),

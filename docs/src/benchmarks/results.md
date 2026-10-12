@@ -8,11 +8,7 @@ The [Krylov.jl CG](../examples/krylov.md) and [OrdinaryDiffEq.jl heat diffusion]
 
 Lower times are better.
 
-```@raw html
-<object data="../images/benchmarks/composability.pdf" type="application/pdf" style="width: 100%; aspect-ratio: 475 / 464;" aria-label="Krylov.jl CG solve times and OrdinaryDiffEq.jl heat diffusion step times on one and multiple GPUs.">
-  <a href="../images/benchmarks/composability.pdf">Krylov.jl CG solve times and OrdinaryDiffEq.jl heat diffusion step times on one and multiple GPUs.</a>
-</object>
-```
+![Krylov.jl CG solve times and OrdinaryDiffEq.jl heat diffusion step times on one and multiple GPUs.](../images/benchmarks/composability.svg)
 
 ## cuNumeric Kernels and Applications
 
@@ -22,48 +18,28 @@ These benchmarks are written entirely with cuNumeric.jl and compared against cuP
 
 Time per step on 1–8 GPUs for each benchmark, compared with cuPyNumeric, CUDA.jl, Dagger.jl, and JACC.jl.
 
-```@raw html
-<object data="../images/benchmarks/grid_time.pdf" type="application/pdf" style="width: 100%; aspect-ratio: 490 / 551;" aria-label="Weak scaling time per step for GEMM, Monte Carlo, Gray-Scott, HPC-CG, NAS EP, NAS FT, and NAS MG.">
-  <a href="../images/benchmarks/grid_time.pdf">Weak scaling time per step for GEMM, Monte Carlo, Gray-Scott, HPC-CG, NAS EP, NAS FT, and NAS MG.</a>
-</object>
-```
+![Weak scaling time per step for GEMM, Monte Carlo, Gray-Scott, HPC-CG, NAS EP, NAS FT, and NAS MG.](../images/benchmarks/grid_time.svg)
 
 ### Broadcast Fusion
 
 Gray-Scott and Monte Carlo with and without broadcast fusion, compared with cuPyNumeric and ImplicitGlobalGrid.jl.
 
-```@raw html
-<object data="../images/benchmarks/fusion_time.pdf" type="application/pdf" style="width: 100%; aspect-ratio: 481 / 217;" aria-label="Gray-Scott and Monte Carlo time per step with and without broadcast fusion.">
-  <a href="../images/benchmarks/fusion_time.pdf">Gray-Scott and Monte Carlo time per step with and without broadcast fusion.</a>
-</object>
-```
+![Gray-Scott and Monte Carlo time per step with and without broadcast fusion.](../images/benchmarks/fusion_time.svg)
 
 ### Gray-Scott
 
 Throughput and time per step for the 2D Gray-Scott stencil, compared with cuPyNumeric and ImplicitGlobalGrid.jl.
 
-```@raw html
-<object data="../images/benchmarks/grayscott_compare.pdf" type="application/pdf" style="width: 100%; aspect-ratio: 460 / 264;" aria-label="Gray-Scott throughput and time per step on one and multiple GPUs.">
-  <a href="../images/benchmarks/grayscott_compare.pdf">Gray-Scott throughput and time per step on one and multiple GPUs.</a>
-</object>
-```
+![Gray-Scott throughput and time per step on one and multiple GPUs.](../images/benchmarks/grayscott_compare.svg)
 
 ### Problem Size Sweep
 
 Time per step on one GPU as the problem size grows. At small sizes, fixed per-task runtime overhead dominates and hand-written CUDA.jl kernels are faster. The gap closes as the problem grows.
 
-```@raw html
-<object data="../images/benchmarks/sweep_time.pdf" type="application/pdf" style="width: 100%; aspect-ratio: 502 / 201;" aria-label="Gray-Scott and Monte Carlo time per step versus problem size on one GPU.">
-  <a href="../images/benchmarks/sweep_time.pdf">Gray-Scott and Monte Carlo time per step versus problem size on one GPU.</a>
-</object>
-```
+![Gray-Scott and Monte Carlo time per step versus problem size on one GPU.](../images/benchmarks/sweep_time.svg)
 
 ### Code Complexity vs Performance
 
 Cyclomatic complexity of each implementation against its performance relative to the fastest model on 8 GPUs. Small markers are individual benchmarks and large markers are per-model means. The ideal is the top-left corner.
 
-```@raw html
-<object data="../images/benchmarks/complexity_8gpu.pdf" type="application/pdf" style="width: 100%; aspect-ratio: 474 / 213;" aria-label="Cyclomatic complexity versus relative performance on 8 GPUs for cuNumeric.jl, Dagger.jl, and JACC.jl.">
-  <a href="../images/benchmarks/complexity_8gpu.pdf">Cyclomatic complexity versus relative performance on 8 GPUs for cuNumeric.jl, Dagger.jl, and JACC.jl.</a>
-</object>
-```
+![Cyclomatic complexity versus relative performance on 8 GPUs for cuNumeric.jl, Dagger.jl, and JACC.jl.](../images/benchmarks/complexity_8gpu.svg)
