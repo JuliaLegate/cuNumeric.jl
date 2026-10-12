@@ -67,7 +67,7 @@ must be `NDArray` unless noted.
   diagonal (`NDArray`), vectors are `NDArray` identity. Keyword `sortby` is not
   supported on this method.
 - `tr`, `sum`, `prod`, `maximum`, `minimum` — `CNScalar` (not a Julia scalar)
-- `iszero`, `isone`, `istriu`, `istril`, `ishermitian`, `issymmetric`, `isposdef` — 0-dimensional `NDArray{Bool}`
+- `iszero`, `isone`, `istriu`, `istril`, `ishermitian`, `issymmetric`, `isposdef` — 0D `NDArray{Bool}`
 - `opnorm(D)` / `opnorm(D, p)` for `p ∈ {1, 2, Inf}` — `CNScalar`
 - `norm(D)` / `norm(D, p)` for finite `p` (including `±Inf`); off-diagonals are zero — `CNScalar`
 - `cond(D)` / `cond(D, p)` for `p ∈ {1, 2, Inf}` — `CNScalar`
@@ -78,8 +78,8 @@ must be `NDArray` unless noted.
 - `cuNumeric.diag` / `LinearAlgebra.diag` (2D → 1D), `cuNumeric.diagonal` (two
   axes of an `N`-D array → rank `N-1`), `cuNumeric.trace` / `LinearAlgebra.tr`
   (2D square → 0D)
-- `iszero(A)` — all elements `== zero(T)` → 0-dimensional `NDArray{Bool}`
-- `isone(A)` — square 2D vs `_eye(T, n)` → 0-dimensional `NDArray{Bool}` (non-square → `false`)
+- `iszero(A)` — all elements `== zero(T)` → 0D `NDArray{Bool}`
+- `isone(A)` — square 2D vs `_eye(T, n)` → 0D `NDArray{Bool}` (non-square → `false`)
 
 ## Unsupported / fallthrough
 

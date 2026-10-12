@@ -22,7 +22,7 @@ positions = position.(particles)   # NDArray{Float32}
 ```
 
 Not supported: nested structs or tuple fields, struct broadcast scalars,
-size-1 extrusion, 0-d broadcasts, and reductions.
+size-1 extrusion, 0D broadcasts, and reductions.
 
 ## Struct of arrays
 

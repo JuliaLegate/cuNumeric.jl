@@ -20,7 +20,7 @@ Reductions, with optional `dims` except `argmax` / `argmin`:
 - `~` is bitwise not on integers. On `Bool` it matches `!` (the invert kernel rejects `Bool`, so we use logical not).
 - Full reductions (`sum`, `mean`, `var`, `std`, …) return a `CNScalar` backed by a 0D NDArray. Use `fetch` to read a native Julia scalar.
 - `var` / `std` match Julia / StatsBase sample statistics (`corrected=true`, divisor `n-1`). Complex is not supported.
-- `argmax` / `argmin` are 1-d fetch (matching Base's `Int` return, not `CartesianIndex`). The result is a 0-d `NDArray{Int64}` of the 1-based index. Complex is not supported.
+- `argmax` / `argmin` are 1D fetch (matching Base's `Int` return, not `CartesianIndex`). The result is a 0D `NDArray{Int64}` of the 1-based index. Complex is not supported.
 
 For `mapreduce` and mapped `sum`, `prod`, `minimum`, and `maximum`, see
 [Map and Reduce](./api_mapreduce.md).

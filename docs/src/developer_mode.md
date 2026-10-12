@@ -1,11 +1,22 @@
 # Developer Mode
 
-Developer mode builds the Julia C++ wrapper from the sources in this repo under `lib/cunumeric_jl_wrapper`, instead of downloading a prebuilt `cunumeric_jl_wrapper_jll`. Use it when you change the wrapper, debug the C-API boundary, or point at a custom cupynumeric install.
+`````@raw html
+<!--
+Developer mode builds the Julia C++ wrapper from the sources in this repo under `lib/cunumeric_jl_wrapper`, instead of downloading a prebuilt `cunumeric_jl_wrapper_jll`. Use it when you change the wrapper, debug the C-API boundary, or point at a custom cuPyNumeric install.
+-->
+`````
+
+Developer mode builds the Julia C++ wrapper from the sources in this repo under `lib/cunumeric_jl_wrapper`, instead of downloading a prebuilt `cunumeric_jl_wrapper_jll`. Use it when you change the wrapper or debug the C-API boundary.
 
 ## When to use it
 
 - You edited C++ or CxxWrap code under `lib/cunumeric_jl_wrapper/` and need a new `.so`.
-- You are pairing cuNumeric.jl against a cupynumeric build that is not the JLL artifact (for example a source tree).
+`````@raw html
+<!--
+- You are pairing cuNumeric.jl against a cuPyNumeric build that is not the JLL artifact (for example a source tree).
+-->
+`````
+
 - You want faster iterate-rebuild cycles on the wrapper without waiting on a JLL release.
 
 Ordinary Julia-only changes under `src/` do **not** require developer mode. Restart or re-`using` as usual.
@@ -16,11 +27,17 @@ From an environment that can load `CNPreferences` (the docs project or a develop
 
 ```julia
 using CNPreferences
-CNPreferences.use_developer_mode(; use_jll=true, path=nothing)
+CNPreferences.use_developer_mode()
 ```
 
+`````@raw html
+<!--
 - `use_jll=true` (default): still use the `cupynumeric_jll` binary, but compile the wrapper in-tree against it.
-- `use_jll=false, path="..."`: compile the wrapper against a cupynumeric root you already installed. See [Build Modes](./install.md) for compiler and CMake requirements.
+- `use_jll=false, path="..."`: compile the wrapper against a cuPyNumeric root you already installed. See [Build Modes](./install.md) for compiler and CMake requirements.
+-->
+`````
+
+This builds the wrapper against the prebuilt `cupynumeric_jll` binary.
 
 Preferences are written to `LocalPreferences.toml`. **Restart Julia** after changing the mode.
 
@@ -35,7 +52,7 @@ Pkg.build("cuNumeric")
 
 That runs `deps/build.jl`, which in developer mode:
 
-1. Resolves cupynumeric (JLL or your `path`)
+1. Resolves the prebuilt cuPyNumeric binary
 2. Builds / refreshes the CxxWrap pieces as needed
 3. Compiles `lib/cunumeric_jl_wrapper` via `scripts/build_cpp_wrapper.sh` into `lib/cunumeric_jl_wrapper/build/`
 4. Points the package at that local library (artifact override)
@@ -76,7 +93,13 @@ Restart Julia. You do not need `Pkg.build` for pure JLL mode (the build script e
 
 ## Related pages
 
+`````@raw html
+<!--
 - [Build Modes](./install.md): JLL, developer, and conda providers
+-->
+`````
+
+- [Build Modes](./install.md): prebuilt and developer wrapper modes
 - [CNPreferences](./api_preferences.md): preference defaults and function reference
 - [Debugging](./debugging.md): fusion and lifetime printers while developing
 - [Internals](./internals.md): how fusion and `@accelerate` work

@@ -1,7 +1,7 @@
 # Device Scalars
 
 Full reductions (`sum(A)`, `dot(x, y)`, `norm(x)`) return a `CNScalar`: a
-number that stays on the device, backed by a 0-d NDArray. Using it in further
+number that stays on the device, backed by a 0D NDArray. Using it in further
 math launches no copy and no synchronization.
 
 ```julia
@@ -24,7 +24,7 @@ fetch(t)          # 18.0, a Julia Float64
 
 `CNReal` is the union of the real types, and `CNScalar` adds `CNComplex`.
 `DeviceScalar{T}` accepts either a `CNScalar{T}` or an `NDArray{T,0}`.
-`cnscalar(a)` wraps a 0-d NDArray.
+`cnscalar(a)` wraps a 0D NDArray.
 
 ## Getting a host value
 

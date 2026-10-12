@@ -46,8 +46,8 @@ function sidebar() {
 function markdown(text) {
   // Preserve code examples without executing Julia. Clearly mark content that
   // only Documenter can expand instead of presenting it as rendered API docs.
-  return text.replace(/^```(@\w+)([^\n]*)\n([\s\S]*?)^```\s*$/gm,
-    (_, kind, args, body) => {
+  return text.replace(/^(`{3,})(@\w+)([^\n]*)\n([\s\S]*?)^\1[ \t]*$/gm,
+    (_, fence, kind, args, body) => {
       if (kind === '@raw' && args.trim() === 'html') return body
       if (kind === '@meta' || kind === '@setup') return ''
       if (kind === '@docs' || kind === '@autodocs') {

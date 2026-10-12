@@ -18,7 +18,13 @@ Out of the box (no `LocalPreferences.toml` changes):
 | `QR_TILE_SIZE` | **128** |
 | `MAX_CHOLESKY_TILES_PER_PROC` | **4** |
 
+`````@raw html
+<!--
 Build-mode setup (JLL / conda / developer) is documented under [Build Modes](./install.md).
+-->
+`````
+
+Build-mode setup (JLL / developer) is documented under [Build Modes](./install.md).
 
 ## Linear algebra
 
@@ -39,11 +45,23 @@ CNPreferences.set_linalg!
 
 ## Build mode
 
+`````@raw html
+<!--
 ```@docs
 CNPreferences.use_jll_binary
 CNPreferences.use_conda
 CNPreferences.use_developer_mode
 ```
+-->
+`````
+
+```julia
+CNPreferences.use_jll_binary()      # use the prebuilt wrapper
+CNPreferences.use_developer_mode()  # build the wrapper against prebuilt dependencies
+```
+
+Restart Julia after selecting the mode. For developer mode, rebuild the
+wrapper with `Pkg.build("cuNumeric")`; see [Developer Mode](./developer_mode.md).
 
 ## Broadcast fusion
 

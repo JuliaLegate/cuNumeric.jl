@@ -2,7 +2,7 @@
 
 ## Indexing and slices
 
-1-d and 2-d arrays support slicing with `:`, unit ranges (`2:4`) and integers.
+1D and 2D arrays support slicing with `:`, unit ranges (`2:4`) and integers.
 A slice is a view: writing to it changes the original array.
 
 ```julia
@@ -30,7 +30,7 @@ Differences from Base:
 ```julia
 v = cuNumeric.rand(Float32, 1000)
 s = cuNumeric.sort(v)                     # cuNumeric.sort!(v) sorts in place
-i = cuNumeric.searchsortedfirst(s, 0.5f0) # 0-d NDArray; fetch(i) for an Int
+i = cuNumeric.searchsortedfirst(s, 0.5f0) # 0D NDArray; fetch(i) for an Int
 u = cuNumeric.unique(NDArray([3, 1, 3]))  # [1, 3], sorted
 ```
 

@@ -13,7 +13,7 @@ and signed `Int16` / `Int32` / `Int64`. There is no native Bool or complex
 distribution, so `rand(Bool, …)` draws `Int16` values in `{0,1}` and compares
 them to zero, and complex draws two real arrays packed as `re + i*imag`.
 
-`Random.seed!` is not hooked. Use [`default_rng`](@ref cuNumeric.default_rng)
+`Random.seed!` is not implemented. Use [`default_rng`](@ref cuNumeric.default_rng)
 with an explicit seed (or a specific BitGenerator) when you need a private
 stream. Module-level `rand` / `randn` / `randexp` always use a process-global XORWOW
 generator.

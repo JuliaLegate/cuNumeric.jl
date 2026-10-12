@@ -17,10 +17,17 @@ cuNumeric.jl can be installed with the Julia package manager. Activate your pref
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "main")
+Pkg.add("cuNumeric")
 ```
 
-The first installation can take a while because it includes several large dependencies, such as the CUDA SDK. To use a local cupynumeric build, see [Build Modes](install.md).
+The first installation can take a while because it includes several large dependencies, such as the CUDA SDK.
+
+`````@raw html
+<!--
+To use a local cuPyNumeric build, see [Build Modes](install.md).
+-->
+`````
+
 
 ```julia
 using cuNumeric
@@ -36,24 +43,21 @@ For more details, see [Hardware](configuration/hardware.md).
 
 The semantics of `NDArray` closely mirror Julia's `Array`, and in most cases it is a drop-in replacement. You can use the same constructors (i.e., `zeros`, `ones`, `rand`), broadcasting, slicing, and linear algebra. Under the hood a few details differ from Base, and knowing them can help you write fast code.
 
-**`NDArray <: AbstractArray`.** Generic Julia code written for `AbstractArray`
-accepts an `NDArray`, so packages such as Krylov.jl and OrdinaryDiffEq.jl run on
-it unchanged. A generic fallback that loops over elements one at a time hits
-the scalar indexing error described below; such code needs an array-level
-(broadcast or reduction) method instead.
+**`NDArray <: AbstractArray`.**, so packages such as Krylov.jl and OrdinaryDiffEq.jl run on
+it unchanged. Some behaviors like scalaring indexing are prohibited by default. See the [Patterns to Avoid](./perf/patterns_to_avoid.md) section of the docs which describes macros like `@allowscalar` which you can use to decorate your code and enable these behaviors.
 
-**Data may live across many devices.** An `NDArray` is a logical array whose physical buffers can be partitioned over GPUs and CPUs by the Legate runtime. You write ordinary array code and Legate decides where the data lives and how/when it is communicated between devices. As a result, elementwise indexing (i.e. `arr[1]`) is slow (and is prevented by default). Scalar indexing like this forces synchronization and blocks other tasks from executing.
+**Data may live across many devices.** An `NDArray` is a logical array whose physical buffers can be partitioned over GPUs and CPUs by the runtime. You write ordinary array code and the runtime decides where the data lives and how/when it is communicated between devices. As a result, elementwise indexing (i.e. `arr[1]`) is slow (and is prevented by default). Scalar indexing like this forces synchronization and blocks other tasks from executing.
 
 **Slices are views.** Indexing an `NDArray` with ranges returns a view onto the same store, not a copy. That differs from Base Julia, where `A[1:n]` allocates a new `Array`. Mutations through an `NDArray` slice are visible through other aliases of the same data.
 
-**Scalar reductions return device scalars.** Full reductions such as `sum(A)` return a `CNScalar` backed by a 0D NDArray. Reductions that retain dimensions still return NDArrays. This keeps the Legate task graph asynchronous. When you need a native Julia scalar, call `fetch`:
+**Scalar reductions return device scalars.** Full reductions such as `sum(A)` return a `CNScalar` backed by a 0D NDArray. Reductions that retain dimensions still return NDArrays. This keeps the task graph asynchronous. When you need a native Julia scalar, call `fetch`:
 
 ```julia
 s = sum(A)          # CNScalar
 x = fetch(s)        # native Julia scalar, e.g. Float32
 ```
 
-**The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into Legate's task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them (for example `println`, `fetch`, or converting with `Array(A)`). Hiding latency enables performant code.
+**The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into a task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them (for example `println`, `fetch`, or converting with `Array(A)`). Hiding latency enables performant code.
 
 For API details see [Initialization](./api_initialization.md), [Random](./api_random.md), [FFT](./fft.md), and [Indexing, Sorting & Utilities](./api_util.md). For anti-patterns that kill performance, see [Patterns to Avoid](./perf/patterns_to_avoid.md).
 

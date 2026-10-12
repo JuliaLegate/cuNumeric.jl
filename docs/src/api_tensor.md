@@ -30,7 +30,7 @@ tensordot(AA, BB, ([3], [2]))               # same contraction, axes form
 ```
 
 `α` and `β` implement `C = β*C + α*(A ⋆ B)` in Julia. Prefer a Julia `Number`;
-a 0-d `NDArray` is also accepted. The C++ kernel always writes the unscaled
+a 0D `NDArray` is also accepted. The C++ kernel always writes the unscaled
 product; `β ≠ 0` uses a temporary. Duplicate labels inside one array are not
 allowed — use `cuNumeric.diagonal` first.
 

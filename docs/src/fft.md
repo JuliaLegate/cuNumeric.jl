@@ -41,7 +41,7 @@ batched_fft(signals)                             # FFT along dim 2
 ## Limitations
 
 - GPU only; a CPU-only runtime raises an error.
-- No `plan_fft`: cupynumeric plans inside its FFT task and exposes no plan.
+- No `plan_fft`: cuPyNumeric plans inside its FFT task and exposes no plan.
 - On lengths with a prime factor above 131 (e.g. 137), cuFFT is much slower
   and uses more memory. This is a cuFFT implementation detail; cuNumeric warns
   when it applies. Zero-padding to a power of two avoids it.

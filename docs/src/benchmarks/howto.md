@@ -35,8 +35,16 @@ elapsed_ms = (get_time_microseconds() - start) / 1e3
 git submodule update --init --recursive
 cd benchmark
 ./deps-install/instantiate_projects.sh    # Julia environments
+```
+
+`````@raw html
+<!--
+```bash
 ./deps-install/install_cupynumeric.sh     # cuPyNumeric Conda env
 ```
+-->
+`````
+
 
 Setup develops cuNumeric.jl from the parent checkout. It uses `julia` from your
 `PATH`, or `CUNUMERIC_BENCH_JULIA` if set.

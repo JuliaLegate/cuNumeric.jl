@@ -84,7 +84,7 @@ falls back to scalar indexing until `adjoint(::NDArray)` is implemented. Prefer
 `S` is real-valued for both real and complex inputs.
 
 The backend only factors tall or square matrices (`m >= n`), matching
-cupynumeric. A wide input throws `ArgumentError`.
+cuPyNumeric. A wide input throws `ArgumentError`.
 
 ## QR decomposition
 
