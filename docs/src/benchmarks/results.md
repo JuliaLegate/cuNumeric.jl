@@ -12,4 +12,34 @@ Lower times are better. Click the figure to open the PDF.
 
 ## cuNumeric Kernels and Applications
 
-Results for kernels and applications written entirely with cuNumeric are coming soon!
+These benchmarks are written entirely with cuNumeric.jl and compared against cuPyNumeric and other Julia GPU frameworks. Lower times are better. Click a figure to open the PDF.
+
+### Weak Scaling
+
+Time per step on 1–8 GPUs for each benchmark, compared with cuPyNumeric, CUDA.jl, Dagger.jl, and JACC.jl.
+
+[![Weak scaling time per step for GEMM, Monte Carlo, Gray-Scott, HPC-CG, NAS EP, NAS FT, and NAS MG.](../images/benchmarks/grid_time.png)](../images/benchmarks/grid_time.pdf)
+
+### Broadcast Fusion
+
+Gray-Scott and Monte Carlo with and without broadcast fusion, compared with cuPyNumeric and ImplicitGlobalGrid.jl.
+
+[![Gray-Scott and Monte Carlo time per step with and without broadcast fusion.](../images/benchmarks/fusion_time.png)](../images/benchmarks/fusion_time.pdf)
+
+### Gray-Scott
+
+Throughput and time per step for the 2D Gray-Scott stencil, compared with cuPyNumeric and ImplicitGlobalGrid.jl.
+
+[![Gray-Scott throughput and time per step on one and multiple GPUs.](../images/benchmarks/grayscott_compare.png)](../images/benchmarks/grayscott_compare.pdf)
+
+### Problem Size Sweep
+
+Time per step on one GPU as the problem size grows. At small sizes, fixed per-task runtime overhead dominates and hand-written CUDA.jl kernels are faster. The gap closes as the problem grows.
+
+[![Gray-Scott and Monte Carlo time per step versus problem size on one GPU.](../images/benchmarks/sweep_time.png)](../images/benchmarks/sweep_time.pdf)
+
+### Code Complexity vs Performance
+
+Cyclomatic complexity of each implementation against its performance relative to the fastest model on 8 GPUs. Small markers are individual benchmarks and large markers are per-model means. The ideal is the top-left corner.
+
+[![Cyclomatic complexity versus relative performance on 8 GPUs for cuNumeric.jl, Dagger.jl, and JACC.jl.](../images/benchmarks/complexity_8gpu.png)](../images/benchmarks/complexity_8gpu.pdf)
