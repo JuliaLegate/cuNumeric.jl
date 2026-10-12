@@ -5,9 +5,7 @@ in the right-hand side. The solver's state then stays in cuNumeric arrays.
 
 > [!WARNING]
 > Not all OrdinaryDiffEq solvers, callbacks, or solver options have been tested
-> with `NDArray`. The example below uses a fixed-step explicit solver; it does
-> not establish compatibility with arbitrary adaptive or implicit methods.
-> Validate your chosen solver and settings for your problem.
+> with `NDArray`.
 
 ## 2D heat diffusion
 

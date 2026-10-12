@@ -3,6 +3,10 @@
 Use Krylov's conjugate gradient solver with an `NDArray` matrix and vectors.
 Loading `Krylov` alongside cuNumeric activates the package extension.
 
+> [!WARNING]
+> Not all Krylov solvers, preconditioners, callbacks, or solver options have
+> been tested with `NDArray`. We have tested CG and BiCGSTAB.
+
 ## Conjugate gradient
 
 For a symmetric positive-definite system, solve `A * x = b` with:
