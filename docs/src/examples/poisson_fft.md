@@ -25,7 +25,7 @@ to choose the zero-mean solution (C = 0).
 ```julia
 using cuNumeric
 
-n = 64 
+n = 64
 ω = 2f0 * Float32(π)
 xs = Float32.(0:(n - 1)) ./ Float32(n)
 
@@ -37,10 +37,10 @@ kx = cuNumeric.reshape(k, n, 1)
 ky = cuNumeric.reshape(k, 1, n)
 λ = (-ω^2) .* (kx.^2 .+ ky.^2)
 λ[1:1, 1:1] .= 1f0 # insert placeholder, to avoid dividng by zero
-λ = cuNumeric.as_type(λ, ComplexF32)
+λ = cuNumeric.as_type(λ, ComplexF32) # match `fft(f)` so the division doesn't promote
 
 # Solve using cuNumeric.
-u_hat = fft(f) ./ λ # `fft` returns complex, lambda is fp32. Promotion required.
+u_hat = fft(f) ./ λ
 u_hat[1:1, 1:1] .= 0f0  # Select the zero-mean solution (C = 0)
 u = real(ifft(u_hat))
 
@@ -57,4 +57,4 @@ u_{\mathrm{exact}}(x,y) = \sin(2\pi x)\sin(2\pi y).
 ```
 
 These sine modes are resolved by the grid, so the FFT solve recovers the
-analytical solution up to floating-point error. 
+analytical solution up to floating-point error.
