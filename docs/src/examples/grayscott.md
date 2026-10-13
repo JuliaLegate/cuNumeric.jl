@@ -87,7 +87,9 @@ function gray_scott()
     cuNumeric.h5write("gray-scott.h5", "u", snapshots)
 
     return u, v
- end
+end
+
+u, v = gray_scott()
 ```
 
 ![Simulation Output](../gray-scott.gif)

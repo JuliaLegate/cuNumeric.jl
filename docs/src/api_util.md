@@ -7,6 +7,7 @@ A slice is a view: writing to it changes the original array.
 
 ```julia
 A = cuNumeric.rand(Float32, 100, 100)
+B = cuNumeric.rand(Float32, 2, 100)
 top = A[1:10, :]               # view, no copy
 A[2:3, :] = B                  # copy B into rows 2–3
 A[:, 5] .= 0f0                 # fill a column
