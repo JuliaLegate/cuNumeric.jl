@@ -6,8 +6,6 @@ free temporary arrays after their last use.
 ```julia
 using cuNumeric
 
-const SNAPSHOT_FILE = "gray-scott.h5"
-
 struct Params{T}
     dx::T
     dt::T
@@ -86,15 +84,10 @@ function gray_scott()
         end
     end
 
-    cuNumeric.h5write(SNAPSHOT_FILE, "u", snapshots)
-    # h5write is asynchronous, so flush before another process opens the file.
-    cuNumeric.Legate.runtime_sync()
+    cuNumeric.h5write("gray-scott.h5", "u", snapshots)
 
     return u, v
  end
 ```
 
 ![Simulation Output](../gray-scott.gif)
-
-The snapshots written to `gray-scott.h5` are the input to
-[Dynamic Mode Decomposition](./dmd.md).
