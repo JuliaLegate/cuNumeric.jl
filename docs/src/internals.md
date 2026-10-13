@@ -1,30 +1,48 @@
 # Internals
 
-This page summarizes the machinery behind [`@accelerate`](./perf/reduce_allocations.md), [kernel fusion](./perf/kernel_fusion.md), and allocation-driven garbage collection.
+How [kernel fusion](./perf/kernel_fusion.md), [`@accelerate`](./perf/accelerate.md)
+and memory management work under the hood.
 
 ## Broadcast fusion
 
-Julia first builds a nested `Broadcasted` tree for a dotted expression. When CUDA fusion is enabled and the tree is eligible, cuNumeric flattens it, generates a CUDA.jl kernel, and launches it through Legate. Otherwise `unravel_broadcast_tree` evaluates the operations individually. CPU execution always uses the unfused path.
+Julia builds a nested `Broadcasted` tree for a dotted expression. If fusion is
+enabled, a GPU is present and the tree is eligible, cuNumeric flattens it,
+generates a CUDA.jl kernel and launches it as a Legate task. Otherwise each
+operation dispatches as a single cuPyNumeric operation in the Legate runtime.
 
-`@accelerate` adds an inter-statement syntax pass. It can merge a single-use broadcast producer into its consumer when doing so preserves mutation and aliasing semantics. The soft-scope `begin` form instead keeps named values materialized and may lower an eligible chain to a multi-output CUDA kernel.
+Usage: [Kernel Fusion](./perf/kernel_fusion.md). Source: `src/ndarray/broadcast.jl`,
+`src/ndarray/broadcast_fusion.jl`.
 
-Relevant source: `src/ndarray/broadcast_fusion.jl` and `src/scoping/`.
+## `@accelerate`
 
-## Lifetime analysis
+`@accelerate` rewrites code before it runs. Take:
 
-An `NDArray` is a small Julia handle to storage owned by Legate, so Julia's heap pressure understates the size of live array data. `@accelerate` therefore performs static last-use analysis:
+```julia
+@accelerate function f!(C, A, B)
+    tmp = A .+ B          # a temporary, used once
+    C .= tmp .* 2
+    return C
+end
+```
 
-1. Expand nested `@.` macros and reject non-straight-line code.
-2. Apply conservative inter-statement fusion where the selected macro form permits it.
-3. Hoist materialized temporary values and find their final uses.
-4. Insert `maybe_insert_delete` calls after those uses while protecting caller-owned arguments, named soft-scope bindings, and returned values.
+1. **Vertical fusion.** `tmp` is used only once, so it is substituted into the
+   next line: `C .= (A .+ B) .* 2`. Two kernels become one and `tmp` is never
+   allocated.
+2. **Early frees.** Temporaries that can't be substituted (used twice, or
+   fusion is off) get a free call inserted right after their last use.
+   Arguments and returned values are never freed.
 
-With fusion enabled, nested dotted nodes remain lazy and are not counted as separate array allocations. With fusion disabled, allocating calls are analyzed individually. `@show_lifetimes` prints the exact expansion without running it.
+`@show_lifetimes` prints the rewritten code.
 
-The analysis is statement-linear rather than a control-flow graph pass. Apply it to straight-line function or loop bodies, not to control flow itself.
+Usage: [`@accelerate`](./perf/accelerate.md). Source: `src/scoping/`.
 
-## Allocation-driven GC
+## Memory and GC
 
-Each `NDArray` reports its byte size when constructed and freed. When predicted live bytes cross soft and hard fractions of available memory—and enough new growth has accumulated—cuNumeric asks Julia to collect garbage. Eager last-use freeing reduces peak live storage; the GC heuristic covers allocations the static pass cannot prove dead.
+An `NDArray` is a small Julia object pointing at storage owned by Legate, so
+Julia's GC doesn't see how much memory arrays use. cuNumeric tracks the bytes
+it allocates and frees. When that total exceeds 80% (soft limit) or 90% (hard
+limit) of device or host memory, it triggers Julia's GC. `cuNumeric.disable_gc!()`
+turns this off.
 
-Relevant source: `src/memory.jl`.
+To free temporaries without waiting for the GC, see
+[`@accelerate`](./perf/accelerate.md). Source: `src/memory.jl`.

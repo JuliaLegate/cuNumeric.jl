@@ -67,7 +67,7 @@ See [Kernel Fusion](https://julialegate.github.io/cuNumeric.jl/stable/perf/kerne
 
 ### The `@accelerate` macro
 
-`@accelerate` fuses eligible GPU broadcasts within and across statements, then releases materialized temporary `NDArray`s after their last use on CPU or GPU. See [The `@accelerate` Macro](https://julialegate.github.io/cuNumeric.jl/stable/perf/reduce_allocations) for usage guidance.
+`@accelerate` fuses eligible GPU broadcasts within and across statements, then releases materialized temporary `NDArray`s after their last use on CPU or GPU. See [The `@accelerate` Macro](https://julialegate.github.io/cuNumeric.jl/stable/perf/accelerate/) for usage guidance.
 
 ### Benchmarks
 
@@ -111,10 +111,12 @@ N = 1_000_000
 x_max = 10.0f0
 estimate = monte_carlo(N, x_max)
 
-println("Monte-Carlo Estimate: $(estimate)") # Should be ~ sqrt(pi)
+println("Monte-Carlo Estimate: $(fetch(estimate))") # Should be ~ sqrt(pi)
 ```
 More worked examples (initialization, Gray-Scott, …) are in the documentation sidebar under **Examples**.
 
-### Known Limitations
+### Known Limitations & Bugs
 
 - There is no support for `Float16` or `ComplexF16` or `Complex{<:Integer}`
+- Stochastic bug in FFT can cause segfault
+- Unfused broadcasting of a `Vector` reshaped to (1, n) will not mimic Julia semantics

@@ -8,11 +8,8 @@ next:
 x_{k+1} \approx A x_k
 ```
 
-Its eigenvectors are spatial patterns and its eigenvalues say what each pattern
-does per step: ``|\lambda|`` is growth or decay and ``\arg(\lambda)`` is
-rotation. For a field on an ``N \times N`` grid, ``A`` is ``N^2 \times N^2`` and
-far too large to form. DMD never does. Stack the states as columns of
-``X = [x_1 \; \dots \; x_n]``, split it into
+For a field on an ``N \times N`` grid, ``A`` is ``N^2 \times N^2`` and
+far too large to form. DMD never does, instead this example leverages singular-value decomposition up to a specified rank. To begin we build:
 
 ```math
 X_1 = [x_1 \; \dots \; x_{n-1}], \qquad X_2 = [x_2 \; \dots \; x_n]
@@ -30,26 +27,35 @@ the dynamics:
 where ``W`` holds the eigenvectors of ``\tilde{A}``. The columns of ``\Phi`` are
 the exact DMD modes, back in the full ``N^2``-dimensional space.
 
-## Snapshots from Gray-Scott
+## Generate Input
 
-The [Gray-Scott](./grayscott.md) example writes its `u` field to
-`gray-scott.h5` every 20 steps, one flattened frame per column:
+To begin we will generate input from a temperature field containing two spatial patterns that decay at different rates.
 
 ```julia
-snapshots = cuNumeric.zeros(Float32, N * N, n_steps ÷ snapshot_interval)
+using cuNumeric
 
-# inside the time loop
-if n%snapshot_interval == 0
-    snapshots[:, n ÷ snapshot_interval] = cuNumeric.reshape(u, (N * N, 1))
-end
+N, M = 64, 80
+κ, dt = 0.01f0, 0.05f0
+xs = range(0f0, 1f0; length=N)
+times = Float32.(0:(M - 1)) .* dt
 
-cuNumeric.h5write(SNAPSHOT_FILE, "u", snapshots)
-# h5write is asynchronous, so flush before another process opens the file.
+# Two spatial modes of the heat equation with zero boundary values.
+ϕ1 = [sinpi(x) * sinpi(y) for x in xs, y in xs]
+ϕ2 = [sinpi(2x) * sinpi(3y) for x in xs, y in xs]
+σ1 = -2f0 * Float32(π)^2 * κ
+σ2 = -13f0 * Float32(π)^2 * κ
+
+# Each column is one flattened snapshot.
+snapshots = vec(ϕ1) * transpose(exp.(σ1 .* times)) +
+            0.6f0 .* (vec(ϕ2) * transpose(exp.(σ2 .* times)))
+
+cuNumeric.h5write("dmd-snapshots.h5", "u", NDArray(snapshots))
+
+# In practice you do not write then immeaditely read 
+# a file. In this example you do, so sync the runtime to
+# ensure that the file is flushed. 
 cuNumeric.Legate.runtime_sync()
 ```
-
-The snapshots never touch the host: they are assembled into a device array and
-handed straight to [HDF5](../api_hdf5.md).
 
 ## Decomposition
 
@@ -59,9 +65,6 @@ Run `examples/gray-scott.jl` first to produce the file, then:
 # found in examples/dmd.jl
 using cuNumeric
 using LinearAlgebra
-using Printf
-
-const SNAPSHOT_FILE = "gray-scott.h5"
 
 function dmd(X::NDArray{Float32,2}, r::Int)
     n = size(X, 2)
@@ -86,53 +89,20 @@ function dmd(X::NDArray{Float32,2}, r::Int)
     return E.values, Φ
 end
 
-X = cuNumeric.h5read(SNAPSHOT_FILE, "u")
-n_points, n_snapshots = size(X)
-N = isqrt(n_points)
+X = cuNumeric.h5read("dmd-snapshots.h5", "u")
+rank = 2
+λ, Φ = dmd(X, rank)
 
-λ, Φ = dmd(X, 20)
-
-# Only r eigenvalues, so ranking them on the host costs nothing.
-vals = Array(λ)
+vals = cuNumeric.@allowscalar Array(λ)
 order = sortperm(abs.(vals); rev=true)
 
-println("mode   |λ|      cycles/snapshot")
-for i in order[1:min(5, end)]
-    @printf("%4d   %6.4f   %+8.4f\n", i, abs(vals[i]), angle(vals[i]) / 2π)
-end
-
-# The slowest-decaying mode is the pattern the simulation settles into.
-lead = order[1]
-mode = cuNumeric.reshape(abs.(Φ[:, lead:lead]), (N, N))
-cuNumeric.h5write("dmd-mode.h5", "leading", mode)
-cuNumeric.Legate.runtime_sync()
+expected = exp.([σ1, σ2] .* dt)
+@show vals[order] expected
+@assert isapprox(vals[order], expected; rtol=1f-4, atol=1f-6)
 ```
-
-On 100 snapshots of a ``100 \times 100`` grid this prints something like:
-
-```
-100 snapshots of 10000 points
-
-mode   |λ|      cycles/snapshot
-  17   0.9945    +0.0091
-  18   0.9945    -0.0091
-  14   0.9928    +0.0000
-  19   0.9825    +0.0202
-  20   0.9825    -0.0202
-```
-
-Every ``|\lambda|`` sits just below 1, which is the pattern settling rather than
-growing, and the oscillatory modes come in the conjugate pairs a real operator
-must produce.
 
 ## Notes
 
-- `svd`, `eigen`, and matrix multiply all run on device; see
-  [Linear Algebra](../linalg.md).
-- `Diagonal(1.0f0 ./ F.S[1:r])` scales by ``\Sigma^{-1}`` without building a
-  dense ``r \times r`` matrix. Note the `1.0f0` — an `Int` literal would try to
-  widen the `Float32` singular values.
 - `eigen` is always complex, so `B` is converted with `cuNumeric.as_type` before
   multiplying by the eigenvectors.
-- The eigenvalues are only `r` numbers, so sorting and printing them on the host
-  is cheap. The modes stay on device.
+

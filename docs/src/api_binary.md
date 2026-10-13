@@ -8,6 +8,8 @@ The following binary operations are supported and can be applied elementwise to 
 
 - `+`, `-`, `*`, `/`, `^`, `%`, `<`, `<=`, `>`, `>=`, `==`, `!=`, `&`, `|`, `⊻`, `<<`, `>>`, `atan`, `hypot`, `max`, `min`, `lcm`, `gcd`, `fld`, `mod`, `rem`, `copysign`
 
+`muladd.(a, b, c)` on three NDArrays is also supported, computed as `a .* b .+ c`.
+
 ## Differences from Base Julia
 
 - `div` / `÷` are not provided. cuPyNumeric floor-divide matches Julia `fld` (toward `-Inf`), not truncated `div`. For example `-7 ÷ 2` is `-3` in Julia and `-4` for `fld`.
@@ -17,5 +19,5 @@ The following binary operations are supported and can be applied elementwise to 
 ```@autodocs
 Modules = [cuNumeric]
 Pages = ["ndarray/binary.jl"]
-Filter = t -> !(t isa Function && nameof(t) === :mul!)
+Filter = t -> !(t isa Function && nameof(t) in (:mul!, :map, :map!))
 ```

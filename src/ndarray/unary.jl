@@ -81,10 +81,12 @@ end
 end
 
 # Needed to support !=
-Base.:(!)(input::NDArray{Bool,0}) =
-    nda_unary_op!(_undef_array(input, Bool), cuNumeric.LOGICAL_NOT, input)
-Base.:(!)(input::NDArray{Bool,1}) =
-    nda_unary_op!(_undef_array(input, Bool), cuNumeric.LOGICAL_NOT, input)
+function Base.:(!)(input::NDArray{Bool,0})
+    return nda_unary_op!(_undef_array(input, Bool), cuNumeric.LOGICAL_NOT, input)
+end
+function Base.:(!)(input::NDArray{Bool,1})
+    return nda_unary_op!(_undef_array(input, Bool), cuNumeric.LOGICAL_NOT, input)
+end
 
 # Non-broadcasted version of negation
 function Base.:(-)(input::NDArray{T}) where {T}
@@ -588,6 +590,11 @@ end
 
 #* TODO Overload broadcasting to just call this
 #* e.g. sin.(ndarray) should call this or the proper generated func
+"""
+    map(f, A::NDArray)
+
+Apply `f` elementwise to `A`. Same as `f.(A)`.
+"""
 function Base.map(f::Function, arr::NDArray)
     return f.(arr) # Will try to call one of the functions generated above
 end

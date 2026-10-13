@@ -67,7 +67,7 @@ end
 abstract type AbstractPaddedStorage{T,N} end
 
 @doc"""
-The NDArray type represents a multi-dimensional array in cuNumeric.
+The NDArray type represents a multi-dimensional array in cuNumeric; `NDArray{T,N} <: AbstractArray{T,N}`.
 It is a wrapper around a Legate array and provides various methods for array manipulation and operations.
 Finalizer calls `nda_destroy_array` to clean up the underlying Legate array when the NDArray is garbage collected.
 """

@@ -1,63 +1,61 @@
 # Periodic Poisson (FFT)
 
-The Poisson equation
+## Solving the periodic Poisson equation with FFTs
+
+We solve the Poisson equation on the unit square with periodic boundaries:
 
 ```math
-\nabla^2 u = f
+\nabla^2 u(x,y) = f(x,y),
+\qquad
+f(x,y) = -8\pi^2\sin(2\pi x)\sin(2\pi y).
 ```
 
-on the periodic unit square is a pointwise divide in Fourier space. With
-``k = 2\pi (m_x, m_y)`` the wavevector of each DFT mode,
+In Fourier space, the Laplacian becomes multiplication by
+``\lambda_{k_x,k_y} = -4\pi^2(k_x^2+k_y^2)``. We recover the solution with a
+forward FFT, division by these eigenvalues, and an inverse FFT:
 
 ```math
-\hat{u}[k] = \frac{\hat{f}[k]}{-|k|^2}, \qquad \hat{u}[0] = 0.
+u = \mathcal{F}^{-1}\!\left[\frac{\mathcal{F}[f]}{\lambda}\right].
 ```
 
-The zero mode is dropped so ``u`` has mean zero (the potential is only defined
-up to a constant). One forward [`fft`](@ref), a broadcasted divide, and one
-[`ifft`](@ref) is the whole solve. That is the electrostatics / gravitational
-potential of a periodic charge density, not an FFT round-trip. There is no
-reusable plan to hold across the two transforms; each call launches
-`CUPYNUMERIC_FFT` and cuFFT planning stays inside that task.
-
-A manufactured solution ``u = \sin(2\pi x)\sin(2\pi y)`` has
-``\nabla^2 u = -8\pi^2 u``, which is what the example checks.
+The zero-frequency eigenvalue is zero because the solution is determined
+only up to an additive constant (``\nabla^2(u + C) = \nabla^2u``). We set that Fourier coefficient to zero
+to choose the zero-mean solution (C = 0).
 
 ```julia
-# found in examples/poisson_fft.jl
 using cuNumeric
 
-function integer_fftfreq(n::Int)
-    n2 = n ÷ 2
-    return iseven(n) ? vcat(0:(n2 - 1), (-n2):-1) : vcat(0:n2, (-n2):-1)
-end
-
-function poisson_inv_laplacian(::Type{T}, n::Int) where {T}
-    freq = integer_fftfreq(n)
-    invk = Matrix{T}(undef, n, n)
-    s = T(4 * π^2)
-    for j in 1:n, i in 1:n
-        k2 = s * T(freq[i]^2 + freq[j]^2)
-        invk[i, j] = k2 == 0 ? zero(T) : -inv(k2)
-    end
-    return invk
-end
-
 n = 64
-xs = range(0, 1; length=n + 1)[1:(end - 1)]
-u_true = Float32[sin(2π * x) * sin(2π * y) for x in xs, y in xs]
-f = NDArray((-8 * Float32(π)^2) .* u_true)
+ω = 2f0 * Float32(π)
+xs = Float32.(0:(n - 1)) ./ Float32(n)
 
-invk = NDArray(poisson_inv_laplacian(Float32, n))
-u = real(ifft(fft(f) .* invk))
+# Sample the prescribed forcing on the periodic grid.
+f = NDArray([-2f0 * ω^2 * sin(ω * x) * sin(ω * y) for x in xs, y in xs])
+
+# Laplacian eigenvalues.
+k = NDArray(Float32.(vcat(0:(n ÷ 2 - 1), -(n ÷ 2):-1)))  # integer FFT frequencies
+kx = cuNumeric.reshape(k, n, 1)
+ky = cuNumeric.reshape(k, 1, n)
+λ = (-ω^2) .* (kx.^2 .+ ky.^2)
+λ[1:1, 1:1] .= 1f0 # insert placeholder, to avoid dividng by zero
+λ = cuNumeric.as_type(λ, ComplexF32) # match `fft(f)` so the division doesn't promote
+
+# Solve using cuNumeric.
+u_hat = fft(f) ./ λ
+u_hat[1:1, 1:1] .= 0f0  # Select the zero-mean solution (C = 0)
+u = real(ifft(u_hat))
+
+# Construct the analytical answer to check the result.
+u_exact = [sin(ω * x) * sin(ω * y) for x in xs, y in xs]
+error = fetch(maximum(abs.(u .- NDArray(u_exact))))
+println("Maximum absolute error: ", error)
 ```
 
-A stack of right-hand sides (several charge distributions, several snapshots)
-uses [`batched_fft`](@ref). The leading axis is the batch and is the one that
-can split across GPUs; a single all-axes `fft` of one grid cannot.
+For this forcing, the exact zero-mean solution is
 
-```julia
-f_batch = NDArray(repeat(reshape(Array(f), 1, n, n), 4, 1, 1))
-invk3 = reshape(invk, 1, n, n)
-u_batch = real(cuNumeric.batched_ifft(cuNumeric.batched_fft(f_batch) .* invk3))
+```math
+u_{\mathrm{exact}}(x,y) = \sin(2\pi x)\sin(2\pi y).
 ```
+
+These sine modes are resolved by the grid, so the FFT solve recovers the
+analytical solution up to floating-point error.

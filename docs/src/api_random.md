@@ -1,4 +1,4 @@
-# Random
+# Random Number Generators
 
 Module-level [`rand`](@ref cuNumeric.rand), [`randn`](@ref cuNumeric.randn),
 and [`randexp`](@ref cuNumeric.randexp) are documented under
@@ -8,12 +8,12 @@ stack: BitGenerators, `Generator`, and `default_rng`.
 Random draws use cuRAND with the [`XORWOW`](@ref cuNumeric.XORWOW) random
 number generator by default. We support `Float32` and `Float64` uniforms,
 normals, and exponentials (`randexp`), `ComplexF32` / `ComplexF64` uniforms
-and normals (independent real/imag parts; no `randexp`), `Bool` coin flips,
+and normals (independent real/imag parts, without `randexp`), `Bool` coin flips,
 and signed `Int16` / `Int32` / `Int64`. There is no native Bool or complex
 distribution, so `rand(Bool, …)` draws `Int16` values in `{0,1}` and compares
-them to zero, and complex draws two real arrays packed as `re + i*imag`.
+them to zero. Complex arrays combine two real arrays as `re + i*imag`.
 
-`Random.seed!` is not hooked. Use [`default_rng`](@ref cuNumeric.default_rng)
+`Random.seed!` is not implemented. Use [`default_rng`](@ref cuNumeric.default_rng)
 with an explicit seed (or a specific BitGenerator) when you need a private
 stream. Module-level `rand` / `randn` / `randexp` always use a process-global XORWOW
 generator.
@@ -35,10 +35,13 @@ cuNumeric.default_rng
 ```
 
 ```julia
+using cuNumeric
+import Random
+
 g = cuNumeric.default_rng()                          # XORWOW, fresh seed
 g = cuNumeric.default_rng(1234)                      # XORWOW, fixed seed
 g = cuNumeric.default_rng(cuNumeric.PHILOX4_32_10, 1)
 A = cuNumeric.random(g, Float32, (8, 8))             # U[0, 1)
-cuNumeric.randn!(g, A)                               # N(0, 1)
-cuNumeric.randexp!(g, A; scale=1)                    # Exp(scale)
+Random.randn!(g, A)                               # N(0, 1)
+Random.randexp!(g, A; scale=1)                    # Exp(scale)
 ```

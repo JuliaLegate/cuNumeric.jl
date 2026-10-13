@@ -1,8 +1,35 @@
 # Gray-Scott Reaction Diffusion
 
-The runnable example in `examples/gray-scott.jl` evolves two chemical fields with periodic boundaries. Its update is a straight-line function, so the recommended function form of `@accelerate` can release reaction and Laplacian temporaries after their final use and fuse eligible CUDA broadcasts.
+This example evolves two chemical fields with periodic boundaries according to the Gray-Scott PDE. The update function uses `@accelerate` to fuse eligible CUDA broadcasts and
+free temporary arrays after their last use.
 
 ```julia
+using cuNumeric
+
+struct Params{T}
+    dx::T
+    dt::T
+    c_u::T
+    c_v::T
+    f::T
+    k::T
+
+    function Params(dx=1.0f0, c_u=1.0f0, c_v=0.3f0, f=0.03f0, k=0.06f0)
+        return new{Float32}(dx, dx/5, c_u, c_v, f, k)
+    end
+end
+
+function bc!(u_new, v_new, u, v)
+    u_new[:, 1] = u[:, end - 1]
+    u_new[:, end] = u[:, 2]
+    u_new[1, :] = u[end - 1, :]
+    u_new[end, :] = u[2, :]
+    v_new[:, 1] = v[:, end - 1]
+    v_new[:, end] = v[:, 2]
+    v_new[1, :] = v[end - 1, :]
+    return v_new[end, :] = v[2, :]
+end
+
 @accelerate function step!(u, v, u_new, v_new, args::Params)
     F_u = @. -u[2:end-1, 2:end-1] * v[2:end-1, 2:end-1]^2 +
         args.f * (1.0f0 - u[2:end-1, 2:end-1])
@@ -25,7 +52,6 @@ The runnable example in `examples/gray-scott.jl` evolves two chemical fields wit
 end
 
 function gray_scott()
-    #anim = Animation()
 
     N = 100
     dims = (N, N)
@@ -33,7 +59,6 @@ function gray_scott()
     args = Params()
 
     n_steps = 2000 # number of steps to take
-    frame_interval = 200 # steps to take between making plots
     snapshot_interval = 20 # steps to take between saved snapshots
 
     u = cuNumeric.ones(dims)
@@ -57,24 +82,14 @@ function gray_scott()
         if n%snapshot_interval == 0
             snapshots[:, n ÷ snapshot_interval] = cuNumeric.reshape(u, (N * N, 1))
         end
-
-        if n%frame_interval == 0
-            u_cpu = u[:, :]
-            heatmap(u_cpu, clims=(0, 1))
-            frame(anim)
-        end
     end
-    gif(anim, "gray-scott.gif", fps=10)
 
-    cuNumeric.h5write(SNAPSHOT_FILE, "u", snapshots)
-    # h5write is asynchronous, so flush before another process opens the file.
-    cuNumeric.Legate.runtime_sync()
+    cuNumeric.h5write("gray-scott.h5", "u", snapshots)
 
     return u, v
- end
+end
+
+u, v = gray_scott()
 ```
 
 ![Simulation Output](../gray-scott.gif)
-
-The snapshots written to `gray-scott.h5` are the input to
-[Dynamic Mode Decomposition](./dmd.md).

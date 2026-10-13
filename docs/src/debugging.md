@@ -3,7 +3,7 @@
 Debug the layer that matches the problem:
 
 | Question | Tool |
-|---|---|
+|:---|:---|
 | Which operations did Legate submit, and when did they run? | [Legate logs and profiles](#trace-legate-runtime-work) |
 | How were broadcasts fused? | [`BCAST_FUSION_DEBUG`](#inspect-fused-broadcasts-with-bcast_fusion_debug) |
 | How does `@accelerate` rewrite code and free temporaries? | [`@show_lifetimes`](#inspect-lifetime-rewrites-with-show_lifetimes) |
@@ -15,7 +15,7 @@ Legate records provenance on submitted operations. cuNumeric can provide that pr
 Choose one output format for a run:
 
 | Goal | `LEGATE_CONFIG` flags | Output |
-|---|---|---|
+|:---|:---|:---|
 | Read runtime decisions as text | `--logging legate=debug --log-to-file` | `legate_*.log` |
 | Inspect an execution timeline | `--profile` | `legate_*.prof` |
 
@@ -58,7 +58,7 @@ Use `Legate.with_scope` when phase names such as `initialize` and `update` are m
 
 ```julia
 using cuNumeric
-import Legate
+using cuNumeric: Legate
 
 A, B = Legate.with_scope("initialize") do
     A = cuNumeric.ones(Float32, 64, 64)
@@ -133,8 +133,8 @@ The fused kernel is reported separately:
 
 How to read it:
 
-- `expr` is the fused op tree. Its `input{N}` names index the `inputs` table;
-  scalar arguments appear directly as their runtime values.
+- `expr` is the fused op tree. Its `input{N}` names index the `inputs` table.
+  Scalar arguments appear directly as their runtime values.
 - `inputs` summarizes each runtime array without exposing internal `NDArray`
   type parameters. A slice includes its parent shape. Source names such as `A`
   are available in the static lifetime rewrite, but Julia does not retain those

@@ -130,18 +130,18 @@ Base.copy(arr::NDArray) = nda_copy(arr)
 
 @doc"""
     copyto!(arr::NDArray, other::NDArray)
+    copyto!(arr::NDArray, other::Array)
 
-Assign the contents of `other` to `arr` element-wise.
-
-This function overwrites the data in `arr` with the values from `other`.
-Both arrays must have the same shape.
+Overwrite `arr` with the values of `other`, which may be another NDArray or a
+Julia host `Array` of the same element type and shape. A host copy returns
+once the data is on the device, so `other` can be reused right away.
 
 # Examples
 ```@repl
 a = cuNumeric.zeros(2, 2)
 b = cuNumeric.ones(2, 2)
 copyto!(a, b);
-a[1,1]
+copyto!(a, Float32[1 2; 3 4]);
 ```
 """
 @inline function Base.copyto!(arr::NDArray{T,N}, other::NDArray{T,N}) where {T,N}
@@ -784,17 +784,21 @@ end
 end
 
 function Base.getindex(arr::NDArray, i::AbstractUnitRange{<:Integer})
-    throw(ArgumentError(
-        "linear range indexing of multidimensional NDArrays is unsupported; " *
-        "use one index per dimension"
-    ))
+    return throw(
+        ArgumentError(
+            "linear range indexing of multidimensional NDArrays is unsupported; " *
+            "use one index per dimension",
+        ),
+    )
 end
 
 function Base.setindex!(arr::NDArray, rhs::NDArray, i::AbstractUnitRange{<:Integer})
-    throw(ArgumentError(
-        "linear range assignment to multidimensional NDArrays is unsupported; " *
-        "use one index per dimension"
-    ))
+    return throw(
+        ArgumentError(
+            "linear range assignment to multidimensional NDArrays is unsupported; " *
+            "use one index per dimension",
+        ),
+    )
 end
 
 @inline function Base.getindex(
@@ -804,10 +808,12 @@ end
 end
 
 function Base.getindex(arr::NDArray, ::Vararg{Colon})
-    throw(ArgumentError(
-        "linear colon indexing of multidimensional NDArrays is unsupported; " *
-        "use one colon per dimension"
-    ))
+    return throw(
+        ArgumentError(
+            "linear colon indexing of multidimensional NDArrays is unsupported; " *
+            "use one colon per dimension",
+        ),
+    )
 end
 
 @inline function Base.setindex!(
@@ -817,10 +823,12 @@ end
 end
 
 function Base.setindex!(arr::NDArray{T}, rhs::NDArray{T}, ::Vararg{Colon}) where {T}
-    throw(ArgumentError(
-        "linear colon assignment to multidimensional NDArrays is unsupported; " *
-        "use one colon per dimension"
-    ))
+    return throw(
+        ArgumentError(
+            "linear colon assignment to multidimensional NDArrays is unsupported; " *
+            "use one colon per dimension",
+        ),
+    )
 end
 
 @inline function Base.setindex!(

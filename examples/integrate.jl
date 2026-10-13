@@ -1,18 +1,23 @@
-integrand = (x) -> exp(-x^2)
+using cuNumeric
 
-N = 1_000_000
+integrand(x) = exp(-x^2)
 
-x_max = 10.0f0
-domain = [-x_max, x_max]
-Ω = domain[2] - domain[1]
-
-estimate = @accelerate begin
-    samples = @. Ω * cuNumeric.rand(N) - x_max
-
-    # Reductions return 0D NDArrays instead
-    # of a scalar to avoid blocking runtime
+@accelerate function monte_carlo(N, x_max)
+    Ω = 2 * x_max
+    raw_samples = cuNumeric.rand(N)
+    samples = @. Ω * raw_samples - x_max
     return (Ω / N) * sum(integrand.(samples))
 end
 
-println("Monte-Carlo Estimate: $(estimate)")
-println("Analytical: $(sqrt(pi))")
+N = 1_000_000
+x_max = 10.0f0
+estimate = monte_carlo(N, x_max)
+println("Monte-Carlo estimate: $(estimate)")
+println("Analytical value: $(sqrt(pi))")
+
+# Alternative: fuse the integrand and reduction with mapreduce.
+Ω = 2 * x_max
+raw_samples = cuNumeric.rand(N)
+samples = @. Ω * raw_samples - x_max
+estimate = (Ω / N) * mapreduce(integrand, +, samples; init = 0.0f0)
+println("Monte-Carlo estimate (mapreduce): $(estimate)")

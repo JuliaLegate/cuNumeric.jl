@@ -13,10 +13,6 @@ from one snapshot to the next — |λ| is growth or decay, arg(λ) is rotation.
 
 using cuNumeric
 using LinearAlgebra
-using Printf
-
-const SNAPSHOT_FILE = "gray-scott.h5"
-const SAMPLE_FILE = joinpath(@__DIR__, "data", "gray-scott.h5")
 
 """
     dmd(X, r)
@@ -39,42 +35,40 @@ function dmd(X::NDArray{Float32,2}, r::Int)
 
     # X2 V Σ⁻¹ appears in both the projected operator and the exact modes.
     B = X2 * cuNumeric.transpose(Vt) * Sinv
-    A_tilde = cuNumeric.transpose(U) * B
+    Ã = cuNumeric.transpose(U) * B
 
-    E = eigen(A_tilde) # always complex, even for a real Ã
+    E = eigen(Ã) # always complex, even for a real Ã
     Φ = cuNumeric.as_type(B, ComplexF32) * E.vectors
 
     return E.values, Φ
 end
 
 function main()
-    path = isfile(SNAPSHOT_FILE) ? SNAPSHOT_FILE : SAMPLE_FILE
-    println("reading $path")
+    
+    N, M = 64, 80
+    κ, dt = 0.01f0, 0.05f0
+    xs = range(0f0, 1f0; length=N)
+    times = Float32.(0:(M - 1)) .* dt
 
-    X = cuNumeric.h5read(path, "u")
-    n_points, n_snapshots = size(X)
-    N = isqrt(n_points)
-    println("$n_snapshots snapshots of $n_points points")
+    # Two spatial modes of the heat equation with zero boundary values.
+    ϕ1 = [sinpi(x) * sinpi(y) for x in xs, y in xs]
+    ϕ2 = [sinpi(2x) * sinpi(3y) for x in xs, y in xs]
+    σ1 = -2f0 * Float32(π)^2 * κ
+    σ2 = -13f0 * Float32(π)^2 * κ
 
-    λ, Φ = dmd(X, 20)
+    # Each column is one flattened snapshot.
+    snapshots = vec(ϕ1) * transpose(exp.(σ1 .* times)) +
+                0.6f0 .* (vec(ϕ2) * transpose(exp.(σ2 .* times)))
 
-    # Only r eigenvalues, so ranking them on the host costs nothing.
-    vals = Array(λ)
+    rank = 2
+    λ, Φ = dmd(X, rank)
+
+    vals = cuNumeric.@allowscalar Array(λ)
     order = sortperm(abs.(vals); rev=true)
 
-    println("\nmode   |λ|      cycles/snapshot")
-    for i in order[1:min(5, end)]
-        @printf("%4d   %6.4f   %+8.4f\n", i, abs(vals[i]), angle(vals[i]) / 2π)
-    end
-
-    # The slowest-decaying mode is the pattern the simulation settles into.
-    lead = order[1]
-    mode = cuNumeric.reshape(abs.(Φ[:, lead:lead]), (N, N))
-    cuNumeric.h5write("dmd-mode.h5", "leading", mode)
-    cuNumeric.Legate.runtime_sync()
-    println("\nwrote leading mode $lead to dmd-mode.h5")
-
-    return λ, Φ
+    expected = exp.([σ1, σ2] .* dt)
+    @show vals[order] expected
+    @assert isapprox(vals[order], expected; rtol=1f-4, atol=1f-6)
 end
 
-λ, Φ = main()
+main()

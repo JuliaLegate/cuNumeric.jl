@@ -8,12 +8,18 @@ Constructors for new `NDArray`s. Default floating-point type is `Float32`.
 
 User-facing uninitialized array constructors, such as `NDArray{T}(undef, dims...)`,
 `NDArray{T}(undef, dims::Tuple)`, and ordinary `similar` calls, zero-initialize
-storage so that the result can immediately be displayed or converted with `Array`.
+storage.
 
 ```julia
 A = NDArray{Float32}(undef, 2, 3)
 fill!(A, 1f0)
+copyto!(A, rand(Float32, 2, 3))   # or fill from a host Array
 ```
+
+### From host data
+
+`NDArray(host)` makes a new array from a Julia `Array`. `copyto!(A, host)`
+refills an existing one without allocating.
 
 ### zeros
 
@@ -57,11 +63,11 @@ using LinearAlgebra
 using cuNumeric
 
 D = Diagonal(cuNumeric.ones(Float32, 5))  # preferred for diagonal work
-I32 = NDArray{Float32}(I, 5, 5)           # dense Float32 identity
-Ib = NDArray(I, 5, 5)                     # Bool identity
+I32 = NDArray{Float32}(LinearAlgebra.I, 5, 5)           # dense Float32 identity
+Ib = NDArray(LinearAlgebra.I, 5, 5)                     # Bool identity
 ```
 
-See [Linear Algebra](./linalg.md#diagonal-and-identity) for preferred patterns.
+See [Diagonal and identity](./linalg/diagonal.md) for preferred patterns.
 
 ## Random Numbers
 
@@ -101,5 +107,5 @@ cuNumeric.randexp
 Random.randexp!(::NDArray{<:cuNumeric.SUPPORTED_FLOAT_TYPES})
 ```
 
-See [Random](./api_random.md) for BitGenerators (`XORWOW`, `MRG32k3a`,
+See [RNG](./api_random.md) for BitGenerators (`XORWOW`, `MRG32k3a`,
 `PHILOX4_32_10`), `Generator`, and `default_rng`.
