@@ -4,7 +4,7 @@ The code and configurations are in our [benchmarking repository](https://github.
 
 ## Package Integrations
 
-The [Krylov.jl CG](../examples/krylov.md) and [OrdinaryDiffEq.jl heat diffusion](../examples/ordinarydiffeq.md) benchmarks compare cuNumeric.jl, CUDA.jl, and Dagger.jl arrays. The left panels vary the problem size on one GPU. The right panels show weak scaling, where cuNumeric.jl keeps solve and step times nearly constant as the GPU count grows.
+The [Krylov.jl CG](../examples/krylov.md) and [OrdinaryDiffEq.jl heat diffusion](../examples/ordinarydiffeq.md) benchmarks compare cuNumeric.jl, [CUDA.jl](https://github.com/JuliaGPU/CUDA.jl), and [Dagger.jl](https://github.com/JuliaParallel/Dagger.jl) arrays. The left panels vary the problem size on one GPU. The right panels show weak scaling, where cuNumeric.jl keeps solve and step times nearly constant as the GPU count grows.
 
 Lower times are better.
 
@@ -12,23 +12,23 @@ Lower times are better.
 
 ## cuNumeric Kernels and Applications
 
-These benchmarks are written entirely with cuNumeric.jl and compared against cuPyNumeric and other Julia GPU frameworks. Lower times are better.
+These benchmarks are written entirely with cuNumeric.jl and compared against [cuPyNumeric](https://github.com/nv-legate/cupynumeric) and other Julia GPU frameworks. Lower times are better.
 
 ### Weak Scaling
 
-Time per step on 1–8 GPUs for each benchmark, compared with cuPyNumeric, CUDA.jl, Dagger.jl, and JACC.jl.
+Time per step on 1–8 GPUs for GEMM, [Monte Carlo](../examples/montecarlo.md), [Gray-Scott](../examples/grayscott.md), [HPC-CG](../examples/cg.md), and NAS EP, FT, and MG, compared with cuPyNumeric, CUDA.jl, Dagger.jl, and [JACC.jl](https://github.com/JuliaORNL/JACC.jl).
 
 ![Weak scaling time per step for GEMM, Monte Carlo, Gray-Scott, HPC-CG, NAS EP, NAS FT, and NAS MG.](../images/benchmarks/grid_time.svg)
 
 ### Broadcast Fusion
 
-Gray-Scott and Monte Carlo with and without broadcast fusion, compared with cuPyNumeric and ImplicitGlobalGrid.jl.
+[Gray-Scott](../examples/grayscott.md) and [Monte Carlo](../examples/montecarlo.md) with and without broadcast fusion, compared with cuPyNumeric and [ImplicitGlobalGrid.jl](https://github.com/eth-cscs/ImplicitGlobalGrid.jl).
 
 ![Gray-Scott and Monte Carlo time per step with and without broadcast fusion.](../images/benchmarks/fusion_time.svg)
 
 ### Problem Size Sweep
 
-Time per step on one GPU as the problem size grows. At small sizes, fixed per-task runtime overhead dominates and hand-written CUDA.jl kernels are faster. The gap closes as the problem grows.
+Time per step on one GPU as the problem size grows, for [Gray-Scott](../examples/grayscott.md) and [Monte Carlo](../examples/montecarlo.md). At small sizes, fixed per-task runtime overhead dominates and hand-written CUDA.jl kernels are faster. The gap closes as the problem grows.
 
 ![Gray-Scott and Monte Carlo time per step versus problem size on one GPU.](../images/benchmarks/sweep_time.svg)
 
