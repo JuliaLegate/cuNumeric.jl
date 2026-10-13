@@ -1,5 +1,9 @@
 # FFT
 
+> [!WARNING]
+> There is a known bug in FFT which can cause segfault. The bug is stochastic and rare, we
+> are working on a fix. If you encounter this please open an issue.
+
 GPU-only FFTs on `NDArray`, following
 [AbstractFFTs.jl](https://github.com/JuliaMath/AbstractFFTs.jl) conventions:
 

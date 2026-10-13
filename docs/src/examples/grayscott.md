@@ -1,6 +1,6 @@
 # Gray-Scott Reaction Diffusion
 
-The runnable example in `examples/gray-scott.jl` evolves two chemical fields with periodic boundaries. The update function uses `@accelerate` to fuse eligible CUDA broadcasts and
+This example evolves two chemical fields with periodic boundaries according to the Gray-Scott PDE. The update function uses `@accelerate` to fuse eligible CUDA broadcasts and
 free temporary arrays after their last use.
 
 ```julia

@@ -61,7 +61,7 @@ x = fetch(s)        # native Julia scalar, e.g. Float32
 
 **The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into a task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them (for example `println`, `fetch`, or converting with `Array(A)`).
 
-For API details, see [Initialization](./api_initialization.md), [Random](./api_random.md), [FFT](./fft.md), and [Indexing, Sorting & Utilities](./api_util.md). For common performance pitfalls, see [Patterns to Avoid](./perf/patterns_to_avoid.md).
+For API details see [Initialization](https://julialegate.github.io/cuNumeric.jl/stable/api_initialization) and [NDArray Reference](https://julialegate.github.io/cuNumeric.jl/stable/api). For common performance pitfalls, see [Patterns to Avoid](./perf/patterns_to_avoid.md).
 
 ### Kernel Fusion
 
@@ -109,3 +109,5 @@ More worked examples (initialization, Gray-Scott, …) are in the documentation 
 ### Known Limitations
 
 - There is no support for `Float16` or `ComplexF16`
+- Stochastic bug in FFT can cause segfault
+- Unfused broadcasting of a `Vector` reshaped to (1, n) will not mimic Julia semantics
