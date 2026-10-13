@@ -28,4 +28,5 @@ For `mapreduce` and mapped `sum`, `prod`, `minimum`, and `maximum`, see
 ```@autodocs
 Modules = [cuNumeric]
 Pages = ["ndarray/unary.jl"]
+Filter = t -> !(t isa Function && nameof(t) === :map)
 ```

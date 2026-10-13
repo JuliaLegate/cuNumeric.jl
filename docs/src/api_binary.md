@@ -19,5 +19,5 @@ The following binary operations are supported and can be applied elementwise to 
 ```@autodocs
 Modules = [cuNumeric]
 Pages = ["ndarray/binary.jl"]
-Filter = t -> !(t isa Function && nameof(t) === :mul!)
+Filter = t -> !(t isa Function && nameof(t) in (:mul!, :map, :map!))
 ```
