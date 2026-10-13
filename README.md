@@ -115,6 +115,8 @@ println("Monte-Carlo Estimate: $(fetch(estimate))") # Should be ~ sqrt(pi)
 ```
 More worked examples (initialization, Gray-Scott, …) are in the documentation sidebar under **Examples**.
 
-### Known Limitations
+### Known Limitations & Bugs
 
 - There is no support for `Float16` or `ComplexF16` or `Complex{<:Integer}`
+- Stochastic bug in FFT can cause segfault
+- Unfused broadcasting of a `Vector` reshaped to (1, n) will not mimic Julia semantics

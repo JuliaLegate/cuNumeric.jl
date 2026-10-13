@@ -8,7 +8,7 @@ Constructors for new `NDArray`s. Default floating-point type is `Float32`.
 
 User-facing uninitialized array constructors, such as `NDArray{T}(undef, dims...)`,
 `NDArray{T}(undef, dims::Tuple)`, and ordinary `similar` calls, zero-initialize
-storage so that the result can immediately be displayed or converted with `Array`.
+storage.
 
 ```julia
 A = NDArray{Float32}(undef, 2, 3)

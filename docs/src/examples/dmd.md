@@ -8,11 +8,8 @@ next:
 x_{k+1} \approx A x_k
 ```
 
-Its eigenvectors are spatial patterns and its eigenvalues say what each pattern
-does per step: ``|\lambda|`` is growth or decay and ``\arg(\lambda)`` is
-rotation. For a field on an ``N \times N`` grid, ``A`` is ``N^2 \times N^2`` and
-far too large to form. DMD never does. Stack the states as columns of
-``X = [x_1 \; \dots \; x_n]``, split it into
+For a field on an ``N \times N`` grid, ``A`` is ``N^2 \times N^2`` and
+far too large to form. DMD never does, instead this example leverages singular-value decomposition up to a specified rank. To begin we build:
 
 ```math
 X_1 = [x_1 \; \dots \; x_{n-1}], \qquad X_2 = [x_2 \; \dots \; x_n]

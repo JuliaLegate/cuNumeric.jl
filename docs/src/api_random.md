@@ -35,10 +35,13 @@ cuNumeric.default_rng
 ```
 
 ```julia
+using cuNumeric
+import Random
+
 g = cuNumeric.default_rng()                          # XORWOW, fresh seed
 g = cuNumeric.default_rng(1234)                      # XORWOW, fixed seed
 g = cuNumeric.default_rng(cuNumeric.PHILOX4_32_10, 1)
 A = cuNumeric.random(g, Float32, (8, 8))             # U[0, 1)
-cuNumeric.randn!(g, A)                               # N(0, 1)
-cuNumeric.randexp!(g, A; scale=1)                    # Exp(scale)
+Random.randn!(g, A)                               # N(0, 1)
+Random.randexp!(g, A; scale=1)                    # Exp(scale)
 ```

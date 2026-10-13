@@ -50,9 +50,8 @@ CNPreferences.use_jll_binary()
 Then restart Julia.
 
 ## Developer mode
-> [!TIP]
-> Use developer mode to rebuild the cuNumeric.jl C++ wrapper after making changes.
-> See [Developer Mode](./developer_mode.md) for the full workflow.
+
+Use developer mode to rebuild the cuNumeric.jl C++ wrapper after making changes. See the [Developer Mode](./developer_mode.md) docs for the full workflow.
 
 Enable developer mode with:
 ```julia
