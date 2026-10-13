@@ -36,7 +36,7 @@ function _fft_out_of_place(
     A::NDArray{<:_FFT_ACCEPTED}, dims::NTuple{R,Int}, direction::Int32, scale::Bool
 ) where {R}
     inp = _fft_complex(A)
-    out = cuNumeric.zeros(eltype(inp), size(inp))
+    out = _undef_array(inp)
     fft_task!(out, inp, dims, direction; scale)
     # Promotion allocated a new complex buffer; the task already holds the store.
     inp !== A && destroy!(inp)

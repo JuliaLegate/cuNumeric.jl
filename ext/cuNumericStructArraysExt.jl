@@ -39,7 +39,11 @@ function Base.copyto!(
     # A field may read another field of dest. Stage results before replacing any
     # component so in-place broadcasts retain their usual simultaneous semantics.
     aliases_dest = _uses_component(bc, components)
-    outputs = aliases_dest ? map(similar, components) : components
+    outputs = if aliases_dest
+        map(cuNumeric._undef_array, components)
+    else
+        components
+    end
     try
         for (name, out) in zip(fieldnames(T), outputs)
             projected = Broadcasted{cuNumeric.NDArrayStyle{ndims(dest)}}(

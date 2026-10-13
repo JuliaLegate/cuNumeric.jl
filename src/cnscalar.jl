@@ -72,7 +72,7 @@ function Base.fill!(a::NDArray, x::DeviceScalar)
     return a
 end
 function fill(x::DeviceScalar, dims::Dims)
-    a = cuNumeric.zeros(_coefficient_type(x), dims)
+    a = _undef_array(_coefficient_type(x), dims)
     return fill!(a, x)
 end
 fill(x::DeviceScalar, dims::Int...) = fill(x, dims)

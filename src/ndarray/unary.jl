@@ -73,7 +73,7 @@ end
 @inline function __broadcast(
     ::typeof(abs2), out::NDArray{T}, input::NDArray{Complex{T}}
 ) where {T<:SUPPORTED_FLOAT_TYPES}
-    magnitude = similar(out)
+    magnitude = _undef_array(out)
     nda_unary_op!(magnitude, cuNumeric.ABSOLUTE, input)
     nda_unary_op!(out, cuNumeric.SQUARE, magnitude)
     destroy!(magnitude)
@@ -81,31 +81,33 @@ end
 end
 
 # Needed to support !=
-Base.:(!)(input::NDArray{Bool,0}) = nda_unary_op!(similar(input), cuNumeric.LOGICAL_NOT, input)
-Base.:(!)(input::NDArray{Bool,1}) = nda_unary_op!(similar(input), cuNumeric.LOGICAL_NOT, input)
+Base.:(!)(input::NDArray{Bool,0}) =
+    nda_unary_op!(_undef_array(input, Bool), cuNumeric.LOGICAL_NOT, input)
+Base.:(!)(input::NDArray{Bool,1}) =
+    nda_unary_op!(_undef_array(input, Bool), cuNumeric.LOGICAL_NOT, input)
 
 # Non-broadcasted version of negation
 function Base.:(-)(input::NDArray{T}) where {T}
-    out = NDArray{T}(undef, size(input))
+    out = _undef_array(input, T)
     return nda_unary_op!(out, cuNumeric.NEGATIVE, input)
 end
 
 function Base.real(input::NDArray{T}) where {T<:Complex}
     T_OUT = Base.promote_op(real, T)
-    out = NDArray{T_OUT}(undef, size(input))
+    out = _undef_array(input, T_OUT)
     return nda_unary_op!(out, cuNumeric.REAL, input)
 end
 Base.real(input::NDArray{<:Real}) = input
 
 function Base.imag(input::NDArray{T}) where {T<:Complex}
     T_OUT = Base.promote_op(imag, T)
-    out = NDArray{T_OUT}(undef, size(input))
+    out = _undef_array(input, T_OUT)
     return nda_unary_op!(out, cuNumeric.IMAG, input)
 end
 Base.imag(input::NDArray{T}) where {T<:Real} = cuNumeric.zeros(T, size(input))
 
 function Base.conj(input::NDArray{T}) where {T<:Complex}
-    out = NDArray{T}(undef, size(input))
+    out = _undef_array(input, T)
     return nda_unary_op!(out, cuNumeric.CONJ, input)
 end
 Base.conj(input::NDArray{<:Real}) = input
@@ -364,7 +366,7 @@ function _unary_reduction_impl(base_func, op_code, input::NDArray{T}, ::Colon) w
     _assert_numeric_reduction(base_func, T)
     T_OUT = Base.promote_op(base_func, Vector{T})
     is_wider_type(T_OUT, T) && assertpromotion(base_func, T, T_OUT)
-    out = cuNumeric.zeros(T_OUT)
+    out = _undef_array(T_OUT, ())
     return _unary_reduction_apply(out, op_code, input, T_OUT)
 end
 
@@ -403,7 +405,7 @@ for (base_func, op_code) in unary_reduction_map
 end
 
 function _bool_reduction_impl(op_code, input::NDArray{Bool}, ::Colon)
-    out = cuNumeric.zeros(Bool)
+    out = _undef_array(Bool, ())
     return nda_unary_reduction(out, op_code, input)
 end
 
@@ -521,7 +523,7 @@ function _sqrt_ndarray(v::NDArray{T,0}) where {T}
 end
 
 function _sqrt_ndarray(v::NDArray{T}) where {T}
-    out = similar(v)
+    out = _undef_array(v)
     nda_unary_op!(out, cuNumeric.SQRT, v)
     destroy!(v)
     return out
