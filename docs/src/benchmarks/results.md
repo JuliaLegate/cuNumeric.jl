@@ -26,12 +26,6 @@ Gray-Scott and Monte Carlo with and without broadcast fusion, compared with cuPy
 
 ![Gray-Scott and Monte Carlo time per step with and without broadcast fusion.](../images/benchmarks/fusion_time.svg)
 
-### Gray-Scott
-
-Throughput and time per step for the 2D Gray-Scott stencil, compared with cuPyNumeric and ImplicitGlobalGrid.jl.
-
-![Gray-Scott throughput and time per step on one and multiple GPUs.](../images/benchmarks/grayscott_compare.svg)
-
 ### Problem Size Sweep
 
 Time per step on one GPU as the problem size grows. At small sizes, fixed per-task runtime overhead dominates and hand-written CUDA.jl kernels are faster. The gap closes as the problem grows.
