@@ -24,7 +24,7 @@ end
 const N = 1_000_000
 const x_max = 10.0f0
 estimate = monte_carlo(N, x_max)
-println("Monte-Carlo estimate: $(estimate)")
+println("Monte-Carlo estimate: $(fetch(estimate))")
 println("Analytical value: $(sqrt(pi))")
 ```
 
