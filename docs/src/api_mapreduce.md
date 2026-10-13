@@ -22,7 +22,7 @@ pass, without a mapped copy. `op` can be `+`, `*`, `min` or `max`. Mapped `sum`,
 A = cuNumeric.ones(Float32, 1024, 512)
 energy = sum(abs2, A)                     # CNScalar
 columns = mapreduce(abs2, +, A; dims=1)   # 1 × 512
-α = 0.5f0
+const α = 0.5f0                          # a non-const global would infer as Any
 distance = sum(x -> abs2(x - α), A)
 largest = maximum(abs, A; init=0f0)
 ```
@@ -43,7 +43,8 @@ largest = maximum(abs, A; init=0f0)
 
 - GPU only. Unmapped reductions still run on CPU.
 - One input array. The mapping must be type-stable and GPU-compilable, and may
-  capture only immutable scalars. No custom reducers.
+  capture only immutable scalars. At top level, captured globals must be
+  `const`. No custom reducers.
 - No complex `minimum`/`maximum`, and no ComplexF64 `prod`.
 - Floating-point results are not bitwise reproducible. NaN propagation is kept.
 
