@@ -9,6 +9,8 @@ struct of arrays (SoA). Both need a CUDA device with broadcast fusion enabled.
 scalar fields.
 
 ```julia
+using cuNumeric
+
 struct Particle
     position::Float32
     velocity::Float32

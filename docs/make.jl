@@ -41,6 +41,7 @@ makedocs(;
             "Dynamic Mode Decomposition" => "examples/dmd.md",
             "Periodic Poisson (FFT)" => "examples/poisson_fft.md",
             "Conjugate Gradient" => "examples/cg.md",
+            "Special Matrices" => "examples/special_mat.md",
             "Package Integrations" => [
                 "TensorOperations.jl" => "examples/tensoroperations.md",
                 "Krylov.jl" => "examples/krylov.md",

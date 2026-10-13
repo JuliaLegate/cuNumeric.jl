@@ -91,7 +91,9 @@ function gray_scott()
     cuNumeric.Legate.runtime_sync()
 
     return u, v
- end
+end
+
+u, v = gray_scott()
 ```
 
 ![Simulation Output](../gray-scott.gif)
