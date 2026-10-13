@@ -72,7 +72,7 @@ end
         try
             @test axes(out) == axes(bc)
             @test copyto!(out, bc) === out
-            @test Array(out) == host .+ 3f0
+            @test Array(out) == fill(5f0, size(host))
         finally
             cuNumeric.destroy!(out)
             cuNumeric.destroy!(input)
