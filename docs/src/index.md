@@ -89,13 +89,13 @@ See [Benchmarks](benchmarks/results.md) for package integration results and repr
 ```julia
 using cuNumeric
 
-integrand(x) = @. exp(-x^2)
+integrand(x) = exp(-x^2)
 
 @accelerate function monte_carlo(N, x_max)
     Ω = 2 * x_max
     raw_samples = cuNumeric.rand(N)
     samples = @. Ω * raw_samples - x_max
-    return (Ω / N) * sum(integrand(samples))
+    return (Ω / N) * sum(integrand.(samples))
 end
 
 N = 1_000_000

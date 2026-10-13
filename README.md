@@ -111,7 +111,7 @@ N = 1_000_000
 x_max = 10.0f0
 estimate = monte_carlo(N, x_max)
 
-println("Monte-Carlo Estimate: $(estimate)") # Should be ~ sqrt(pi)
+println("Monte-Carlo Estimate: $(fetch(estimate))") # Should be ~ sqrt(pi)
 ```
 More worked examples (initialization, Gray-Scott, …) are in the documentation sidebar under **Examples**.
 
