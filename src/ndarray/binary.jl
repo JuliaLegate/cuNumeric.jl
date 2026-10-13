@@ -336,6 +336,11 @@ end
 # This is more "Julian" since a user expects map to broadcast
 # their operation whereas the generated functions should technically
 # only broadcast when the .() syntax is used
+"""
+    map(f, A::NDArray, B::NDArray)
+
+Apply `f` elementwise to `A` and `B`. Same as `f.(A, B)`.
+"""
 function Base.map(f::Function, arr1::NDArray{A,N}, arr2::NDArray{B,N}) where {A,B,N}
     return f.(arr1, arr2) # Will try to call one of the functions generated above
 end
@@ -349,3 +354,10 @@ for (julia_fn, _) in binary_op_map
         return __broadcast(f, dest, arr1, arr2)
     end
 end
+
+@doc """
+    map!(op, dest::NDArray, A::NDArray, B::NDArray)
+
+Write `op.(A, B)` into `dest` for built-in binary operators (`+`, `*`, `max`, …).
+All three arrays must have the same shape.
+""" Base.map!(::Function, ::NDArray, ::NDArray, ::NDArray)
