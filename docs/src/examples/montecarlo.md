@@ -17,12 +17,12 @@ integrand(x) = exp(-x^2)
 @accelerate function monte_carlo(N, x_max)
     Ω = 2 * x_max
     raw_samples = cuNumeric.rand(N)
-    samples = @. Ω * raw_samples - x_max
-    return (Ω / N) * sum(integrand.(samples))
+    samples = @. Ω * raw_samples - x_max # first kernel
+    return (Ω / N) * sum(integrand.(samples)) # second (integrand) + third kernels (sum)
 end
 
-N = 1_000_000
-x_max = 10.0f0
+const N = 1_000_000
+const x_max = 10.0f0
 estimate = monte_carlo(N, x_max)
 println("Monte-Carlo estimate: $(estimate)")
 println("Analytical value: $(sqrt(pi))")
@@ -30,13 +30,10 @@ println("Analytical value: $(sqrt(pi))")
 
 The result is a `CNScalar` backed by a 0D NDArray, which keeps the reduction asynchronous. Use `fetch(estimate)` only when a Julia scalar is required.
 
-This can also be done with `mapreduce`.
+This can also be done with `mapreduce` which fuses everything into a single kernel.
 
 ```julia
-Ω = 2 * x_max
-raw_samples = cuNumeric.rand(N)
-samples = @. Ω * raw_samples - x_max
-estimate = (Ω / N) * mapreduce(integrand, +, samples; init = 0.0f0)
+const Ω = 2 * x_max
+mc = (x) -> integrand(Ω*x - x_max)
+estimate = (Ω/N) * mapreduce(mc, +, cuNumeric.rand(N); init = 0.0f0) # only kernel
 ```
-
-Each variants provides different fusion semantics and will therefore have different performance. In the `@accelerate` variant, the creation of `samples` and the application of `integrand` are fused. The application of `sum` happens after. In the `mapreduce` variant, `samples` is created first and then the `sum` and `integrand` are fused into one `mapreduce` kernel.

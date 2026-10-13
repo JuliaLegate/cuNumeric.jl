@@ -1,7 +1,8 @@
 # OrdinaryDiffEq.jl
 
 Pass an `NDArray` initial state to a SciML `ODEProblem` and use array operations
-in the right-hand side. The solver's state then stays in cuNumeric arrays.
+in the right-hand side. The solver then uses cuNumeric `NDArray`s which will dispatch
+to multi-GPU implementations of each function.
 
 > [!WARNING]
 > Not all OrdinaryDiffEq solvers, callbacks, or solver options have been tested
