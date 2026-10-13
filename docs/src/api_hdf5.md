@@ -15,7 +15,7 @@ cuNumeric.Legate.runtime_sync()
 restored = cuNumeric.h5read("checkpoint.h5", "field"; layout=:row)
 @assert size(restored) == (128, 64)
 @assert eltype(restored) == Float32
-@assert cuNumeric.compare(fill(3.5f0, 128, 64), restored, 0, 0)
+@assert Array(restored) == fill(3.5f0, 128, 64)
 ```
 
 `h5write` submits work to Legate and can return before the file write has completed.

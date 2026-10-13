@@ -58,7 +58,7 @@ Use `Legate.with_scope` when phase names such as `initialize` and `update` are m
 
 ```julia
 using cuNumeric
-import Legate
+using cuNumeric: Legate
 
 A, B = Legate.with_scope("initialize") do
     A = cuNumeric.ones(Float32, 64, 64)
