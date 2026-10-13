@@ -1,4 +1,4 @@
-# Random
+# Random Number Generators
 
 Module-level [`rand`](@ref cuNumeric.rand), [`randn`](@ref cuNumeric.randn),
 and [`randexp`](@ref cuNumeric.randexp) are documented under

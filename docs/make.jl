@@ -66,7 +66,7 @@ makedocs(;
         ],
         "Public API" => [
             "Initialization" => "api_initialization.md",
-            "Random" => "api_random.md",
+            "RNG" => "api_random.md",
             "Unary Operations" => "api_unary.md",
             "Map and Reduce" => "api_mapreduce.md",
             "Device Scalars" => "api_cnscalar.md",

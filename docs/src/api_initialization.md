@@ -107,5 +107,5 @@ cuNumeric.randexp
 Random.randexp!(::NDArray{<:cuNumeric.SUPPORTED_FLOAT_TYPES})
 ```
 
-See [Random](./api_random.md) for BitGenerators (`XORWOW`, `MRG32k3a`,
+See [RNG](./api_random.md) for BitGenerators (`XORWOW`, `MRG32k3a`,
 `PHILOX4_32_10`), `Generator`, and `default_rng`.

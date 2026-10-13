@@ -35,7 +35,7 @@ E = cuNumeric.randexp(Float64, 1000)      # exponential, scale 1 (real only)
 Ints = cuNumeric.rand(0:9, 4, 4)             # Int64 in 0:9 (inclusive)
 Coin = cuNumeric.rand(Bool, 8)            # fair coin flips
 
-# Private stream / non-default engine (see Random in the Public API)
+# Private stream / non-default engine (see RNG in the Public API)
 g = cuNumeric.default_rng(cuNumeric.PHILOX4_32_10, 1234)
 P = cuNumeric.random(g, Float32, (4, 4))
 ```
@@ -48,4 +48,4 @@ cuNumeric.zeros((2, 3))
 cuNumeric.ones(Float64, (10, 10))
 ```
 
-For signatures and more detail, see [Initialization](../api_initialization.md) and [Random](../api_random.md) in the Public API.
+For signatures and more detail, see [Initialization](../api_initialization.md) and [RNG](../api_random.md) in the Public API.
