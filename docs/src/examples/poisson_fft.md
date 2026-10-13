@@ -33,6 +33,7 @@ xs = Float32.(0:(n - 1)) ./ Float32(n)
 f = NDArray([-2f0 * ω^2 * sin(ω * x) * sin(ω * y) for x in xs, y in xs])
 
 # Laplacian eigenvalues.
+k = NDArray(Float32.(vcat(0:(n ÷ 2 - 1), -(n ÷ 2):-1)))  # integer FFT frequencies
 kx = cuNumeric.reshape(k, n, 1)
 ky = cuNumeric.reshape(k, 1, n)
 λ = (-ω^2) .* (kx.^2 .+ ky.^2)
