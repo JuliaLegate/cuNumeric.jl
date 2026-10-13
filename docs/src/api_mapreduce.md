@@ -12,6 +12,12 @@ C = map(sin, A)
 map!(*, C, A, B)
 ```
 
+```@docs
+Base.map(::Function, ::NDArray)
+Base.map(::Function, ::NDArray{A,N}, ::NDArray{B,N}) where {A,B,N}
+Base.map!(::Function, ::NDArray, ::NDArray, ::NDArray)
+```
+
 ## `mapreduce`
 
 `mapreduce(f, op, A; dims=:, init=...)` maps and reduces an NDArray in one
