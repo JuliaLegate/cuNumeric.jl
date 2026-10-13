@@ -1,12 +1,12 @@
 # Monte-Carlo Integration
 
-For uniformly sampled points `x_i` in a domain of volume `\Omega`, a basic Monte-Carlo estimator is
+For uniformly sampled points ``x_i`` in a domain of volume ``\Omega``, a basic Monte-Carlo estimator is
 
 ```math
 \hat{I}_N = \frac{\Omega}{N}\sum_{i=1}^N f(x_i).
 ```
 
-This example estimates `\int_{-\infty}^{\infty} e^{-x^2}\,dx` by sampling the finite interval `[-10, 10]`. `@accelerate` frees the non-returned sample arrays after their final use. CUDA may also fuse eligible broadcasts.
+This example estimates ``\int_{-\infty}^{\infty} e^{-x^2}\,dx`` by sampling the finite interval `[-10, 10]`. `@accelerate` frees the non-returned sample arrays after their final use. CUDA may also fuse eligible broadcasts.
 
 ```julia
 # examples/integrate.jl
