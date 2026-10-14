@@ -4,7 +4,7 @@
   </a>
 </p>
 
-[![Documentation stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://julialegate.github.io/cuNumeric.jl/stable) [![Documentation dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://julialegate.github.io/cuNumeric.jl/dev) [![codecov](https://codecov.io/github/julialegate/cuNumeric.jl/branch/main/graph/badge.svg)](https://app.codecov.io/github/JuliaLegate/cuNumeric.jl) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Documentation stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://julialegate.github.io/cuNumeric.jl/stable) [![codecov](https://codecov.io/github/julialegate/cuNumeric.jl/branch/main/graph/badge.svg)](https://app.codecov.io/github/JuliaLegate/cuNumeric.jl) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
 cuNumeric.jl wraps and extends the [cuPyNumeric](https://github.com/nv-legate/cupynumeric) library from NVIDIA to bring distributed array computing on GPUs and CPUs to Julia. The central type is `NDArray`, which behaves like Julia's `Array` or the `CuArray` from [CUDA.jl](https://github.com/juliagpu/cuda.jl), but executes across multiple GPUs/CPUs. We implement array-level operations on `NDArray` which can be composed into larger programs without the need for explicit MPI calls or writing CUDA kernels.
 
@@ -72,7 +72,7 @@ See [Kernel Fusion](https://julialegate.github.io/cuNumeric.jl/stable/perf/kerne
 
 ### Benchmarks
 
-Results and reproduction instructions live under [Benchmark Results](https://julialegate.github.io/cuNumeric.jl/stable/benchmarks/results) and [How to Benchmark](https://julialegate.github.io/cuNumeric.jl/stable/benchmarks/howto).
+Results and reproduction instructions live under [Benchmark Results](https://julialegate.github.io/cuNumeric.jl/stable/benchmarks/results) and [Running the Benchmarks](https://julialegate.github.io/cuNumeric.jl/stable/benchmarks/results#running-the-benchmarks). Run `./scripts/get_benchmarks.sh` to fetch the suite into `benchmark/`.
 
 ### TensorOperations.jl Integration
 

@@ -16,8 +16,6 @@ logging
 logging/*
 debug
 debug/*
-!benchmark/debug/
-!benchmark/debug/grayscott_accelerate.jl
 
 # example outputs (examples/data and the docs copy of gray-scott.gif are tracked)
 examples/*.h5
@@ -27,10 +25,8 @@ examples/*.gif
 # h5write emits a virtual dataset backed by this sidecar directory
 *_legate_vds/
 
-# benchmark outputs
-benchmark/results**
-benchmark/results/*
-benchmark/plots**
+# cloned by scripts/get_benchmarks.sh
+/benchmark/
 
 compile_wrapper.sh
 

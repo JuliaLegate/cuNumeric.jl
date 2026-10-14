@@ -8,10 +8,10 @@ docker build -f docker/Dockerfile -t cunumeric:local .
 
 The benchmark image and its opt-in CI now live in
 [JuliaLegate/benchmarking](https://github.com/JuliaLegate/benchmarking).
-Build it from the pinned submodule without rebuilding the base:
+Fetch it into `benchmark/` and build without rebuilding the base:
 
 ```bash
-git submodule update --init --recursive
+./scripts/get_benchmarks.sh
 docker build -f benchmark/docker/Dockerfile \
   --build-arg BASE_IMAGE=cunumeric:local \
   -t cunumeric:benchmark benchmark
