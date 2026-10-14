@@ -313,4 +313,6 @@ function __init__()
     return _setup_cuda_tasking()
 end
 
+include("precompile.jl")
+
 end #module cuNumeric
