@@ -252,8 +252,8 @@ function make_broadcast_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, s
     return make_linear_kernel(dest, bc, arg_plan, static_args)
 end
 
-struct FusedBroadcastMetadata
-    ctx::Any # KA.CompilerMetadata (compilation / arg layout; not global ndrange)
+struct FusedBroadcastMetadata{C}
+    ctx::C # KA.CompilerMetadata (compilation / arg layout; not global ndrange)
     threads::Int # occupancy thread budget; device chooses final launch dims
     cuda_task::CUDATask
 end

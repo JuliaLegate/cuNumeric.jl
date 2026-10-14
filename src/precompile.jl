@@ -7,6 +7,8 @@ let
     inplace_workload(dest, a, b, scalar) = (dest .= a .* scalar .+ b)
     custom_scalar(x, y) = x / (one(x) + abs(y))
     custom_workload(a, b) = custom_scalar.(a, b)
+    full_mapreduce_workload(a) = mapreduce(abs2, +, a)
+    dims_mapreduce_workload(a) = mapreduce(abs2, +, a; dims=1)
 
     for T in (Float32, Float64)
         # Fusion uses distinct linear, 2D, and 3D kernel constructors.
@@ -18,6 +20,8 @@ let
             precompile(inplace_workload, (A, A, A, T))
             precompile(custom_workload, (A, A))
         end
+        precompile(full_mapreduce_workload, (NDArray{T,1,Nothing},))
+        precompile(dims_mapreduce_workload, (NDArray{T,2,Nothing},))
         precompile(rand, (Type{Complex{T}}, Int))
         precompile(randn, (Type{Complex{T}}, Int))
     end
