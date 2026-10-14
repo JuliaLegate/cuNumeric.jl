@@ -39,7 +39,7 @@ The semantics of `NDArray` closely mirror Julia's `Array`, and in most cases it 
 
 **Slices are views.** Indexing an `NDArray` with ranges returns a view onto the same store, not a copy. That differs from Base Julia, where `A[1:n]` allocates a new `Array`. Mutating an `NDArray` slice mutates the parent and all other aliases of the underlying data.
 
-**Scalar reductions return device scalars.** Full reductions such as `sum(A)`, `dot(x,y)`, and `norm(x)` return numeric wrappers (`CNFloat`, `CNInt`, `CNUInt`, `CNBool`, or `CNComplex`) backed by 0D NDArrays. Each subtypes the corresponding abstract numeric category; `CNReal` and `CNScalar` group the wrapper families. Dimension-preserving reductions still return NDArrays. Arithmetic stays on the backend; use `fetch` for explicit host extraction:
+**Scalar reductions return device scalars.** Full reductions such as `sum(A)`, `dot(x,y)`, and `norm(x)` return numeric wrappers (`CNFloat`, `CNInt`, `CNUInt`, `CNBool`, or `CNComplex`) backed by 0D NDArrays. Each subtypes the corresponding abstract numeric category. Dimension-preserving reductions still return NDArrays. Use `fetch` for explicit host extraction:
 
 ```julia
 s = sum(A)          # CNScalar
