@@ -19,3 +19,25 @@
         @test safe_compare(r1, r2, atol(Float64), rtol(Float64))
     end
 end
+
+@testset "Flattened associative broadcast promotion" begin
+    @test @inferred(cuNumeric.__checked_promote_op(+, NTuple{5,Float64})) === Float64
+    @test @inferred(cuNumeric.__checked_promote_op(*, NTuple{4,Int32})) === Int32
+end
+
+@testset "Ternary broadcast promotion" begin
+    @test @inferred(cuNumeric.__checked_promote_op(muladd, Tuple{Float32,Float32,Float32})) === Float32
+end
+
+_promotion_test_norm(x, t) = abs(x)
+_promotion_test_residual(e, u0, u1, atol, rtol, norm, t) =
+    e / (atol + max(norm(u0, t), norm(u1, t)) * rtol)
+
+@testset "Custom broadcast promotion with a function argument" begin
+    argtypes = Tuple{
+        Float32,Float32,Float32,Float32,Float32,typeof(_promotion_test_norm),Float32
+    }
+    @test @inferred(cuNumeric._numeric_broadcast_types(argtypes)) ==
+        (Float32, Float32, Float32, Float32, Float32, Float32)
+    @test @inferred(cuNumeric.__checked_promote_op(_promotion_test_residual, argtypes)) === Float32
+end

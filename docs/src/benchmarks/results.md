@@ -1,61 +1,39 @@
-# Benchmark Results
+# Benchmarking
 
-For JuliaCon2025 we benchmarks cuNumeric.jl on 8 A100 GPUs (single-node) and compared it to the Python library cuPyNumeric and other relevant benchmarks depending on the problem. All results shown are weak scaling. We hope to have multi-node benchmarks soon!
+The code and configurations are in our [benchmarking repository](https://github.com/JuliaLegate/benchmarking). Run `./run_all.sh` from the repository root, or read its [README](https://github.com/JuliaLegate/benchmarking#readme) for setup and individual benchmarks.
 
-## SGEMM
+## Package Integrations
 
-Code Outline:
-```julia
-mul!(C, A, B)
-```
+The [Krylov.jl CG](../examples/krylov.md) and [OrdinaryDiffEq.jl heat diffusion](../examples/ordinarydiffeq.md) benchmarks compare cuNumeric.jl, [CUDA.jl](https://github.com/JuliaGPU/CUDA.jl), and [Dagger.jl](https://github.com/JuliaParallel/Dagger.jl) arrays. The left panels vary the problem size on one GPU. The right panels show weak scaling, where cuNumeric.jl keeps solve and step times nearly constant as the GPU count grows.
 
-```@raw html
-<table>
-  <tr>
-    <th>GEMM Efficiency</th>
-    <th>GEMM GFLOPS</th>
-  </tr>
-  <tr>
-    <td><img src="../images/gemm_efficiency.svg" alt="GEMM Efficiency"/></td>
-    <td><img src="../images/gemm_gflops.svg" alt="GEMM GFLOPS"/></td>
-  </tr>
-</table>
-```
+Lower times are better.
 
-## Monte-Carlo Integration
+![Krylov.jl CG solve times and OrdinaryDiffEq.jl heat diffusion step times on one and multiple GPUs.](../images/benchmarks/composability.svg)
 
-Monte-Carlo integration is embaressingly parallel and should scale perfectly. We do not know the exact number of operations in `exp` so the GFLOPs is off by a constant factor.
+## cuNumeric Kernels and Applications
 
-Code Outline:
-```julia
-integrand = (x) -> exp.(-x.^2)
-val = (V/N) * sum(integrand(x))
-```
+These benchmarks are written entirely with cuNumeric.jl and compared against [cuPyNumeric](https://github.com/nv-legate/cupynumeric) and other Julia GPU frameworks. Lower times are better.
 
-```@raw html
-<table>
-  <tr>
-    <th>MC Efficiency</th>
-    <th>MC GFLOPS</th>
-  </tr>
-  <tr>
-    <td><img src="../images/mc_eff.svg" alt="MC Efficiency"/></td>
-    <td><img src="../images/mc_ops.svg" alt="MC GFLOPS"/></td>
-  </tr>
-</table>
-```
+### Weak Scaling
 
-## Gray-Scott (2D)
+Time per step on 1–8 GPUs for GEMM, [Monte Carlo](../examples/montecarlo.md), [Gray-Scott](../examples/grayscott.md), [HPC-CG](../examples/cg.md), and NAS EP, FT, and MG, compared with cuPyNumeric, CUDA.jl, Dagger.jl, and [JACC.jl](https://github.com/JuliaORNL/JACC.jl).
 
-Solving a PDE requires halo exchanges and lots of data movement. In this benchmark we fall an order of magnitude short of the `ImplicitGlobalGrid.jl` library which specifically targets multi-node, multi-GPU halo exchanges. Broadcast fusion helps on the elementwise update, but communication and stencil data movement still dominate the gap.
+![Weak scaling time per step for GEMM, Monte Carlo, Gray-Scott, HPC-CG, NAS EP, NAS FT, and NAS MG.](../images/benchmarks/grid_time.svg)
 
-```@raw html
-<table>
-  <tr>
-    <th>GS GFLOPS</th>
-  </tr>
-  <tr>
-    <td><img src="../images/gs_gflops_diffeq.svg" alt="GS GFLOPS"/></td>
-  </tr>
-</table>
-```
+### Broadcast Fusion
+
+[Gray-Scott](../examples/grayscott.md) and [Monte Carlo](../examples/montecarlo.md) with and without broadcast fusion, compared with cuPyNumeric and [ImplicitGlobalGrid.jl](https://github.com/eth-cscs/ImplicitGlobalGrid.jl).
+
+![Gray-Scott and Monte Carlo time per step with and without broadcast fusion.](../images/benchmarks/fusion_time.svg)
+
+### Problem Size Sweep
+
+Time per step on one GPU as the problem size grows, for [Gray-Scott](../examples/grayscott.md) and [Monte Carlo](../examples/montecarlo.md). At small sizes, fixed per-task runtime overhead dominates and hand-written CUDA.jl kernels are faster. The gap closes as the problem grows.
+
+![Gray-Scott and Monte Carlo time per step versus problem size on one GPU.](../images/benchmarks/sweep_time.svg)
+
+### Code Complexity vs Performance
+
+Cyclomatic complexity of each implementation against its performance relative to the fastest model on 8 GPUs. Small markers are individual benchmarks and large markers are per-model means. The ideal is the top-left corner.
+
+![Cyclomatic complexity versus relative performance on 8 GPUs for cuNumeric.jl, Dagger.jl, and JACC.jl.](../images/benchmarks/complexity_8gpu.svg)

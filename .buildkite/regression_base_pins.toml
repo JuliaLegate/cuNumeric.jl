@@ -1,0 +1,6 @@
+# Extra version pins for the base side's harness environment, keyed by base
+# branch, for bases that no longer load against the current registry.
+
+[main]
+# cuNumeric 0.2.0 calls LegatePreferences.has_cuda_gpu, removed in 0.1.7.
+LegatePreferences = "0.1.6"

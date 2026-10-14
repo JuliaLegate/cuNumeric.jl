@@ -2,9 +2,12 @@
 """Version consistency check for pull requests targeting main."""
 
 import argparse
+import json
 import re
 import subprocess
 import sys
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 REPO_ROOT = Path(subprocess.run(
@@ -18,6 +21,10 @@ PACKAGE_NAME = "cuNumeric"
 
 WRAPPER_VERSION_FILE   = "lib/cunumeric_jl_wrapper/VERSION"
 WRAPPER_JLL_COMPAT_KEY = "cunumeric_jl_wrapper_jll"
+WRAPPER_RELEASED_COMMIT_FILE = "lib/cunumeric_jl_wrapper/RELEASED_COMMIT"
+WRAPPER_JLL_REPO       = "JuliaBinaryWrappers/cunumeric_jl_wrapper_jll.jl"
+WRAPPER_JLL_TAG_PREFIX = "cunumeric_jl_wrapper-v"
+WRAPPER_SOURCE_REPO    = "https://github.com/JuliaLegate/cuNumeric.jl.git"
 WRAPPER_SRC_PREFIXES   = (
     "lib/cunumeric_jl_wrapper/src/",
     "lib/cunumeric_jl_wrapper/include/",
@@ -149,6 +156,67 @@ def check_wrapper_compat_sync(pr_toml: str, errors: list):
         print(f"\t\tOK")
 
 
+def http_get(url: str) -> str:
+    request = urllib.request.Request(url, headers={"User-Agent": "cuNumeric-version-check"})
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return response.read().decode()
+
+
+def released_wrapper_commit(version: str) -> tuple:
+    """Return (tag, source revision) of the newest JLL build of `version`."""
+    refs = json.loads(http_get(
+        f"https://api.github.com/repos/{WRAPPER_JLL_REPO}/git/matching-refs/tags/"
+        f"{WRAPPER_JLL_TAG_PREFIX}{version}+"
+    ))
+    builds = {}
+    for ref in refs:
+        tag = ref["ref"].removeprefix("refs/tags/")
+        m = re.fullmatch(re.escape(WRAPPER_JLL_TAG_PREFIX + version) + r"\+(\d+)", tag)
+        if m:
+            builds[int(m.group(1))] = tag
+    if not builds:
+        return None, None
+    tag = builds[max(builds)]
+    readme = http_get(
+        f"https://raw.githubusercontent.com/{WRAPPER_JLL_REPO}/{urllib.parse.quote(tag)}/README.md"
+    )
+    m = re.search(re.escape(WRAPPER_SOURCE_REPO) + r" \(revision: `([0-9a-f]{40})`\)", readme)
+    return tag, m.group(1) if m else None
+
+
+def check_wrapper_released_commit(pr_toml: str, errors: list):
+    compat_ver = parse_compat_section(pr_toml).get(WRAPPER_JLL_COMPAT_KEY)
+    recorded = (REPO_ROOT / WRAPPER_RELEASED_COMMIT_FILE).read_text().strip()
+
+    print(f"\t[wrapper released commit]")
+    print(f"\t\t{WRAPPER_RELEASED_COMMIT_FILE} = {recorded}")
+    if compat_ver is None:
+        return  # reported by check_wrapper_compat_sync
+    try:
+        tag, released = released_wrapper_commit(compat_ver)
+    except Exception as e:
+        errors.append(
+            f"Could not look up the source revision of {WRAPPER_JLL_COMPAT_KEY} {compat_ver}: {e}"
+        )
+        return
+
+    if tag is None:
+        errors.append(
+            f"{WRAPPER_JLL_COMPAT_KEY} {compat_ver} has no release in {WRAPPER_JLL_REPO}.\n"
+            f"\tRelease the wrapper JLL before merging into main."
+        )
+    elif released is None:
+        errors.append(f"Could not find the source revision in the README of {WRAPPER_JLL_REPO} {tag}.")
+    elif released != recorded:
+        errors.append(
+            f"{WRAPPER_RELEASED_COMMIT_FILE} is stale.\n"
+            f"\t{tag} was built from {released}, but the file records {recorded}.\n"
+            f"\tSet {WRAPPER_RELEASED_COMMIT_FILE} to {released}."
+        )
+    else:
+        print(f"\t\tOK (matches {tag})")
+
+
 def check_subpkg_version(base_ref: str, pr_toml: str, changed: list, errors: list):
     src_changed = [f for f in changed if any(f.startswith(p) for p in SUBPKG_SRC_PREFIXES)]
     if not src_changed:
@@ -210,6 +278,7 @@ def main():
     check_package_version(base_ref, pr_toml, errors)
     check_wrapper_version(base_ref, changed, errors)
     check_wrapper_compat_sync(pr_toml, errors)
+    check_wrapper_released_commit(pr_toml, errors)
     check_subpkg_version(base_ref, pr_toml, changed, errors)
     print("─" * 60)
 

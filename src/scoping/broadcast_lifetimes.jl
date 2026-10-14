@@ -74,20 +74,21 @@ function rewrite_broadcast_lifetimes(scope)
             return :($lhs = $new_rhs), temps
         end
 
-        # A `.=` RHS is a broadcast tree: only its slices are hoisted.
+        # A dotted-assignment RHS is a broadcast tree: only its slices are hoisted.
         broadcast_assignment = _broadcast_assignment(expr)
         if !isnothing(broadcast_assignment)
             (; lhs, rhs) = broadcast_assignment
+            op = expr.head
             # NDArray slices are writable views. Hoist the destination slice so
             # the fused broadcast writes through it, then destroy its handle.
             lhs_reference = _reference(lhs)
             if isnothing(lhs_reference)
                 new_lhs, lhs_temps = rewrite_materialized(lhs)
             else
-                new_lhs, lhs_temps = fresh_tmp(lhs)
+                new_lhs, lhs_temps = fresh_tmp(:(Base.@view $lhs))
             end
             new_rhs, rhs_temps = rewrite_lazy_broadcast(rhs, Dict{Any,Symbol}())
-            return Expr(:(.=), new_lhs, new_rhs), vcat(lhs_temps, rhs_temps)
+            return Expr(op, new_lhs, new_rhs), vcat(lhs_temps, rhs_temps)
         end
 
         reference = _reference(expr)
@@ -115,9 +116,30 @@ function rewrite_broadcast_lifetimes(scope)
     return _prepend_statements(rewritten, temps), assigned_vars
 end
 
-function process_broadcast_lifetime_scope(scope; on_rewrite=nothing)
-    # Returned producers must stay materialized, so exempt them from fusion.
-    protected = _returned_symbols(scope)
-    scope = InterBroadcastFusion.rewrite_scope(scope; on_rewrite, protected)
-    return _process_lifetime_scope(scope, rewrite_broadcast_lifetimes)
+# Scalars/immutable scalar parameter records cannot share mutable array storage.
+_fusion_disjoint(a, b) = isbitstype(typeof(a)) || isbitstype(typeof(b))
+_fusion_disjoint(a::AbstractArray, b::AbstractArray) = !Base.mightalias(a, b)
+_fusion_disjoint(a::NDArray, b::AbstractArray) = false
+_fusion_disjoint(a::AbstractArray, b::NDArray) = false
+_fusion_disjoint(a::NDArray, b::NDArray) = !nda_overlaps(a, b)
+
+function process_broadcast_lifetime_scope(
+    scope; on_rewrite=nothing, protected_roots=Set{Symbol}()
+)
+    # Returned producers and caller-owned roots stay materialized: exempt from fusion.
+    protected = union(_returned_symbols(scope), protected_roots)
+    checks = Tuple{Symbol,Symbol}[]
+    guard_roots = setdiff(protected_roots, _assigned_symbols(scope))
+    rewritten = InterBroadcastFusion.rewrite_scope(scope;
+        on_rewrite, protected, guard_roots, alias_checks=checks)
+    fast = _process_lifetime_scope(rewritten, rewrite_broadcast_lifetimes; protected_roots)
+    isempty(checks) && return fast
+
+    # Analyze each straight-line branch separately, then wrap the complete
+    # lifetime-managed bodies. Overlapping inputs retain materialized producers.
+    fallback = InterBroadcastFusion.rewrite_scope(scope; protected)
+    slow = _process_lifetime_scope(fallback, rewrite_broadcast_lifetimes; protected_roots)
+    conditions = [:(cuNumeric._fusion_disjoint($a, $b)) for (a, b) in checks]
+    condition = reduce((a, b) -> Expr(:&&, a, b), conditions)
+    return Expr(:if, condition, fast, slow)
 end

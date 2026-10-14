@@ -11,14 +11,23 @@ on:
         type: boolean
         required: false
         default: false
-  workflow_run:
-    workflows: ['CI CPU']
-    types: [completed]
-    branches:
-      - main
+  # Build the image associated with a published GitHub release.
+  release:
+    types: [published]
+  # GitHub Actions cannot filter pushes by commit message at trigger time, so
+  # the job-level condition below implements the [container] opt-in.
+  push:
 jobs:
   push_to_registry:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: >-
+      ${{
+        !contains(toJSON(github.event), '[skip ci]') &&
+        (
+          github.event_name == 'workflow_dispatch' ||
+          github.event_name == 'release' ||
+          (github.event_name == 'push' && contains(github.event.head_commit.message, '[container]'))
+        )
+      }}
     name: Container for ${{ matrix.platform }} - Julia ${{ matrix.julia }} - CUDA ${{ matrix.cuda }}
     permissions:
       contents: read
@@ -27,8 +36,7 @@ jobs:
       id-token: write
     strategy:
       matrix:
-        # julia: ["1.10", "1.11"]
-        julia: ["1.11"] # 1.10 will break
+        julia: ["1.13"]
         cuda: ["13.0"]
         platform: ["linux/amd64"]
         os: ["ubuntu-22.04"]
@@ -40,6 +48,44 @@ jobs:
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.event.release.tag_name || github.sha }}
+          fetch-depth: 0
+          # The image includes .git; do not store the checkout token there.
+          persist-credentials: false
+
+      - name: Select wrapper build
+        id: wrapper-build
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          # Published releases and explicitly selected tags use their released
+          # wrapper. Branch builds use the in-tree wrapper when it differs from
+          # the wrapper published from main.
+          if [[ "$EVENT_NAME" == "release" || -n "$INPUT_TAG" ]]; then
+            changed=false
+          else
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+            if git diff --quiet origin/main...HEAD -- lib/cunumeric_jl_wrapper; then
+              changed=false
+            else
+              status=$?
+              if [[ "$status" -eq 1 ]]; then
+                changed=true
+              else
+                exit "$status"
+              fi
+            fi
+          fi
+
+          if [[ "$changed" == "true" ]]; then
+            echo "Wrapper changes detected; building docker/Dockerfile.developer"
+            echo "dockerfile=docker/Dockerfile.developer" >> "$GITHUB_OUTPUT"
+          else
+            echo "No wrapper changes detected; building docker/Dockerfile"
+            echo "dockerfile=docker/Dockerfile" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Get package spec
         id: pkg
@@ -47,6 +93,9 @@ jobs:
           if [[ -n "${{ inputs.tag }}" ]]; then
             echo "ref=${{ inputs.tag }}" >> $GITHUB_OUTPUT
             echo "name=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "ref=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+            echo "name=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref_type }}" == "tag" ]]; then
             echo "ref=${{ github.ref_name }}" >> $GITHUB_OUTPUT
             echo "name=${{ github.ref_name }}" >> $GITHUB_OUTPUT
@@ -63,6 +112,10 @@ jobs:
 
           VERSION=$(grep "^version = " Project.toml | cut -d'"' -f2)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          # Include the checked-out source revision in every image tag.
+          COMMIT_SHA=$(git rev-parse --short=12 HEAD)
+          echo "commit=$COMMIT_SHA" >> $GITHUB_OUTPUT
 
       - name: Get CUDA major version
         id: cuda
@@ -97,22 +150,30 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
-              type=raw,value=${{ steps.pkg.outputs.name }}-julia${{ matrix.julia }}-cuda${{ steps.cuda.outputs.major }}.${{ steps.cuda.outputs.minor }}
-              type=raw,value=${{ steps.pkg.outputs.name }},enable=${{ matrix.default == true && (github.ref_type == 'tag' || inputs.tag != '') }}
-              type=raw,value=latest,enable=${{ matrix.default == true && (github.ref_type == 'tag' || (inputs.tag != '' && inputs.mark_as_latest)) }}
-              type=raw,value=dev,enable=${{ matrix.default == true && github.ref_type == 'branch' && inputs.tag == '' }}
+              type=raw,value=${{ steps.pkg.outputs.commit }}-julia${{ matrix.julia }}-cuda${{ steps.cuda.outputs.major }}.${{ steps.cuda.outputs.minor }}
+              type=raw,value=${{ steps.pkg.outputs.name }},enable=${{ github.ref_type == 'tag' || inputs.tag != '' }}
+              type=raw,value=latest,enable=${{ github.ref_type == 'tag' || (inputs.tag != '' && inputs.mark_as_latest) }}
+              type=raw,value=dev,enable=${{ github.ref_type == 'branch' && inputs.tag == '' }}
           labels: |
               org.opencontainers.image.version=${{ steps.pkg.outputs.version }}
 
-      - name: Save tag to file
+      - name: Select immutable image tags
+        id: image-tags
+        env:
+          BASE_TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          echo "${{ steps.meta.outputs.tags }}" | cut -d',' -f1 > image_tag.txt
+          echo "base=$(printf '%s\n' "$BASE_TAGS" | head -n1)" >> "$GITHUB_OUTPUT"
+
+      - name: Save tags to files
+        run: |
+          echo "${{ steps.image-tags.outputs.base }}" > image_tag.txt
 
       - name: Upload tag artifact
         uses: actions/upload-artifact@v4
         with:
           name: docker-tag
-          path: image_tag.txt
+          path: |
+            image_tag.txt
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -130,19 +191,21 @@ jobs:
       - name: Build image
         uses: docker/build-push-action@v6
         with:
-          file: Dockerfile
+          context: .
+          file: ${{ steps.wrapper-build.outputs.dockerfile }}
           load: true
           push: false
-          provenance: false # the build fetches the repo again, so provenance tracking is not useful
+          provenance: false # the image is loaded and pushed explicitly below
           platforms: ${{ matrix.platform }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=local,src=/tmp/.buildx-cache/base
+          cache-to: type=local,dest=/tmp/.buildx-cache/base-new,mode=max
           build-args: |
             JULIA_VERSION=${{ matrix.julia }}
             CUDA_MAJOR=${{ steps.cuda.outputs.major }}
             CUDA_MINOR=${{ steps.cuda.outputs.minor }}
             JULIA_CPU_TARGET=${{ steps.cpu_target.outputs.target }}
-            REF=${{ steps.pkg.outputs.ref }}
 
       # - name: Run tests in built image
       #   run: |
@@ -156,16 +219,26 @@ jobs:
 
       - name: Push image
         if: success()
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          docker push ${{ steps.meta.outputs.tags }}
-          docker image rm ${{ steps.meta.outputs.tags }}
+          while IFS= read -r image; do
+            docker push "$image"
+          done <<< "$IMAGE_TAGS"
+
+      - name: Update base layer cache
+        run: |
+          rm -rf /tmp/.buildx-cache/base
+          mv /tmp/.buildx-cache/base-new /tmp/.buildx-cache/base
 
       # can happen if there is a failure to push
       - name: Ensure image is removed (safety)
         if: always()
+        env:
+          BASE_TAGS: ${{ steps.meta.outputs.tags }}
         run: |
-          if docker image inspect ${{ steps.meta.outputs.tags }} > /dev/null 2>&1; then
-            docker stop ${{ steps.pkg.outputs.ref }} || true
-            docker rm ${{ steps.pkg.outputs.ref }} || true
-            docker image rm ${{ steps.meta.outputs.tags }} || true
-          fi
+          while IFS= read -r image; do
+            if [[ -n "$image" ]] && docker image inspect "$image" > /dev/null 2>&1; then
+              docker image rm "$image" || true
+            fi
+          done <<< "$BASE_TAGS"

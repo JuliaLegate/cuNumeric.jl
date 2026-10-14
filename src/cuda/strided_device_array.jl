@@ -14,9 +14,9 @@
  * limitations under the License.
 =#
 
-# Device-side strided array packed by RunPTXBroadcastTask only.
+# Device-side strided array shared by broadcast and mapped reduction tasks.
 # Layout must match C++ `CuStridedDeviceArray<D>` in
-# lib/cunumeric_jl_wrapper/src/cuda.cpp:
+# lib/cunumeric_jl_wrapper/include/ptx.h:
 #   ptr, maxsize, dims[N], strides[N] (element strides), length
 #
 # Dense RunPTXTask / @cuda_task still uses CUDA.jl CuDeviceArray (unchanged).

@@ -84,4 +84,34 @@ Disable named Legate task scopes. This is the default.
 """
 disable_task_scope_names!(; kwargs...) = set_task_scope_names!(false; kwargs...)
 
+"""
+    set_linalg!(; export_prefs=false, force=true, settings...)
+
+Set linear algebra tuning preferences using their constant names as keywords:
+`MIN_SOLVE_MATRIX_SIZE` (2048), `MIN_SOLVE_TILE_SIZE` (512),
+`MIN_CHOLESKY_MATRIX_SIZE` (8192), `MIN_CHOLESKY_TILE_SIZE` (2048),
+`MIN_QR_MATRIX_SIZE` (1048576 elements), `QR_TILE_SIZE` (128), and
+`MAX_CHOLESKY_TILES_PER_PROC` (4). All values must be positive integers.
+Unspecified settings are unchanged. Restart Julia after changing preferences.
+
+```julia
+CNPreferences.set_linalg!(; MIN_SOLVE_MATRIX_SIZE=4096, MIN_SOLVE_TILE_SIZE=512)
+```
+"""
+function set_linalg!(; export_prefs=false, force=true, settings...)
+    valid = (
+        :MIN_SOLVE_MATRIX_SIZE, :MIN_SOLVE_TILE_SIZE, :MIN_CHOLESKY_MATRIX_SIZE,
+        :MIN_CHOLESKY_TILE_SIZE, :MIN_QR_MATRIX_SIZE, :QR_TILE_SIZE, :MAX_CHOLESKY_TILES_PER_PROC,
+    )
+    pairs = Pair{String,Int}[]
+    for (key, value) in settings
+        key in valid || throw(ArgumentError("Unknown linear algebra setting: $key"))
+        value isa Integer && !(value isa Bool) && 0 < value <= typemax(Int) ||
+            throw(ArgumentError("$key must be a positive Int"))
+        push!(pairs, string(key) => Int(value))
+    end
+    isempty(pairs) && return nothing
+    return set_preferences!(@__MODULE__, pairs...; export_prefs, force)
+end
+
 end # module CNPreferences

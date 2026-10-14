@@ -1,11 +1,11 @@
-name: Pkg Resolve
+name: Package Resolution
 
 on:
   workflow_call:
 
 jobs:
   resolve:
-    name: Pkg.resolve
+    name: Resolve dependencies
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

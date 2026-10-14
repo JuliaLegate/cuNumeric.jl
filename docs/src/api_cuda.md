@@ -58,7 +58,7 @@ allowscalar() do
 end
 ```
 
-See `examples/custom_cuda.jl` for a more complete example with multiple kernels.
+See `examples/custom_cuda.jl` for a runnable two-kernel example.
 
 ## API Reference
 

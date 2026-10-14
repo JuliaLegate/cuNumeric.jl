@@ -5,21 +5,63 @@ Function reference for [`CNPreferences`](https://github.com/JuliaLegate/cuNumeri
 Out of the box (no `LocalPreferences.toml` changes):
 
 | Setting | Default |
-|---|---|
+|:---|:---|
 | Binary / build mode | **JLL** prebuilt binaries |
 | Broadcast fusion | **on** |
-| `FUSE_BROADCAST_MIN_OPS` | **2** (single-op broadcasts stay unfused) |
+| `FUSE_BROADCAST_MIN_OPS` | **2** (single native operations stay unfused) |
 | Task scope names | **off** |
+| `MIN_SOLVE_MATRIX_SIZE` | **2048** rows |
+| `MIN_SOLVE_TILE_SIZE` | **512** |
+| `MIN_CHOLESKY_MATRIX_SIZE` | **8192** rows |
+| `MIN_CHOLESKY_TILE_SIZE` | **2048** |
+| `MIN_QR_MATRIX_SIZE` | **1048576** elements |
+| `QR_TILE_SIZE` | **128** |
+| `MAX_CHOLESKY_TILES_PER_PROC` | **4** |
 
-Build-mode setup (JLL / conda / developer) is documented under [Build Modes](./install.md). Fusion usage tips live under [Kernel Fusion](./perf/kernel_fusion.md).
+`````@raw html
+<!--
+Build-mode setup (JLL / conda / developer) is documented under [Build Modes](./install.md).
+-->
+`````
+
+Build-mode setup (JLL / developer) is documented under [Build Modes](./install.md).
+
+## Linear algebra
+
+`set_linalg!` accepts the constant names above as keywords. All values must be
+positive integers. Unspecified settings are unchanged. Restart Julia to load
+the new constants. `cuNumeric.versioninfo()` shows the effective values.
+
+```julia
+CNPreferences.set_linalg!(; MIN_SOLVE_MATRIX_SIZE=4096, MIN_SOLVE_TILE_SIZE=512)
+```
+
+See [Tuning](./linalg/tuning.md)
+for selection rules and tuning details.
+
+```@docs
+CNPreferences.set_linalg!
+```
 
 ## Build mode
 
+`````@raw html
+<!--
 ```@docs
 CNPreferences.use_jll_binary
 CNPreferences.use_conda
 CNPreferences.use_developer_mode
 ```
+-->
+`````
+
+```julia
+CNPreferences.use_jll_binary()      # use the prebuilt wrapper
+CNPreferences.use_developer_mode()  # build the wrapper against prebuilt dependencies
+```
+
+Restart Julia after selecting the mode. For developer mode, rebuild the
+wrapper with `Pkg.build("cuNumeric")`. See [Developer Mode](./developer_mode.md).
 
 ## Broadcast fusion
 
@@ -36,7 +78,7 @@ CNPreferences.set_broadcast_fusion_min_ops!(1)     # also fuse single-ops
 
 `set_broadcast_fusion_min_ops!` counts `Broadcasted` nodes (ops) in the tree:
 
-- **`2` (default):** fuse multi-op trees such as `y .= @. a * b + c`. Single-ops like `y .= cos.(x)` stay on the unfused C-API path.
+- **`2` (default):** fuse multi-op trees such as `y .= @. a * b + c`. Single native operations like `y .= cos.(x)` use the C-API path. Functions without a native implementation are fused on the GPU when their broadcast arguments are eligible.
 - **`1`:** fuse every eligible expression, including single-ops.
 
 Set the preference in one Julia process, then start a fresh process to use it.
@@ -50,7 +92,7 @@ CNPreferences.set_broadcast_fusion_min_ops!
 
 ## Task scope names
 
-Default: **off**. Optional Legate task-scope naming for debugging. When on, cuNumeric wraps many ops in `Legate.with_scope` so provenance strings (for example `matmul`, `zeros`, or fused `broadcast.<expr>`) appear in Legate logs and profiles. Pair this with `--logging legate=debug --log-to-file` (or `--profile`) in `LEGATE_CONFIG`; see [Debugging](./debugging.md#trace-legate-runtime-work).
+Default: **off**. Optional Legate task-scope naming for debugging. When on, cuNumeric wraps many ops in `Legate.with_scope` so provenance strings (for example `matmul`, `zeros`, or fused `broadcast.<expr>`) appear in Legate logs and profiles. Pair this with `--logging legate=debug --log-to-file` (or `--profile`) in `LEGATE_CONFIG`. See [Debugging](./debugging.md#trace-legate-runtime-work).
 
 ```julia
 using CNPreferences

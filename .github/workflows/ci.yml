@@ -1,4 +1,4 @@
-name: CI CPU
+name: CI
 
 on:
   workflow_dispatch:
@@ -15,10 +15,14 @@ on:
   push:
     paths:
       - 'src/**'
+      - 'ext/**'
       - 'scripts/**'
       - 'deps/build.jl'
       - 'Project.toml'
+      - 'lib/cunumeric_jl_wrapper/**'
       - 'lib/CNPreferences/src/**'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/developer.yml'
     tags:
       - 'v*'
     branches:
@@ -26,30 +30,47 @@ on:
   pull_request:
     paths:
       - 'src/**'
+      - 'ext/**'
       - 'scripts/**'
       - 'deps/build.jl'
       - 'Project.toml'
+      - 'lib/cunumeric_jl_wrapper/**'
       - 'lib/CNPreferences/src/**'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/developer.yml'
 jobs:
-  pkg_resolve:
+  resolve:
+    name: Package resolution
+    if: ${{ !contains(toJSON(github.event), '[skip ci]') }}
     uses: ./.github/workflows/pkg_resolve.yml
 
-  check_changes:
-    name: Check for wrapper changes
+  wrapper_changes:
+    name: Wrapper change detection
+    if: ${{ !contains(toJSON(github.event), '[skip ci]') }}
     runs-on: ubuntu-latest
     outputs:
       wrapper_changed: ${{ steps.wrapper-changes.outputs.changed }}
+      skip_dev: ${{ steps.skip-flags.outputs.skip_dev }}
+      skip_jll: ${{ steps.skip-flags.outputs.skip_jll }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Compare wrapper against main
+      # pull_request payloads carry no commit messages, so read the PR head commit directly.
+      - name: Read skip flags from head commit message
+        id: skip-flags
+        shell: bash
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          git fetch --depth=1 origin "$HEAD_SHA"
+          message="$(git log -1 --format=%B FETCH_HEAD)"
+          [[ "$message" == *"[skip dev]"* ]] && echo "skip_dev=true" >> "$GITHUB_OUTPUT"
+          [[ "$message" == *"[skip jll]"* ]] && echo "skip_jll=true" >> "$GITHUB_OUTPUT"
+          true
+      - name: Compare wrapper against the released JLL source
         id: wrapper-changes
         shell: bash
         run: |
-          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-
-          if git diff --quiet origin/main...HEAD -- lib/cunumeric_jl_wrapper; then
+          if scripts/wrapper_changed.sh; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             status=$?
@@ -60,10 +81,22 @@ jobs:
             fi
           fi
 
-  test:
-    name: Julia ${{ matrix.julia }} - ${{ matrix.os }}
-    needs: [pkg_resolve, check_changes]
-    if: ${{ github.base_ref == 'main' || needs.check_changes.outputs.wrapper_changed != 'true' }}
+  developer_tests:
+    name: Developer wrapper tests
+    needs: [resolve, wrapper_changes]
+    if: ${{ !contains(toJSON(github.event), '[skip ci]') && !contains(toJSON(github.event), '[skip dev]') && needs.wrapper_changes.outputs.skip_dev != 'true' && (github.event_name != 'pull_request' || github.base_ref == 'main' || needs.wrapper_changes.outputs.wrapper_changed == 'true') }}
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+      actions: write
+    uses: ./.github/workflows/developer.yml
+
+  jll_tests:
+    name: JLL wrapper tests - Julia ${{ matrix.julia }} - ${{ matrix.os }}
+    needs: [resolve, wrapper_changes]
+    if: ${{ !contains(toJSON(github.event), '[skip ci]') && !contains(toJSON(github.event), '[skip jll]') && needs.wrapper_changes.outputs.skip_jll != 'true' && (github.event_name != 'pull_request' || github.base_ref == 'main' || needs.wrapper_changes.outputs.wrapper_changed != 'true') }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -72,6 +105,7 @@ jobs:
           - '1.10'
           - '1.11'
           - '1.12'
+          - '1.13'
         os:
           - ubuntu-latest
         # include:
@@ -125,4 +159,4 @@ jobs:
           LEGATE_AUTO_CONFIG: "0"
           LEGATE_SKIP_RUNTIME: "true"
           LEGATE_CONFIG: "--cpus 1 --utility 1 --sysmem 500"
-        run: julia --project -e 'using Pkg; Pkg.test(test_args=["--quickfail", "--jobs=2", "--verbose"])'
+        run: julia --project -e 'using Pkg; Pkg.test(test_args=["--jobs=2", "--verbose"])'

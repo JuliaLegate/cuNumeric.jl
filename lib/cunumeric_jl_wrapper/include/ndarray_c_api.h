@@ -52,6 +52,14 @@ uint64_t nda_query_device_memory();
 //   CN_Type    : Legate type of object
 CN_NDArray* nda_zeros_array(int32_t dim, const uint64_t* shape, CN_Type type);
 
+// Internal allocation without a fill; every element must be written before use.
+CN_NDArray* nda_empty_array(int32_t dim, const uint64_t* shape, CN_Type type);
+CN_NDArray* nda_empty_struct_array(int32_t dim, const uint64_t* shape,
+                                   int32_t fields, const int32_t* codes,
+                                   uint32_t size, const uint32_t* offsets);
+bool nda_struct_layout_matches(int32_t fields, const int32_t* codes,
+                               uint32_t size, const uint32_t* offsets);
+
 // full(shape, value)
 //   dim   : number of dimensions
 //   shape : pointer to array[length=dim]
@@ -64,6 +72,7 @@ CN_NDArray* nda_reshape_array(CN_NDArray* arr, int32_t dim,
                               const uint64_t* shape);
 CN_NDArray* nda_astype(CN_NDArray* arr, CN_Type type);
 void nda_fill_array(CN_NDArray* arr, CN_Type type, const void* value);
+void nda_fill_struct_array(CN_NDArray* arr, const void* value, uint64_t size);
 
 void nda_multiply(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out);
 void nda_add(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out);
@@ -72,6 +81,15 @@ CN_NDArray* nda_multiply_scalar(CN_NDArray* rhs1, CN_Type type,
 CN_NDArray* nda_add_scalar(CN_NDArray* rhs1, CN_Type type, const void* value);
 CN_NDArray* nda_dot(CN_NDArray* rhs1, CN_NDArray* rhs2);
 void nda_three_dot_arg(CN_NDArray* rhs1, CN_NDArray* rhs2, CN_NDArray* out);
+CN_NDArray* nda_transpose_axes(CN_NDArray* arr, const int32_t* axes, int32_t n);
+CN_NDArray* nda_squeeze(CN_NDArray* arr, const int32_t* axes, int32_t n);
+CN_NDArray* nda_diagonal(CN_NDArray* arr, int32_t offset, int32_t axis1,
+                         int32_t axis2);
+void nda_contract(CN_NDArray* out, const char* lhs_modes, int32_t n_lhs,
+                  CN_NDArray* rhs1, const char* rhs1_modes, int32_t n_rhs1,
+                  CN_NDArray* rhs2, const char* rhs2_modes, int32_t n_rhs2,
+                  const char* extent_keys, const int32_t* extents,
+                  int32_t n_extents);
 CN_NDArray* nda_copy(CN_NDArray* arr);
 void nda_assign(CN_NDArray* arr, CN_NDArray* other);
 
@@ -87,14 +105,30 @@ uint64_t nda_nbytes(CN_NDArray* arr);
 
 void nda_binary_op(CN_NDArray* out, CuPyNumericBinaryOpCode op_code,
                    const CN_NDArray* rhs1, const CN_NDArray* rhs2);
+void nda_binary_reduction(CN_NDArray* out, CuPyNumericBinaryOpCode op_code,
+                          const CN_NDArray* rhs1, const CN_NDArray* rhs2);
+CN_NDArray* nda_array_equal(const CN_NDArray* rhs1, const CN_NDArray* rhs2);
 void nda_unary_op(CN_NDArray* out, CuPyNumericUnaryOpCode op_code,
                   CN_NDArray* input);
 void nda_unary_reduction(CN_NDArray* out, CuPyNumericUnaryRedCode op_code,
                          CN_NDArray* input);
+CN_NDArray* nda_unary_reduction_axes(CuPyNumericUnaryRedCode op_code,
+                                     CN_NDArray* input, const int32_t* axes,
+                                     int32_t num_axes, bool keepdims);
 CN_NDArray* nda_get_slice(CN_NDArray* arr, const CN_Slice* slices,
                           int32_t ndim);
+bool nda_overlaps(CN_NDArray* lhs, CN_NDArray* rhs);
 CN_NDArray* nda_attach_external(const void* ptr, size_t size, int dim,
                                 const uint64_t* shape, CN_Type type);
+
+// axis is 0-based. stable=true maps to cupynumeric kind="stable".
+CN_NDArray* nda_sort(CN_NDArray* arr, int32_t axis, bool stable);
+void nda_sort_inplace(CN_NDArray* arr, int32_t axis, bool stable);
+CN_NDArray* nda_argsort(CN_NDArray* arr, int32_t axis, bool stable);
+// a is 1-D sorted; v is the needle array (any rank, same dtype).
+// left=true is NumPy side='left'; left=false is side='right'.
+// Returns int64 indices with v's shape (0-based).
+CN_NDArray* nda_searchsorted(CN_NDArray* a, CN_NDArray* v, bool left);
 
 #ifdef __cplusplus
 }
