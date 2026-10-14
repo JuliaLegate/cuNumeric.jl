@@ -359,7 +359,13 @@ function _align_fused_runtime_args(runtime_args::Tuple)
     numeric_types = filter(T -> T <: Number, map(eltype, runtime_args))
     isempty(numeric_types) && return runtime_args
     T_IN = __my_promote_type(numeric_types...)
-    return map(a -> unchecked_promote_scalar(a, T_IN), runtime_args)
+    return _align_fused_runtime_args(runtime_args, T_IN)
+end
+
+# Capture the target as a type parameter: capturing the DataType value in the
+# map closure loses scalar return-type inference on Julia 1.10.
+function _align_fused_runtime_args(runtime_args::Tuple, ::Type{T}) where {T}
+    return map(a -> unchecked_promote_scalar(a, T), runtime_args)
 end
 
 cudevice_array_offset(::Type{T}) where {T<:CuStridedDeviceArray} = 0

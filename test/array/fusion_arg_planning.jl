@@ -32,6 +32,17 @@
         @test result[3] ===
               (runtime{1}(), runtime{2}(), runtime{3}(), runtime{4}(), static{1}())
         @test (@inferred cuNumeric._align_fused_runtime_args((a, 2f0))) === (a, 2f0)
+        @test (@inferred cuNumeric._align_fused_runtime_args((2f0, a))) === (2f0, a)
+        @test (@inferred cuNumeric._align_fused_runtime_args((a, a))) === (a, a)
+        @test (@inferred cuNumeric._align_fused_runtime_args(())) === ()
+        @test (@inferred cuNumeric._align_fused_runtime_args((2.0, 3.0))) === (2.0, 3.0)
+        @test (@inferred cuNumeric._align_fused_runtime_args((1f0 + 2f0im,))) ===
+              (1f0 + 2f0im,)
+        cuNumeric.@allowpromotion begin
+            @test (@inferred cuNumeric._align_fused_runtime_args((2f0, 3.0))) === (2.0, 3.0)
+            @test (@inferred cuNumeric._align_fused_runtime_args((a, 2f0, 3.0))) ===
+                  (a, 2.0, 3.0)
+        end
     finally
         cuNumeric.destroy!(a)
     end
