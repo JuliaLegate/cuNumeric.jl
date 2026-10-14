@@ -63,13 +63,7 @@ _is_runtime_broadcast_arg(x::Base.Broadcast.Extruded) = true
 _is_runtime_broadcast_arg(x::Number) = true
 _is_runtime_broadcast_arg(x) = false
 
-function _push_runtime_arg!(runtime_args, arg_plan, x)
-    push!(runtime_args, x)
-    push!(arg_plan, RuntimeBroadcastArg{length(runtime_args)}())
-    return nothing
-end
-
-function _push_static_arg!(static_args, arg_plan, x)
+function _check_static_broadcast_arg(x)
     isbits(x) || throw(
         ArgumentError(
             "Broadcast fusion cannot statically capture non-isbits broadcast leaf " *
@@ -87,47 +81,55 @@ function _push_static_arg!(static_args, arg_plan, x)
             "kernel; pass numbers or NDArrays instead",
         ),
     )
+    return nothing
+end
+
+function _push_static_arg!(static_args, arg_plan, x)
+    _check_static_broadcast_arg(x)
     push!(static_args, x)
     push!(arg_plan, StaticBroadcastArg{length(static_args)}())
     return nothing
 end
 
+# Preserve the types and positions of heterogeneous leaves throughout planning.
+# Numeric values stay runtime arguments, including numbers wrapped in Ref.
+_shift_runtime_arg(::RuntimeBroadcastArg{J}) where {J} = RuntimeBroadcastArg{J + 1}()
+_shift_runtime_arg(arg::StaticBroadcastArg) = arg
+_shift_static_arg(::StaticBroadcastArg{J}) where {J} = StaticBroadcastArg{J + 1}()
+_shift_static_arg(arg::RuntimeBroadcastArg) = arg
+
+split_broadcast_args_for_kernel(::Tuple{}) = ((), (), ())
+
 function split_broadcast_args_for_kernel(args::Tuple)
-    runtime_args = Any[]
-    static_args = Any[]
-    arg_plan = Any[]
+    arg = first(args)
+    value = arg isa Base.RefValue ? arg[] : arg
+    is_runtime = arg isa Base.RefValue ? value isa Number : _is_runtime_broadcast_arg(arg)
 
-    for arg in args
-        if arg isa Base.RefValue
-            value = arg[]
-
-            # Keep ordinary numeric broadcast scalars dynamic so scalar values
-            # do not cause recompilation.
-            if value isa Number
-                _push_runtime_arg!(runtime_args, arg_plan, value)
-            else
-                # Function singletons, Val{N}(), etc.
-                _push_static_arg!(static_args, arg_plan, value)
-            end
-
-        elseif _is_runtime_broadcast_arg(arg)
-            _push_runtime_arg!(runtime_args, arg_plan, arg)
-
-        elseif isbits(arg)
-            # Conservative fallback for singleton/isbits scalar broadcast leaves.
-            _push_static_arg!(static_args, arg_plan, arg)
-
-        else
-            throw(
-                ArgumentError(
-                    "Broadcast fusion does not know how to lower argument " *
-                    "$(repr(arg)) of type $(typeof(arg))",
-                ),
-            )
-        end
+    if is_runtime
+        runtime_args, static_args, arg_plan =
+            split_broadcast_args_for_kernel(Base.tail(args))
+        return (
+            (value, runtime_args...), static_args,
+            (RuntimeBroadcastArg{1}(), map(_shift_runtime_arg, arg_plan)...),
+        )
     end
 
-    return tuple(runtime_args...), tuple(static_args...), tuple(arg_plan...)
+    if arg isa Base.RefValue || isbits(arg)
+        _check_static_broadcast_arg(value)
+        runtime_args, static_args, arg_plan =
+            split_broadcast_args_for_kernel(Base.tail(args))
+        return (
+            runtime_args, (value, static_args...),
+            (StaticBroadcastArg{1}(), map(_shift_static_arg, arg_plan)...),
+        )
+    end
+
+    throw(
+        ArgumentError(
+            "Broadcast fusion does not know how to lower argument " *
+            "$(repr(arg)) of type $(typeof(arg))",
+        ),
+    )
 end
 
 ##############
