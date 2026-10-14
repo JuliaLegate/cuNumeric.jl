@@ -30,7 +30,7 @@ makedocs(;
     format=MarkdownVitepress(;
         repo="github.com/JuliaLegate/cuNumeric.jl",
         devbranch="main",
-        devurl="dev",
+        devurl="stable",
     ),
     pages=[
         "Home" => "index.md",
