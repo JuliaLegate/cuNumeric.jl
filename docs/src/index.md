@@ -1,8 +1,7 @@
 ```@raw html
-<h1>
-  <img src="./assets/logo.png" alt="cuNumeric.jl" width="50">
-  cuNumeric.jl
-</h1>
+<p style="text-align: center;">
+  <img src="./assets/logo-horizontal.png" alt="cuNumeric.jl" width="800" style="max-width: 100%; height: auto; margin: 0 auto;">
+</p>
 ```
 
 [![Documentation stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://julialegate.github.io/cuNumeric.jl/stable) [![Documentation dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://julialegate.github.io/cuNumeric.jl/dev) [![codecov](https://codecov.io/github/julialegate/cuNumeric.jl/branch/main/graph/badge.svg)](https://app.codecov.io/github/JuliaLegate/cuNumeric.jl) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
