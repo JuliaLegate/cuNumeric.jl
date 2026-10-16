@@ -695,7 +695,7 @@ end
 end
 
 #= Broadcast fusion PTX compilation cache.
- * Verifies `_BCAST_PTX_CACHE` grows on first fused launch of a signature and
+ * Verifies `_BROADCAST_PLAN_CACHE` grows on first fused launch of a signature and
  * is reused (no new entry) on a second launch of the same signature.
  * Gated on `FUSE_BROADCAST_EXPRS` and an active GPU target; skips otherwise.
  * With `FUSE_BROADCAST_MIN_OPS > 1`, single native ops are unfused — tests
@@ -714,8 +714,8 @@ end
         return nothing
     end
 
-    cache = cuNumeric._BCAST_PTX_CACHE
-    cache_lock = cuNumeric._BCAST_PTX_CACHE_LOCK
+    cache = cuNumeric._BROADCAST_PLAN_CACHE
+    cache_lock = cuNumeric._BROADCAST_CACHE_LOCK
     cache_len() =
         lock(cache_lock) do
             return length(cache)
