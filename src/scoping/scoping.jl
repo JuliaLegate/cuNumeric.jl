@@ -282,12 +282,15 @@ include("lifetimes.jl")
 include("broadcast_lifetimes.jl")
 
 function process_ndarray_scope(
-    scope; on_rewrite=nothing, protected_roots::Set{Symbol}=Set{Symbol}()
+    scope; on_rewrite=nothing, protected_roots::Set{Symbol}=Set{Symbol}(),
+    aggressive::Bool=false,
 )
     # Broadcast expressions stay lazy only when fusion is enabled; otherwise
     # every call is analyzed as an eager allocation.
     @static if FUSE_BROADCAST_EXPRS
-        return process_broadcast_lifetime_scope(scope; on_rewrite, protected_roots)
+        return process_broadcast_lifetime_scope(
+            scope; on_rewrite, protected_roots, aggressive
+        )
     end
     return process_lifetime_scope(scope; protected_roots)
 end
