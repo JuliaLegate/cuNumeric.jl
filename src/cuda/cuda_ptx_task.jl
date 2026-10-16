@@ -25,8 +25,10 @@ struct AdaptiveBroadcastPlan{W,N}
     function AdaptiveBroadcastPlan(wide::W, narrow::N) where {W,N}
         wide.cuda_task.argtypes == narrow.cuda_task.argtypes ||
             throw(ArgumentError("adaptive broadcast variants have different argument ABIs"))
-        (typeof(wide.ctx) === typeof(narrow.ctx) && isbitstype(typeof(wide.ctx)) &&
-         sizeof(wide.ctx) == sizeof(narrow.ctx)) ||
+        (
+            typeof(wide.ctx) === typeof(narrow.ctx) && isbitstype(typeof(wide.ctx)) &&
+            sizeof(wide.ctx) == sizeof(narrow.ctx)
+        ) ||
             throw(ArgumentError("adaptive broadcast variants have different context layouts"))
         return new{W,N}(wide, narrow)
     end
@@ -60,9 +62,9 @@ end
 function _launch_broadcast(plan::AdaptiveBroadcastPlan, inputs, outputs, scalars)
     _require_adaptive_broadcast_wrapper()
     rt = Legate.get_runtime()
-    task = Legate.create_auto_task(rt, get_lib(), RUN_PTX_BROADCAST_ADAPTIVE)
-    input_vars = [_add_task_array!(Legate.add_input, task, arr) for arr in inputs]
-    output_vars = [_add_task_array!(Legate.add_output, task, arr) for arr in outputs]
+    task = LegateInternal.create_auto_task(rt, get_lib(), RUN_PTX_BROADCAST_ADAPTIVE)
+    input_vars = [_add_task_array!(LegateInternal.add_input, task, arr) for arr in inputs]
+    output_vars = [_add_task_array!(LegateInternal.add_output, task, arr) for arr in outputs]
     # Explicit header: wide name/budget/context, narrow name/budget/context.
     for k in (plan.wide, plan.narrow)
         Legate.add_scalar(task, Legate.string_to_scalar(k.cuda_task.func))
@@ -73,7 +75,7 @@ function _launch_broadcast(plan::AdaptiveBroadcastPlan, inputs, outputs, scalars
         Legate.add_scalar(task, Legate.Scalar(s))
     end
     Legate.default_alignment(task, input_vars, output_vars)
-    return Legate.submit_auto_task(rt, task)
+    return LegateInternal.submit_auto_task(rt, task)
 end
 
 #! JUST PASS TYPES HERE INSTEAD OF CALLING typeof()
