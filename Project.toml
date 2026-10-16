@@ -1,6 +1,6 @@
 name = "cuNumeric"
 uuid = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
-version = "0.3.0"
+version = "0.3.1"
 
 [workspace]
 projects = ["test", "dev"]
@@ -49,7 +49,7 @@ ExpressionExplorer = "1.1.4"
 JuliaFormatter = "2.3.0"
 KernelAbstractions = "0.9.41"
 Krylov = "0.10.10"
-Legate = "0.2.4"
+Legate = "0.2.5"
 LegatePreferences = "0.1.7"
 MacroTools = "0.5.16"
 OpenBLAS32_jll = "0.3"
