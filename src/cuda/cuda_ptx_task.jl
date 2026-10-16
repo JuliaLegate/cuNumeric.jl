@@ -9,6 +9,75 @@ struct CUDATask
     end
 end
 
+struct CompiledBroadcast{C}
+    cuda_task::CUDATask
+    ctx::C
+    threads::Int
+end
+
+struct FixedBroadcastPlan{K}
+    kernel::K
+end
+
+struct AdaptiveBroadcastPlan{W,N}
+    wide::W
+    narrow::N
+    function AdaptiveBroadcastPlan(wide::W, narrow::N) where {W,N}
+        wide.cuda_task.argtypes == narrow.cuda_task.argtypes ||
+            throw(ArgumentError("adaptive broadcast variants have different argument ABIs"))
+        (
+            typeof(wide.ctx) === typeof(narrow.ctx) && isbitstype(typeof(wide.ctx)) &&
+            sizeof(wide.ctx) == sizeof(narrow.ctx)
+        ) ||
+            throw(ArgumentError("adaptive broadcast variants have different context layouts"))
+        return new{W,N}(wide, narrow)
+    end
+end
+
+_wide_kernel(p::FixedBroadcastPlan) = p.kernel
+_wide_kernel(p::AdaptiveBroadcastPlan) = p.wide
+
+function _require_adaptive_broadcast_wrapper()
+    isdefined(@__MODULE__, :RUN_PTX_BROADCAST_ADAPTIVE) || error(
+        "Adaptive GPU broadcast indexing requires an updated cuNumeric wrapper. " *
+        "Rebuild lib/cunumeric_jl_wrapper or update cuNumeric_jl_wrapper_jll.",
+    )
+    return nothing
+end
+
+function _launch_broadcast(plan::FixedBroadcastPlan, inputs, outputs, scalars)
+    k = plan.kernel
+    return launch(k.cuda_task, inputs, outputs, scalars;
+        blocks=1, threads=k.threads, taskid=RUN_PTX_BROADCAST, ctx=k.ctx)
+end
+
+function _add_broadcast_context!(task, ctx)
+    ref = Ref(ctx)
+    GC.@preserve ref begin
+        add_scalar_from_ptr(task, Base.unsafe_convert(Ptr{Cvoid}, ref), sizeof(ctx))
+    end
+    return nothing
+end
+
+function _launch_broadcast(plan::AdaptiveBroadcastPlan, inputs, outputs, scalars)
+    _require_adaptive_broadcast_wrapper()
+    rt = Legate.get_runtime()
+    task = LegateInternal.create_auto_task(rt, get_lib(), RUN_PTX_BROADCAST_ADAPTIVE)
+    input_vars = [_add_task_array!(LegateInternal.add_input, task, arr) for arr in inputs]
+    output_vars = [_add_task_array!(LegateInternal.add_output, task, arr) for arr in outputs]
+    # Explicit header: wide name/budget/context, narrow name/budget/context.
+    for k in (plan.wide, plan.narrow)
+        Legate.add_scalar(task, Legate.string_to_scalar(k.cuda_task.func))
+        Legate.add_scalar(task, Legate.Scalar(UInt32(k.threads)))
+        _add_broadcast_context!(task, k.ctx)
+    end
+    for s in scalars
+        Legate.add_scalar(task, Legate.Scalar(s))
+    end
+    Legate.default_alignment(task, input_vars, output_vars)
+    return LegateInternal.submit_auto_task(rt, task)
+end
+
 #! JUST PASS TYPES HERE INSTEAD OF CALLING typeof()
 map_ndarray_cuda_types(args...) = tuple(map(ndarray_cuda_type, typeof.(args))...)
 

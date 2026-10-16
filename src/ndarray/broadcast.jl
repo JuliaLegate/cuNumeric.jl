@@ -45,8 +45,9 @@ Base.broadcastable(A::NDArray) = A
 # Internal allocation: callers must write every element before reading it.
 _undef_array(::Type{T}, dims::Tuple) where {T} =
     nda_empty_array(map(Int, Base.to_shape.(dims)), T)
-_undef_array(arr::NDArray, ::Type{T}=eltype(arr), dims::Tuple=size(arr)) where {T} =
-    _undef_array(T, dims)
+function _undef_array(arr::NDArray, ::Type{T}=eltype(arr), dims::Tuple=size(arr)) where {T}
+    return _undef_array(T, dims)
+end
 
 function _similar_allocate(::Type{T}, dims::Dims) where {T}
     if _struct_storage_type(T) ||
@@ -117,20 +118,37 @@ Base.eltype(::Type{BrokenBroadcast{T}}) where {T} = T
     return __checked_promote_op(bc.f, Base.Broadcast.eltypes(bc.args))
 end
 
-function Broadcast.copy(bc::Broadcasted{<:NDArrayStyle{0}})
+function _copy_broadcast(policy::BroadcastOffsetPolicy, bc::Broadcasted{<:NDArrayStyle{0}})
     ElType = _broadcast_copy_eltype(bc)
     if ElType == Union{}
         ElType = Nothing
     end
-    return copyto!(similar(bc, ElType), bc)
+    return _copyto!(policy, similar(bc, ElType), bc)
 end
 
-@inline function Broadcast.copy(bc::Broadcasted{<:NDArrayStyle})
+@inline function _copy_broadcast(policy::BroadcastOffsetPolicy, bc::Broadcasted{<:NDArrayStyle})
     ElType = _broadcast_copy_eltype(bc)
     if ElType == Union{} || !Base.allocatedinline(ElType)
         ElType = BrokenBroadcast{ElType}
     end
-    return copyto!(similar(bc, ElType), bc)
+    return _copyto!(policy, similar(bc, ElType), bc)
+end
+
+Broadcast.copy(bc::Broadcasted{<:NDArrayStyle}) = _copy_broadcast(FixedOffsets{Int64}(), bc)
+
+# Explicit, lexical policy entry points. Base handles non-NDArray broadcasts.
+_materialize_with_policy(::BroadcastOffsetPolicy, x) = Base.materialize(x)
+function _materialize_with_policy(p::BroadcastOffsetPolicy, bc::Broadcasted{<:NDArrayStyle})
+    return _copy_broadcast(p, Broadcast.instantiate(bc))
+end
+_materialize_with_policy!(::BroadcastOffsetPolicy, dest, bc) = Base.materialize!(dest, bc)
+function _materialize_with_policy!(
+    p::BroadcastOffsetPolicy, dest::NDArray, bc::Broadcasted{S}
+) where {S}
+    return _copyto!(p, dest, Broadcast.instantiate(Broadcasted{S}(bc.f, bc.args, axes(dest))))
+end
+function _materialize_with_policy!(p::BroadcastOffsetPolicy, dest::NDArray, x)
+    return _materialize_with_policy!(p, dest, Broadcast.broadcasted(identity, x))
 end
 
 # Recursion base cases
@@ -300,7 +318,9 @@ end
     return source isa NDArray ? source : nothing
 end
 
-@inline function _copyto!(dest::NDArray, bc::Broadcasted)
+_copyto!(dest::NDArray, bc::Broadcasted) = _copyto!(FixedOffsets{Int64}(), dest, bc)
+
+@inline function _copyto!(policy::BroadcastOffsetPolicy, dest::NDArray, bc::Broadcasted)
     axes(dest) == axes(bc) || Broadcast.throwdm(axes(dest), axes(bc))
     isempty(dest) && return dest
     if eltype(dest) <: BrokenBroadcast
@@ -327,7 +347,7 @@ end
         gpu_available = _has_gpu_target()
         should_fuse = gpu_available && _should_attempt_broadcast_fusion(dest, bc)
         if should_fuse
-            return fuse_broadcast_tree!(dest, bc)
+            return fuse_broadcast_tree!(policy, dest, bc)
         else
             _assert_struct_broadcast_fused(dest, bc)
             return _unfused_into!(dest, bc)

@@ -205,16 +205,77 @@ end
 # AST `@accelerate` emits (pre-`esc`); shared with `@show_lifetimes`. Dispatch:
 # function def / `let` (hard scope) / `begin`-expr (soft, 1:1 Julia scope).
 function _accelerate_expand(input, caller::Module; aggressive::Bool=false)
+    policy = aggressive ? :(cuNumeric.AdaptiveOffsets()) : :(cuNumeric.FixedOffsets{Int64}())
     if MacroTools.isdef(input)
         def = MacroTools.splitdef(input)
         def[:body] = _accelerate_rewrite(
             def[:body], caller, _argument_symbols(def); aggressive
         )
+        def[:body] = _lower_broadcast_policy(def[:body], policy)
         return MacroTools.combinedef(def)
     elseif input isa Expr && input.head === :let
-        return _accelerate_block_hard(input, caller; aggressive)
+        return _lower_broadcast_policy(_accelerate_block_hard(input, caller; aggressive), policy)
     end
-    return _accelerate_block_soft(input, caller; aggressive)
+    return _lower_broadcast_policy(_accelerate_block_soft(input, caller; aggressive), policy)
+end
+
+# Final pass, after fusion and lifetime analysis. Only explicit dotted syntax
+# and generated fusion calls acquire the policy; ordinary callees stay unchanged.
+function _policy_broadcasted(ex, policy)
+    _is_top_broadcast(ex) || return _lower_broadcast_policy(ex, policy)
+    f, args = if ex.head === :call
+        _undot(ex.args[1]), ex.args[2:end]
+    else
+        _lower_broadcast_policy(ex.args[1], policy), ex.args[2].args
+    end
+    if f === :^ && length(args) == 2 && args[2] isa Integer
+        return :(Base.broadcasted(Base.literal_pow, ^,
+            $(_policy_broadcasted(args[1], policy)), Base.Val($(args[2]))))
+    end
+    lowered = map(a -> _policy_broadcasted(a, policy), args)
+    # Keyword arguments belong before the function in a Julia call AST.
+    if !isempty(lowered) && lowered[1] isa Expr && lowered[1].head === :parameters
+        return Expr(:call, :(Base.broadcasted), lowered[1], f, lowered[2:end]...)
+    end
+    return Expr(:call, :(Base.broadcasted), f, lowered...)
+end
+
+function _lower_broadcast_policy(ex, policy)
+    ex isa Expr || return ex
+    ex.head in (:quote, :inert) && return ex
+    if ex.head === :call && ex.args[1] in (
+        :(cuNumeric.copyto_fused_multi!), :(cuNumeric.copyto_fused_multi_alloc!),
+        :(cuNumeric.copyto_fused_siblings!),
+    )
+        return Expr(:call, ex.args[1], policy,
+            map(a -> _lower_broadcast_policy(a, policy), ex.args[2:end])...)
+    end
+    head = string(ex.head)
+    if startswith(head, ".") && endswith(head, "=") && length(ex.args) == 2
+        lhs, rhs = ex.args
+        dest = gensym(:broadcast_dest)
+        destexpr = lhs isa Expr && lhs.head === :ref ? :(Base.@view $lhs) : lhs
+        destexpr = _lower_broadcast_policy(destexpr, policy)
+        bc = if ex.head === :(.=)
+            if _is_top_broadcast(rhs)
+                _policy_broadcasted(rhs, policy)
+            else
+                :(Base.broadcasted(identity, $(_lower_broadcast_policy(rhs, policy))))
+            end
+        else
+            op = Symbol(chop(head; head=1, tail=1))
+            :(Base.broadcasted($op, $dest, $(_policy_broadcasted(rhs, policy))))
+        end
+        return :(
+            let $dest = $destexpr
+                cuNumeric._materialize_with_policy!($policy, $dest, $bc)
+            end
+        )
+    end
+    if _is_top_broadcast(ex)
+        return :(cuNumeric._materialize_with_policy($policy, $(_policy_broadcasted(ex, policy))))
+    end
+    return Expr(ex.head, map(a -> _lower_broadcast_policy(a, policy), ex.args)...)
 end
 
 function _accelerate_options(options)
@@ -273,6 +334,12 @@ result = @accelerate (x .+ y .* z)
 e.g. `u_new[...] .= f(u, v)` then `v_new[...] .= g(u, v)`, into one launch that
 reads shared inputs once. Off by default since the launch maps every input and
 output at once, raising peak memory.
+
+It also permits adaptive 32/64-bit element-offset arithmetic in eligible GPU
+broadcasts of ranks 1–6 (including single-output and chained broadcasts). Both
+variants are compiled per signature; each launch chooses using its local array
+dimensions and strides. Default broadcasts use 64-bit offsets. Policies do not
+propagate into ordinary function calls, and CPU execution is unchanged.
 """
 macro accelerate(args...)
     input = last(args)
