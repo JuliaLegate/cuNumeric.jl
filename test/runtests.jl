@@ -21,6 +21,7 @@ const init_code = quote
     import Random: rand
 
     ENV["LEGATE_SKIP_RUNTIME"] = "false"
+    ENV["CUNUMERIC_PARALLEL_TEST_RUNNER"] = "1"
     using cuNumeric
 
     include("util.jl")
