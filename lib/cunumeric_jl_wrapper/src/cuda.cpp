@@ -339,7 +339,8 @@ static inline void align8(char *&ptr) {
 // grid-stride, so each thread then loops over many elements and amortizes its
 // per-argument setup instead of paying it for a single element.
 static void cap_broadcast_blocks(PTXLaunchParams &lp) {
-  constexpr std::uint64_t waves = 4;
+  // 4 "waves" is pretty arbitrary. This could be tuned. 
+  constexpr std::uint64_t waves = 4; 
   int per_sm = 0, sms = 0;
   CUdevice dev;
   if (cuOccupancyMaxActiveBlocksPerMultiprocessor(
