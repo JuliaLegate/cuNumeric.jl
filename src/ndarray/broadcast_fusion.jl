@@ -735,7 +735,7 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
 
     bc = Base.Broadcast.preprocess(dest, bc)
     bc = Base.Broadcast.instantiate(bc)
-    bc = Base.Broadcast.flatten(bc)
+    bc = _broadcast_flatten(bc)
     _assert_kernel_function_has_no_data(bc.f)
 
     # Things like exponentiation generate arguments like Base.RefValue
@@ -970,7 +970,7 @@ end
 # Flatten a segment and classify its leaves, deduping NDArrays into shared
 # `runtime_args` and static leaves into shared `static_args`.
 function _split_segment!(seg_bc, runtime_args, static_args, ndarray_idx)
-    flat = Base.Broadcast.flatten(seg_bc)
+    flat = _broadcast_flatten(seg_bc)
     _assert_kernel_function_has_no_data(flat.f)
     plan = Any[]
     for leaf in flat.args
@@ -1029,7 +1029,7 @@ end
 # First NDArray leaf across all segments; used as an allocation template.
 function _first_ndarray(seg_bcs::Tuple)
     for seg_bc in seg_bcs
-        for leaf in Base.Broadcast.flatten(seg_bc).args
+        for leaf in _broadcast_flatten(seg_bc).args
             leaf isa NDArray && return leaf
             leaf isa Base.Broadcast.Extruded && return get_ndarray(leaf)
         end
@@ -1160,7 +1160,7 @@ end
 @inline _alloc_segment_buffers(template, ::Tuple{}, dims, bufs::Tuple) = bufs
 
 @inline function _alloc_segment_buffers(template, seg_bcs::Tuple, dims, bufs::Tuple)
-    flat = Base.Broadcast.flatten(first(seg_bcs))
+    flat = _broadcast_flatten(first(seg_bcs))
     buf = _undef_array(template, _segment_eltype(flat, bufs), dims)
     return _alloc_segment_buffers(template, Base.tail(seg_bcs), dims, (bufs..., buf))
 end
