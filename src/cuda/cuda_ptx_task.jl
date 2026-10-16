@@ -95,17 +95,17 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
     blocks, threads, taskid=cuNumeric.RUN_PTX, ctx=nothing)
     rt = Legate.get_runtime()
     lib = cuNumeric.get_lib()
-    task = Legate.create_auto_task(rt, lib, taskid)
+    task = LegateInternal.create_auto_task(rt, lib, taskid)
     physical = taskid == cuNumeric.RUN_PTX
 
     input_vars = Vector{Legate.Variable}()
     for arr in inputs
-        push!(input_vars, _add_task_array!(Legate.add_input, task, arr; physical))
+        push!(input_vars, _add_task_array!(LegateInternal.add_input, task, arr; physical))
     end
 
     output_vars = Vector{Legate.Variable}()
     for arr in outputs
-        push!(output_vars, _add_task_array!(Legate.add_output, task, arr; physical))
+        push!(output_vars, _add_task_array!(LegateInternal.add_output, task, arr; physical))
     end
 
     # Reserved scalars: kernel_name (0), blocks (1,2,3), threads (4,5,6)
@@ -128,7 +128,7 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
 
     # all inputs are aligned with all outputs
     Legate.default_alignment(task, input_vars, output_vars)
-    return Legate.submit_auto_task(rt, task)
+    return LegateInternal.submit_auto_task(rt, task)
 end
 
 function launch(kernel::CUDATask, inputs, outputs, scalars;
@@ -169,21 +169,21 @@ function ptx_task(ptx::String, kernel_name)
 
     # One point task per GPU so every GPU compiles the module.
     ngpus = max(_LINALG_RUNTIME[].gpus, 1)
-    domain = Legate.domain_from_shape(Legate.Shape(Legate.to_cxx_vector((ngpus,))))
-    task = Legate.create_manual_task(rt, lib, taskid, domain)
+    domain = LegateInternal.domain_from_shape(Legate.Shape(Legate.to_cxx_vector((ngpus,))))
+    task = LegateInternal.create_manual_task(rt, lib, taskid, domain)
     Legate.add_scalar(task, Legate.string_to_scalar(ptx))
     Legate.add_scalar(task, Legate.string_to_scalar(kernel_name))
-    Legate.submit_manual_task(rt, task)
+    LegateInternal.submit_manual_task(rt, task)
 
     # Fence so every load finishes before any launch reads the cache.
     return issue_execution_fence(; block=false)
 end
 
-function _emit_compatible_ptx(io, f, types)
+function _emit_compatible_ptx(io, f, types; kwargs...)
     ptx_version = _COMPATIBLE_PTX_VERSION[]
     # dump_module=true keeps linked libdevice helpers in the emitted module.
     return CUDATools.code_ptx(
-        io, f, types; raw=false, dump_module=true, kernel=true, ptx=ptx_version
+        io, f, types; raw=false, dump_module=true, kernel=true, ptx=ptx_version, kwargs...
     )
 end
 

@@ -24,7 +24,8 @@ mkdir -p "$out"
 git fetch --no-tags origin "+refs/heads/$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH"
 git worktree add --detach "$base" "origin/$BASE_BRANCH"
 trap 'git -C "$candidate" worktree remove --force "$base"' EXIT
-git submodule update --init benchmark
+# Harness is no longer a submodule; REGRESSION_BENCHMARK_REF pins a ref, else its default branch.
+scripts/get_benchmarks.sh "${REGRESSION_BENCHMARK_REF:-}"
 
 julia --color=yes --project="$harness" -e 'using Pkg; Pkg.instantiate()'
 mkdir -p "$harness/results"

@@ -61,7 +61,7 @@ function _linalg_manual_task(id, lo::Tuple{Int,Int}, hi::Tuple{Int,Int}; throws=
     return task
 end
 
-_submit_linalg_task(task) = Legate.submit_manual_task(Legate.get_runtime(), task)
+_submit_linalg_task(task) = LegateInternal.submit_manual_task(Legate.get_runtime(), task)
 
 # Partitions own their store; submitted tasks retain their own references.
 # Drop Julia's temporary owners promptly instead of waiting for GC. Recursion
@@ -134,14 +134,14 @@ _cholesky!(::_SingleProcLinalg, out, a) = potrf!(out, a; lower=true, zeroout=tru
 function _cholesky!(::_CuSolverMpLinalg, out, a)
     @task_scope "mp_potrf" begin
         rt = Legate.get_runtime()
-        task = Legate.create_auto_task(rt, get_lib(), MP_POTRF)
+        task = LegateInternal.create_auto_task(rt, get_lib(), MP_POTRF)
         task_throws_exception(task, true)
-        ai = _add_task_array!(Legate.add_input, task, a)
-        oi = _add_task_array!(Legate.add_output, task, out)
+        ai = _add_task_array!(LegateInternal.add_input, task, a)
+        oi = _add_task_array!(LegateInternal.add_output, task, out)
         Legate.add_constraint(task, Legate.align(oi, ai))
         _linalg_scalars!(task, Int64(size(a, 1)), Int64(MIN_CHOLESKY_TILE_SIZE))
         add_nccl_communicator(task)
-        Legate.submit_auto_task(rt, task)
+        LegateInternal.submit_auto_task(rt, task)
         _cholesky_tril!(out)
     end
     return out
@@ -149,12 +149,12 @@ end
 
 function _cholesky_tril!(out::NDArray)
     rt = Legate.get_runtime()
-    task = Legate.create_auto_task(rt, get_lib(), TRILU)
-    _add_task_array!(Legate.add_output, task, out)
-    _add_task_array!(Legate.add_input, task, out)
+    task = LegateInternal.create_auto_task(rt, get_lib(), TRILU)
+    _add_task_array!(LegateInternal.add_output, task, out)
+    _add_task_array!(LegateInternal.add_input, task, out)
     # The third argument identifies Cholesky to the backend/mapper.
     _linalg_scalars!(task, true, Int32(0), true)
-    Legate.submit_auto_task(rt, task)
+    LegateInternal.submit_auto_task(rt, task)
     return nothing
 end
 
