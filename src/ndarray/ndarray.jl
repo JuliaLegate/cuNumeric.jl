@@ -871,8 +871,9 @@ Allocate an `NDArray{T}`. Storage is zero-initialized so it can be read immediat
 """
 NDArray{T}(::UndefInitializer, dims::Dims{N}) where {T<:SUPPORTED_ARRAY_TYPES,N} =
     nda_zeros_array(dims, T)
-NDArray{T}(::UndefInitializer, dims::Int...) where {T<:SUPPORTED_ARRAY_TYPES} =
-    NDArray{T}(undef, dims)
+function NDArray{T}(::UndefInitializer, dims::Int...) where {T<:SUPPORTED_ARRAY_TYPES}
+    return NDArray{T}(undef, dims)
+end
 
 @doc"""
     cuNumeric.fill(val::T, dims::Dims)
@@ -1325,7 +1326,7 @@ function h5read(path::String, dataset::String; kwargs...)
     la = Legate.h5read(path, dataset; kwargs...)
     T = eltype(la)
     N = Int(Legate.dim(la))
-    st = Legate.data(la.handle)  # call data on the raw impl
+    st = LegateInternal.data(la.handle)  # call data on the raw impl
     ptr = nda_store_to_ndarray(st)  # pass directly
     arr = NDArray(ptr, T, Val(N), nothing)
     return la.order === :col && N > 1 ? transpose(arr) : arr

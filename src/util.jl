@@ -22,7 +22,7 @@ end
 
 Insert a Legate mapping fence (DAG-only; does not block the Julia caller).
 """
-issue_mapping_fence() = Legate.issue_mapping_fence()
+issue_mapping_fence() = LegateInternal.issue_mapping_fence()
 
 """
     issue_execution_fence(; block::Bool=false)
@@ -30,7 +30,7 @@ issue_mapping_fence() = Legate.issue_mapping_fence()
 Insert a Legate execution fence. `block=true` waits until prior ops finish;
 `block=false` only inserts a DAG node (Julia can keep submitting).
 """
-issue_execution_fence(; block::Bool=false) = Legate.issue_execution_fence(block)
+issue_execution_fence(; block::Bool=false) = LegateInternal.issue_execution_fence(block)
 
 function Experimental(setting::Bool)
     return task_local_storage(:Experimental, setting)
