@@ -175,7 +175,7 @@ _scope_op(kind, op_code) = string(kind, "#", Int32(op_code))
 # function NDArray(value::T) where {T <: SUPPORTED_TYPES}
 #     type = Legate.to_legate_type(T)
 #     ptr = ccall((:nda_from_scalar, libnda),
-#         NDArray_t, (Legate.LegateTypeAllocated, Ptr{Cvoid}),
+#         NDArray_t, (LegateInternal.LegateTypeAllocated, Ptr{Cvoid}),
 #         type, Ref(value))
 #     return NDArray(ptr, T = T, n_dim = 1)
 # end
@@ -215,7 +215,7 @@ function nda_empty_array(dims::Dims{N}, ::Type{T}) where {T,N}
     legate_type = Legate.to_legate_type(T)
     ptr = @task_scope "empty" begin
         ccall((:nda_empty_array, libnda),
-            NDArray_t, (Int32, Ptr{UInt64}, Legate.LegateTypeAllocated),
+            NDArray_t, (Int32, Ptr{UInt64}, LegateInternal.LegateTypeAllocated),
             Int32(N), shape, legate_type)
     end
     return NDArray(ptr, T, Val(N))
@@ -226,7 +226,7 @@ function nda_zeros_array(dims::Dims{N}, ::Type{T}) where {T,N}
     legate_type = Legate.to_legate_type(T)
     ptr = @task_scope "zeros" begin
         ccall((:nda_zeros_array, libnda),
-            NDArray_t, (Int32, Ptr{UInt64}, Legate.LegateTypeAllocated),
+            NDArray_t, (Int32, Ptr{UInt64}, LegateInternal.LegateTypeAllocated),
             Int32(N), shape, legate_type)
     end
     return NDArray(ptr, T, Val(N))
@@ -239,7 +239,7 @@ function nda_full_array(dims::Dims{N}, value::T) where {T,N}
     ptr = @task_scope "full" begin
         ccall((:nda_full_array, libnda),
             NDArray_t,
-            (Int32, Ptr{UInt64}, Legate.LegateTypeAllocated, Ptr{Cvoid}),
+            (Int32, Ptr{UInt64}, LegateInternal.LegateTypeAllocated, Ptr{Cvoid}),
             Int32(N), shape, type, Ref(value))
     end
 
@@ -298,10 +298,10 @@ function nda_bitgenerator_distribution!(
     @task_scope "bitgenerator" begin
         rt = Legate.get_runtime()
         lib = cuNumeric.get_lib()
-        task = Legate.create_auto_task(rt, lib, cuNumeric.BITGENERATOR)
+        task = LegateInternal.create_auto_task(rt, lib, cuNumeric.BITGENERATOR)
 
         st = cuNumeric.get_store(arr)
-        Legate.add_output(task, st)
+        LegateInternal.add_output(task, st)
         finalize(st)
 
         Legate.add_scalar(task, Legate.Scalar(Int32(cuNumeric.BITGENOP_DISTRIBUTION)))
@@ -316,7 +316,7 @@ function nda_bitgenerator_distribution!(
         _add_vector_scalar!(cuNumeric.add_vector_scalar_f32, task, floatparams)
         _add_vector_scalar!(cuNumeric.add_vector_scalar_f64, task, doubleparams)
 
-        Legate.submit_auto_task(rt, task)
+        LegateInternal.submit_auto_task(rt, task)
     end
     return arr
 end
@@ -372,7 +372,7 @@ function nda_astype(arr::NDArray{OLD_T,N}, ::Type{NEW_T}) where {OLD_T,NEW_T,N}
     ptr = @task_scope "astype" begin
         ccall((:nda_astype, libnda),
             NDArray_t,
-            (NDArray_t, Legate.LegateTypeAllocated),
+            (NDArray_t, LegateInternal.LegateTypeAllocated),
             arr.ptr, type)
     end
     return NDArray(ptr, NEW_T, Val(N))
@@ -383,7 +383,7 @@ function nda_fill_array(arr::NDArray{T}, value::T) where {T}
     val = Ref(value)
     @task_scope "fill!" begin
         ccall((:nda_fill_array, libnda),
-            Cvoid, (NDArray_t, Legate.LegateTypeAllocated, Ptr{Cvoid}),
+            Cvoid, (NDArray_t, LegateInternal.LegateTypeAllocated, Ptr{Cvoid}),
             arr.ptr, type, val)
     end
     return nothing
@@ -608,7 +608,7 @@ function nda_multiply_scalar(rhs1::NDArray{T,N}, value::T) where {T,N}
 
     ptr = @task_scope "multiply_scalar" begin
         ccall((:nda_multiply_scalar, libnda),
-            NDArray_t, (NDArray_t, Legate.LegateTypeAllocated, Ptr{Cvoid}),
+            NDArray_t, (NDArray_t, LegateInternal.LegateTypeAllocated, Ptr{Cvoid}),
             rhs1.ptr, type, Ref(value))
     end
     return NDArray(ptr, T, Val(N))
@@ -619,7 +619,7 @@ function nda_add_scalar(rhs1::NDArray{T,N}, value::T) where {T,N}
 
     ptr = @task_scope "add_scalar" begin
         ccall((:nda_add_scalar, libnda),
-            NDArray_t, (NDArray_t, Legate.LegateTypeAllocated, Ptr{Cvoid}),
+            NDArray_t, (NDArray_t, LegateInternal.LegateTypeAllocated, Ptr{Cvoid}),
             rhs1.ptr, type, Ref(value))
     end
     return NDArray(ptr, T, Val(N))
@@ -647,7 +647,7 @@ function nda_eye(rows::Int32, ::Type{T}) where {T}
     legate_type = Legate.to_legate_type(T)
     ptr = @task_scope "eye" begin
         ccall((:nda_eye, libnda),
-            NDArray_t, (Int32, Legate.LegateTypeAllocated),
+            NDArray_t, (Int32, LegateInternal.LegateTypeAllocated),
             rows, legate_type)
     end
     return NDArray(ptr, T, Val(2))
@@ -660,7 +660,7 @@ function nda_trace(
     ptr = @task_scope "trace" begin
         ccall((:nda_trace, libnda),
             NDArray_t,
-            (NDArray_t, Int32, Int32, Int32, Legate.LegateTypeAllocated),
+            (NDArray_t, Int32, Int32, Int32, LegateInternal.LegateTypeAllocated),
             arr.ptr, offset, a1, a2, legate_type)
     end
     return NDArray(ptr, T, Val(0))
@@ -758,7 +758,7 @@ function get_ptr(arr::NDArray{T,N}) where {T,N}
     # to GC. Their destructors can unmap regions, which must run on the runtime
     # thread, just like the logical handle below. Keep and release them here.
     physical = Legate.get_physical_array(la)
-    data = Legate.data(physical)
+    data = LegateInternal.data(physical)
     ptr = Legate.get_ptr(data)
     finalize(data)
     finalize(physical)

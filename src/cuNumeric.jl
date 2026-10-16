@@ -27,6 +27,7 @@ using LegatePreferences: LegatePreferences
 using CUDACore: CUDACore
 import CUDACore: CuArray
 using Legate
+using Legate: LegateInternal
 using Libdl
 using CxxWrap
 
@@ -251,10 +252,10 @@ function _start_runtime()
     # AA = ArgcArgv([Base.julia_cmd()[1]])
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
 
-    num_gpus = Int(Legate.num_gpus())
+    num_gpus = Int(LegateInternal.num_gpus())
     HAS_CUDA[] = num_gpus > 0
     _LINALG_RUNTIME[] = _LinalgRuntime(
-        cusolvermp_available(), num_gpus, Int(Legate.num_procs())
+        cusolvermp_available(), num_gpus, Int(LegateInternal.num_procs())
     )
 
     _init_deferred_free!()   # record launch thread for deferred frees (memory.jl)
