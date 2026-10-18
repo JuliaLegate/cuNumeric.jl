@@ -16,7 +16,7 @@ Pkg.precompile()
 const init_code = quote
     using LinearAlgebra
     using Random
-    using StatsBase
+    using Statistics
     using FFTW
     import Random: rand
 

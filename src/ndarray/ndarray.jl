@@ -1137,10 +1137,6 @@ function _struct_array_equal(a::NDArray, b::NDArray)
     end
 end
 
-function Base.:(!=)(a::NDArray, b::NDArray)
-    return !(a == b)
-end
-
 function _array_equal_impl(a::NDArray{T}, b::NDArray{T}) where {T}
     out = _undef_array(Bool, ())
     return nda_binary_reduction!(out, cuNumeric.EQUAL, a, b)
