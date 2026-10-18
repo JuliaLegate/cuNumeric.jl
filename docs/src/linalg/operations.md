@@ -16,6 +16,27 @@ C = A * B                 # allocates a new result
 mul!(similar(C), A, B)    # in-place GEMM into an existing array
 ```
 
+Matrix operands may also be lazy `Transpose` or `Adjoint` wrappers around
+NDArrays. Both `*` and the three- and five-argument `mul!` forms support a
+wrapped matrix on either side, including two wrapped matrices. A wrapped
+matrix can also multiply an NDArray vector.
+
+```julia
+AtB = transpose(A) * B
+AhB = A' * B
+mul!(similar(AhB), A', B, 2f0, 0f0)
+```
+
+These operations use the cuPyNumeric contraction backend. Transpose is
+represented by permuted contraction labels and backend store views; complex
+adjoints additionally allocate a temporary for bulk conjugation. Real adjoints
+need no conjugation temporary. The destination of `mul!` must not share storage
+with either input, including the parent of a wrapper.
+
+`transpose(A)` is Julia's lazy wrapper; `cuNumeric.transpose(A)` is the existing
+backend helper returning an NDArray. This support covers matrix wrappers in
+multiplication, not general wrapper broadcasting, slicing, or row-vector products.
+
 ```@autodocs
 Modules = [cuNumeric]
 Pages = ["ndarray/binary.jl"]

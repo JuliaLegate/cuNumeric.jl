@@ -110,6 +110,9 @@ function _result_symbols(stmt)
         return _result_symbols(assignment.rhs)
     end
 
+    source = _lifetime_alias_source(stmt)
+    isnothing(source) || return Set([source])
+
     if stmt isa Expr && stmt.head in (:tuple, :parameters)
         return mapreduce(_result_symbols, union, stmt.args; init=Set{Symbol}())
     end
@@ -127,6 +130,26 @@ function _returned_symbols(scope)
     stmts = _scope_statements(scope)
     (isnothing(stmts) || isempty(stmts)) && return Set{Symbol}()
     return _result_symbols(last(stmts))
+end
+
+# Lazy transpose/adjoint wrappers borrow their parent handle. Treat them like
+# aliases for lifetime purposes, and free the original NDArray rather than the
+# wrapper (which has no handle of its own). The cuNumeric.transpose helper is
+# deliberately excluded: it creates a separate backend handle.
+function _lifetime_alias_source(rhs)
+    rhs isa Symbol && return rhs
+    rhs isa Expr || return nothing
+    if rhs.head === Symbol("'") && length(rhs.args) == 1
+        return only(rhs.args) isa Symbol ? only(rhs.args) : nothing
+    end
+    call = _call(rhs)
+    isnothing(call) && return nothing
+    length(call.args) == 1 && only(call.args) isa Symbol || return nothing
+    call.f in (:transpose, :adjoint, :Transpose, :Adjoint,
+               :(Base.transpose), :(Base.adjoint),
+               :(LinearAlgebra.transpose), :(LinearAlgebra.adjoint),
+               :(LinearAlgebra.Transpose), :(LinearAlgebra.Adjoint)) || return nothing
+    return only(call.args)
 end
 
 # Turn the named allocations produced by either lifetime rewriter into an
@@ -156,19 +179,15 @@ function insert_finalizers(
         used_expr = stmt
         if !isnothing(assignment)
             (; lhs, rhs) = assignment
-            if lhs isa Symbol && rhs isa Symbol
-                alias_map[lhs] = rhs
+            source = _lifetime_alias_source(rhs)
+            if lhs isa Symbol && !isnothing(source)
+                alias_map[lhs] = source
             end
             used_expr = rhs
         end
         for symbol in walk_symbols(used_expr)
             last_use[symbol] = i
         end
-    end
-
-    for (alias, src) in alias_map
-        alias_last_use = get(last_use, alias, 0)
-        last_use[src] = max(get(last_use, src, 0), alias_last_use)
     end
 
     # `F_u = tmp1` aliases one NDArray under two names; resolve to a canonical rep
@@ -180,6 +199,13 @@ function insert_finalizers(
             v = alias_map[v]
         end
         return v
+    end
+
+    # Resolve the entire chain before extending lifetimes. A wrapper, a second
+    # wrapper that unwraps it, and ordinary aliases all share one owner.
+    for alias in keys(alias_map)
+        owner = canon(alias)
+        last_use[owner] = max(get(last_use, owner, 0), get(last_use, alias, 0))
     end
 
     function is_indexed_assign(stmt)
@@ -216,7 +242,7 @@ function insert_finalizers(
             return nothing
         end
         push!(freed, c)
-        push!(out, :(cuNumeric.maybe_insert_delete($v)))
+        push!(out, :(cuNumeric.maybe_insert_delete($c)))
         return nothing
     end
 
@@ -226,8 +252,8 @@ function insert_finalizers(
         assignment = _assignment(stmt)
         if !isnothing(assignment)
             (; lhs, rhs) = assignment
-            if lhs isa Symbol && rhs isa Symbol
-                aliased_source = rhs
+            if lhs isa Symbol
+                aliased_source = _lifetime_alias_source(rhs)
             end
         end
 
@@ -240,7 +266,8 @@ function insert_finalizers(
         end
 
         for (v, lasti) in last_use
-            if lasti == i && v in assigned_vars && v != aliased_source
+            if lasti == i && get(last_use, canon(v), lasti) == i &&
+               v in assigned_vars && v != aliased_source
                 emit_delete!(v)
             end
         end
