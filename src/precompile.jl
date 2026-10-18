@@ -26,3 +26,31 @@ let
         precompile(randn, (Type{Complex{T}}, Int))
     end
 end
+
+# Macro expansion is pure syntax work. Exercise each scope form without
+# evaluating the generated code or starting Legate/CUDA. Running the passes
+# captures runtime-dispatched Expr/Any callees that a precompile signature alone
+# cannot reach. The workload does not depend on array element types or ranks.
+using PrecompileTools: @compile_workload
+
+@compile_workload begin
+    for input in (
+        :(@accelerate function update!(dest, a, b; scale=2f0)
+            product = @. a * b
+            dest .+= scale .* product
+            return dest
+        end),
+        :(@accelerate let
+            shifted = a[2:end] .+ b[1:(end - 1)]
+            sin.(shifted .^ 2)
+        end),
+        :(@accelerate begin
+            product = a[2:end] .* b[2:end]
+            shifted = product .+ 1f0
+            (product, shifted)
+        end),
+        :(@accelerate a .+ b .* 2f0),
+    )
+        Base.macroexpand(@__MODULE__, input)
+    end
+end

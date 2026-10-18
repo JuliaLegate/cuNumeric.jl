@@ -57,3 +57,30 @@ The form also affects how much memory is left for Julia's garbage collector to r
 
 [`@show_lifetimes`](../debugging.md#inspect-lifetime-rewrites-with-show_lifetimes)
 prints the rewritten code without running it.
+
+## First-use latency
+
+cuNumeric precompiles the syntax-rewriting passes used by the four `@accelerate`
+forms with a small set of quoted examples. These examples are expanded, not
+executed: the workload does not allocate NDArrays or start Legate/CUDA, and it
+does not repeat the expansion for different element types or array ranks.
+
+Expansion and execution have separate costs. The workload prepares the shared
+macro implementation; new user functions and GPU kernels can still require
+compilation on their first call. The latency scripts in `scripts/latency/`
+measure package precompilation, package loading, expansion, and fenced execution
+in fresh Julia processes. Their README describes the timing boundaries and
+baseline/candidate setup.
+
+During development, the standard PrecompileTools preference can disable this
+syntax workload in the active environment:
+
+```toml
+# LocalPreferences.toml
+[cuNumeric]
+precompile_workload = false
+```
+
+Changing the preference requires a restart and cache rebuild. This preference
+controls the syntax workload; the package's explicit host-path `precompile`
+directives remain enabled.
