@@ -91,6 +91,28 @@ end
         @test Array(a) ≈ ra
         @test Array(b) ≈ rb
     end
+
+    # Scalar and strided reads copy, so they must see the earlier write.
+    @accelerate aggressive=true function _acc_stale_reads(x, y, z, a)
+        x[1:4] .= a[1:4] .+ 1.0f0
+        y[1:4] .= a[1:4] .* x[1]
+        z[1:4] .= x[1:2:7] .* 2.0f0
+    end
+    function stale_reference!(x, y, z, a)
+        x[1:4] .= a[1:4] .+ 1.0f0
+        y[1:4] .= a[1:4] .* x[1]
+        z[1:4] .= x[1:2:7] .* 2.0f0
+    end
+    s0 = Float32.(1:8)
+    for make in (identity, NDArray)
+        x, y, z = make(copy(s0)), make(copy(s0)), make(copy(s0))
+        @allowscalar _acc_stale_reads(x, y, z, make(10 .* s0))
+        rx, ry, rz = copy(s0), copy(s0), copy(s0)
+        stale_reference!(rx, ry, rz, 10 .* s0)
+        @test Array(x) ≈ rx
+        @test Array(y) ≈ ry
+        @test Array(z) ≈ rz
+    end
     if cuNumeric.FUSE_BROADCAST_EXPRS && cuNumeric._has_gpu_target()
         u, v = NDArray(u0), NDArray(v0)
         dests = (NDArray(zeros(Float32, N))[2:(end - 1)], NDArray(zeros(Float32, N))[2:(end - 1)])

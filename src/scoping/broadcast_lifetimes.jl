@@ -205,10 +205,27 @@ function _merge_update_groups(stmts, run)
     )
     original = Expr(:block, stmts[run[1].first:run[end].last]...)
     roots = Base.unique(r for g in run for r in g.roots)
-    return Expr(:if, :(cuNumeric._all_ndarrays($(roots...))), merged, original)
+    reads = [:(cuNumeric._fusion_disjoint($d, $r)) for (d, r) in _sibling_read_checks(run)]
+    condition = reduce(
+        (a, b) -> Expr(:&&, a, b), reads; init=:(cuNumeric._all_ndarrays($(roots...)))
+    )
+    return Expr(:if, condition, merged, original)
 end
 
 _all_ndarrays(xs...) = all(x -> x isa NDArray, xs)
+
+_dest_root(g) = g.roots[findfirst(b -> _assignment(b).lhs === g.dest, g.binds)]
+_read_roots(g) = [r for (b, r) in zip(g.binds, g.roots) if _assignment(b).lhs !== g.dest]
+
+# Later reads are hoisted above earlier writes; a copying read (scalar or strided
+# index) of an earlier destination would be stale, so those roots must be disjoint.
+function _sibling_read_checks(run)
+    checks = Tuple{Symbol,Symbol}[]
+    for k in 2:length(run), root in _read_roots(run[k])
+        append!(checks, (_dest_root(g), root) for g in run[1:(k - 1)])
+    end
+    return unique!(checks)
+end
 
 function _fuse_sibling_updates(scope)
     stmts = _flatten_statements(scope)
