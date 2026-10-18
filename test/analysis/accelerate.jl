@@ -113,6 +113,28 @@ end
         @test Array(y) ≈ ry
         @test Array(z) ≈ rz
     end
+
+    # Disjoint views of one array still merge.
+    same = quote
+        P[3:4, :] .= P[1:2, :] .* 2.0f0
+        P[5:6, :] .= P[1:2, :] .- 1.0f0
+    end
+    @test merged(
+        cuNumeric._accelerate_expand(
+            Expr(:function, :(_acc_same(P)), same), @__MODULE__; aggressive=true
+        ),
+    ) == cuNumeric.FUSE_BROADCAST_EXPRS
+    @eval @accelerate aggressive=true function _acc_same(P)
+        $same
+    end
+    for make in (identity, NDArray)
+        P0 = reshape(Float32.(1:24), 6, 4)
+        P = make(copy(P0))
+        _acc_same(P)
+        P0[3:4, :] .= P0[1:2, :] .* 2.0f0
+        P0[5:6, :] .= P0[1:2, :] .- 1.0f0
+        @test Array(P) ≈ P0
+    end
     if cuNumeric.FUSE_BROADCAST_EXPRS && cuNumeric._has_gpu_target()
         u, v = NDArray(u0), NDArray(v0)
         dests = (NDArray(zeros(Float32, N))[2:(end - 1)], NDArray(zeros(Float32, N))[2:(end - 1)])

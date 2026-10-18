@@ -197,34 +197,40 @@ function _merge_update_groups(stmts, run)
     dests = [g.dest for g in run]
     calls = [g.call for g in run]
     results = [:($(g.result) = $(g.dest)) for g in run if !isnothing(g.result)]
-    merged = Expr(:block,
-        (b for g in run for b in g.binds)...,
+    deletes = [d for g in run for d in g.deletes]
+    original = Expr(:block, stmts[run[1].first:run[end].last]...)
+    fused = Expr(:block,
         :(cuNumeric.copyto_fused_siblings!(($(dests...),), ($(calls...),))),
         results...,
-        (d for g in run for d in g.deletes)...,
+        deletes...,
     )
-    original = Expr(:block, stmts[run[1].first:run[end].last]...)
+    fresh = [:(cuNumeric._hoisted_read_fresh($d, $r, $x)) for (d, r, x) in _hoisted_reads(run)]
+    if !isempty(fresh)
+        fused = Expr(:if, reduce((a, b) -> Expr(:&&, a, b), fresh), fused,
+            Expr(:block, deletes..., original.args...))
+    end
+    merged = Expr(:block, (b for g in run for b in g.binds)..., fused)
     roots = Base.unique(r for g in run for r in g.roots)
-    reads = [:(cuNumeric._fusion_disjoint($d, $r)) for (d, r) in _sibling_read_checks(run)]
-    condition = reduce(
-        (a, b) -> Expr(:&&, a, b), reads; init=:(cuNumeric._all_ndarrays($(roots...)))
-    )
-    return Expr(:if, condition, merged, original)
+    return Expr(:if, :(cuNumeric._all_ndarrays($(roots...))), merged, original)
 end
 
 _all_ndarrays(xs...) = all(x -> x isa NDArray, xs)
 
-_dest_root(g) = g.roots[findfirst(b -> _assignment(b).lhs === g.dest, g.binds)]
-_read_roots(g) = [r for (b, r) in zip(g.binds, g.roots) if _assignment(b).lhs !== g.dest]
-
-# Later reads are hoisted above earlier writes; a copying read (scalar or strided
-# index) of an earlier destination would be stale, so those roots must be disjoint.
-function _sibling_read_checks(run)
-    checks = Tuple{Symbol,Symbol}[]
-    for k in 2:length(run), root in _read_roots(run[k])
-        append!(checks, (_dest_root(g), root) for g in run[1:(k - 1)])
+# (earlier destination, root, bind) for each read a later update hoists above it.
+function _hoisted_reads(run)
+    reads = Tuple{Symbol,Symbol,Symbol}[]
+    for k in 2:length(run), bind in run[k].binds
+        read, root = _assignment(bind).lhs, _slice_root(bind)
+        (read === run[k].dest || isnothing(root)) && continue
+        append!(reads, (g.dest, root, read) for g in run[1:(k - 1)])
     end
-    return unique!(checks)
+    return reads
+end
+
+# Views are checked by `_sibling_segments`; a copy (scalar or strided index) was
+# taken before the earlier write, so its source must not overlap that destination.
+function _hoisted_read_fresh(dest, root, read)
+    return (read isa NDArray && _is_ndarray_slice(read)) || _fusion_disjoint(dest, root)
 end
 
 function _fuse_sibling_updates(scope)
@@ -233,8 +239,7 @@ function _fuse_sibling_updates(scope)
     for group in filter(!isnothing, [_update_group(stmts, i) for i in eachindex(stmts)])
         adjacent =
             !isempty(runs) && runs[end][end].last + 1 == group.first &&
-            all(g -> g.dest !== group.dest, runs[end]) &&
-            isdisjoint(_read_roots(group), map(_dest_root, runs[end]))
+            all(g -> g.dest !== group.dest, runs[end])
         adjacent ? push!(runs[end], group) : push!(runs, Any[group])
     end
     filter!(run -> length(run) > 1, runs)
