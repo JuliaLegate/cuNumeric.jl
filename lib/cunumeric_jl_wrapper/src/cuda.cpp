@@ -30,6 +30,7 @@
 #include "legate/utilities/proc_local_storage.h"
 #include "legion.h"
 #include "ptx.h"
+#include "broadcast_offsets.h"
 #include "types.h"
 #include "ufi.h"
 
@@ -110,10 +111,10 @@ struct CuDeviceArray {
 
 #define CUDA_STRIDED_DEVICE_ARRAY_ARG(MODE, ACCESSOR_CALL)                     \
   template <                                                                   \
-      typename T, int D,                                                       \
+      typename T, int D, typename Offsets,                                                       \
       typename std::enable_if<(D >= 1 && D <= REALM_MAX_DIM), int>::type = 0>  \
   void cuda_strided_device_array_arg_##MODE(char *&p,                          \
-                                            const legate::PhysicalArray &rf) { \
+                                            const legate::PhysicalArray &rf, Offsets &offsets) { \
     auto shp = rf.shape<D>();                                                  \
     auto acc = rf.data().ACCESSOR_CALL<T, D>();                                \
     CUDA_DEBUG_PRINT(                                                          \
@@ -132,7 +133,7 @@ struct CuDeviceArray {
     for (size_t i = 0; i < D; ++i) {                                           \
       desc.dims[i] = extents[i];                                               \
       /* Legion AffineAccessor::strides are in bytes */                        \
-      desc.strides[i] = acc.accessor.strides[i] / sizeof(T);                   \
+      desc.strides[i] = static_cast<int64_t>(acc.accessor.strides[i]) / static_cast<int64_t>(sizeof(T));                   \
     }                                                                          \
     desc.length = shp.volume();                                                \
     CUDA_DEBUG_PRINT(std::cerr << "[RunPTXBroadcastTask] " #MODE               \
@@ -143,6 +144,7 @@ struct CuDeviceArray {
                      for (size_t i = 0; i < D; ++i) std::cerr                  \
                      << desc.strides[i] << (i + 1 < D ? "," : "");             \
                      std::cerr << " length=" << desc.length << std::endl;);    \
+    offsets.observe(desc); \
     memcpy(p, &desc, sizeof(CuStridedDeviceArray<D>));                         \
     p += sizeof(CuStridedDeviceArray<D>);                                      \
   }
@@ -164,13 +166,13 @@ struct ufiFunctor {
 };
 
 struct ufiStridedFunctor {
-  template <legate::Type::Code CODE, int DIM>
-  void operator()(AccessMode mode, char *&p, const legate::PhysicalArray &arr) {
+  template <legate::Type::Code CODE, int DIM, typename Offsets>
+  void operator()(AccessMode mode, char *&p, const legate::PhysicalArray &arr, Offsets &offsets) {
     using CppT = typename legate_util::code_to_cxx<CODE>::type;
     if (mode == AccessMode::READ)
-      cuda_strided_device_array_arg_read<CppT, DIM>(p, arr);
+      cuda_strided_device_array_arg_read<CppT, DIM>(p, arr, offsets);
     else
-      cuda_strided_device_array_arg_write<CppT, DIM>(p, arr);
+      cuda_strided_device_array_arg_write<CppT, DIM>(p, arr, offsets);
   }
 };
 
@@ -225,7 +227,6 @@ struct PTXLaunchParams {
   CUstream custream;
   CUfunction func;
   std::string kernel_name;
-  std::string narrow_name;  // 32-bit-offset variant, from "narrow|wide"
   std::uint32_t bx, by, bz;
   std::uint32_t tx, ty, tz;
 };
@@ -236,10 +237,6 @@ static PTXLaunchParams read_launch_params(legate::TaskContext &context) {
   PTXLaunchParams p;
   p.stream = context.get_task_stream();
   p.kernel_name = context.scalar(0).value<std::string>();
-  if (const auto bar = p.kernel_name.find('|'); bar != std::string::npos) {
-    p.narrow_name = p.kernel_name.substr(0, bar);
-    p.kernel_name = p.kernel_name.substr(bar + 1);
-  }
 
   p.bx = context.scalar(BLOCK_START + 0).value<std::uint32_t>();
   p.by = context.scalar(BLOCK_START + 1).value<std::uint32_t>();
@@ -477,100 +474,96 @@ static void broadcast_launch_dims_from_tile(PTXLaunchParams &lp,
 #endif
 }
 
-// Whether every offset of a packed CuStridedDeviceArray<dim> fits in Int32,
-// as the narrow (32-bit) kernel variant computes them.
-static bool fits_int32(const char *desc, int dim) {
-  std::int64_t dims[REALM_MAX_DIM], strides[REALM_MAX_DIM];
-  const char *q = desc + sizeof(void *) + sizeof(std::int64_t);  // ptr, maxsize
-  memcpy(dims, q, dim * sizeof(std::int64_t));
-  memcpy(strides, q + dim * sizeof(std::int64_t), dim * sizeof(std::int64_t));
-  std::int64_t max_offset = 0;
-  for (int d = 0; d < dim; ++d) {
-    if (dims[d] > INT32_MAX) return false;
-    max_offset += (dims[d] - 1) * (strides[d] < 0 ? -strides[d] : strides[d]);
-  }
-  return max_offset <= INT32_MAX;
-}
-
-/*static*/ void RunPTXBroadcastTask::gpu_variant(legate::TaskContext context) {
-  auto lp = read_launch_params(context);
-
-  const std::size_t num_inputs = context.num_inputs();
-  const std::size_t num_outputs = context.num_outputs();
-  const std::size_t num_scalars = context.num_scalars();
-
-  assert(num_outputs >= 1);
-  bool narrow = !lp.narrow_name.empty();
-
-  // Read num_kernel_args first so we can size the buffer precisely
-  std::int32_t num_kernel_args =
-      context.scalar(ARG_OFFSET + 1).value<std::int32_t>();
-  std::size_t map_start = ARG_OFFSET + 2;
-  std::size_t scalar_values_start = map_start + num_kernel_args;
-
-  std::size_t max_buffer_size =
-      padded_bytes_kernel_state +
-      context.scalar(ARG_OFFSET).size() +  // ctx (CompilerMetadata)
-      num_kernel_args *
-          (sizeof(CuStridedDeviceArray<REALM_MAX_DIM>) +
-           8);  // worst case: all args are CuStridedDeviceArrays + alignment
-  for (std::size_t i = scalar_values_start; i < num_scalars; ++i) {
-    max_buffer_size += context.scalar(i).size();
-  }
-
-  std::vector<char> arg_buffer(max_buffer_size);
-  char *p = arg_buffer.data() + padded_bytes_kernel_state;
-
-  // 1. Write ctx (CompilerMetadata)
-  if (num_scalars > ARG_OFFSET) {
-    const auto &ctx_scalar = context.scalar(ARG_OFFSET);
-    memcpy(p, ctx_scalar.ptr(), ctx_scalar.size());
-    p += ctx_scalar.size();
-  }
-
-  // 2. Read arg_map and reconstruct arg buffer (strided descriptors)
-  for (std::int32_t i = 0; i < num_kernel_args; ++i) {
-    std::int32_t val = context.scalar(map_start + i).value<std::int32_t>();
-
-    if (val >= 0 && val < static_cast<std::int32_t>(num_outputs)) {
+// Both broadcast tasks pack the same ABI. Eligibility is observed directly
+// from each descriptor, before serialization; wide tasks instantiate a no-op.
+template <typename Offsets>
+static std::size_t pack_broadcast_arguments(legate::TaskContext &context,
+                                          std::size_t count_index,
+                                          std::size_t ctx_size,
+                                          std::vector<char> &buffer,
+                                          Offsets &offsets) {
+  const auto num_args = context.scalar(count_index).value<std::int32_t>();
+  if (num_args < 0) throw std::runtime_error("negative broadcast argument count");
+  const auto map_start = count_index + 1;
+  const auto scalar_start = map_start + num_args;
+  const auto num_outputs = context.num_outputs();
+  std::size_t capacity = padded_bytes_kernel_state + ctx_size +
+      num_args * (sizeof(CuStridedDeviceArray<REALM_MAX_DIM>) + 8);
+  for (auto i = scalar_start; i < context.num_scalars(); ++i)
+    capacity += context.scalar(i).size();
+  buffer.resize(capacity);
+  // Reserve the common context prefix. Write the selected context only once.
+  char *p = buffer.data() + padded_bytes_kernel_state + ctx_size;
+  for (std::int32_t i = 0; i < num_args; ++i) {
+    const auto val = context.scalar(map_start + i).value<std::int32_t>();
+    if (val >= 0) {
+      const bool output = val < static_cast<std::int32_t>(num_outputs);
+      auto ps = output ? context.output(val) : context.input(val - num_outputs);
+      const auto mode = output ? AccessMode::WRITE : AccessMode::READ;
       align8(p);
-      auto ps = context.output(val);
       if (ps.type().code() == legate::Type::Code::STRUCT) {
-        pack_struct(p, ps, ufi::AccessMode::WRITE);
-        narrow = false;
+        offsets.reject();
+        pack_struct(p, ps, mode);
       } else {
-        const char *desc = p;
         legate::double_dispatch(ps.dim(), ps.type().code(), ufiStridedFunctor{},
-                                ufi::AccessMode::WRITE, p, ps);
-        narrow = narrow && fits_int32(desc, ps.dim());
-      }
-    } else if (val >= static_cast<std::int32_t>(num_outputs)) {
-      align8(p);
-      auto ps = context.input(val - num_outputs);
-      if (ps.type().code() == legate::Type::Code::STRUCT) {
-        pack_struct(p, ps, ufi::AccessMode::READ);
-        narrow = false;
-      } else {
-        const char *desc = p;
-        legate::double_dispatch(ps.dim(), ps.type().code(), ufiStridedFunctor{},
-                                ufi::AccessMode::READ, p, ps);
-        narrow = narrow && fits_int32(desc, ps.dim());
+                                mode, p, ps, offsets);
       }
     } else {
-      std::size_t scalar_idx = static_cast<std::size_t>(-(val + 1));
-      const auto &scalar = context.scalar(scalar_values_start + scalar_idx);
+      const auto &scalar = context.scalar(scalar_start + static_cast<std::size_t>(-(val + 1)));
       memcpy(p, scalar.ptr(), scalar.size());
       p += scalar.size();
     }
   }
+  return p - buffer.data();
+}
 
-  if (narrow) {
-    lp.kernel_name = lp.narrow_name;
-    lp.func = lookup_ptx(lp.kernel_name, lp.stream);
-  }
-  // After choosing the kernel: the block cap queries its occupancy.
+struct BroadcastVariant {
+  std::string name;
+  std::uint32_t threads;
+  legate::Scalar ctx;
+};
+
+static void launch_broadcast_variant(legate::TaskContext &context,
+                                     const BroadcastVariant &variant,
+                                     std::vector<char> &buffer,
+                                     std::size_t size) {
+  PTXLaunchParams lp{};
+  lp.stream = context.get_task_stream();
+  lp.custream = reinterpret_cast<CUstream>(lp.stream);
+  lp.kernel_name = variant.name;
+  lp.tx = variant.threads;
+  memcpy(buffer.data() + padded_bytes_kernel_state, variant.ctx.ptr(), variant.ctx.size());
+  // Resolve only the selected function, using its own context and budget.
+  lp.func = lookup_ptx(lp.kernel_name, lp.stream);
   broadcast_launch_dims_from_tile(lp, context.output(0));
-  launch_kernel(lp, arg_buffer, p - arg_buffer.data());
+  launch_kernel(lp, buffer, size);
+}
+
+/*static*/ void RunPTXBroadcastTask::gpu_variant(legate::TaskContext context) {
+  const BroadcastVariant wide{context.scalar(0).value<std::string>(),
+                              context.scalar(THREAD_START).value<std::uint32_t>(),
+                              context.scalar(ARG_OFFSET)};
+  WideOnlyOffsets offsets;
+  std::vector<char> buffer;
+  const auto size = pack_broadcast_arguments(context, ARG_OFFSET + 1,
+                                             wide.ctx.size(), buffer, offsets);
+  launch_broadcast_variant(context, wide, buffer, size);
+}
+
+// Dedicated protocol: wide name/budget/context, narrow name/budget/context,
+// argument count, argument map, runtime scalars. The Julia pair constructor
+// checks argument types and concrete context layout before submitting this task.
+/*static*/ void RunPTXBroadcastAdaptiveTask::gpu_variant(legate::TaskContext context) {
+  const BroadcastVariant wide{context.scalar(0).value<std::string>(),
+                              context.scalar(1).value<std::uint32_t>(), context.scalar(2)};
+  const BroadcastVariant narrow{context.scalar(3).value<std::string>(),
+                                context.scalar(4).value<std::uint32_t>(), context.scalar(5)};
+  if (wide.ctx.size() != narrow.ctx.size())
+    throw std::runtime_error("adaptive broadcast context sizes do not match");
+  AdaptiveOffsets offsets;
+  std::vector<char> buffer;
+  const auto size = pack_broadcast_arguments(context, 6, wide.ctx.size(), buffer, offsets);
+  launch_broadcast_variant(context, select_broadcast_variant(offsets, wide, narrow), buffer, size);
 }
 
 // https://github.com/nv-legate/legate.pandas/blob/branch-22.01/src/udf/load_ptx.cc
@@ -710,4 +703,6 @@ void wrap_cuda_methods(jlcxx::Module &mod) {
   mod.set_const("RUN_PTX", legate::LocalTaskID{ufi::TaskIDs::RUN_PTX_TASK});
   mod.set_const("RUN_PTX_BROADCAST",
                 legate::LocalTaskID{ufi::TaskIDs::RUN_PTX_BROADCAST_TASK});
+  mod.set_const("RUN_PTX_BROADCAST_ADAPTIVE",
+                legate::LocalTaskID{ufi::TaskIDs::RUN_PTX_BROADCAST_ADAPTIVE_TASK});
 }

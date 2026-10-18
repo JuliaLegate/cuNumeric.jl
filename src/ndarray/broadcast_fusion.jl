@@ -2,61 +2,29 @@
 struct RuntimeBroadcastArg{J} end
 struct StaticBroadcastArg{J} end
 
-Base.@propagate_inbounds @inline function _gpu_broadcast_getindex(x, I)
-    return @inbounds Base.Broadcast._broadcast_getindex(x, I)
-end
-
-Base.@propagate_inbounds _gpu_broadcast_getindex(x::Number, I) = x
-
-# Index for sibling launches (`@accelerate aggressive=true`) that use 32-bit
-# offsets, which halves per-argument registers. RunPTXBroadcastTask launches this
-# variant only when every local offset fits in Int32.
-struct Narrow{N}
-    I::CartesianIndex{N}
-end
-_narrow(I::CartesianIndex) = Narrow(I)   # a function, so kernels can capture it
-
-@inline function _offset32(strides::Dims{N}, I::CartesianIndex{N}) where {N}
-    off = Int32(0)
-    @inbounds for d in 1:N
-        off += ((I[d] % Int32) - Int32(1)) * (strides[d] % Int32)
-    end
-    return Int(off)
-end
-
-Base.@propagate_inbounds _gpu_broadcast_getindex(x::Number, ::Narrow) = x
-Base.@propagate_inbounds _gpu_broadcast_getindex(x, I::Narrow) = _gpu_broadcast_getindex(x, I.I)
-Base.@propagate_inbounds @inline _gpu_broadcast_getindex(x::CuStridedDeviceArray, I::Narrow) =
-    unsafe_load(pointer(x), _offset32(x.strides, I.I) + 1, Val(_strided_align(x)))
-
-@inline _ml_store!(A, v, I) = (@inbounds A[I] = v; nothing)
-@inline function _ml_store!(A::CuStridedDeviceArray, v, I::Narrow)
-    unsafe_store!(pointer(A), v, _offset32(A.strides, I.I) + 1, Val(_strided_align(A)))
-    return nothing
-end
-
-# Same-shaped fused operands already use the destination index.
-Base.@propagate_inbounds @inline function _gpu_broadcast_getindex(
-    x::CuStridedDeviceArray, I::Union{Integer,CartesianIndex}
-)
-    return @inbounds x[I]
-end
+Base.@propagate_inbounds @inline _gpu_broadcast_getindex(p::FixedOffsets, x, I) =
+    Base.Broadcast._broadcast_getindex(x, I)
+Base.@propagate_inbounds _gpu_broadcast_getindex(p::FixedOffsets, x::Number, I) = x
+Base.@propagate_inbounds @inline _gpu_broadcast_getindex(
+    p::FixedOffsets, x::CuStridedDeviceArray, I
+) =
+    _broadcast_load(p, x, I)
 
 Base.@propagate_inbounds @inline function _materialize_broadcast_arg(
     ::RuntimeBroadcastArg{J},
     runtime_args,
     static_args,
-    I,
+    I, policy::FixedOffsets,
 ) where {J}
     arg = getfield(runtime_args, J)
-    return @inbounds _gpu_broadcast_getindex(arg, I)
+    return @inbounds _gpu_broadcast_getindex(policy, arg, I)
 end
 
 Base.@propagate_inbounds @inline function _materialize_broadcast_arg(
     ::StaticBroadcastArg{J},
     runtime_args,
     static_args,
-    I,
+    I, policy::FixedOffsets,
 ) where {J}
     return getfield(static_args, J)
 end
@@ -65,7 +33,7 @@ Base.@propagate_inbounds @inline function _materialize_broadcast_args(
     ::Tuple{},
     runtime_args,
     static_args,
-    I,
+    I, policy::FixedOffsets,
 )
     return ()
 end
@@ -74,14 +42,14 @@ Base.@propagate_inbounds @inline function _materialize_broadcast_args(
     plan::Tuple,
     runtime_args,
     static_args,
-    I,
+    I, policy::FixedOffsets,
 )
     head = getfield(plan, 1)
     tail = Base.tail(plan)
 
     return (
-        @inbounds(_materialize_broadcast_arg(head, runtime_args, static_args, I)),
-        @inbounds(_materialize_broadcast_args(tail, runtime_args, static_args, I))...,
+        @inbounds(_materialize_broadcast_arg(head, runtime_args, static_args, I, policy)),
+        @inbounds(_materialize_broadcast_args(tail, runtime_args, static_args, I, policy))...,
     )
 end
 
@@ -168,16 +136,20 @@ end
 @inline _broadcast_grid_stride(axis) =
     Int(getproperty(CUDACore.gridDim(), axis)) * Int(getproperty(CUDACore.blockDim(), axis))
 
-function make_linear_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args)
+function make_linear_kernel(
+    dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args, policy::FixedOffsets
+)
     f = bc.f
 
     @kernel unsafe_indices = true function broadcast_kernel_linear_splat(dest, runtime_args...)
         I = _broadcast_linear_work_id()
         while I <= length(dest)
             @inbounds args_modified = _materialize_broadcast_args(
-                arg_plan, runtime_args, static_args, I
+                arg_plan, runtime_args, static_args, I, policy
             )
-            @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+            @inbounds _broadcast_store!(
+                policy, dest, Base.Broadcast._broadcast_getindex_evalf(f, args_modified...), I
+            )
             I += _broadcast_grid_stride(:x)
         end
     end
@@ -195,7 +167,9 @@ end
     return CartesianIndex(row, col)
 end
 
-function make_cartesian_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args)
+function make_cartesian_kernel(
+    dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args, policy::FixedOffsets
+)
     f = bc.f
 
     @kernel unsafe_indices = true function broadcast_kernel_cartesian_splat(
@@ -206,9 +180,11 @@ function make_cartesian_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, s
         while I[2] <= size(dest, 2)
             while I[1] <= size(dest, 1)
                 @inbounds args_modified = _materialize_broadcast_args(
-                    arg_plan, runtime_args, static_args, I
+                    arg_plan, runtime_args, static_args, I, policy
                 )
-                @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(f, args_modified...)
+                @inbounds _broadcast_store!(
+                    policy, dest, Base.Broadcast._broadcast_getindex_evalf(f, args_modified...), I
+                )
                 I += CartesianIndex(_broadcast_grid_stride(:y), 0)
             end
             I = CartesianIndex(start[1], I[2] + _broadcast_grid_stride(:x))
@@ -232,7 +208,7 @@ end
 end
 
 function make_cartesian_kernel_3d(
-    dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args
+    dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args, policy::FixedOffsets
 )
     f = bc.f
 
@@ -245,11 +221,12 @@ function make_cartesian_kernel_3d(
             while I[2] <= size(dest, 2)
                 while I[1] <= size(dest, 1)
                     @inbounds args_modified = _materialize_broadcast_args(
-                        arg_plan, runtime_args, static_args, I
+                        arg_plan, runtime_args, static_args, I, policy
                     )
-                    @inbounds dest[I] = Base.Broadcast._broadcast_getindex_evalf(
-                        f, args_modified...
-                    )
+                    @inbounds _broadcast_store!(policy, dest,
+                        Base.Broadcast._broadcast_getindex_evalf(
+                            f, args_modified...
+                        ), I)
                     I += CartesianIndex(_broadcast_grid_stride(:z), 0, 0)
                 end
                 I = CartesianIndex(start[1], I[2] + _broadcast_grid_stride(:y), I[3])
@@ -262,31 +239,22 @@ function make_cartesian_kernel_3d(
 end
 
 function make_broadcast_kernel(
-    dest::NDArray{<:Any,2}, bc::Base.Broadcast.Broadcasted, arg_plan, static_args
+    dest::Val{2}, bc::Base.Broadcast.Broadcasted, arg_plan, static_args, policy::FixedOffsets
 )
-    return make_cartesian_kernel(dest, bc, arg_plan, static_args)
+    return make_cartesian_kernel(dest, bc, arg_plan, static_args, policy)
 end
 
 function make_broadcast_kernel(
-    dest::NDArray{<:Any,3}, bc::Base.Broadcast.Broadcasted, arg_plan, static_args
+    dest::Val{3}, bc::Base.Broadcast.Broadcasted, arg_plan, static_args, policy::FixedOffsets
 )
-    return make_cartesian_kernel_3d(dest, bc, arg_plan, static_args)
+    return make_cartesian_kernel_3d(dest, bc, arg_plan, static_args, policy)
 end
 
-function make_broadcast_kernel(dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args)
-    return make_linear_kernel(dest, bc, arg_plan, static_args)
+function make_broadcast_kernel(
+    dest, bc::Base.Broadcast.Broadcasted, arg_plan, static_args, policy::FixedOffsets
+)
+    return make_linear_kernel(dest, bc, arg_plan, static_args, policy)
 end
-
-struct FusedBroadcastMetadata{C}
-    ctx::C # KA.CompilerMetadata (compilation / arg layout; not global ndrange)
-    threads::Int # occupancy thread budget; device chooses final launch dims
-    cuda_task::CUDATask
-end
-
-# Cache by kernel identity + arg types. Launch geometry is derived per-GPU from
-# the local PhysicalArray, so global ndrange is not a key.
-const _BCAST_PTX_CACHE = Dict{Tuple{Any,DataType,DataType},FusedBroadcastMetadata}()
-const _BCAST_PTX_CACHE_LOCK = ReentrantLock()
 
 # Every NDArray leaf must match `dest` shape. Shape-mismatched broadcasts
 # (e.g. matrix .+ vector) are handled by the unfused path.
@@ -375,7 +343,7 @@ end
 # `T_IN = __my_promote_type(...); unchecked_promote_arr.(args, T_IN)`, but
 # `unchecked_promote_scalar` keeps Numbers as scalars for the PTX arg buffer.
 #
-# Must run on the host *before* `get_cuda_task` so the PTX cache key sees the
+# Must run on the host *before* `_broadcast_plan` so the PTX cache key sees the
 # promoted scalar types. `a .^ 2` is unaffected: `Val{N}` is static; op-aware
 # checks stay in pre-flatten `_assert_fused_broadcast_promotion`.
 function _align_fused_runtime_args(runtime_args::Tuple)
@@ -501,37 +469,81 @@ function get_ptx(
     return String(take!(buf)), threads, ctx
 end
 
-function get_cuda_task(
-    obj::KA.Kernel{CUDACore.CUDAKernels.CUDABackend},
-    dest::D,
-    runtime_args::RT,
-) where {D<:NDArray,RT<:Tuple}
-    DEST_T = map_cuda_type(D)
-    ARG_TYPES = map_cuda_type.(typeof.(runtime_args))
+# Descriptions contain computation identity only, never arrays or scalar values.
+struct SingleBroadcastKernel{F,P,S,N}
+    f::F
+    args::P
+    static_args::S
+    rank::Val{N}
+end
+struct MultiBroadcastKernel{S,A,N}
+    segments::S
+    static_args::A
+    rank::Val{N}
+end
 
-    key = (obj, D, RT)
+function _broadcast_kernel(s::SingleBroadcastKernel, p::FixedOffsets)
+    bc = Base.Broadcast.Broadcasted(s.f, ())
+    return make_broadcast_kernel(s.rank, bc, s.args, s.static_args, p)
+end
+function _broadcast_kernel(s::MultiBroadcastKernel, p::FixedOffsets)
+    return make_multi_output_kernel(s.segments, Val(length(s.segments)), s.static_args, s.rank, p)
+end
+_always_inline(::SingleBroadcastKernel) = false
+_always_inline(::MultiBroadcastKernel) = true
 
-    lock(_BCAST_PTX_CACHE_LOCK) do
-        return get!(_BCAST_PTX_CACHE, key) do
-            ptx, threads, ctx = try
-                get_ptx(obj, DEST_T, ARG_TYPES...)
-            catch err
-                err isa InterruptException && rethrow()
-                throw(
-                    ErrorException(
-                        "GPU broadcast function failed to fuse: $(sprint(showerror, err))"
-                    ),
-                )
-            end
+const _BROADCAST_PLAN_CACHE = Dict{Any,Any}()
+const _BROADCAST_VARIANT_CACHE = Dict{Any,Any}()
+const _BROADCAST_CACHE_LOCK = ReentrantLock()
 
-            orig_name = extract_kernel_name(ptx)
-            unique_name = orig_name * "_" * string(hash(ptx); base=16)
-            ptx = replace(ptx, orig_name => unique_name)
+function _compile_broadcast(spec, argtypes, policy::FixedOffsets)
+    obj = _broadcast_kernel(spec, policy)(CUDACore.CUDAKernels.CUDABackend())
+    ptx, threads, ctx = try
+        get_ptx(obj, argtypes...; always_inline=_always_inline(spec))
+    catch err
+        err isa InterruptException && rethrow()
+        error("GPU broadcast function failed to fuse: $(sprint(showerror, err))")
+    end
+    orig = extract_kernel_name(ptx)
+    name = orig * "_" * string(hash(ptx); base=16)
+    ptx_task(replace(ptx, orig => name), name)
+    return CompiledBroadcast(CUDATask(name, argtypes), ctx, threads)
+end
 
-            ptx_task(ptx, unique_name)
-            cuda_task = CUDATask(unique_name, (DEST_T, ARG_TYPES...))
+# Called only on a plan miss, under the same lock. Fixed variants are shared
+# between plans so default-then-aggressive compiles the wide kernel only once.
+function _broadcast_variant(spec, argtypes, policy::FixedOffsets)
+    key = (typeof(spec), argtypes, typeof(policy))
+    return get!(_BROADCAST_VARIANT_CACHE, key) do
+        return _compile_broadcast(spec, argtypes, policy)
+    end
+end
+function _build_broadcast_plan(spec, argtypes, p::FixedOffsets)
+    return FixedBroadcastPlan(_broadcast_variant(spec, argtypes, p))
+end
+function _build_broadcast_plan(spec, argtypes, ::AdaptiveOffsets)
+    _require_adaptive_broadcast_wrapper()
+    return AdaptiveBroadcastPlan(
+        _broadcast_variant(spec, argtypes, FixedOffsets{Int64}()),
+        _broadcast_variant(spec, argtypes, FixedOffsets{Int32}()),
+    )
+end
 
-            return FusedBroadcastMetadata(ctx, threads, cuda_task)
+_has_struct_storage(::Any) = false
+_has_struct_storage(a::NDArray) = _struct_storage_type(eltype(a))
+_has_struct_storage(a::Base.Broadcast.Extruded) = _has_struct_storage(a.x)
+_effective_offset_policy(p::FixedOffsets, arrays) = p
+function _effective_offset_policy(p::AdaptiveOffsets, arrays)
+    return any(_has_struct_storage, arrays) ? FixedOffsets{Int64}() : p
+end
+
+function _broadcast_plan(spec, arrays::Tuple, policy::BroadcastOffsetPolicy)
+    policy = _effective_offset_policy(policy, arrays)
+    argtypes = map(map_cuda_type, typeof.(arrays))
+    key = (typeof(spec), argtypes, typeof(policy))
+    lock(_BROADCAST_CACHE_LOCK) do
+        return get!(_BROADCAST_PLAN_CACHE, key) do
+            return _build_broadcast_plan(spec, argtypes, policy)
         end
     end
 end
@@ -755,7 +767,11 @@ end
     return nothing
 end
 
-function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcast.Broadcasted}
+fuse_broadcast_tree!(dest, bc) = fuse_broadcast_tree!(FixedOffsets{Int64}(), dest, bc)
+
+function fuse_broadcast_tree!(
+    policy::BroadcastOffsetPolicy, dest::D, bc::B
+) where {D<:NDArray,B<:Base.Broadcast.Broadcasted}
     # Promotion checks use the pre-flatten tree (same shape as unfused unravel).
     _assert_fused_broadcast_promotion(dest, bc)
 
@@ -782,13 +798,10 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
     # unfused `T_IN` / `unchecked_promote_arr`. Kernel sees already-aligned types.
     runtime_args = _align_fused_runtime_args(runtime_args)
 
-    broadcast_kernel = make_broadcast_kernel(dest, bc, arg_plan, static_args)
-
-    ndrange = ndims(dest) > 0 ? size(dest) : (1,)
-
-    bck_cuda = broadcast_kernel(CUDACore.CUDAKernels.CUDABackend())
-
-    fkm = get_cuda_task(bck_cuda, dest, runtime_args)
+    spec = SingleBroadcastKernel(bc.f, arg_plan, static_args, Val(ndims(dest)))
+    plan = _broadcast_plan(spec, (dest, runtime_args...), policy)
+    fkm = _wide_kernel(plan)
+    ndrange = size(dest)
 
     num_outputs = 1
 
@@ -850,15 +863,11 @@ function fuse_broadcast_tree!(dest::D, bc::B) where {D<:NDArray,B<:Base.Broadcas
             # `blocks=1` is a placeholder; RunPTXBroadcastTask overwrites grid dims
             # from the local PhysicalArray. `threads` is only the occupancy budget (tx).
             # Scalars after ctx: num_kernel_args, arg_map...
-            launch(
-                fkm.cuda_task,
+            _launch_broadcast(
+                plan,
                 input_ndarrays,
                 (output,),
-                (Int32(length(arg_map)), arg_map..., actual_scalars...);
-                blocks=1,
-                threads=fkm.threads,
-                taskid=cuNumeric.RUN_PTX_BROADCAST,
-                ctx=fkm.ctx,
+                (Int32(length(arg_map)), arg_map..., actual_scalars...),
             )
         end
         output === dest || nda_assign(dest, output)
@@ -890,20 +899,22 @@ Base.ndims(::Type{<:MatRef}) = 0
 struct LocalBroadcastArg{K} end
 
 Base.@propagate_inbounds @inline _materialize_ml_arg(
-    ::RuntimeBroadcastArg{J}, rt, sa, locals, I
-) where {J} = _gpu_broadcast_getindex(getfield(rt, J), I)
+    ::RuntimeBroadcastArg{J}, rt, sa, locals, I, policy
+) where {J} = _gpu_broadcast_getindex(policy, getfield(rt, J), I)
 Base.@propagate_inbounds @inline _materialize_ml_arg(
-    ::StaticBroadcastArg{J}, rt, sa, locals, I
+    ::StaticBroadcastArg{J}, rt, sa, locals, I, policy
 ) where {J} = getfield(sa, J)
 Base.@propagate_inbounds @inline _materialize_ml_arg(
-    ::LocalBroadcastArg{K}, rt, sa, locals, I
+    ::LocalBroadcastArg{K}, rt, sa, locals, I, policy
 ) where {K} = getfield(locals, K)
 
-Base.@propagate_inbounds @inline _materialize_ml_args(::Tuple{}, rt, sa, locals, I) = ()
-Base.@propagate_inbounds @inline function _materialize_ml_args(plan::Tuple, rt, sa, locals, I)
+Base.@propagate_inbounds @inline _materialize_ml_args(::Tuple{}, rt, sa, locals, I, policy) = ()
+Base.@propagate_inbounds @inline function _materialize_ml_args(
+    plan::Tuple, rt, sa, locals, I, policy
+)
     return (
-        @inbounds(_materialize_ml_arg(getfield(plan, 1), rt, sa, locals, I)),
-        @inbounds(_materialize_ml_args(Base.tail(plan), rt, sa, locals, I))...,
+        @inbounds(_materialize_ml_arg(getfield(plan, 1), rt, sa, locals, I, policy)),
+        @inbounds(_materialize_ml_args(Base.tail(plan), rt, sa, locals, I, policy))...,
     )
 end
 
@@ -911,7 +922,7 @@ end
 # Generate straight-line code because recursive tuple traversal eventually hits
 # Julia's inference limit and leaves a dynamic call in GPU kernels on Julia 1.10.
 Base.@propagate_inbounds @inline @generated function _run_segments(
-    segs::S, outs, rt, sa, locals::L, I
+    segs::S, outs, rt, sa, locals::L, I, policy::FixedOffsets
 ) where {S<:Tuple,L<:Tuple}
     body = Expr(:block)
     local_values = Any[:(getfield(locals, $k)) for k in 1:fieldcount(L)]
@@ -926,12 +937,12 @@ Base.@propagate_inbounds @inline @generated function _run_segments(
             quote
                 $seg = getfield(segs, $k)
                 $vals = _materialize_ml_args(
-                    getfield($seg, 2), rt, sa, $local_tuple, I
+                    getfield($seg, 2), rt, sa, $local_tuple, I, policy
                 )
                 $value = Base.Broadcast._broadcast_getindex_evalf(
                     getfield($seg, 1), $vals...
                 )
-                _ml_store!(getfield(outs, $k), $value, I)
+                _broadcast_store!(policy, getfield(outs, $k), $value, I)
             end,
         )
         push!(local_values, value)
@@ -949,9 +960,8 @@ end
 
 # Dimension-dispatched (mirrors the single-output linear/cartesian kernels).
 # `args` = (outputs[1:NOUT]..., runtime_args...); bounds from the first output.
-# `wrap = _narrow` selects 32-bit offsets (cartesian kernels only).
 function make_multi_output_kernel(
-    segs, ::Val{NOUT}, static_args, ::Val{2}, wrap=identity
+    segs, ::Val{NOUT}, static_args, ::Val{2}, policy::FixedOffsets
 ) where {NOUT}
     @kernel unsafe_indices = true function broadcast_kernel_multi_2d(args...)
         start = _broadcast_cartesian_work_id()
@@ -961,7 +971,7 @@ function make_multi_output_kernel(
             while I[1] <= size(dest, 1)
                 _run_segments(
                     segs, _take(args, Val(NOUT)), _drop(args, Val(NOUT)), static_args, (),
-                    wrap(I),
+                    I, policy,
                 )
                 I += CartesianIndex(_broadcast_grid_stride(:y), 0)
             end
@@ -972,7 +982,7 @@ function make_multi_output_kernel(
 end
 
 function make_multi_output_kernel(
-    segs, ::Val{NOUT}, static_args, ::Val{3}, wrap=identity
+    segs, ::Val{NOUT}, static_args, ::Val{3}, policy::FixedOffsets
 ) where {NOUT}
     @kernel unsafe_indices = true function broadcast_kernel_multi_3d(args...)
         start = _broadcast_cartesian_work_id_3d()
@@ -983,7 +993,7 @@ function make_multi_output_kernel(
                 while I[1] <= size(dest, 1)
                     _run_segments(
                         segs, _take(args, Val(NOUT)), _drop(args, Val(NOUT)), static_args, (),
-                        wrap(I),
+                        I, policy,
                     )
                     I += CartesianIndex(_broadcast_grid_stride(:z), 0, 0)
                 end
@@ -996,11 +1006,15 @@ function make_multi_output_kernel(
 end
 
 # 1-D and any other rank: linear indexing (matches the single-output default).
-function make_multi_output_kernel(segs, ::Val{NOUT}, static_args, ::Val) where {NOUT}
+function make_multi_output_kernel(
+    segs, ::Val{NOUT}, static_args, ::Val, policy::FixedOffsets
+) where {NOUT}
     @kernel unsafe_indices = true function broadcast_kernel_multi_linear(args...)
         I = _broadcast_linear_work_id()
         @inbounds while I <= length(getfield(args, 1))
-            _run_segments(segs, _take(args, Val(NOUT)), _drop(args, Val(NOUT)), static_args, (), I)
+            _run_segments(
+                segs, _take(args, Val(NOUT)), _drop(args, Val(NOUT)), static_args, (), I, policy
+            )
             I += _broadcast_grid_stride(:x)
         end
     end
@@ -1042,29 +1056,6 @@ function _split_segment!(seg_bc, runtime_args, static_args, ndarray_idx)
 end
 
 _matref_k(::MatRef{K}) where {K} = K
-
-const _MULTI_PTX_CACHE = Dict{Any,Any}()
-const _MULTI_PTX_CACHE_LOCK = ReentrantLock()
-
-# Compile + register the multi-output kernel -> (ctx, threads, CUDATask). Cached
-# by (closure type, arg types) so a repeated fusion signature compiles once.
-function get_multi_cuda_task(obj, out_arrs, runtime_args)
-    arg_types = (map_cuda_type.(typeof.(out_arrs))..., map_cuda_type.(typeof.(runtime_args))...)
-    key = (typeof(obj), arg_types)
-    lock(_MULTI_PTX_CACHE_LOCK) do
-        return get!(_MULTI_PTX_CACHE, key) do
-            # Inline the per-segment helpers: an outlined call passes every
-            # kernel argument through local memory.
-            ptx, threads, ctx = get_ptx(obj, arg_types...; always_inline=true)
-            threads == 0 && return (ctx, 0, nothing)
-            orig = extract_kernel_name(ptx)
-            uname = orig * "_" * string(hash(ptx); base=16)
-            ptx = replace(ptx, orig => uname)
-            ptx_task(ptx, uname)
-            return (ctx, threads, CUDATask(uname, arg_types))
-        end
-    end
-end
 
 # First NDArray leaf across all segments; used as an allocation template.
 function _first_ndarray(seg_bcs::Tuple)
@@ -1143,7 +1134,8 @@ end
 
 # Launch one kernel writing each segment into preallocated `out_arrs[i]`
 # (dependency order; `out_arrs[end]` is the root).
-function _fused_multi_launch!(out_arrs::Tuple, seg_bcs::Tuple; narrow::Bool=false)
+function _fused_multi_launch!(policy::BroadcastOffsetPolicy, out_arrs::Tuple, seg_bcs::Tuple)
+    isempty(first(out_arrs)) && return out_arrs
     NOUT = length(seg_bcs)
     runtime_args = Any[]
     static_args = Any[]
@@ -1155,20 +1147,9 @@ function _fused_multi_launch!(out_arrs::Tuple, seg_bcs::Tuple; narrow::Bool=fals
     segs = tuple(segs...)
     static_args = tuple(static_args...)
 
-    kernel = make_multi_output_kernel(segs, Val(NOUT), static_args, Val(ndims(out_arrs[1])))
-    bck = kernel(CUDACore.CUDAKernels.CUDABackend())
-    ctx, threads, task = get_multi_cuda_task(bck, out_arrs, tuple(runtime_args...))
-    isnothing(task) && return out_arrs
-    if narrow && ndims(out_arrs[1]) in (2, 3)
-        nkernel = make_multi_output_kernel(
-            segs, Val(NOUT), static_args, Val(ndims(out_arrs[1])), _narrow
-        )
-        _, _, ntask = get_multi_cuda_task(
-            nkernel(CUDACore.CUDAKernels.CUDABackend()), out_arrs, tuple(runtime_args...)
-        )
-        # "narrow|wide": the launcher picks narrow when every offset fits in Int32.
-        isnothing(ntask) || (task = CUDATask(ntask.func * "|" * task.func, task.argtypes))
-    end
+    spec = MultiBroadcastKernel(segs, static_args, Val(ndims(out_arrs[1])))
+    plan = _broadcast_plan(spec, (out_arrs..., runtime_args...), policy)
+    threads = _wide_kernel(plan).threads
 
     # arg_map: kernel args in order (outputs..., runtime_args...).
     argmap = Int32[Int32(i) for i in 0:(NOUT - 1)]
@@ -1194,10 +1175,9 @@ function _fused_multi_launch!(out_arrs::Tuple, seg_bcs::Tuple; narrow::Bool=fals
         )
     end
 
-    launch(
-        task, tuple(input_ndarrays...), out_arrs,
-        (Int32(length(argmap)), argmap..., actual_scalars...);
-        blocks=1, threads=threads, taskid=cuNumeric.RUN_PTX_BROADCAST, ctx=ctx,
+    _launch_broadcast(
+        plan, tuple(input_ndarrays...), out_arrs,
+        (Int32(length(argmap)), argmap..., actual_scalars...),
     )
     return out_arrs
 end
@@ -1217,20 +1197,63 @@ end
 
 # `seg_bcs[1:end-1]` are materialized producers (dependency order); `seg_bcs[end]`
 # writes `dest`. Producer buffers are allocated (returned so callers bind names).
-function copyto_fused_multi!(dest::NDArray, seg_bcs::Tuple)
+copyto_fused_multi!(dest, seg_bcs) = copyto_fused_multi!(FixedOffsets{Int64}(), dest, seg_bcs)
+
+function copyto_fused_multi!(policy::BroadcastOffsetPolicy, dest::NDArray, seg_bcs::Tuple)
+    if !_can_fuse_multi_segments(seg_bcs) || axes(dest) != axes(_first_ndarray(seg_bcs))
+        return _materialize_segments(policy, seg_bcs, (), dest)
+    end
     bufs = _alloc_segment_buffers(dest, seg_bcs[1:(end - 1)], size(dest))
     outs = (bufs..., dest)
-    _fused_multi_launch!(outs, seg_bcs)
+    _fused_multi_launch!(policy, outs, seg_bcs)
     return outs
 end
 
 # Every segment gets a fresh buffer (all named results stay live). Returns the
 # buffers in segment order so callers can bind each user name.
-function copyto_fused_multi_alloc!(seg_bcs::Tuple)
+copyto_fused_multi_alloc!(seg_bcs) = copyto_fused_multi_alloc!(FixedOffsets{Int64}(), seg_bcs)
+
+function copyto_fused_multi_alloc!(policy::BroadcastOffsetPolicy, seg_bcs::Tuple)
+    _can_fuse_multi_segments(seg_bcs) || return _materialize_segments(policy, seg_bcs, ())
     tmpl = _first_ndarray(seg_bcs)
     outs = _alloc_segment_buffers(tmpl, seg_bcs, size(tmpl))
-    _fused_multi_launch!(outs, seg_bcs)
+    _fused_multi_launch!(policy, outs, seg_bcs)
     return outs
+end
+
+# Chained fusion is only valid for equal-shaped NDArray leaves. This also
+# keeps Base arrays, empty/0D arrays and incompatible broadcasts on their usual
+# materialization path when the macro's soft-scope form preserves every result.
+function _can_fuse_multi_segments(seg_bcs)
+    _has_gpu_target() || return false
+    shape = nothing
+    for bc in seg_bcs, leaf in Base.Broadcast.flatten(bc).args
+        if leaf isa NDArray
+            1 <= ndims(leaf) <= 6 && !isempty(leaf) || return false
+            isnothing(shape) && (shape = axes(leaf))
+            axes(leaf) == shape || return false
+        elseif !(leaf isa MatRef || leaf isa Number || leaf isa Base.RefValue)
+            return false
+        end
+    end
+    return !isnothing(shape)
+end
+
+_resolve_segment(x, outputs) = x
+_resolve_segment(x::MatRef, outputs) = outputs[_matref_k(x)]
+function _resolve_segment(bc::Base.Broadcast.Broadcasted, outputs)
+    return Base.broadcasted(bc.f, map(x -> _resolve_segment(x, outputs), bc.args)...)
+end
+
+_materialize_segments(policy, ::Tuple{}, outputs, dest=nothing) = outputs
+function _materialize_segments(policy, segs::Tuple, outputs, dest=nothing)
+    bc = _resolve_segment(first(segs), outputs)
+    result = if length(segs) == 1 && !isnothing(dest)
+        _materialize_with_policy!(policy, dest, bc)
+    else
+        _materialize_with_policy(policy, bc)
+    end
+    return _materialize_segments(policy, Base.tail(segs), (outputs..., result), dest)
 end
 
 # Sibling fusion (`@accelerate aggressive=true`): independent updates
@@ -1238,15 +1261,19 @@ end
 # in order instead when shapes differ, a segment would not fuse on its own, or
 # an output overlaps another output or an input (Legion forbids that in a task).
 
-function copyto_fused_siblings!(dests::Tuple, bcs::Tuple)
+copyto_fused_siblings!(dests, bcs) = copyto_fused_siblings!(FixedOffsets{Int64}(), dests, bcs)
+
+function copyto_fused_siblings!(policy::BroadcastOffsetPolicy, dests::Tuple, bcs::Tuple)
     @static if FUSE_BROADCAST_EXPRS
         segs = _sibling_segments(dests, bcs)
         if !isnothing(segs)
-            _fused_multi_launch!(dests, segs; narrow=true)
+            _fused_multi_launch!(policy, dests, segs)
             return dests
         end
     end
-    foreach(Base.materialize!, dests, bcs)
+    for (dest, bc) in zip(dests, bcs)
+        _materialize_with_policy!(policy, dest, bc)
+    end
     return dests
 end
 
