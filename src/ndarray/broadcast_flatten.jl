@@ -1,38 +1,47 @@
-# Julia 1.10's `Broadcast.flatten` nests varargs closures that inference gives up
-# on for deep trees, leaving dynamic calls GPUCompiler rejects. Backport the
-# inferable `Pick`-based implementation from Julia 1.11.
+# Base's `flatten` nests closures that 1.10 can't infer on deep trees, leaving
+# dynamic calls GPUCompiler rejects. Evaluate the tree by plain recursion instead.
 @static if VERSION >= v"1.11"
     const _broadcast_flatten = Base.Broadcast.flatten
 else
-    function _broadcast_flatten(bc::Base.Broadcast.Broadcasted)
-        Base.Broadcast.isflat(bc) && return bc
-        args = Base.Broadcast.cat_nested(bc)
-        makeargs = _make_makeargs(bc.args, 1)[1]
-        f = Base.maybeconstructor(bc.f)
-        newf = (args...) -> (@inline; f(_prepare_args(makeargs, args)...))
-        return Base.Broadcast.Broadcasted(bc.style, newf, args, bc.axes)
+    struct _ArgRef{N} end
+
+    struct _CallNode{F,Args}
+        f::F
+        args::Args
     end
 
-    @inline function _make_makeargs(args::Tuple, n::Int)
-        head, n = _make_makeargs1(args[1], n)
-        rest, n = _make_makeargs(Base.tail(args), n)
+    struct _TreeCall{T} <: Function
+        tree::T
+    end
+
+    @inline _eval_tree(::_ArgRef{N}, args) where {N} = args[N]
+    @inline _eval_tree(node::_CallNode, args) = node.f(_eval_children(node.args, args)...)
+
+    @inline _eval_children(::Tuple{}, args) = ()
+    @inline _eval_children(nodes::Tuple, args) =
+        (_eval_tree(first(nodes), args), _eval_children(Base.tail(nodes), args)...)
+
+    (t::_TreeCall)(args...) = _eval_tree(t.tree, args)
+
+    _build_children(::Tuple{}, n) = (), n
+    function _build_children(args::Tuple, n)
+        head, n = _build_tree(first(args), n)
+        rest, n = _build_children(Base.tail(args), n)
         return (head, rest...), n
     end
-    _make_makeargs(::Tuple{}, n::Int) = (), n
 
-    struct _Pick{N} <: Function end
-    (::_Pick{N})(@nospecialize(args::Tuple)) where {N} = args[N]
-
-    @inline _make_makeargs1(_, n::Int) = _Pick{n}(), n + 1
-    @inline function _make_makeargs1(bc::Base.Broadcast.Broadcasted, n::Int)
-        makeargs, n = _make_makeargs(bc.args, n)
-        f = Base.maybeconstructor(bc.f)
-        makeargs1 = (args::Tuple) -> (@inline; f(_prepare_args(makeargs, args)...))
-        return makeargs1, n
+    # Leaves are numbered left to right, matching `cat_nested`.
+    _build_tree(_, n) = _ArgRef{n}(), n + 1
+    function _build_tree(bc::Base.Broadcast.Broadcasted, n)
+        args, n = _build_children(bc.args, n)
+        return _CallNode(Base.maybeconstructor(bc.f), args), n
     end
 
-    @inline _prepare_args(makeargs::Tuple, @nospecialize(x::Tuple)) =
-        (makeargs[1](x), _prepare_args(Base.tail(makeargs), x)...)
-    @inline _prepare_args(makeargs::Tuple{Any}, @nospecialize(x::Tuple)) = (makeargs[1](x),)
-    _prepare_args(::Tuple{}, ::Tuple) = ()
+    function _broadcast_flatten(bc::Base.Broadcast.Broadcasted)
+        Base.Broadcast.isflat(bc) && return bc
+        tree, _ = _build_tree(bc, 1)
+        return Base.Broadcast.Broadcasted(
+            bc.style, _TreeCall(tree), Base.Broadcast.cat_nested(bc), bc.axes
+        )
+    end
 end
