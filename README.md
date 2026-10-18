@@ -16,7 +16,7 @@ cuNumeric.jl can be installed with the Julia package manager. Activate your pref
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/JuliaLegate/cuNumeric.jl", rev = "main")
+Pkg.add("cuNumeric")
 ```
 
 The first installation can take a while because it includes several large dependencies, such as the CUDA SDK. To use a local cupynumeric build, see [Build Modes](https://julialegate.github.io/cuNumeric.jl/stable/install).
