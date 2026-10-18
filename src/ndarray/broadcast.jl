@@ -142,10 +142,9 @@ function _materialize_with_policy(p::BroadcastOffsetPolicy, bc::Broadcasted{<:ND
     return _copy_broadcast(p, Broadcast.instantiate(bc))
 end
 _materialize_with_policy!(::BroadcastOffsetPolicy, dest, bc) = Base.materialize!(dest, bc)
-function _materialize_with_policy!(
-    p::BroadcastOffsetPolicy, dest::NDArray, bc::Broadcasted{S}
-) where {S}
-    return _copyto!(p, dest, Broadcast.instantiate(Broadcasted{S}(bc.f, bc.args, axes(dest))))
+function _materialize_with_policy!(p::BroadcastOffsetPolicy, dest::NDArray, bc::Broadcasted)
+    style = Broadcast.combine_styles(dest, bc)
+    return _copyto!(p, dest, Broadcast.instantiate(Broadcasted(style, bc.f, bc.args, axes(dest))))
 end
 function _materialize_with_policy!(p::BroadcastOffsetPolicy, dest::NDArray, x)
     return _materialize_with_policy!(p, dest, Broadcast.broadcasted(identity, x))
