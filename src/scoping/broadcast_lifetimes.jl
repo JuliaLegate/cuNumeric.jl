@@ -233,7 +233,8 @@ function _fuse_sibling_updates(scope)
     for group in filter(!isnothing, [_update_group(stmts, i) for i in eachindex(stmts)])
         adjacent =
             !isempty(runs) && runs[end][end].last + 1 == group.first &&
-            all(g -> g.dest !== group.dest, runs[end])
+            all(g -> g.dest !== group.dest, runs[end]) &&
+            isdisjoint(_read_roots(group), map(_dest_root, runs[end]))
         adjacent ? push!(runs[end], group) : push!(runs, Any[group])
     end
     filter!(run -> length(run) > 1, runs)
