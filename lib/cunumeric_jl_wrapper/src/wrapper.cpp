@@ -76,6 +76,7 @@ void register_tasks() {
   ufi::LoadPTXTask::register_variants(library);
   ufi::RunPTXTask::register_variants(library);
   ufi::RunPTXBroadcastTask::register_variants(library);
+  ufi::RunPTXBroadcastAdaptiveTask::register_variants(library);
   ufi::register_mapreduce_tasks();
 }
 

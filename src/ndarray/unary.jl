@@ -495,7 +495,7 @@ end
     std(A::NDArray; corrected=true, mean=nothing, dims=:)
 
 Sample variance and standard deviation (`corrected=true`, divisor `n-1`),
-matching Julia / StatsBase. Real types only. Returns an `CNScalar` or dimension-preserving
+matching Statistics. Real types only. Returns a `CNScalar` or dimension-preserving
 `NDArray`, not a Julia scalar.
 """
 function var(arr::NDArray{T}; corrected::Bool=true, mean=nothing, dims=Colon()) where {T<:Real}

@@ -162,7 +162,9 @@ for op in (:+, :-, :*, :/, :^), W in _SCALAR_WRAPPERS
         @eval Base.$op(x::$W, y::$V) = _scalar_binary($op, x, y)
     end
 end
-for op in (:(==), :(!=), :isequal), W in _SCALAR_WRAPPERS
+# Base derives != from == and >/>= by reversing </<=. Keep those fallbacks:
+# they preserve _scalar_compare's permission check without extending more generic functions.
+for op in (:(==), :isequal), W in _SCALAR_WRAPPERS
     for H in (Real, Complex, AbstractFloat, Integer, Signed, Unsigned, Bool)
         @eval Base.$op(x::$W, y::$H) = _scalar_compare($op, x, y)
         @eval Base.$op(x::$H, y::$W) = _scalar_compare($op, x, y)
@@ -171,7 +173,7 @@ for op in (:(==), :(!=), :isequal), W in _SCALAR_WRAPPERS
         @eval Base.$op(x::$W, y::$V) = _scalar_compare($op, x, y)
     end
 end
-for op in (:<, :<=, :>, :>=, :isless), W in _REAL_SCALAR_WRAPPERS
+for op in (:<, :<=, :isless), W in _REAL_SCALAR_WRAPPERS
     for H in (Real, AbstractFloat, Integer, Signed, Unsigned, Bool)
         @eval Base.$op(x::$W, y::$H) = _scalar_compare($op, x, y)
         @eval Base.$op(x::$H, y::$W) = _scalar_compare($op, x, y)

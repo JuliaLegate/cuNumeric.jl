@@ -57,3 +57,22 @@ The form also affects how much memory is left for Julia's garbage collector to r
 
 [`@show_lifetimes`](../debugging.md#inspect-lifetime-rewrites-with-show_lifetimes)
 prints the rewritten code without running it.
+
+## Aggressive fusion and adaptive offsets
+
+`@accelerate aggressive=true` can merge independent adjacent in-place updates
+into one kernel. It also permits adaptive element-offset arithmetic for eligible
+GPU broadcasts of ranks 1–6, including single-output and chained broadcasts.
+The default `@accelerate` and ordinary broadcasts use 64-bit offsets.
+
+An adaptive signature compiles both 32-bit and 64-bit variants once. Each GPU
+task checks its local dimensions and strides while packing array descriptors,
+then launches the 32-bit variant only when the conservative absolute-offset
+bound fits. Pointers, descriptors, traversal counters and coordinate decoding
+remain 64-bit. Array sizes, layouts and scalar values do not specialize the PTX
+cache, and struct-array signatures stay wide-only.
+
+The policy applies to broadcasts written inside the macro; ordinary function
+calls do not inherit it. CPU execution and unsupported broadcasts keep their
+existing behavior. Adaptive GPU execution requires a wrapper build exposing
+`RUN_PTX_BROADCAST_ADAPTIVE`; an older wrapper reports a rebuild/update error.

@@ -124,22 +124,141 @@ _fusion_disjoint(a::AbstractArray, b::NDArray) = false
 _fusion_disjoint(a::NDArray, b::NDArray) = !nda_overlaps(a, b)
 
 function process_broadcast_lifetime_scope(
-    scope; on_rewrite=nothing, protected_roots=Set{Symbol}()
+    scope; on_rewrite=nothing, protected_roots=Set{Symbol}(), aggressive::Bool=false
 )
+    merge = aggressive ? _fuse_sibling_updates : identity
     # Returned producers and caller-owned roots stay materialized: exempt from fusion.
     protected = union(_returned_symbols(scope), protected_roots)
     checks = Tuple{Symbol,Symbol}[]
     guard_roots = setdiff(protected_roots, _assigned_symbols(scope))
     rewritten = InterBroadcastFusion.rewrite_scope(scope;
         on_rewrite, protected, guard_roots, alias_checks=checks)
-    fast = _process_lifetime_scope(rewritten, rewrite_broadcast_lifetimes; protected_roots)
+    fast = merge(
+        _process_lifetime_scope(rewritten, rewrite_broadcast_lifetimes; protected_roots)
+    )
     isempty(checks) && return fast
 
     # Analyze each straight-line branch separately, then wrap the complete
     # lifetime-managed bodies. Overlapping inputs retain materialized producers.
     fallback = InterBroadcastFusion.rewrite_scope(scope; protected)
-    slow = _process_lifetime_scope(fallback, rewrite_broadcast_lifetimes; protected_roots)
+    slow = merge(
+        _process_lifetime_scope(fallback, rewrite_broadcast_lifetimes; protected_roots)
+    )
     conditions = [:(cuNumeric._fusion_disjoint($a, $b)) for (a, b) in checks]
     condition = reduce((a, b) -> Expr(:&&, a, b), conditions)
     return Expr(:if, condition, fast, slow)
+end
+
+# Sibling fusion (`aggressive=true`). After lifetime analysis an update reads
+#
+#   tmp1 = Base.@view(u_new[2:end-1, 2:end-1])
+#   tmp2 = u[2:end-1, 2:end-1]
+#   tmp1 .= f(tmp2)
+#   cuNumeric.maybe_insert_delete(tmp1); cuNumeric.maybe_insert_delete(tmp2)
+#
+# Adjacent updates merge into one `copyto_fused_siblings!` call: their slice
+# binds move before it and their frees after it. That is safe only for NDArray
+# slices, which are views, so other inputs run the original code.
+
+# Array sliced by `tmp = X[...]` or `tmp = @view(X[...])`; all-`:` indexing copies.
+function _slice_root(stmt)
+    assignment = _assignment(stmt)
+    isnothing(assignment) && return nothing
+    rhs = MacroTools.isexpr(assignment.rhs, :macrocall) ? last(assignment.rhs.args) : assignment.rhs
+    reference = _reference(rhs)
+    isnothing(reference) && return nothing
+    all(==(:(:)), reference.indices) && return nothing
+    return reference.array
+end
+
+# Constant scalar bind such as `tmp = Int8(2)`; reads no array, so it can move.
+function _const_bind(stmt)
+    assignment = _assignment(stmt)
+    isnothing(assignment) && return false
+    call = _call(assignment.rhs)
+    return !isnothing(call) && all(a -> a isa Number, call.args)
+end
+
+# Slice and constant binds, then `d .= rhs` (or `name = (d .= rhs)`), then frees.
+function _update_group(stmts, i)
+    assignment = _assignment(stmts[i])
+    result, update = isnothing(assignment) ? (nothing, stmts[i]) : (assignment.lhs, assignment.rhs)
+    MacroTools.isexpr(update, :(.=)) && update.args[1] isa Symbol || return nothing
+    dest, rhs = update.args
+    _is_broadcast_syntax(rhs) || return nothing
+    call = _to_broadcasted(rhs, Dict{Symbol,Int}(), Pair{Symbol,Any}[])
+    isnothing(call) && return nothing
+    first, last = i, i
+    while first > 1 && (!isnothing(_slice_root(stmts[first - 1])) || _const_bind(stmts[first - 1]))
+        first -= 1
+    end
+    while last < length(stmts) && !isnothing(_delete_argument(stmts[last + 1]))
+        last += 1
+    end
+    binds = stmts[first:(i - 1)]
+    any(b -> _assignment(b).lhs === dest, binds) || return nothing
+    roots = filter(!isnothing, _slice_root.(binds))
+    return (; first, last, binds, roots, result, dest, call,
+        deletes=stmts[(i + 1):last])
+end
+
+function _merge_update_groups(stmts, run)
+    dests = [g.dest for g in run]
+    calls = [g.call for g in run]
+    results = [:($(g.result) = $(g.dest)) for g in run if !isnothing(g.result)]
+    deletes = [d for g in run for d in g.deletes]
+    original = Expr(:block, stmts[run[1].first:run[end].last]...)
+    fused = Expr(:block,
+        :(cuNumeric.copyto_fused_siblings!(($(dests...),), ($(calls...),))),
+        results...,
+        deletes...,
+    )
+    fresh = [:(cuNumeric._hoisted_read_fresh($d, $r, $x)) for (d, r, x) in _hoisted_reads(run)]
+    if !isempty(fresh)
+        fused = Expr(:if, reduce((a, b) -> Expr(:&&, a, b), fresh), fused,
+            Expr(:block, deletes..., original.args...))
+    end
+    merged = Expr(:block, (b for g in run for b in g.binds)..., fused)
+    roots = Base.unique(r for g in run for r in g.roots)
+    return Expr(:if, :(cuNumeric._all_ndarrays($(roots...))), merged, original)
+end
+
+_all_ndarrays(xs...) = all(x -> x isa NDArray, xs)
+
+# (earlier destination, root, bind) for each read a later update hoists above it.
+function _hoisted_reads(run)
+    reads = Tuple{Symbol,Symbol,Symbol}[]
+    for k in 2:length(run), bind in run[k].binds
+        read, root = _assignment(bind).lhs, _slice_root(bind)
+        (read === run[k].dest || isnothing(root)) && continue
+        append!(reads, (g.dest, root, read) for g in run[1:(k - 1)])
+    end
+    return reads
+end
+
+# Views are checked by `_sibling_segments`; a copy (scalar or strided index) was
+# taken before the earlier write, so its source must not overlap that destination.
+function _hoisted_read_fresh(dest, root, read)
+    return (read isa NDArray && _is_ndarray_slice(read)) || _fusion_disjoint(dest, root)
+end
+
+function _fuse_sibling_updates(scope)
+    stmts = _flatten_statements(scope)
+    runs = Vector{Any}[]
+    for group in filter(!isnothing, [_update_group(stmts, i) for i in eachindex(stmts)])
+        adjacent =
+            !isempty(runs) && runs[end][end].last + 1 == group.first &&
+            all(g -> g.dest !== group.dest, runs[end])
+        adjacent ? push!(runs[end], group) : push!(runs, Any[group])
+    end
+    filter!(run -> length(run) > 1, runs)
+    isempty(runs) && return scope
+    out, next = Any[], 1
+    for run in runs
+        append!(out, stmts[next:(run[1].first - 1)])
+        push!(out, _merge_update_groups(stmts, run))
+        next = run[end].last + 1
+    end
+    append!(out, stmts[next:end])
+    return Expr(:block, out...)
 end

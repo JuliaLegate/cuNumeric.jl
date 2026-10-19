@@ -223,7 +223,7 @@ function fft_task!(
         @task_scope _fft_scope_name(direction) begin
             rt = Legate.get_runtime()
             lib = cuNumeric.get_lib()
-            task = Legate.create_auto_task(rt, lib, cuNumeric.FFT)
+            task = LegateInternal.create_auto_task(rt, lib, cuNumeric.FFT)
             cuNumeric.task_throws_exception(task, true)
 
             l_out = nda_to_logical_array(out)
@@ -247,7 +247,7 @@ function fft_task!(
                 Legate.add_broadcast(task, l_in)
             end
 
-            Legate.submit_auto_task(rt, task)
+            LegateInternal.submit_auto_task(rt, task)
             if scale
                 out .*= _ifft_scale(T, size(out), dims)
             end

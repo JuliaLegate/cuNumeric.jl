@@ -17,17 +17,6 @@ struct Params{T}
     end
 end
 
-function bc!(u_new, v_new, u, v)
-    u_new[:, 1] = u[:, end - 1]
-    u_new[:, end] = u[:, 2]
-    u_new[1, :] = u[end - 1, :]
-    u_new[end, :] = u[2, :]
-    v_new[:, 1] = v[:, end - 1]
-    v_new[:, end] = v[:, 2]
-    v_new[1, :] = v[end - 1, :]
-    return v_new[end, :] = v[2, :]
-end
-
 @accelerate function step!(u, v, u_new, v_new, args::Params)
     F_u = @. -u[2:end-1, 2:end-1] * v[2:end-1, 2:end-1]^2 +
         args.f * (1.0f0 - u[2:end-1, 2:end-1])
@@ -45,7 +34,16 @@ end
 
     u_new[2:end-1, 2:end-1] = @. (args.c_u * u_lap + F_u) * args.dt + u[2:end-1, 2:end-1]
     v_new[2:end-1, 2:end-1] = @. (args.c_v * v_lap + F_v) * args.dt + v[2:end-1, 2:end-1]
-    bc!(u_new, v_new, u, v)
+
+    u_new[:, 1] = u[:, end - 1]
+    u_new[:, end] = u[:, 2]
+    u_new[1, :] = u[end - 1, :]
+    u_new[end, :] = u[2, :]
+    v_new[:, 1] = v[:, end - 1]
+    v_new[:, end] = v[:, 2]
+    v_new[1, :] = v[end - 1, :]
+    v_new[end, :] = v[2, :]
+    
     return nothing
 end
 

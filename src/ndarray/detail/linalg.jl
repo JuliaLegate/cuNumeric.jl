@@ -28,16 +28,18 @@ function solve_batched(a::NDArray{T,N}, b::NDArray, x::NDArray) where {T,N}
     ) do tiled_a, tiled_b, tiled_x
         @task_scope "solve" begin
             rt = Legate.get_runtime()
-            domain = Legate.domain_from_shape(Legate.Shape(Legate.to_cxx_vector(color_shape)))
+            domain = LegateInternal.domain_from_shape(
+                Legate.Shape(Legate.to_cxx_vector(color_shape))
+            )
             lib = cuNumeric.get_lib()
-            task = Legate.create_manual_task(rt, lib, cuNumeric.SOLVE, domain)
+            task = LegateInternal.create_manual_task(rt, lib, cuNumeric.SOLVE, domain)
             cuNumeric.task_throws_exception(task, true)
 
             Legate.add_input(task, tiled_a)
             Legate.add_input(task, tiled_b)
             Legate.add_output(task, tiled_x)
 
-            Legate.submit_manual_task(rt, task)
+            LegateInternal.submit_manual_task(rt, task)
         end
     end
 end
@@ -141,22 +143,22 @@ function potrf!(out::NDArray{T,N}, a::NDArray{T,N}; lower::Bool, zeroout::Bool) 
     lib = cuNumeric.get_lib()
 
     @task_scope "potrf" begin
-        task = Legate.create_auto_task(rt, lib, cuNumeric.POTRF)
+        task = LegateInternal.create_auto_task(rt, lib, cuNumeric.POTRF)
         cuNumeric.task_throws_exception(task, true)
 
-        in_var = _add_task_array!(Legate.add_input, task, a)
-        out_var = _add_task_array!(Legate.add_output, task, out)
+        in_var = _add_task_array!(LegateInternal.add_input, task, a)
+        out_var = _add_task_array!(LegateInternal.add_output, task, out)
 
         Legate.add_scalar(task, Legate.Scalar(lower))
         Legate.add_scalar(task, Legate.Scalar(zeroout))
 
         # Each matrix must live on one processor; only the batch axes may split.
         Legate.add_constraint(
-            task, Legate.broadcast(in_var, CxxWrap.StdVector(UInt32[N - 2, N - 1]))
+            task, LegateInternal.broadcast(in_var, CxxWrap.StdVector(UInt32[N - 2, N - 1]))
         )
         Legate.add_constraint(task, Legate.align(out_var, in_var))
 
-        Legate.submit_auto_task(rt, task)
+        LegateInternal.submit_auto_task(rt, task)
     end
     return out
 end
@@ -194,9 +196,9 @@ function geev!(a::NDArray{T,N}, ew::NDArray, ev::Union{NDArray,Nothing}) where {
 
     @task_scope "geev" begin
         rt = Legate.get_runtime()
-        domain = Legate.domain_from_shape(Legate.Shape(Legate.to_cxx_vector(color_shape)))
+        domain = LegateInternal.domain_from_shape(Legate.Shape(Legate.to_cxx_vector(color_shape)))
         lib = cuNumeric.get_lib()
-        task = Legate.create_manual_task(rt, lib, cuNumeric.GEEV, domain)
+        task = LegateInternal.create_manual_task(rt, lib, cuNumeric.GEEV, domain)
         cuNumeric.task_throws_exception(task, true)
 
         cuNumeric.add_input_proj(task, tiled_a.handle, proj)
@@ -205,7 +207,7 @@ function geev!(a::NDArray{T,N}, ew::NDArray, ev::Union{NDArray,Nothing}) where {
             cuNumeric.add_output_proj(task, tiled_ev.handle, proj)
         end
 
-        Legate.submit_manual_task(rt, task)
+        LegateInternal.submit_manual_task(rt, task)
     end
     return nothing
 end
@@ -213,7 +215,7 @@ end
 function svd_single(a::NDArray{T,N}, u::NDArray, s::NDArray, vh::NDArray) where {T,N}
     rt = Legate.get_runtime()
     lib = cuNumeric.get_lib()
-    task = Legate.create_auto_task(rt, lib, cuNumeric.SVD)
+    task = LegateInternal.create_auto_task(rt, lib, cuNumeric.SVD)
 
     l_a = nda_to_logical_array(a)
     l_u = nda_to_logical_array(u)
@@ -230,7 +232,7 @@ function svd_single(a::NDArray{T,N}, u::NDArray, s::NDArray, vh::NDArray) where 
     Legate.add_broadcast(task, l_s)
     Legate.add_broadcast(task, l_vh)
 
-    return Legate.submit_auto_task(rt, task)
+    return LegateInternal.submit_auto_task(rt, task)
 end
 
 function _svd(a::NDArray{T,2}, full_matrices::Bool) where {T}
@@ -264,17 +266,17 @@ _svd_eltype(::Type{T}) where {T<:SUPPORTED_SVD_TYPES} = T
 function _qr!(::_SingleProcLinalg, q, r, a)
     rt = Legate.get_runtime()
     lib = cuNumeric.get_lib()
-    task = Legate.create_auto_task(rt, lib, cuNumeric.CQR)
+    task = LegateInternal.create_auto_task(rt, lib, cuNumeric.CQR)
     cuNumeric.task_throws_exception(task, true)
 
-    ai = _add_task_array!(Legate.add_input, task, a)
-    qi = _add_task_array!(Legate.add_output, task, q)
-    ri = _add_task_array!(Legate.add_output, task, r)
+    ai = _add_task_array!(LegateInternal.add_input, task, a)
+    qi = _add_task_array!(LegateInternal.add_output, task, q)
+    ri = _add_task_array!(LegateInternal.add_output, task, r)
     for variable in (ai, qi, ri)
-        Legate.add_constraint(task, Legate.broadcast(variable))
+        Legate.add_constraint(task, LegateInternal.broadcast(variable))
     end
 
-    Legate.submit_auto_task(rt, task)
+    LegateInternal.submit_auto_task(rt, task)
     return nothing
 end
 
