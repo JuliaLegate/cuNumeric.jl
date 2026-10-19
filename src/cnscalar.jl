@@ -31,7 +31,6 @@ end
 const CNReal{T} = Union{CNFloat{<:T},CNInt{<:T},CNUInt{<:T},CNBool{<:T}}
 const CNScalar{T} = Union{CNReal{T},CNComplex{<:T}}
 const DeviceScalar{T} = Union{NDArray{T,0},CNScalar{T}}
-_lifetime_dependencies(x::CNScalar) = (x.value,)
 const _REAL_SCALAR_WRAPPERS = (CNFloat, CNInt, CNUInt, CNBool)
 const _SCALAR_WRAPPERS = (_REAL_SCALAR_WRAPPERS..., CNComplex)
 for (W, H) in ((CNFloat, AbstractFloat), (CNInt, Signed), (CNUInt, Unsigned),

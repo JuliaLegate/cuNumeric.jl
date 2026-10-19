@@ -3,6 +3,8 @@ module cuNumericStructArraysExt
 using cuNumeric
 using StructArrays
 
+cuNumeric._lifetime_dependencies(x::StructArray) = Tuple(StructArrays.components(x))
+
 const Broadcasted = Base.Broadcast.Broadcasted
 const Extruded = Base.Broadcast.Extruded
 

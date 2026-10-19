@@ -1,5 +1,8 @@
 export @accelerate, @show_lifetimes
 
+include("lifetime_dependencies.jl")
+include("lifetime_runtime.jl")
+
 # Include generic syntax layers before the cuNumeric-specific lifetime passes.
 include("util.jl")
 using .ScopingUtils

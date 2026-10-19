@@ -192,7 +192,6 @@ const FUSE_BROADCAST_EXPRS = CNPreferences.FUSE_BROADCAST
 const FUSE_BROADCAST_MIN_OPS = CNPreferences.FUSE_BROADCAST_MIN_OPS
 
 # Functionality
-include("scoping/lifetime_runtime.jl")
 include("cnscalar.jl")
 include("ndarray/diagonal.jl")
 include("ndarray/promotion.jl")

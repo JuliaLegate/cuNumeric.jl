@@ -1,17 +1,10 @@
-# Internal @accelerate extension point: return a tuple of values whose handles
-# this value borrows, e.g. _lifetime_dependencies(x::MyWrapper) = (x.parent,).
-# Dependencies must be acyclic and unchanged while a binding is live.
 # Only directly bound NDArrays become eligible for early cleanup; a parent
 # allocated inside a helper and exposed only through a wrapper stays GC-managed.
 # Escapes through mutable containers, closures, or side effects aren't tracked.
 # Exceptional exits rely on GC cleanup.
 #
 # An NDArray owns its own backend handle, even when its store is a view, so it
-# has no borrowed handle dependencies. Julia wrappers specialize this method.
-_lifetime_dependencies(::Any) = ()
-_lifetime_dependencies(x::Tuple) = x
-_lifetime_dependencies(x::NamedTuple) = values(x)
-
+# has no borrowed handle dependencies.
 _lifetime_handles(x::NDArray) = (x,)
 function _lifetime_handles(x)
     return mapfoldl(_lifetime_handles, (a, b) -> (a..., b...),

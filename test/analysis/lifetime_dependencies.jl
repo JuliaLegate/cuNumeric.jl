@@ -1,4 +1,5 @@
 using Test, LinearAlgebra, cuNumeric
+using StructArrays
 
 struct _LifetimeBox{T}
     value::T
@@ -10,6 +11,71 @@ _lifetime_read(x::NDArray) = Array(x)
 _lifetime_remember!(ref, x) = (ref[] = x; nothing)
 _lifetime_freed(ref) = ref[].ptr == C_NULL
 _lifetime_pair(x) = (left=x, right=_LifetimeBox(x))
+_lifetime_all_freed(ref) = all(x -> x.ptr == C_NULL, ref[])
+
+@testset "Container lifetime dependencies" begin
+    # Construct factor containers directly: these tests exercise their storage
+    # lifetimes without requiring a numerical factorization or GPU kernels.
+    hosts = ([1.0 2.0; 3.0 4.0], [2.0, 3.0], [5.0 6.0; 7.0 8.0])
+    inputs = map(NDArray, hosts)
+    owners = Ref{Any}()
+    cases = (
+        ("Diagonal", (a, b, c) -> Diagonal(b), d -> (d.diag,)),
+        ("QR", (a, b, c) -> cuNumeric.NDArrayQR(a, c), f -> (f.Q, f.R)),
+        ("SVD", (a, b, c) -> SVD(a, b, c), f -> (f.U, f.S, f.Vt)),
+        ("Eigen", (a, b, c) -> Eigen(b, a), f -> (f.values, f.vectors)),
+        ("Cholesky", (a, b, c) -> Cholesky(a, 'L', 0), f -> (f.factors,)),
+        ("Cholesky.L", (a, b, c) -> Cholesky(a, 'L', 0).L, l -> (parent(l),)),
+        ("Cholesky.U", (a, b, c) -> Cholesky(a, 'U', 0).U, u -> (parent(u),)),
+        ("StructArray", (a, b, c) -> StructArray((x=a, y=c)), s -> (s.x, s.y)),
+    )
+
+    @accelerate function _container_consume(a, b, c, wrap, parts, owners)
+        x = copy(a)
+        y = copy(b)
+        z = copy(c)
+        _lifetime_remember!(owners, (x, y, z))
+        container = wrap(x, y, z)
+        arrays = parts(container)
+        result = map(Array, arrays)
+        (result, _lifetime_all_freed(owners))
+    end
+    @accelerate function _container_escape(a, b, c, wrap, owners)
+        x = copy(a)
+        y = copy(b)
+        z = copy(c)
+        _lifetime_remember!(owners, (x, y, z))
+        wrap(x, y, z)
+    end
+    @accelerate function _container_input(container, parts)
+        arrays = parts(container)
+        first_array = first(arrays)
+        last_array = last(arrays)
+        Array(first_array)
+        Array(last_array)
+        # Reading a factor into a local must not destroy the caller's factor.
+        map(Array, parts(container))
+    end
+
+    for (name, wrap, parts) in cases
+        @testset "$name" begin
+            expected = map(Array, parts(wrap(inputs...)))
+            @test _container_consume(inputs..., wrap, parts, owners) == (expected, true)
+            escaped = _container_escape(inputs..., wrap, owners)
+            @test map(Array, parts(escaped)) == expected
+            # Unused arguments are freed; only the actual components escape.
+            for array in owners[]
+                retained = any(component -> component === array, parts(escaped))
+                @test (array.ptr != C_NULL) == retained
+            end
+            @test _container_input(escaped, parts) == expected
+            @test map(Array, parts(escaped)) == expected
+            foreach(cuNumeric.destroy!, parts(escaped))
+        end
+    end
+    @test map(Array, inputs) == hosts
+    foreach(cuNumeric.destroy!, inputs)
+end
 
 @testset "Type-dispatched lifetime dependencies" begin
     host = [1.0 2.0; 3.0 4.0]

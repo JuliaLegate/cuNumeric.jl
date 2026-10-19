@@ -4,8 +4,6 @@ const _NDMatrix = NDArray{<:SUPPORTED_ARRAY_TYPES,2}
 const _NDTransposeMatrix = Transpose{<:Any,<:_NDMatrix}
 const _NDAdjointMatrix = Adjoint{<:Any,<:_NDMatrix}
 
-_lifetime_dependencies(A::Union{Transpose,Adjoint}) = (parent(A),)
-
 _matmul_array(A::NDArray) = A
 _matmul_array(A::_NDTransposeMatrix) = nda_transpose(parent(A))
 
