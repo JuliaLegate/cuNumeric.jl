@@ -100,8 +100,8 @@ function _hoist_temporary(expr, assigned_vars)
     return temporary, [:($temporary = $expr)]
 end
 
-# Symbols a statement yields by reference (bare name or tuple elements): the
-# values that escape the block, so they are exempt from the free and never fused.
+# Symbols a statement yields directly, used to keep returned producers out of
+# broadcast fusion. Actual escaping handle dependencies are protected at runtime.
 function _result_symbols(stmt)
     stmt isa Symbol && return Set([stmt])
 
@@ -109,9 +109,6 @@ function _result_symbols(stmt)
     if !isnothing(assignment)
         return _result_symbols(assignment.rhs)
     end
-
-    source = _lifetime_alias_source(stmt)
-    isnothing(source) || return Set([source])
 
     if stmt isa Expr && stmt.head in (:tuple, :parameters)
         return mapreduce(_result_symbols, union, stmt.args; init=Set{Symbol}())
@@ -132,151 +129,66 @@ function _returned_symbols(scope)
     return _result_symbols(last(stmts))
 end
 
-# Lazy transpose/adjoint wrappers borrow their parent handle. Treat them like
-# aliases for lifetime purposes, and free the original NDArray rather than the
-# wrapper (which has no handle of its own). The cuNumeric.transpose helper is
-# deliberately excluded: it creates a separate backend handle.
-function _lifetime_alias_source(rhs)
-    rhs isa Symbol && return rhs
-    rhs isa Expr || return nothing
-    if rhs.head === Symbol("'") && length(rhs.args) == 1
-        return only(rhs.args) isa Symbol ? only(rhs.args) : nothing
-    end
-    call = _call(rhs)
-    isnothing(call) && return nothing
-    length(call.args) == 1 && only(call.args) isa Symbol || return nothing
-    call.f in (:transpose, :adjoint, :Transpose, :Adjoint,
-               :(Base.transpose), :(Base.adjoint),
-               :(LinearAlgebra.transpose), :(LinearAlgebra.adjoint),
-               :(LinearAlgebra.Transpose), :(LinearAlgebra.Adjoint)) || return nothing
-    return only(call.args)
+# Syntax determines when a binding is last used; runtime dispatch determines
+# which handles its value keeps alive. No constructor names are special here.
+function _lifetime_bindings(stmt)
+    assignment = _assignment(stmt)
+    isnothing(assignment) && return Symbol[]
+    names = _assigned_symbols(Expr(:(=), assignment.lhs, nothing))
+    filter!(name -> !all(==('_'), string(name)), names)
+    return Base.sort!(collect(names); by=string)
 end
 
-# Turn the named allocations produced by either lifetime rewriter into an
-# executable scope. For example, if tmp1 and tmp2 are last used by statement 3:
-#
-#   3  tmp3 = f(tmp1, tmp2)
-#      maybe_insert_delete(tmp1)
-#      maybe_insert_delete(tmp2)
-#
-# The final value of the block is protected because it escapes to the caller.
-"""
-    insert_finalizers(stmts::Vector)
-Insert `cuNumeric.maybe_insert_delete(var)` after the last use of each temporary variable.
-"""
 function insert_finalizers(
-    exprs::Vector, assigned_vars::Set{Symbol}; protected_roots::Set{Symbol}=Set{Symbol}()
+    exprs::Vector, ::Set{Symbol}; protected_roots::Set{Symbol}=Set{Symbol}()
 )
-    last_use = Dict{Symbol,Int}()
-    alias_map = Dict{Symbol,Symbol}()
-
     stmts = _flatten_statements(Expr(:block, exprs...))
+    isempty(stmts) && return stmts
+    bindings = map(_lifetime_bindings, stmts)
+    assigned = union(Set{Symbol}(), bindings...)
+    isempty(assigned) && return stmts
+    last_use = Dict{Symbol,Int}()
+    used = Set{Symbol}()
+    for (i, stmt) in enumerate(stmts), name in walk_symbols(stmt)
+        push!(used, name)
+        name in assigned && (last_use[name] = i)
+    end
 
-    # Pass 1: collect definitions and uses
+    scope, result = gensym(:lifetimes), gensym(:result)
+    out = Any[:($scope = cuNumeric._LifetimeScope())]
+    # External values may be captured variables as well as function arguments.
+    # Soft-scope named bindings also protect any value they had on entry.
+    incoming = union(setdiff(used, assigned), protected_roots)
+    for name in Base.sort!(collect(incoming); by=string)
+        all(==('_'), string(name)) && continue
+        push!(out, Expr(:if, Expr(:isdefined, name),
+                        :(cuNumeric._lifetime_protect!($scope, $name))))
+    end
+
+    # Preserve the existing convention that a terminal indexed write yields
+    # nothing, so its otherwise-unused RHS can be released.
+    terminal = something(_assignment(last(stmts)),
+                         _broadcast_assignment(last(stmts)), (; lhs=nothing))
+    terminal_indexed = terminal.lhs isa Expr && terminal.lhs.head === :ref
     for (i, stmt) in enumerate(stmts)
-        stmt isa Expr || continue
-        assignment = _assignment(stmt)
-        used_expr = stmt
-        if !isnothing(assignment)
-            (; lhs, rhs) = assignment
-            source = _lifetime_alias_source(rhs)
-            if lhs isa Symbol && !isnothing(source)
-                alias_map[lhs] = source
-            end
-            used_expr = rhs
+        final = i == length(stmts)
+        push!(out, final && !terminal_indexed ? :($result = $stmt) : stmt)
+        names = bindings[i]
+        if !isempty(names)
+            keys = Expr(:tuple, QuoteNode.(names)...)
+            values = Expr(:tuple, names...)
+            protected = Expr(:tuple, (name in protected_roots for name in names)...)
+            push!(out, :(cuNumeric._lifetime_bind!($scope, $keys, $values, $protected)))
         end
-        for symbol in walk_symbols(used_expr)
-            last_use[symbol] = i
+        if final && !terminal_indexed
+            push!(out, :(cuNumeric._lifetime_protect!($scope, $result)))
         end
-    end
-
-    # `F_u = tmp1` aliases one NDArray under two names; resolve to a canonical rep
-    # so it's freed once (double-free is masked only by the ptr=0 null-out).
-    function canon(v)
-        seen = Set{Symbol}()
-        while haskey(alias_map, v) && !(v in seen)
-            push!(seen, v)
-            v = alias_map[v]
-        end
-        return v
-    end
-
-    # Resolve the entire chain before extending lifetimes. A wrapper, a second
-    # wrapper that unwraps it, and ordinary aliases all share one owner.
-    for alias in keys(alias_map)
-        owner = canon(alias)
-        last_use[owner] = max(get(last_use, owner, 0), get(last_use, alias, 0))
-    end
-
-    function is_indexed_assign(stmt)
-        assignment = _assignment(stmt)
-        if isnothing(assignment)
-            assignment = _broadcast_assignment(stmt)
-        end
-        if !isnothing(assignment)
-            return !(assignment.lhs isa Symbol)
-        end
-        return false
-    end
-    # Pass 2: insert finalizers
-    out = Any[]
-    n = length(stmts)
-    freed = Set{Symbol}()
-
-    # The block's value escapes to the caller, except for `A[...] = rhs`: Julia
-    # returns `rhs` there, but that's a dead temp nobody consumes — free it and
-    # return `nothing` rather than leak it or hand back a dangling handle.
-    terminal_indexed = n > 0 && is_indexed_assign(stmts[n])
-
-    # Roots (function args) are protected regardless of the terminal statement.
-    protected = Set{Symbol}(canon(root) for root in protected_roots)
-    if n > 0 && !terminal_indexed
-        for result in _result_symbols(stmts[n])
-            push!(protected, canon(result))
+        for name in Base.sort!([name for (name, last) in last_use if last == i]; by=string)
+            push!(out, :(cuNumeric.maybe_insert_delete($scope, $(QuoteNode(name)))))
         end
     end
-
-    function emit_delete!(v)
-        c = canon(v)
-        if c in freed || c in protected
-            return nothing
-        end
-        push!(freed, c)
-        push!(out, :(cuNumeric.maybe_insert_delete($c)))
-        return nothing
-    end
-
-    for (i, stmt) in enumerate(stmts)
-        # `v = w` aliases w, so don't finalize w at this statement.
-        aliased_source = nothing
-        assignment = _assignment(stmt)
-        if !isnothing(assignment)
-            (; lhs, rhs) = assignment
-            if lhs isa Symbol
-                aliased_source = _lifetime_alias_source(rhs)
-            end
-        end
-
-        if i == n && !terminal_indexed
-            res_var = Symbol(:res, counter[])
-            counter[] += 1
-            push!(out, :($res_var = $stmt))
-        else
-            push!(out, stmt)
-        end
-
-        for (v, lasti) in last_use
-            if lasti == i && get(last_use, canon(v), lasti) == i &&
-               v in assigned_vars && v != aliased_source
-                emit_delete!(v)
-            end
-        end
-
-        if i == n
-            push!(out, terminal_indexed ? :nothing : res_var)
-        end
-    end
-
+    push!(out, :(cuNumeric._lifetime_finish!($scope)))
+    push!(out, terminal_indexed ? :nothing : result)
     return out
 end
 
@@ -319,14 +231,14 @@ function process_ndarray_scope(
     return process_lifetime_scope(scope; protected_roots)
 end
 
-# Return the deleted value for a generated finalizer call.
+# Return the released binding (or legacy deleted value) for a finalizer call.
 function _delete_argument(expr)
     call = _call(expr)
     isnothing(call) && return nothing
     if call.f != :(cuNumeric.maybe_insert_delete)
         return nothing
     end
-    return only(call.args)
+    return length(call.args) == 1 ? only(call.args) : last(call.args).value
 end
 
 # Header + body statements per form, so the printout mirrors the real expansion.
@@ -355,7 +267,7 @@ function print_lifetime_analysis(expansion; io::IO=stdout)
     for s in stmts
         deleted = _delete_argument(s)
         if !isnothing(deleted)
-            printstyled(io, lpad("✗ free ", 11), deleted, "\n"; color=:red)
+            printstyled(io, lpad("✗ release ", 11), deleted, "\n"; color=:red)
         else
             n += 1
             println(io, lpad(n, 4), "  ", _strip_lines(s))
