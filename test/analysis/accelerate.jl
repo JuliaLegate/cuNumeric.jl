@@ -64,6 +64,13 @@ end
     @test merged(cuNumeric._accelerate_expand(fn, @__MODULE__; aggressive=true)) ==
         cuNumeric.FUSE_BROADCAST_EXPRS
     @test_throws ErrorException cuNumeric._accelerate_options((:(fast = true),))
+    # Hoisted constants such as `Int8(2)` do not block the merge.
+    consts = Expr(:function, :(_acc_consts(P)), quote
+        P[3:4, :] .= P[1:2, :] .* Int8(2)
+        P[5:6, :] .= P[1:2, :] .- Int8(1)
+    end)
+    @test merged(cuNumeric._accelerate_expand(consts, @__MODULE__; aggressive=true)) ==
+        cuNumeric.FUSE_BROADCAST_EXPRS
 
     @accelerate aggressive=true function _acc_siblings(u, v, un, vn)
         un[2:(end - 1)] .= u[2:(end - 1)] .* 2.0f0 .+ v[2:(end - 1)]
@@ -285,8 +292,8 @@ end
             x .+= alpha .* p
             x
         end)))
-        @test occursin("x .+= alpha .* p", compound)
-        @test !occursin(r"tmp\d+ = alpha \.\* p", compound)
+        @test occursin("Base.broadcasted(*, alpha, p)", compound)
+        @test length(findall("_materialize_with_policy", compound)) == 1
 
         if cuNumeric.FUSE_BROADCAST_EXPRS
             # A same-shape chain fuses into one multi-output launch and still
@@ -328,7 +335,7 @@ end
 
         @test @inferred(
             cuNumeric._run_segments(
-                segs, outs, runtime_args, (), (), CartesianIndex(1, 1)
+                segs, outs, runtime_args, (), (), CartesianIndex(1, 1), cuNumeric.FixedOffsets{Int64}()
             )
         ) === nothing
         @test getindex.(outs, Ref(CartesianIndex(1, 1))) == (T(2), T(2), T(4))
@@ -340,6 +347,7 @@ end
             Tuple{},
             Tuple{},
             CartesianIndex{2},
+            cuNumeric.FixedOffsets{Int64},
         )
         typed = only(code_typed(cuNumeric._run_segments, argtypes; optimize=true)).first
         @test !occursin(
