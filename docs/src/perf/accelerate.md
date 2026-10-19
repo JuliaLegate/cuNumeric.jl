@@ -57,26 +57,3 @@ The form also affects how much memory is left for Julia's garbage collector to r
 
 [`@show_lifetimes`](../debugging.md#inspect-lifetime-rewrites-with-show_lifetimes)
 prints the rewritten code without running it.
-
-## Wrapper lifetimes
-
-Lifetime analysis tracks bindings at syntax level and queries their values at
-runtime to find borrowed handles. `Transpose`, `Adjoint`, and `CNScalar` keep
-their parent storage alive, including when returned by a helper function.
-Returning a wrapper, tuple, or named tuple also protects its dependencies.
-Backend NDArray views own separate handles and are released independently.
-
-A custom immutable wrapper can participate through this internal extension point:
-
-```julia
-cuNumeric._lifetime_dependencies(x::MyWrapper) = (x.parent,)
-```
-
-Dependencies must be acyclic and remain unchanged while a binding is live.
-Declaring dependencies does not transfer ownership: early cleanup applies to
-NDArray handles bound directly in the accelerated scope. Parents allocated
-entirely inside a helper and exposed only through a wrapper remain GC-managed.
-Arbitrary escapes through mutable containers, closures, or side effects are
-not tracked; return values that need to survive the scope. Exceptional exits
-rely on normal GC cleanup. Runtime tracking adds host bookkeeping but performs
-no array-element reads or backend synchronization.
