@@ -135,7 +135,7 @@ and a `k × n` `F.Vt`, and `full=true` gives `m × m` and `n × n`. `F.S` has le
 `k` and is real-valued for both real and complex input.
 
 Destructuring an `SVD` yields `(U, S, V)` — the adjoint of `F.Vt`, not `F.Vt`
-itself. `F.V` is a lazy `Adjoint` wrapper; multiplication with it is currently
+itself. `F.V` is a lazy `Adjoint` wrapper. Multiplication with it is currently
 unsupported and throws an `ArgumentError`. Prefer `F.Vt` for direct NDArray
 operations.
 

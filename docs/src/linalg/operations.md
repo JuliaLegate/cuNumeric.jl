@@ -16,28 +16,6 @@ C = A * B                 # allocates a new result
 mul!(similar(C), A, B)    # in-place GEMM into an existing array
 ```
 
-Allocating `*` also accepts lazy `Transpose` wrappers around 2D NDArrays on
-either side, including two transposed matrices. A transposed matrix can also
-multiply an NDArray vector.
-
-```julia
-AtB = transpose(A) * B
-ABt = A * transpose(B)
-y = transpose(A) * cuNumeric.ones(Float32, size(A, 1))
-```
-
-The wrapper is lowered to a backend transpose view and passed to the existing
-NDArray multiplication implementation. This adds standard Julia syntax without
-requiring a data copy for the transpose itself. `@accelerate` keeps the parent
-handle alive while the wrapper is in use.
-
-`transpose(A)` is Julia's lazy wrapper; `cuNumeric.transpose(A)` is the existing
-backend helper returning an NDArray. Multiplication with `Adjoint` matrix
-operands (`A'`), including real matrices, throws an `ArgumentError`. Transpose
-does not conjugate complex values. Wrapper support currently covers allocating
-matrix-matrix and matrix-vector products; `mul!`, broadcasting, slicing, and
-row-vector products are not supported for wrappers.
-
 ```@autodocs
 Modules = [cuNumeric]
 Pages = ["ndarray/binary.jl"]

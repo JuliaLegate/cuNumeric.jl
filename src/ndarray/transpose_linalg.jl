@@ -32,7 +32,7 @@ for AT in (_NDMatrix, _NDTransposeMatrix, _NDAdjointMatrix),
     BT in (_NDMatrix, _NDTransposeMatrix, _NDAdjointMatrix, NDArray{<:SUPPORTED_ARRAY_TYPES,1})
     (AT === _NDAdjointMatrix || BT === _NDAdjointMatrix) || continue
     @eval Base.:*(A::$AT, B::$BT) = throw(ArgumentError(
-        "NDArray multiplication with Adjoint matrices is not supported; " *
-        "use transpose(A) if a non-conjugating transpose is intended.",
+        "NDArray multiplication with Adjoint matrices is not supported. " *
+        "Use transpose(A) if a non-conjugating transpose is intended.",
     ))
 end
