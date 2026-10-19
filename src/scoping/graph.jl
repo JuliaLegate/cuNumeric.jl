@@ -10,6 +10,8 @@ using ..cuNumeric: Independent, DependsOn, DependsOnAll, UnknownDependencies,
 struct ValueRef
     id::Int
 end
+value_id(value::ValueRef) = value.id
+value_id(value) = 0
 
 struct OpaqueSyntax
     expression::Any
@@ -20,7 +22,9 @@ abstract type OperationKind end
 struct CallOp <: OperationKind end
 struct InputOp <: OperationKind end
 struct BroadcastOp <: OperationKind end
-struct IndexOp{View} <: OperationKind end
+struct IndexOp{View} <: OperationKind
+    root::Int               # indexed array, excluding index expressions/callables
+end
 struct WriteOp{Broadcast} <: OperationKind end
 struct BindOp <: OperationKind end
 struct ScopeOp <: OperationKind end
@@ -29,6 +33,7 @@ struct BorrowOp <: BorrowingOp end
 struct TupleOp <: BorrowingOp end
 struct ProjectionOp <: BorrowingOp end
 struct OpaqueOp <: OperationKind end
+# Multi-output and sibling launches; single-output fusion remains BroadcastOp.
 struct FusedOp <: OperationKind end
 
 mutable struct Operation{K<:OperationKind}
