@@ -12,8 +12,9 @@ function _is_function_lhs(lhs::Expr)
 end
 
 function _reject_nonstraightline(body)
-    MacroTools.postwalk(body) do node
-        node isa Expr || return node
+    function visit(node)
+        node isa Expr || return nothing
+        node.head in (:quote, :inert) && return nothing
         if node.head === :function || node.head === :-> ||
             (node.head === :(=) && _is_function_lhs(first(node.args)))
             error("@accelerate: nested/anonymous function definitions are not supported")
@@ -24,18 +25,30 @@ function _reject_nonstraightline(body)
                 "only straight-line code can be accelerated",
             )
         end
-        return node
+        foreach(visit, node.args)
+        return nothing
     end
+    visit(body)
     return nothing
 end
 
 # Function args are caller-owned: protected roots, never freed or fused away.
 function _argument_symbols(def)
     names = Set{Symbol}()
+    function binding(arg)
+        arg isa Symbol && (push!(names, arg); return nothing)
+        arg isa Expr || return nothing
+        if arg.head in (:tuple, :parameters)
+            foreach(binding, arg.args)
+        elseif arg.head in (:(::), :(...), :(<:), :(>:))
+            binding(first(arg.args))
+        end
+    end
     for arg in Iterators.flatten((get(def, :args, Any[]), get(def, :kwargs, Any[])))
         name, _, _, _ = MacroTools.splitarg(arg)
-        name isa Symbol && push!(names, name)
+        binding(name)
     end
+    foreach(binding, get(def, :whereparams, Any[]))
     return names
 end
 
@@ -50,8 +63,8 @@ function _accelerate_rewrite(
 )
     _reject_nonstraightline(body)
     body = _normalize_return(_expand_dot_macros(body, caller))
-    on_rewrite = BCAST_FUSION_DEBUG[] ? InterBroadcastFusion.log_rewrite : nothing
-    return process_ndarray_scope(body; on_rewrite, protected_roots, aggressive)
+    on_rewrite = BCAST_FUSION_DEBUG[] ? AccelerateGraph.log_rewrite : nothing
+    return process_ndarray_scope(body; on_rewrite, protected_roots, aggressive, caller)
 end
 
 # `begin`/expr form: 1:1 Julia scope (no `let`) — named bindings stay live.
@@ -60,147 +73,31 @@ end
 function _accelerate_block_soft(block, caller::Module; aggressive::Bool=false)
     _reject_nonstraightline(block)
     nb = _normalize_return(_expand_dot_macros(block, caller))
-    on_rewrite = BCAST_FUSION_DEBUG[] ? InterBroadcastFusion.log_rewrite : nothing
-    fallback = process_ndarray_scope(
+    on_rewrite = BCAST_FUSION_DEBUG[] ? AccelerateGraph.log_rewrite : nothing
+    return process_ndarray_scope(
         nb; on_rewrite, protected_roots=union(_assigned_symbols(nb), _free_symbols(nb)),
-        aggressive,
+        aggressive, caller, visible=true, local_bindings=_assigned_symbols(nb),
     )
-    @static if FUSE_BROADCAST_EXPRS
-        fused = _try_fuse_block_multi(nb)
-        if !isnothing(fused)
-            return quote
-                if cuNumeric._has_gpu_target()
-                    $fused
-                else
-                    $fallback
-                end
-            end
-        end
-    end
-    # Protect named bindings; free only anonymous temps.
-    return fallback
-end
-
-# Flatten a `let` node's bindings + body into one statement block.
-function _let_body(letexpr::Expr)
-    stmts = Any[]
-    for part in letexpr.args
-        if part isa Expr && part.head === :block
-            append!(stmts, part.args)
-        elseif part isa Expr && part.head === :(=)
-            push!(stmts, part)
-        elseif !isnothing(part)
-            push!(stmts, part)
-        end
-    end
-    return Expr(:block, stmts...)
 end
 
 # `let` form: hard scope. Full analysis — combine single-use producers, free
 # every non-returned temp — re-wrapped in a `let` so only the result escapes.
 function _accelerate_block_hard(letexpr, caller::Module; aggressive::Bool=false)
-    body = _let_body(letexpr)
-    _reject_nonstraightline(body)
+    _reject_nonstraightline(letexpr)
+    header, body = length(letexpr.args) == 1 ? (Expr(:block), only(letexpr.args)) : letexpr.args
+    header = _expand_dot_macros(header, caller)
     nb = _normalize_return(_expand_dot_macros(body, caller))
-    on_rewrite = BCAST_FUSION_DEBUG[] ? InterBroadcastFusion.log_rewrite : nothing
-    rewritten = process_ndarray_scope(
-        nb; on_rewrite, protected_roots=_free_symbols(nb), aggressive
-    )
-    bindings = union(_assigned_symbols(nb), _assigned_symbols(rewritten))
-    return _lexical_scope(rewritten, bindings)
+    on_rewrite = BCAST_FUSION_DEBUG[] ? AccelerateGraph.log_rewrite : nothing
+    allsyntax = Expr(:block, header, nb)
+    protected = _free_symbols(allsyntax)
+    p = AccelerateGraph.parse_let(header, nb; caller, protected,
+        locals=_assigned_symbols(allsyntax))
+    plan = AccelerateGraph.optimize(p; fusion=FUSE_BROADCAST_EXPRS, aggressive, on_rewrite)
+    return Expr(:let, Expr(:block), AccelerateGraph.emit(plan))
 end
 
 # Drop the leading dot: `.+` -> `+`, `.^` -> `^`.
 _undot(op::Symbol) = Symbol(chop(string(op); head=1, tail=0))
-
-# Dotted RHS -> lazy `Base.broadcasted(...)`: chain vars become `MatRef{k}`,
-# slice leaves are hoisted into `hoisted` (temp => slice) to free post-launch.
-# `nothing` when not lowerable (caller falls back).
-function _to_broadcasted(expr, idx::AbstractDict{Symbol,Int}, hoisted::Vector)
-    if expr isa Symbol
-        haskey(idx, expr) && return :(cuNumeric.MatRef($(idx[expr])))
-        return expr
-    end
-    expr isa Expr || return expr
-    if expr.head === :ref
-        # Slice temp: bail if it indexes a chain var, else hoist to free later.
-        any(s -> haskey(idx, s), walk_symbols(expr)) && return nothing
-        tmp = gensym(:slice)
-        push!(hoisted, tmp => expr)
-        return tmp
-    end
-    if expr.head === :call && expr.args[1] isa Symbol && _is_broadcast_op(expr.args[1])
-        cargs = map(a -> _to_broadcasted(a, idx, hoisted), expr.args[2:end])
-        any(isnothing, cargs) && return nothing
-        return Expr(:call, :(Base.broadcasted), _undot(expr.args[1]), cargs...)
-    end
-    if expr.head === :. && length(expr.args) == 2 &&
-        expr.args[2] isa Expr && expr.args[2].head === :tuple
-        cargs = map(a -> _to_broadcasted(a, idx, hoisted), expr.args[2].args)
-        any(isnothing, cargs) && return nothing
-        return Expr(:call, :(Base.broadcasted), expr.args[1], cargs...)
-    end
-    # Non-dotted scalar leaf; unsafe if it reads a chain var as a scalar.
-    any(s -> haskey(idx, s), walk_symbols(expr)) && return nothing
-    return expr
-end
-
-function _is_top_broadcast(rhs)
-    return (
-        rhs isa Expr && rhs.head === :call && rhs.args[1] isa Symbol &&
-        _is_broadcast_op(rhs.args[1])
-    ) ||
-           (
-        rhs isa Expr && rhs.head === :. && length(rhs.args) == 2 &&
-        rhs.args[2] isa Expr && rhs.args[2].head === :tuple
-    )
-end
-
-# SSA chain of `sym = <broadcast>` (+ optional trailing return) -> one
-# multi-output launch materializing each result. `nothing` -> caller falls back.
-function _try_fuse_block_multi(block)
-    stmts = _scope_statements(block)
-    isnothing(stmts) && return nothing
-    stmts = filter(s -> !(s isa LineNumberNode), stmts)
-    isempty(stmts) && return nothing
-
-    assigns = stmts
-    ret = nothing
-    if isnothing(_assignment(last(stmts)))
-        ret = last(stmts)
-        assigns = stmts[1:(end - 1)]
-    end
-    length(assigns) >= 2 || return nothing
-
-    syms = Symbol[]
-    idx = Dict{Symbol,Int}()
-    seg_exprs = Any[]
-    hoisted = Pair{Symbol,Any}[]                   # slice temp => slice expr
-    for stmt in assigns
-        a = _assignment(stmt)
-        isnothing(a) && return nothing
-        a.lhs isa Symbol || return nothing        # no indexed-assign in this path
-        a.lhs in syms && return nothing            # SSA: no reassignment
-        _is_top_broadcast(a.rhs) || return nothing # must be a real broadcast
-        seg = _to_broadcasted(a.rhs, idx, hoisted)
-        isnothing(seg) && return nothing
-        push!(seg_exprs, seg)
-        push!(syms, a.lhs)
-        idx[a.lhs] = length(syms)
-    end
-    outs = gensym(:outs)
-    slice_binds = [:($t = $e) for (t, e) in hoisted]
-    slice_frees = [:(cuNumeric.maybe_insert_delete($t)) for (t, _) in hoisted]
-    binds = [:($(syms[i]) = $outs[$i]) for i in eachindex(syms)]
-    value = isnothing(ret) ? last(syms) : ret
-    return quote
-        $(slice_binds...)                          # materialize slice views
-        $outs = cuNumeric.copyto_fused_multi_alloc!(($(seg_exprs...),))
-        $(slice_frees...)                          # free them after the launch
-        $(binds...)
-        $value
-    end
-end
 
 # AST `@accelerate` emits (pre-`esc`); shared with `@show_lifetimes`. Dispatch:
 # function def / `let` (hard scope) / `begin`-expr (soft, 1:1 Julia scope).
@@ -222,7 +119,7 @@ end
 # Final pass, after fusion and lifetime analysis. Only explicit dotted syntax
 # and generated fusion calls acquire the policy; ordinary callees stay unchanged.
 function _policy_broadcasted(ex, policy)
-    _is_top_broadcast(ex) || return _lower_broadcast_policy(ex, policy)
+    _is_broadcast_syntax(ex) || return _lower_broadcast_policy(ex, policy)
     f, args = if ex.head === :call
         _undot(ex.args[1]), ex.args[2:end]
     else
@@ -257,7 +154,7 @@ function _lower_broadcast_policy(ex, policy)
         destexpr = lhs isa Expr && lhs.head === :ref ? :(Base.@view $lhs) : lhs
         destexpr = _lower_broadcast_policy(destexpr, policy)
         bc = if ex.head === :(.=)
-            if _is_top_broadcast(rhs)
+            if _is_broadcast_syntax(rhs)
                 _policy_broadcasted(rhs, policy)
             else
                 :(Base.broadcasted(identity, $(_lower_broadcast_policy(rhs, policy))))
@@ -272,7 +169,7 @@ function _lower_broadcast_policy(ex, policy)
             end
         )
     end
-    if _is_top_broadcast(ex)
+    if _is_broadcast_syntax(ex)
         return :(cuNumeric._materialize_with_policy($policy, $(_policy_broadcasted(ex, policy))))
     end
     return Expr(ex.head, map(a -> _lower_broadcast_policy(a, policy), ex.args)...)
@@ -305,6 +202,15 @@ Single-use producers may fuse across intervening read-only calculations when
 their inputs are unchanged. Unknown calls remain barriers. Function-form fusion
 across writes to other array arguments checks storage overlap at runtime and
 retains materialized intermediates when those arguments overlap.
+
+Lifetime analysis uses declared borrowing rules for recognized calls, including
+lazy transpose/adjoint wrappers. It does not inspect called function bodies.
+Unknown calls are assumed to return locally owned results and not retain their
+arguments through side effects: their results and inputs stay live until scope
+exit, and are preserved if needed by the returned value. A function that returns
+a caller-owned alias cannot be identified automatically. Keep such calls outside
+accelerated regions unless the package supplies a borrowing rule. Exceptional
+exits rely on normal garbage collection.
 
 Four forms determine which values must remain valid:
 
