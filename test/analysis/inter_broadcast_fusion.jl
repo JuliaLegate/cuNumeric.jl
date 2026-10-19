@@ -1,6 +1,6 @@
 using Test
 
-const IBF = cuNumeric.InterBroadcastFusion
+const IBF = cuNumeric.AccelerateGraph
 const SU = cuNumeric.ScopingUtils
 
 @testset "Nonadjacent producer elimination" begin

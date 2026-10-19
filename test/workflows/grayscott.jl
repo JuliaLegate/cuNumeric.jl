@@ -72,10 +72,10 @@ end
     )
 
     # # Forward-Euler time step for all points except the boundaries
-    u_new[2:(end - 1), 2:(end - 1)] =
-        @. ((args.c_u * u_lap) + F_u) * args.dt + u[2:(end - 1), 2:(end - 1)]
-    v_new[2:(end - 1), 2:(end - 1)] =
-        @. ((args.c_v * v_lap) + F_v) * args.dt + v[2:(end - 1), 2:(end - 1)]
+    u_new[2:(end - 1), 2:(end - 1)] = @. ((args.c_u * u_lap) + F_u) * args.dt +
+        u[2:(end - 1), 2:(end - 1)]
+    v_new[2:(end - 1), 2:(end - 1)] = @. ((args.c_v * v_lap) + F_v) * args.dt +
+        v[2:(end - 1), 2:(end - 1)]
 
     # Apply periodic boundary conditions
     u_new[:, 1] = u[:, end - 1]
@@ -286,13 +286,10 @@ function test_scoping_rewrite_pipeline()
         @test utils._broadcast_assignment(:(A[:] .-= x)).rhs == :x
         @test utils._call(:(f(x, y))) == (f=:f, args=Any[:x, :y])
         @test utils._dotcall(:(f.(x, y))) == (f=:f, args=Any[:x, :y])
-        @test utils._reference(:(A[i, j])) == (array=:A, indices=Any[:i, :j])
         @test utils._is_broadcast_syntax(:(x .* y))
         @test utils._is_scalar_expression(:(args.dx ^ 2))
         @test utils._is_scalar_expression(:(args.f + args.k))
         @test !utils._is_scalar_expression(:(A ^ 2))
-        @test utils._replace_symbols(:(x .+ y), Dict(:x => :(a .* b))) ==
-            :((a .* b) .+ y)
         @test isnothing(
             utils._assignment(quote
                 x = y
@@ -307,31 +304,32 @@ function test_scoping_rewrite_pipeline()
             C[:, :] = shifted ./ 3
         end
         events = NamedTuple[]
-        rewritten = cuNumeric.InterBroadcastFusion.rewrite_scope(
+        rewritten = cuNumeric.AccelerateGraph.rewrite_scope(
             source; on_rewrite=event -> push!(events, event)
         )
         stmts = utils._flatten_statements(rewritten)
-        fused = sprint(Base.show_unquoted, only(stmts))
+        fused = sprint(Base.show_unquoted, rewritten)
         @test !occursin("product", fused)
         @test !occursin("shifted", fused)
         @test occursin(".=", fused)
 
         io = IOBuffer()
-        cuNumeric.InterBroadcastFusion.log_rewrite(only(events); io)
+        @test !isempty(events)
+        foreach(event -> cuNumeric.AccelerateGraph.log_rewrite(event; io), events)
         log = String(take!(io))
-        @test occursin("product =", log)
-        @test occursin("shifted =", log)
+        @test occursin("before", log)
+        @test occursin(".*", log)
         @test occursin("fused", log)
 
         untouched = quote
             C[:, :] = A .* B
         end
         empty!(events)
-        rewritten = cuNumeric.InterBroadcastFusion.rewrite_scope(
+        rewritten = cuNumeric.AccelerateGraph.rewrite_scope(
             untouched; on_rewrite=event -> push!(events, event)
         )
         @test isempty(events)
-        @test utils._strip_lines(rewritten) == utils._strip_lines(untouched)
+        @test !occursin(".=", sprint(Base.show_unquoted, rewritten))
 
         dotted = quote
             tmp = @. A + B
@@ -340,7 +338,7 @@ function test_scoping_rewrite_pipeline()
         expanded = cuNumeric._expand_dot_macros(dotted, @__MODULE__)
         @test !occursin("@__dot__", sprint(Base.show_unquoted, expanded))
 
-        rewritten = cuNumeric.InterBroadcastFusion.rewrite_scope(expanded)
+        rewritten = cuNumeric.AccelerateGraph.rewrite_scope(expanded)
         rendered = sprint(Base.show_unquoted, utils._strip_lines(rewritten))
         @test !occursin("tmp =", rendered)
         @test occursin("Float64.(1.0)", rendered)
@@ -351,76 +349,44 @@ function test_scoping_rewrite_pipeline()
             C[2:(end - 1), 2:(end - 1)] .=
                 A[2:(end - 1), 2:(end - 1)] .* B[2:(end - 1), 2:(end - 1)] .+ 2
         end
-
-        cuNumeric.counter[] = 0
-        try
-            rewritten, assigned = cuNumeric.rewrite_broadcast_lifetimes(source)
-            stmts = utils._flatten_statements(rewritten)
-
-            @test assigned == Set([:tmp1, :tmp2, :tmp3])
-            destination = utils._assignment(stmts[1])
-            @test destination.lhs == :tmp1
-            @test occursin("@view", sprint(Base.show_unquoted, destination.rhs))
-            @test utils._assignment(stmts[2]) ==
-                (lhs=:tmp2, rhs=:(A[2:(end - 1), 2:(end - 1)]))
-            @test utils._assignment(stmts[3]) ==
-                (lhs=:tmp3, rhs=:(B[2:(end - 1), 2:(end - 1)]))
-            @test !isnothing(utils._broadcast_assignment(stmts[4]))
-
-            finalized = cuNumeric.insert_finalizers(rewritten, assigned)
-            freed = Set{Symbol}()
-            for stmt in utils._flatten_statements(finalized)
-                argument = cuNumeric._delete_argument(stmt)
-                isnothing(argument) || push!(freed, argument)
-            end
-            @test freed == assigned
-        finally
-            cuNumeric.counter[] = 0
-        end
+        G = cuNumeric.AccelerateGraph
+        graph = G.parse_scope(source; caller=@__MODULE__)
+        slices = filter(op -> op.kind isa G.IndexOp, graph.operations)
+        @test length(slices) == 3
+        @test first(slices).kind isa G.IndexOp{true}
+        @test count(op -> op.kind isa G.WriteOp{true}, graph.operations) == 1
+        @test count(op -> op.kind isa G.BroadcastOp, graph.operations) == 0
+        freed = Set(v for ids in G.cleanup(graph) for v in ids)
+        @test freed == Set(only(op.outputs) for op in slices)
     end
 
     @testset "Compound broadcast assignments stay fused" begin
         source = quote
             x .+= alpha .* p
-            @views Ap[2:end] .-= lower[2:end] .* p[1:(end - 1)]
+            Ap[2:end] .-= lower[2:end] .* p[1:(end - 1)]
         end
-
-        for rewrite in (
-            cuNumeric.rewrite_broadcast_lifetimes, cuNumeric.rewrite_eager_lifetimes
-        )
-            cuNumeric.counter[] = 0
-            try
-                rewritten, assigned = rewrite(source)
-                rendered = sprint(Base.show_unquoted, utils._strip_lines(rewritten))
-
-                @test occursin("x .+= alpha .* p", rendered)
-                @test occursin(".-=", rendered)
-                @test count(line -> occursin(".*", line), eachline(IOBuffer(rendered))) == 2
-                @test !occursin(r"tmp\d+ = alpha \.\* p", rendered)
-                @test !occursin(r"tmp\d+ = .*lower.* \.\* .*p", rendered)
-                @test !isempty(assigned) # slice views are still lifetime-managed
-            finally
-                cuNumeric.counter[] = 0
-            end
-        end
+        G = cuNumeric.AccelerateGraph
+        graph = G.parse_scope(source; caller=@__MODULE__)
+        updates = filter(op -> op.kind isa G.WriteOp{true}, graph.operations)
+        @test length(updates) == 2
+        @test [op.expression.head for op in updates] == [:(.+=), :(.-=)]
+        @test all(op -> utils._is_broadcast_syntax(last(op.expression.args)), updates)
+        @test !any(op -> op.kind isa G.BroadcastOp, graph.operations)
+        @test count(op -> op.kind isa G.IndexOp, graph.operations) == 3
     end
 
     @testset "Scalar arithmetic stays inline" begin
         source = quote
             C .= A ./ args.dx^2 .+ (args.f + args.k)
         end
-
-        cuNumeric.counter[] = 0
-        try
-            rewritten, assigned = cuNumeric.rewrite_broadcast_lifetimes(source)
-            rendered = sprint(Base.show_unquoted, utils._strip_lines(rewritten))
-
-            @test isempty(assigned)
-            @test occursin("args.dx ^ 2", rendered)
-            @test occursin("args.f + args.k", rendered)
-        finally
-            cuNumeric.counter[] = 0
-        end
+        G = cuNumeric.AccelerateGraph
+        graph = G.parse_scope(source; caller=@__MODULE__)
+        # Scalar subexpressions execute once before the broadcast and remain
+        # ordinary arithmetic; they must not become separate broadcasts.
+        @test !any(op -> op.kind isa G.BroadcastOp, graph.operations)
+        rendered = sprint(Base.show_unquoted, G.emit(graph; finalizers=false))
+        @test occursin(".dx ^ 2", rendered)
+        @test occursin(r"\.f \+ .*\.k", rendered)
     end
 
     @testset "Eager lifetime rewrite" begin
@@ -428,42 +394,27 @@ function test_scoping_rewrite_pipeline()
             result = f(A[2:(end - 1), 2:(end - 1)])
             consume(result)
         end
-
-        cuNumeric.counter[] = 0
-        try
-            rewritten, assigned = cuNumeric.rewrite_eager_lifetimes(source)
-            stmts = utils._flatten_statements(rewritten)
-
-            @test assigned == Set([:result, :tmp1, :tmp2, :tmp3])
-            @test utils._assignment(stmts[1]) ==
-                (lhs=:tmp1, rhs=:(A[2:(end - 1), 2:(end - 1)]))
-            @test utils._call(utils._assignment(stmts[2]).rhs).f == :f
-            @test utils._assignment(stmts[3]) == (lhs=:result, rhs=:tmp2)
-            @test utils._call(utils._assignment(stmts[4]).rhs).f == :consume
-        finally
-            cuNumeric.counter[] = 0
-        end
+        G = cuNumeric.AccelerateGraph
+        graph = G.parse_scope(source; caller=@__MODULE__)
+        @test count(op -> op.kind isa G.IndexOp, graph.operations) == 1
+        calls = filter(op -> op.kind isa G.CallOp, graph.operations)
+        @test length(calls) == 2
+        slice = only(filter(op -> op.kind isa G.IndexOp, graph.operations))
+        @test calls[1].inputs[end] == only(slice.outputs)
+        @test graph.bindings[:result].id in calls[2].inputs
+        @test all(op -> graph.values[only(op.outputs)].deferred, calls)
     end
 
     @testset "Multiple returned bindings" begin
         source = quote
-            tmp1 = f(A)
-            first_result = tmp1
-            tmp2 = g(A)
-            second_result = tmp2
+            first_result = f(A)
+            second_result = g(A)
             (first_result, second_result)
         end
-        assigned = Set([:tmp1, :first_result, :tmp2, :second_result])
-        finalized = cuNumeric.insert_finalizers(source, assigned)
-        freed = Set(
-            filter(
-                !isnothing, map(cuNumeric._delete_argument, utils._flatten_statements(finalized))
-            ),
-        )
-
-        @test isempty(freed)
+        G = cuNumeric.AccelerateGraph
+        graph = G.parse_scope(source; caller=@__MODULE__)
+        @test all(isempty, G.cleanup(graph))
     end
-
     @testset "Block form keeps Julia scope" begin
         # Block form adds no scope: bindings stay live in the enclosing scope (1:1 Julia).
         function visible_binding()
