@@ -135,9 +135,9 @@ and a `k × n` `F.Vt`, and `full=true` gives `m × m` and `n × n`. `F.S` has le
 `k` and is real-valued for both real and complex input.
 
 Destructuring an `SVD` yields `(U, S, V)` — the adjoint of `F.Vt`, not `F.Vt`
-itself. `F.V` is a lazy `Adjoint` wrapper and supports matrix-matrix and
-matrix-vector multiplication with NDArrays. General wrapper operations such as
-broadcasting are not yet supported; use `F.Vt` for direct NDArray operations.
+itself. `F.V` is a lazy `Adjoint` wrapper; multiplication with it is currently
+unsupported and throws an `ArgumentError`. Prefer `F.Vt` for direct NDArray
+operations.
 
 The backend only factors tall or square matrices (`m >= n`). A wide input
 throws `ArgumentError` rather than hitting the C++ `m >= n` assert.

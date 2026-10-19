@@ -18,13 +18,13 @@ _remember_transpose_parent!(ref, a) = (ref[] = a; nothing)
     @test Array(_transpose_temporary(a, b, owner)) ≈ transpose(ah) * bh
     @test owner[].ptr == C_NULL
 
-    @accelerate function _adjoint_temporary(a, b, owner)
+    @accelerate function _transpose_vector_temporary(a, x, owner)
         t = copy(a)
         _remember_transpose_parent!(owner, t)
-        w = t'
-        w * b
+        w = transpose(t)
+        w * x
     end
-    @test Array(_adjoint_temporary(a, b, owner)) ≈ ah' * bh
+    @test Array(_transpose_vector_temporary(a, NDArray(bh[:, 1]), owner)) ≈ transpose(ah) * bh[:, 1]
     @test owner[].ptr == C_NULL
 
     @accelerate function _double_transpose_temporary(a, b, owner)
@@ -46,7 +46,8 @@ _remember_transpose_parent!(ref, a) = (ref[] = a; nothing)
         t'
     end
     escaped = _return_adjoint(a)
-    @test Array(escaped * b) ≈ ah' * bh
+    @test Array(parent(escaped)) == ah
+    @test_throws ArgumentError escaped * b
     cuNumeric.destroy!(parent(escaped))
 
     @accelerate function _return_transpose(a)

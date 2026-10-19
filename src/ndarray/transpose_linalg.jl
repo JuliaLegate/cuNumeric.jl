@@ -1,71 +1,38 @@
-# Base already constructs lazy Transpose/Adjoint wrappers for NDArrays. Keep
-# their parents on the backend by expressing transposition as contraction modes.
+# Base supplies the lazy wrappers. Lower matrix transposes to backend store
+# views only when multiplying, then use the existing NDArray multiplication.
 const _NDMatrix = NDArray{<:SUPPORTED_ARRAY_TYPES,2}
 const _NDTransposeMatrix = Transpose{<:Any,<:_NDMatrix}
 const _NDAdjointMatrix = Adjoint{<:Any,<:_NDMatrix}
-const _NDWrappedMatrix = Union{_NDTransposeMatrix,_NDAdjointMatrix}
 
-_matmul_parent(A::NDArray) = A
-_matmul_parent(A::_NDWrappedMatrix) = parent(A)
-_matmul_modes(::NDArray, modes) = modes
-_matmul_modes(::_NDWrappedMatrix, modes) = reverse(modes)
-_matmul_operand(A) = _matmul_parent(A)
-_matmul_operand(A::_NDAdjointMatrix) = conj(parent(A))
+_matmul_array(A::NDArray) = A
+_matmul_array(A::_NDTransposeMatrix) = nda_transpose(parent(A))
 
-function _wrapped_matmul!(C::NDArray, A, B, α, β)
-    size(A, 2) == size(B, 1) ||
-        throw(DimensionMismatch("matrix multiplication dimensions do not match"))
-    expected = ndims(B) == 1 ? (size(A, 1),) : (size(A, 1), size(B, 2))
-    size(C) == expected ||
-        throw(DimensionMismatch("mul! output is $(size(C)), expected $expected"))
-    Ap, Bp = _matmul_parent(A), _matmul_parent(B)
-    # Check original stores before promotion or conjugation can hide aliasing.
-    (nda_overlaps(C, Ap) || nda_overlaps(C, Bp)) &&
-        throw(ArgumentError("mul! output must not alias either input"))
-    cm, am, bm = ndims(B) == 1 ? ("i", "ij", "j") : ("ij", "ik", "kj")
-    am, bm = _matmul_modes(A, am), _matmul_modes(B, bm)
-    # The existing zero/empty path must not read either input.
-    skip = _host_iszero(α) || isempty(Ap) || isempty(Bp) || isempty(C)
-    Ac = skip ? Ap : _matmul_operand(A)
+function _transpose_mul(A, B)
+    a = _matmul_array(A)
     try
-        Bc = skip ? Bp : _matmul_operand(B)
+        b = _matmul_array(B)
         try
-            return _linalg_mul!(C, cm, Ac, am, Bc, bm, α, β)
+            return a * b
         finally
-            Bc !== Bp && destroy!(Bc)
+            b !== B && destroy!(b)
         end
     finally
-        Ac !== Ap && destroy!(Ac)
+        a !== A && destroy!(a)
     end
 end
 
-function _wrapped_matmul(A, B)
-    T = _matmul_eltype(promote_type(eltype(A), eltype(B)))
-    size(A, 2) == size(B, 1) ||
-        throw(DimensionMismatch("matrix multiplication dimensions do not match"))
-    dims = ndims(B) == 1 ? (size(A, 1),) : (size(A, 1), size(B, 2))
-    C = _undef_array(T, dims)
-    try
-        return _wrapped_matmul!(C, A, B, true, false)
-    catch
-        destroy!(C)
-        rethrow()
-    end
-end
+Base.:*(A::_NDTransposeMatrix, B::_NDMatrix) = _transpose_mul(A, B)
+Base.:*(A::_NDMatrix, B::_NDTransposeMatrix) = _transpose_mul(A, B)
+Base.:*(A::_NDTransposeMatrix, B::_NDTransposeMatrix) = _transpose_mul(A, B)
+Base.:*(A::_NDTransposeMatrix, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1}) = _transpose_mul(A, x)
 
-# Separate wrapper signatures also resolve LinearAlgebra's wrapper-specific
-# methods. Leave the existing unwrapped NDArray multiplication paths unchanged.
+# Reject adjoint matrix operands explicitly rather than scalar-indexing through
+# LinearAlgebra's generic methods. Keep separate signatures to avoid ambiguities.
 for AT in (_NDMatrix, _NDTransposeMatrix, _NDAdjointMatrix),
     BT in (_NDMatrix, _NDTransposeMatrix, _NDAdjointMatrix, NDArray{<:SUPPORTED_ARRAY_TYPES,1})
-    AT === _NDMatrix && (BT === _NDMatrix || BT <: AbstractVector) && continue
-    CT = BT <: AbstractVector ? NDArray{<:SUPPORTED_ARRAY_TYPES,1} : _NDMatrix
-    @eval begin
-        Base.:*(A::$AT, B::$BT) = _wrapped_matmul(A, B)
-        LinearAlgebra.mul!(C::$CT, A::$AT, B::$BT) =
-            _wrapped_matmul!(C, A, B, true, false)
-        LinearAlgebra.mul!(C::$CT, A::$AT, B::$BT, α::Union{Number,DeviceScalar}, β::Union{Number,DeviceScalar}) =
-            _wrapped_matmul!(C, A, B, α, β)
-        LinearAlgebra.mul!(C::$CT, A::$AT, B::$BT, α::Number, β::Number) =
-            _wrapped_matmul!(C, A, B, α, β)
-    end
+    (AT === _NDAdjointMatrix || BT === _NDAdjointMatrix) || continue
+    @eval Base.:*(A::$AT, B::$BT) = throw(ArgumentError(
+        "NDArray multiplication with Adjoint matrices is not supported; " *
+        "use transpose(A) if a non-conjugating transpose is intended.",
+    ))
 end
