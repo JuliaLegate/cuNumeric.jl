@@ -106,8 +106,7 @@ function split_broadcast_args_for_kernel(args::Tuple)
     is_runtime = arg isa Base.RefValue ? value isa Number : _is_runtime_broadcast_arg(arg)
 
     if is_runtime
-        runtime_args, static_args, arg_plan =
-            split_broadcast_args_for_kernel(Base.tail(args))
+        runtime_args, static_args, arg_plan = split_broadcast_args_for_kernel(Base.tail(args))
         return (
             (value, runtime_args...), static_args,
             (RuntimeBroadcastArg{1}(), map(_shift_runtime_arg, arg_plan)...),
@@ -116,15 +115,14 @@ function split_broadcast_args_for_kernel(args::Tuple)
 
     if arg isa Base.RefValue || isbits(arg)
         _check_static_broadcast_arg(value)
-        runtime_args, static_args, arg_plan =
-            split_broadcast_args_for_kernel(Base.tail(args))
+        runtime_args, static_args, arg_plan = split_broadcast_args_for_kernel(Base.tail(args))
         return (
             runtime_args, (value, static_args...),
             (StaticBroadcastArg{1}(), map(_shift_static_arg, arg_plan)...),
         )
     end
 
-    throw(
+    return throw(
         ArgumentError(
             "Broadcast fusion does not know how to lower argument " *
             "$(repr(arg)) of type $(typeof(arg))",
@@ -1236,7 +1234,7 @@ function _sibling_segments(dests::Tuple, bcs::Tuple)
     end
     return Tuple(
         map(insts) do bc
-            flat = Base.Broadcast.flatten(_fold_fused_scalar_broadcasts(bc))
+            flat = _broadcast_flatten(_fold_fused_scalar_broadcasts(bc))
             _assert_kernel_function_has_no_data(flat.f)
             rt, st, plan = split_broadcast_args_for_kernel(_unwrap_fusion_args(flat.args))
             rt = _align_fused_runtime_args(rt)
