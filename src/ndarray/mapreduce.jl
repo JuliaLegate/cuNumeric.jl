@@ -171,3 +171,26 @@ Base.mapreduce(f, op, A::NDArray, B::AbstractArray, rest::AbstractArray...; kwar
 for (name, op) in ((:sum, Base.add_sum), (:prod, Base.mul_prod), (:minimum, min), (:maximum, max))
     @eval Base.$name(f, A::NDArray; kwargs...) = mapreduce(f, $op, A; kwargs...)
 end
+
+"""
+    all(f, A::NDArray; dims=:)
+
+Reduce a Bool-valued GPU predicate with conjunction, without allocating a mapped
+array. Empty reductions return true. Full reductions return a deferred `CNBool`;
+explicit dimensions retain singleton axes. Uses the same callable requirements
+as `mapreduce` and does not short-circuit.
+"""
+Base.all(f, A::NDArray; dims=:) = mapreduce(f, &, A; dims, init=true)
+# Resolve Base's (Function, AbstractArray) method while also supporting functors.
+Base.all(f::Function, A::NDArray; dims=:) = mapreduce(f, &, A; dims, init=true)
+
+"""
+    any(f, A::NDArray; dims=:)
+
+Reduce a Bool-valued GPU predicate with disjunction, without allocating a mapped
+array. Empty reductions return false. Full reductions return a deferred `CNBool`;
+explicit dimensions retain singleton axes. Uses the same callable requirements
+as `mapreduce` and does not short-circuit.
+"""
+Base.any(f, A::NDArray; dims=:) = mapreduce(f, |, A; dims, init=false)
+Base.any(f::Function, A::NDArray; dims=:) = mapreduce(f, |, A; dims, init=false)

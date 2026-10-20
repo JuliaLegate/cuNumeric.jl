@@ -33,6 +33,92 @@ function _check_boolean_mapreduce(f, op, input; kwargs...)
     end
 end
 
+struct BooleanReductionAbove{T}
+    cutoff::T
+end
+(f::BooleanReductionAbove)(x) = x > f.cutoff
+
+function _check_predicate_reduction(reduce, f, input; dims=:)
+    # Match the zero-dimensional reference workaround above on Julia 1.10.
+    singleton_reference = ndims(input) == 0 && dims === 1
+    # Base's dimensional API accepts Function, while cuNumeric also supports
+    # GPU-compilable callable structs.
+    expected = reduce(x -> f(x), singleton_reference ? reshape(input, 1) : input; dims)
+    singleton_reference && (expected = reshape(expected, ()))
+    A = NDArray(input)
+    result = nothing
+    try
+        result = try
+            reduce(f, A; dims)
+        catch err
+            # Render errors while their NDArray arguments are still alive.
+            error(sprint(showerror, err))
+        end
+        @test size(result) == size(expected)
+        if result isa cuNumeric.CNScalar
+            @test result isa cuNumeric.CNBool
+            @test fetch(result) === (expected isa AbstractArray ? only(expected) : expected)
+        else
+            @test result isa NDArray{Bool}
+            @test isequal(Array(result), expected)
+        end
+    finally
+        isnothing(result) || cuNumeric.destroy!(result)
+        cuNumeric.destroy!(A)
+    end
+end
+
+@testset "Predicate any and all" begin
+    for reduce in (any, all), dims in (:, 1, 2, (1, 2), (), 3),
+        (f, input) in ((isfinite, Float32[1 Inf; NaN 2]),
+                      (isnan, Float32[1 Inf; NaN 2]),
+                      (identity, Bool[true false; true true]),
+                      (!, Bool[true false; true true]),
+                      (iseven, Int32[1 2; 3 4]),
+                      (isfinite, ComplexF32[1 Inf; NaN 2]))
+        _check_predicate_reduction(reduce, f, input; dims)
+    end
+    for reduce in (any, all), shape in ((0,), (0, 3), (3, 0), (2, 0, 3)),
+        dims in (:, 1, 2, (1, 2), (), 4)
+        _check_predicate_reduction(reduce, x -> x > 0, zeros(Int32, shape); dims)
+    end
+    for reduce in (any, all), value in (0f0, NaN32), shape in ((), (1,), (1, 1)),
+        dims in (:, 1, ())
+        _check_predicate_reduction(reduce, isfinite, fill(value, shape); dims)
+    end
+    for reduce in (any, all), cutoff in (0f0, 512f0, 2048f0), dims in (:, 1)
+        predicate = let cutoff = cutoff
+            x -> x > cutoff
+        end
+        _check_predicate_reduction(reduce, predicate, Float32.(1:1025); dims)
+        _check_predicate_reduction(reduce, BooleanReductionAbove(cutoff), Float32.(1:1025); dims)
+    end
+    cuNumeric.allowfetch(false) do
+        for reduce in (any, all)
+            A = cuNumeric.ones(Float32, 1025)
+            result = reduce(isfinite, A)
+            cuNumeric.destroy!(A)
+            try
+                @test result isa cuNumeric.CNBool
+                @test_throws Exception Bool(result)
+                @test fetch(result) === true
+            finally
+                cuNumeric.destroy!(result)
+            end
+        end
+    end
+    for reduce in (any, all)
+        A = NDArray(Int32[0, 1])
+        try
+            @test_throws ArgumentError reduce(identity, A)
+            @test_throws ArgumentError reduce(identity, A; dims=1)
+            @test_throws MethodError reduce(iszero, A; init=true)
+        finally
+            cuNumeric.destroy!(A)
+        end
+    end
+end
+
 @testset "Boolean mapped reductions" begin
     @testset "Predicates, identities, and axes" begin
         bools = reshape(Bool[isodd(i) for i in 1:105], 7, 3, 5)

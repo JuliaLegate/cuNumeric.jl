@@ -23,7 +23,7 @@ Base.map!(::Function, ::NDArray, ::NDArray, ::NDArray)
 `mapreduce(f, op, A; dims=:, init=...)` maps and reduces an NDArray in one
 pass, without a mapped copy. `op` can be `+`, `*`, `min` or `max`, or `&`/`|`
 when the mapping returns `Bool`. Mapped `sum`,
-`prod`, `minimum` and `maximum` use the same path.
+`prod`, `minimum`, `maximum`, `all`, and `any` use the same path.
 
 ```julia
 A = cuNumeric.ones(Float32, 1024, 512)
@@ -34,6 +34,8 @@ distance = sum(x -> abs2(x - α), A)
 largest = maximum(abs, A; init=0f0)
 finite = mapreduce(isfinite, &, A; init=true)  # deferred CNBool
 invalid_columns = mapreduce(isnan, |, A; dims=1)  # Bool NDArray, 1 × 512
+finite = all(isfinite, A)                # equivalent predicate API
+invalid_columns = any(isnan, A; dims=1)
 @allowfetch Bool(finite)                  # explicit host-control boundary
 ```
 
@@ -55,6 +57,12 @@ invalid_columns = mapreduce(isnan, |, A; dims=1)  # Bool NDArray, 1 × 512
 `identity` on Bool arrays, and closures with scalar captures. They use the same
 fused reduction kernels as numeric operators; no predicate array is allocated.
 These operators do not short-circuit the mapping.
+
+`all(f, A; dims=:)` and `any(f, A; dims=:)` use these fused kernels with
+`init=true` and `init=false`, respectively. Empty reductions therefore return
+true for `all` and false for `any`, including arbitrary supported predicates.
+They accept `dims`, but not an `init` keyword, and require Bool-valued predicates.
+Like Boolean `mapreduce`, they return deferred results and do not short-circuit.
 
 Use `true` as the identity for `&`, and `false` for `|`. Dimensional reductions
 without `init` use these identities, including empty reduced axes. Full empty
