@@ -192,3 +192,29 @@ when reducing along `dims`. See `mapreduce` for supported callables.
 """
 Base.any(f, A::NDArray; dims=:) = mapreduce(f, |, A; dims, init=false)
 Base.any(f::Function, A::NDArray; dims=:) = mapreduce(f, |, A; dims, init=false)
+
+struct MapReduceMean{R,F}
+    f::F
+end
+(m::MapReduceMean{R})(x) where {R} = convert(R, m.f(x))
+
+"""
+    mean(f, A::NDArray; dims=:)
+
+Mean of the mapped values, returning a deferred scalar or an NDArray with the
+reduced axes retained. Uses the callable and promotion rules of `mapreduce`.
+"""
+function mean(f, A::NDArray{T}; dims=:) where {T}
+    mapper = _mr_callable(f)
+    M = _mr_mapped_type(mapper, T)
+    # Statistics promotes each mapped value before summing, avoiding integer overflow.
+    R = Base.promote_op(/, M, Int)
+    total = isempty(A) ? sum(mapper, A; dims) :
+        sum(MapReduceMean{R,typeof(mapper)}(mapper), A; dims)
+    try
+        n = isempty(A) ? 0 : _reduction_nelem(A, dims isa Tuple ? Tuple(Base.unique(dims)) : dims)
+        return _div_nelem(total, n)
+    finally
+        destroy!(total)
+    end
+end

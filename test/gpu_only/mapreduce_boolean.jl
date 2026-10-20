@@ -3,7 +3,7 @@ struct BooleanReductionAbove{T}
 end
 (f::BooleanReductionAbove)(x) = x > f.cutoff
 
-function check_boolean_reduction(reduce, input; reference=reduce)
+function check_boolean_reduction(reduce, input; reference=reduce, compare=isequal)
     expected = reference(input)
     A, result = NDArray(input), nothing
     try
@@ -13,12 +13,43 @@ function check_boolean_reduction(reduce, input; reference=reduce)
         @test result isa (ndims(expected) == 0 ? cuNumeric.CNScalar : NDArray{T})
         actual = result isa cuNumeric.CNScalar ? fetch(result) : Array(result)
         @test eltype(actual) === T
-        @test isequal(actual, expected isa AbstractArray && ndims(expected) == 0 ? only(expected) : expected)
+        @test compare(actual, expected isa AbstractArray && ndims(expected) == 0 ? only(expected) : expected)
     catch err
         # Format exceptions before destroying any NDArray arguments they contain.
         error(sprint(showerror, err))
     finally
         isnothing(result) || cuNumeric.destroy!(result)
+        cuNumeric.destroy!(A)
+    end
+end
+
+@testset "Count, mapped mean, and iszero" begin
+    @allowpromotion begin
+        for dims in (:, 1, (), (1, 1)), init in (0, UInt(3)),
+            input in (Float32[0 1; 2 0], zeros(Float32, 0, 2))
+            check_boolean_reduction(A -> count(!iszero, A; dims, init), input)
+        end
+        check_boolean_reduction(count, Bool[true, false, true])
+        for f in (identity, abs2), dims in (:, 1, (), (1, 1)),
+            input in (Float32[1 2; 3 4], Int32[1 2; 3 4], zeros(Float32, 0, 2), zeros(Float32, 2, 0))
+            check_boolean_reduction(A -> mean(f, A; dims), input;
+                compare=(x, y) -> isapprox(x, y; nans=true))
+        end
+        check_boolean_reduction(A -> mean(identity, A), fill(typemax(Int), 2))
+    end
+    for input in (Float32[0, -0.0], Float32[0, NaN], ComplexF32[0, 1im], Float32[])
+        check_boolean_reduction(iszero, input)
+    end
+    A = NDArray(Float32[0, 1])
+    try
+        cuNumeric.allowpromotion(false) do
+            @test_throws Exception count(iszero, A)
+            result = mean(abs2, A)
+            @test result isa cuNumeric.CNFloat{Float32}
+            @test fetch(result) == 0.5f0
+            cuNumeric.destroy!(result)
+        end
+    finally
         cuNumeric.destroy!(A)
     end
 end

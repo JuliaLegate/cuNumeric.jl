@@ -23,7 +23,7 @@ Base.map!(::Function, ::NDArray, ::NDArray, ::NDArray)
 `mapreduce(f, op, A; dims=:, init=...)` maps and reduces an NDArray in one
 pass, without a mapped copy. `op` can be `+`, `*`, `min` or `max`, or `&`/`|`
 when the mapping returns `Bool`. Mapped `sum`,
-`prod`, `minimum`, `maximum`, `all`, and `any` use the same path.
+`prod`, `minimum`, `maximum`, `all`, `any`, `count`, and `mean` use the same path.
 
 ```julia
 A = cuNumeric.ones(Float32, 1024, 512)
@@ -35,6 +35,8 @@ largest = maximum(abs, A; init=0f0)
 finite = all(isfinite, A)                # deferred CNBool
 invalid_columns = any(isnan, A; dims=1)  # Bool NDArray, 1 × 512
 @allowfetch Bool(finite)                 # convert to a Julia Bool
+nonzeros = @allowpromotion count(!iszero, A)  # deferred integer
+mean_square = mean(abs2, A; dims=1)      # 1 × 512
 ```
 
 - Full reductions return a device-resident `CNScalar`.
@@ -57,6 +59,11 @@ deferred `CNBool` scalars or Bool NDArrays and do not short-circuit.
 
 For `mapreduce(f, &, A)` or `mapreduce(f, |, A)`, use `init=true` or
 `init=false`, respectively, to handle empty inputs with arbitrary predicates.
+
+`count(f, A; dims=:, init=0)` counts matches for a Bool-valued predicate;
+`count(A)` counts true values in a Bool array. Integer accumulation requires
+`@allowpromotion`, as for summing Bool values. `mean(f, A; dims=:)` averages
+the mapped values. Both return deferred scalars or NDArrays when using `dims`.
 
 ## Limitations
 
