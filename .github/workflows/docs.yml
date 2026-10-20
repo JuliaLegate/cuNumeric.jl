@@ -20,7 +20,7 @@ jobs:
     permissions:
       actions: write
       contents: write
-      pull-requests: read
+      pull-requests: write
       statuses: write
     runs-on: ubuntu-latest
     env:
@@ -49,3 +49,39 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+
+      # Documenter reports previews as commit statuses; make docs changes easier to review.
+      - name: Link the preview
+        if: |
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const issue_number = context.issue.number;
+            const {data: pr} = await github.rest.pulls.get({
+              owner, repo, pull_number: issue_number,
+            });
+            if (pr.state !== 'open') {
+              return;
+            }
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number: issue_number, per_page: 100,
+            });
+            if (!files.some(file => file.filename.startsWith('docs/'))) {
+              return;
+            }
+            const marker = '<!-- documentation-preview -->';
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            if (comments.some(comment => comment.user?.type === 'Bot' &&
+              comment.body?.startsWith(marker))) {
+              return;
+            }
+            const url = `https://julialegate.github.io/cuNumeric.jl/previews/PR${issue_number}/`;
+            await github.rest.issues.createComment({
+              owner, repo, issue_number,
+              body: `${marker}\nDocumentation preview: ${url}`,
+            });

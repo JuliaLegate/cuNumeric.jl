@@ -1,0 +1,59 @@
+name: Docs Preview Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+  # Sweep previews left behind by PRs closed before this workflow was added.
+  workflow_dispatch:
+
+concurrency:
+  group: docs-preview-cleanup
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  cleanup:
+    # Fork PRs do not receive previews or a token that can remove them.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+
+      - name: Remove previews for closed PRs
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('node:fs');
+            const {owner, repo} = context.repo;
+            if (!fs.existsSync('previews')) {
+              return;
+            }
+            const previews = fs.readdirSync('previews', {withFileTypes: true})
+              .filter(entry => entry.isDirectory() && /^PR[1-9]\d*$/.test(entry.name))
+              .filter(entry => context.eventName === 'workflow_dispatch' ||
+                entry.name === `PR${context.issue.number}`);
+            for (const entry of previews) {
+              const pull_number = Number(entry.name.slice(2));
+              // Recheck the current state in case the PR was reopened while queued.
+              const {data: pr} = await github.rest.pulls.get({owner, repo, pull_number});
+              if (pr.state === 'closed') {
+                await exec.exec('git', ['rm', '-rf', '--', `previews/${entry.name}`]);
+              }
+            }
+
+      - name: Commit and push cleanup
+        run: |
+          if ! git diff --cached --quiet; then
+            git config user.name "Documenter.jl"
+            git config user.email "documenter@juliadocs.github.io"
+            git commit -m "Remove documentation previews for closed PRs"
+            git push origin HEAD:gh-pages
+          fi
