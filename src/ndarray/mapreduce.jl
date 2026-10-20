@@ -175,10 +175,9 @@ end
 """
     all(f, A::NDArray; dims=:)
 
-Reduce a Bool-valued GPU predicate with conjunction, without allocating a mapped
-array. Empty reductions return true. Full reductions return a deferred `CNBool`;
-explicit dimensions retain singleton axes. Uses the same callable requirements
-as `mapreduce` and does not short-circuit.
+Test whether every element satisfies the Bool-valued predicate `f`.
+Empty reductions return true. Returns a deferred `CNBool`, or a Bool NDArray
+when reducing along `dims`. See `mapreduce` for supported callables.
 """
 Base.all(f, A::NDArray; dims=:) = mapreduce(f, &, A; dims, init=true)
 # Resolve Base's (Function, AbstractArray) method while also supporting functors.
@@ -187,10 +186,9 @@ Base.all(f::Function, A::NDArray; dims=:) = mapreduce(f, &, A; dims, init=true)
 """
     any(f, A::NDArray; dims=:)
 
-Reduce a Bool-valued GPU predicate with disjunction, without allocating a mapped
-array. Empty reductions return false. Full reductions return a deferred `CNBool`;
-explicit dimensions retain singleton axes. Uses the same callable requirements
-as `mapreduce` and does not short-circuit.
+Test whether any element satisfies the Bool-valued predicate `f`.
+Empty reductions return false. Returns a deferred `CNBool`, or a Bool NDArray
+when reducing along `dims`. See `mapreduce` for supported callables.
 """
 Base.any(f, A::NDArray; dims=:) = mapreduce(f, |, A; dims, init=false)
 Base.any(f::Function, A::NDArray; dims=:) = mapreduce(f, |, A; dims, init=false)
