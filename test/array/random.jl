@@ -271,6 +271,19 @@ end
     @test s1 !== g2
 end
 
+@testset "MRG32k3a initialization and small draws" begin
+    # GPU initialization uses Realm's processor ID as the subsequence.
+    # Compute Sanitizer detects invalid table reads even if values look valid.
+    for seed in (0, 42), T in (Float32, Float64)
+        g = cuNumeric.default_rng(cuNumeric.MRG32k3a, seed)
+        for _ in 1:2
+            h = _host(cuNumeric.random(g, T, (16,)))
+            @test length(h) == 16
+            @test all(x -> isfinite(x) && zero(T) <= x < one(T), h)
+        end
+    end
+end
+
 @testset verbose = true "bitgenerators" begin
     n = 16_384
     for B in (cuNumeric.XORWOW, cuNumeric.MRG32k3a, cuNumeric.PHILOX4_32_10)

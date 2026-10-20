@@ -36,6 +36,21 @@ function _fft_compare(got::NDArray, expected; rtol, atol)
     return @allowscalar isapprox(Array(got), expected; rtol=rtol, atol=atol)
 end
 
+@testset "FFT plan initialization and eviction" begin
+    # Five 1D sizes exceed the four-plan cache; no RNG or extra fences.
+    # Repeats exercise the race but cannot guarantee failure on an unpatched JLL.
+    for _ in 1:3, T in (ComplexF32, ComplexF64),
+        shape in ((8,), (16,), (8, 12), (32,), (64,), (128,))
+        x = shape == (8,) ? cuNumeric.zeros(T, shape) :
+            cuNumeric.NDArray(fill(one(T), shape))
+        for (op, dc) in ((cuNumeric.fft, prod(shape)), (cuNumeric.ifft, 1))
+            expected = Base.zeros(T, shape)
+            shape == (8,) || (expected[1] = T(dc))
+            @test _fft_compare(op(x), expected; rtol=1e-5, atol=1e-6)
+        end
+    end
+end
+
 @testset verbose = true "fft/ifft" begin
     @testset verbose = true for T in _FFT_TEST_TYPES
         OT = _fft_out_eltype(T)
