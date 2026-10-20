@@ -19,10 +19,30 @@ end
     @test CN._mr_redop(Base.mul_prod, Int64) == CN.MAPREDUCE_MUL
     @test CN._mr_redop(min, UInt32) == CN.MAPREDUCE_MIN
     @test CN._mr_redop(max, UInt64) == CN.MAPREDUCE_MAX
-    for op in (*, Base.mul_prod, min, max), a in (false, true), b in (false, true)
+    for op in (*, Base.mul_prod, min, max, &, |), a in (false, true), b in (false, true)
         @test CN._mr_storage(op, Bool) === UInt8
         encoded = CN._mr_combine(op)(CN._mr_encode(op, a), CN._mr_encode(op, b))
         @test CN._mr_decode(op, Bool, encoded) === op(a, b)
+    end
+    for (op, redop, combine) in ((&, CN.MAPREDUCE_MIN, min), (|, CN.MAPREDUCE_MAX, max))
+        @test CN._mr_redop(op, UInt8) == redop
+        @test CN._mr_accumulator(op, Bool) === Bool
+        @test CN._mr_storage(op, Int32) === UInt8
+        # Model Legate combining separate tasks, including an empty contribution.
+        for values in ((true, true), (true, false), (false, true), (false, false))
+            contributions = UInt8[CN._mr_identity(op, UInt8), values...]
+            @test CN._mr_decode(op, Bool, reduce(combine, contributions)) === reduce(op, values)
+        end
+        for T in (Int8, UInt32, Float32, ComplexF32)
+            @test_throws ArgumentError CN._mr_accumulator(op, T)
+        end
+        for dims in (:, 1, ())
+            reference = mapreduce(identity, op, Bool[]; dims)
+            if !isempty(reference)
+                scalar = reference isa AbstractArray ? only(reference) : reference
+                @test CN._mr_empty(identity, op, Bool, Bool, noinit, dims) === scalar
+            end
+        end
     end
     @test_throws ArgumentError CN._mr_accumulator(min, ComplexF32)
     for op in (*, Base.mul_prod)

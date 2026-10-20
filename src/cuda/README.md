@@ -27,6 +27,10 @@ scratch reservation and can abort even when device memory is available.
 Floating extrema use ordered unsigned keys to preserve NaNs and signed zeros.
 Boolean product/extrema use 0/1 bytes. A finishing kernel decodes storage and
 applies `init` once when needed; otherwise the accumulator is returned directly.
+Boolean mapped `&`/`|` also use 0/1 bytes, with the existing min/max Legate
+reducers combining task contributions. Their local bitwise operations agree
+with min/max on this encoding, including the byte reducer identities. Integer
+seeds affect the finishing result, not the byte storage of mapped Booleans.
 Singletons use output privileges to avoid identity arithmetic, while dimensional
 sums/products retain Base's zero/one seed.
 

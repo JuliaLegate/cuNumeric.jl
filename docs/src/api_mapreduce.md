@@ -21,7 +21,8 @@ Base.map!(::Function, ::NDArray, ::NDArray, ::NDArray)
 ## `mapreduce`
 
 `mapreduce(f, op, A; dims=:, init=...)` maps and reduces an NDArray in one
-pass, without a mapped copy. `op` can be `+`, `*`, `min` or `max`. Mapped `sum`,
+pass, without a mapped copy. `op` can be `+`, `*`, `min` or `max`, or `&`/`|`
+when the mapping returns `Bool`. Mapped `sum`,
 `prod`, `minimum` and `maximum` use the same path.
 
 ```julia
@@ -31,6 +32,9 @@ columns = mapreduce(abs2, +, A; dims=1)   # 1 × 512
 const α = 0.5f0                          # a non-const global would infer as Any
 distance = sum(x -> abs2(x - α), A)
 largest = maximum(abs, A; init=0f0)
+finite = mapreduce(isfinite, &, A; init=true)  # deferred CNBool
+invalid_columns = mapreduce(isnan, |, A; dims=1)  # Bool NDArray, 1 × 512
+@allowfetch Bool(finite)                  # explicit host-control boundary
 ```
 
 - Full reductions return a device-resident `CNScalar`.
@@ -44,6 +48,25 @@ largest = maximum(abs, A; init=0f0)
 - `init` must be a neutral element. It is applied once and sets the output
   type. For `dims` reductions it must not narrow the accumulator.
 - Empty inputs follow Base, so arbitrary mappings may need `init`.
+
+### Boolean mapped reductions
+
+`&` and `|` accept any supported Bool-valued GPU mapping, including predicates,
+`identity` on Bool arrays, and closures with scalar captures. They use the same
+fused reduction kernels as numeric operators; no predicate array is allocated.
+These operators do not short-circuit the mapping.
+
+Use `true` as the identity for `&`, and `false` for `|`. Dimensional reductions
+without `init` use these identities, including empty reduced axes. Full empty
+reductions follow Base's `mapreduce_empty`: for example, `identity` on an empty
+Bool array has an identity, while an arbitrary predicate may require explicit
+`init`. `dims=()` applies the mapping and seed without reducing any axes.
+
+Integer `init` values follow Base's bitwise result typing, subject to the usual
+promotion checks. The mapped values must still be Bool; this is not support for
+reducing integer bit patterns. Bool results stay device-resident: zero-dimensional
+results (including full reductions) are `CNBool`, and higher-dimensional results
+are Bool NDArrays.
 
 ## Limitations
 

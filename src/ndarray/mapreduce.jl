@@ -4,27 +4,37 @@ struct NoReductionInit end
 const _MR_ADD = Union{typeof(+),typeof(Base.add_sum)}
 const _MR_MUL = Union{typeof(*),typeof(Base.mul_prod)}
 const _MR_EXTREMA = Union{typeof(min),typeof(max)}
-const _MR_OP = Union{_MR_ADD,_MR_MUL,_MR_EXTREMA}
+const _MR_BOOL = Union{typeof(&),typeof(|)}
+const _MR_OP = Union{_MR_ADD,_MR_MUL,_MR_EXTREMA,_MR_BOOL}
 const _MR_DIMS = Union{Integer,Tuple}
 
 _mr_operator(op::_MR_OP) = op
-_mr_operator(op) = throw(ArgumentError("mapreduce supports only +, *, min, and max"))
+_mr_operator(op) = throw(ArgumentError("mapreduce supports only +, *, min, max, and Boolean &/|"))
 _mr_combine(::_MR_ADD) = (+)
 _mr_combine(::_MR_MUL) = (*)
 _mr_combine(op::_MR_EXTREMA) = op
+_mr_combine(op::_MR_BOOL) = op
 _mr_redop(::_MR_ADD, ::Type) = MAPREDUCE_ADD
 _mr_redop(::_MR_MUL, ::Type) = MAPREDUCE_MUL
 _mr_redop(::typeof(min), ::Type) = MAPREDUCE_MIN
 _mr_redop(::typeof(max), ::Type) = MAPREDUCE_MAX
+# On encoded Boolean values, bitwise AND/OR agree with min/max. The existing
+# Legate reducers combine task contributions without new native operators.
+_mr_redop(::typeof(&), ::Type) = MAPREDUCE_MIN
+_mr_redop(::typeof(|), ::Type) = MAPREDUCE_MAX
 
 _mr_storage(::_MR_OP, ::Type{T}) where {T} = T
 # Legate's bitwise reducers do not provide Bool specializations. Product and
 # extrema on 0/1 bytes preserve the Boolean operations without custom reducers.
 _mr_storage(::Union{_MR_MUL,_MR_EXTREMA}, ::Type{Bool}) = UInt8
+# Keep the reduction store byte-valued even when an integer init determines
+# the dimensional result type. Apply that init only in the finishing kernel.
+_mr_storage(::_MR_BOOL, ::Type{T}) where {T} = UInt8
 _mr_storage(::_MR_EXTREMA, ::Type{Float32}) = UInt32
 _mr_storage(::_MR_EXTREMA, ::Type{Float64}) = UInt64
 _mr_encode(::_MR_OP, x) = x
 _mr_encode(::Union{_MR_MUL,_MR_EXTREMA}, x::Bool) = UInt8(x)
+_mr_encode(::_MR_BOOL, x) = UInt8(x)
 _mr_nan_key(::typeof(min), ::Type{U}) where {U} = zero(U)
 _mr_nan_key(::typeof(max), ::Type{U}) where {U} = typemax(U)
 @inline function _mr_encode(op::_MR_EXTREMA, x::T) where {T<:Union{Float32,Float64}}
@@ -35,6 +45,7 @@ _mr_nan_key(::typeof(max), ::Type{U}) where {U} = typemax(U)
 end
 _mr_decode(::_MR_OP, ::Type{T}, x) where {T} = x
 _mr_decode(::Union{_MR_MUL,_MR_EXTREMA}, ::Type{Bool}, x) = !iszero(x)
+_mr_decode(::_MR_BOOL, ::Type{T}, x) where {T} = T(!iszero(x))
 @inline function _mr_decode(op::_MR_EXTREMA, ::Type{T}, x::U) where {T<:Union{Float32,Float64},U<:Unsigned}
     x == _mr_nan_key(op, U) && return T(NaN)
     sign = one(U) << (8sizeof(U) - 1)
@@ -48,6 +59,8 @@ _mr_identity(::_MR_ADD, ::Type{Complex{T}}) where {T} = Complex{T}(-zero(T), -ze
 _mr_identity(::_MR_MUL, ::Type{T}) where {T} = one(T)
 _mr_identity(::typeof(min), ::Type{T}) where {T} = typemax(T)
 _mr_identity(::typeof(max), ::Type{T}) where {T} = typemin(T)
+_mr_identity(::typeof(&), ::Type{T}) where {T} = typemax(T)
+_mr_identity(::typeof(|), ::Type{T}) where {T} = zero(T)
 
 function _mr_dims(shape::Dims{N}, ::Colon) where {N}
     return ntuple(_ -> true, max(N, 1)), ()
@@ -78,6 +91,7 @@ _mr_supported_accumulator(::_MR_MUL, ::Type{ComplexF64}) =
     throw(ArgumentError("ComplexF64 product accumulators are unsupported: Legate has no corresponding built-in reducer"))
 
 function _mr_accumulator(op::_MR_OP, ::Type{M}) where {M}
+    op isa _MR_BOOL && M !== Bool && throw(ArgumentError("mapreduce with & or | requires Bool mapped values; inferred $M"))
     op isa _MR_EXTREMA && M <: Complex && throw(ArgumentError("min/max mapreduce does not support complex mapped values"))
     R = Base.promote_op(Base.reduce_first, typeof(op), M)
     isconcretetype(R) && R <: SUPPORTED_ARRAY_TYPES || throw(ArgumentError("unsupported mapreduce accumulator type $R"))
@@ -104,6 +118,7 @@ _mr_empty(f, op, T, M, ::NoReductionInit, ::Colon) = Base.mapreduce_empty(f, op,
 _mr_empty(f, op, T, M, init, dims) = init
 _mr_empty(f, op::_MR_ADD, T, M, ::NoReductionInit, dims::_MR_DIMS) = zero(_mr_accumulator(op, M))
 _mr_empty(f, op::_MR_MUL, T, M, ::NoReductionInit, dims::_MR_DIMS) = one(_mr_accumulator(op, M))
+_mr_empty(f, op::_MR_BOOL, T, M, ::NoReductionInit, dims::_MR_DIMS) = _mr_identity(op, Bool)
 # Base rejects empty reduced axes before scalar reduction dispatch (which can
 # throw MethodError on Julia 1.10). abs/abs2 maxima have a separate zero seed.
 _mr_empty(f, op::_MR_EXTREMA, T, M, ::NoReductionInit, dims::_MR_DIMS) =
@@ -115,7 +130,8 @@ _mr_empty(f::Union{typeof(abs),typeof(abs2)}, op::typeof(max), T, M, ::NoReducti
     mapreduce(f, op, A::NDArray; dims=:, init)
 
 Fuse a scalar mapping with a distributed GPU reduction. Supported operators are
-`+`, `*`, `min`, and `max`. Full reductions return an `CNScalar`; explicit
+`+`, `*`, `min`, `max`, and `&`/`|` for Bool-valued mappings. Full reductions
+return a `CNScalar` (`CNBool` for Boolean results); explicit
 dimensions retain singleton axes. `sum(f, A)` and `prod(f, A)` use Base's integer
 widening rules, subject to `allowpromotion`.
 
