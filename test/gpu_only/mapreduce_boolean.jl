@@ -24,12 +24,16 @@ function check_boolean_reduction(reduce, input; reference=reduce, compare=isequa
 end
 
 @testset "Count, mapped mean, and iszero" begin
-    @allowpromotion begin
+    cuNumeric.allowpromotion(false) do
         for dims in (:, 1, (), (1, 1)), init in (0, UInt(3)),
             input in (Float32[0 1; 2 0], zeros(Float32, 0, 2))
             check_boolean_reduction(A -> count(!iszero, A; dims, init), input)
         end
         check_boolean_reduction(count, Bool[true, false, true])
+        check_boolean_reduction(count, Bool[])
+        check_boolean_reduction(A -> count(BooleanReductionAbove(1f0), A), Float32[0, 2])
+    end
+    @allowpromotion begin
         for f in (identity, abs2), dims in (:, 1, (), (1, 1)),
             input in (Float32[1 2; 3 4], Int32[1 2; 3 4], zeros(Float32, 0, 2), zeros(Float32, 2, 0))
             check_boolean_reduction(A -> mean(f, A; dims), input;
@@ -43,7 +47,9 @@ end
     A = NDArray(Float32[0, 1])
     try
         cuNumeric.allowpromotion(false) do
-            @test_throws Exception count(iszero, A)
+            @test_throws ArgumentError count(identity, A)
+            @test_throws Exception sum(iszero, A)
+            @test_throws Exception mapreduce(iszero, Base.add_sum, A)
             result = mean(abs2, A)
             @test result isa cuNumeric.CNFloat{Float32}
             @test fetch(result) == 0.5f0

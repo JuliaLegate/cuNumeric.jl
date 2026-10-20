@@ -86,6 +86,15 @@ function _mr_mapped_type(f::F, ::Type{T}) where {F,T}
     return M
 end
 
+struct MapReduceCount{F}
+    f::F
+end
+(m::MapReduceCount)(x) = m.f(x)::Bool
+
+_mr_accumulator_promotion(f, op, M, R) = assertpromotion(op, M, R)
+# Counting inherently accumulates Bool values in integers; no input copy is widened.
+_mr_accumulator_promotion(::MapReduceCount, ::typeof(Base.add_sum), ::Type{Bool}, ::Type{<:Integer}) = nothing
+
 _mr_supported_accumulator(op, ::Type{R}) where {R} = R
 _mr_supported_accumulator(::_MR_MUL, ::Type{ComplexF64}) =
     throw(ArgumentError("ComplexF64 product accumulators are unsupported: Legate has no corresponding built-in reducer"))
@@ -154,7 +163,7 @@ function Base.mapreduce(f::F, op::OP, A::NDArray{T}; dims=:, init=NoReductionIni
     O = _mr_output_type(op, R, init, dims)
     isconcretetype(O) && O <: SUPPORTED_ARRAY_TYPES || throw(ArgumentError("unsupported mapreduce output type $O"))
     is_wider_type(M, T) && assertpromotion(f, T, M)
-    is_wider_type(R, M) && assertpromotion(op, M, R)
+    is_wider_type(R, M) && _mr_accumulator_promotion(mapper, op, M, R)
     is_wider_type(O, R) && assertpromotion(op, R, O)
     nreduce = prod(d -> mask[d] ? input_shape[d] : 1, 1:ndims(A); init=1)
     if nreduce == 0
@@ -192,6 +201,20 @@ when reducing along `dims`. See `mapreduce` for supported callables.
 """
 Base.any(f, A::NDArray; dims=:) = mapreduce(f, |, A; dims, init=false)
 Base.any(f::Function, A::NDArray; dims=:) = mapreduce(f, |, A; dims, init=false)
+
+"""
+    count(f, A::NDArray; dims=:, init=0)
+    count(A::NDArray{Bool}; dims=:, init=0)
+
+Count matches for a Bool-valued predicate, or true values in a Bool array.
+Returns a deferred scalar or an NDArray with the reduced axes retained.
+"""
+function Base.count(f, A::NDArray{T}; dims=:, init=0) where {T}
+    mapper = _mr_callable(f)
+    _mr_mapped_type(mapper, T) === Bool || throw(ArgumentError("count requires Bool mapped values"))
+    return mapreduce(MapReduceCount(mapper), Base.add_sum, A; dims, init)
+end
+Base.count(A::NDArray{Bool}; kwargs...) = count(identity, A; kwargs...)
 
 struct MapReduceMean{R,F}
     f::F
