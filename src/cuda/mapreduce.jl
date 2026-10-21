@@ -185,6 +185,7 @@ end
 _mr_dim_seed(op::_MR_OP, ::Type{R}, init, dims) where {R} = init
 _mr_dim_seed(op::_MR_ADD, ::Type{R}, ::NoReductionInit, dims::_MR_DIMS) where {R} = zero(R)
 _mr_dim_seed(op::_MR_MUL, ::Type{R}, ::NoReductionInit, dims::_MR_DIMS) where {R} = one(R)
+_mr_dim_seed(op::_MR_BOOL, ::Type{R}, ::NoReductionInit, dims::_MR_DIMS) where {R} = _mr_identity(op, R)
 
 function _mr_finish_name(finish::F, ::Type{T}, ::Type{O}, ::Val{D}) where {F,T,O,D}
     return _mr_kernel_name(_mr_finish_kernel, (
