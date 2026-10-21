@@ -1,11 +1,12 @@
 # Krylov.jl
 
-Use Krylov's conjugate gradient solver with an `NDArray` matrix and vectors.
+Use Krylov solvers with an `NDArray` matrix and vectors.
 Loading `Krylov` alongside cuNumeric activates the package extension.
 
 > [!WARNING]
 > Not all Krylov solvers, preconditioners, callbacks, or solver options have
-> been tested with `NDArray`. We have tested CG and BiCGSTAB.
+> been tested with `NDArray`. The tested solvers are CG, BiCGSTAB, GMRES,
+> MINRES, LSQR, and LSMR, with real and complex inputs.
 
 ## Conjugate gradient
 
@@ -41,6 +42,21 @@ b2 = NDArray([2.0, 1.0])
 Each call updates `workspace.x` and `workspace.stats`. Copy the solution before
 the next solve if you need to retain it.
 
+The same pattern applies to `BicgstabWorkspace`, `GmresWorkspace`,
+`MinresWorkspace`, `LsqrWorkspace`, and `LsmrWorkspace`, paired with their
+respective `!` solvers. For restarted GMRES, set the workspace size with
+`GmresWorkspace(A, b; memory=20)` and pass `restart=true` to `gmres!`.
+
+## Least squares
+
+LSQR and LSMR accept rectangular matrices and solve `minimize norm(A * x - b)`:
+
+```julia
+A = NDArray([1.0 0.0; 0.0 1.0; 1.0 1.0])
+b = NDArray([1.0, 2.0, 4.0])
+x, stats = @allowfetch Krylov.lsmr(A, b; axtol=1e-8, btol=1e-8)
+```
+
 ## Complex systems
 
 For Hermitian positive-definite complex systems, also use `@allowpromotion`.
@@ -52,6 +68,8 @@ vectors. Wrap the solver call in both macros:
 ```
 
 The same macros apply to the allocating `Krylov.cg(A, b)` call.
+Use both macros for the other complex solvers too. BiCGSTAB also currently
+needs `@allowpromotion` for its default identity preconditioner with real inputs.
 
 The benchmarking repository contains a larger
 [Krylov example and run instructions](https://github.com/JuliaLegate/benchmarking/tree/main/composability/krylov)
