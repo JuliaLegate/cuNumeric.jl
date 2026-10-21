@@ -72,6 +72,43 @@ LinearAlgebra.mul!(y::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, A::NDArray{<:SUPPORTED
 LinearAlgebra.mul!(C::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, A::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, B::NDArray{<:SUPPORTED_ARRAY_TYPES,2}, α::Number, β::Number) =
     _linalg_mul!(C, "ij", A, "ik", B, "kj", α, β)
 
+const _NDTransposeMatrix = Union{
+    LinearAlgebra.Transpose{<:Any,<:NDArray{<:Any,2}},
+    LinearAlgebra.Adjoint{<:Any,<:NDArray{<:Any,2}},
+}
+
+function _transpose_mul!(y::NDArray{T,1}, A::_NDTransposeMatrix, x, α, β) where {T}
+    P = parent(A)
+    if !(A isa LinearAlgebra.Adjoint && eltype(P) <: Complex) ||
+        _host_iszero(α) || isempty(P) || isempty(x) || isempty(y)
+        return _linalg_mul!(y, "i", P, "ji", x, "j", α, β)
+    end
+    (y.ptr === P.ptr || y.ptr === x.ptr) && throw(ArgumentError("mul! output must not alias either input"))
+    # Aᴴ*x = conj(transpose(A)*conj(x)); only vector temporaries are needed.
+    cx, tmp = conj.(x), similar(y)
+    try
+        _linalg_mul!(tmp, "i", P, "ji", cx, "j", one(T), zero(T))
+        a = _mul_output_scale(_scale_storage(α), T)
+        b = _mul_output_scale(_scale_storage(β), T)
+        if _host_iszero(β)
+            y .= a .* conj.(tmp)
+        else
+            y .= a .* conj.(tmp) .+ b .* y
+        end
+        return y
+    finally
+        destroy!(cx)
+        destroy!(tmp)
+    end
+end
+
+LinearAlgebra.mul!(y::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, A::_NDTransposeMatrix, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1}) =
+    _transpose_mul!(y, A, x, true, false)
+LinearAlgebra.mul!(y::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, A::_NDTransposeMatrix, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, α::Union{Number,DeviceScalar}, β::Union{Number,DeviceScalar}) =
+    _transpose_mul!(y, A, x, α, β)
+LinearAlgebra.mul!(y::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, A::_NDTransposeMatrix, x::NDArray{<:SUPPORTED_ARRAY_TYPES,1}, α::Number, β::Number) =
+    _transpose_mul!(y, A, x, α, β)
+
 function Base.:*(A::NDArray{TA,2}, x::NDArray{TX,1}) where {TA<:SUPPORTED_ARRAY_TYPES,TX<:SUPPORTED_ARRAY_TYPES}
     T = _matmul_eltype(promote_type(TA, TX))
     size(A, 2) == length(x) || throw(DimensionMismatch("matrix-vector dimensions do not match"))

@@ -17,6 +17,25 @@ la_value(x::cuNumeric.CNScalar) = fetch(x)
                 @test mul!(y, a, x) === y
                 @test Array(y) ≈ ah * xh
                 @test Array(a * x) ≈ ah * xh
+                for wrap in (LinearAlgebra.Transpose, LinearAlgebra.Adjoint)
+                    xt, yt = NDArray(yh), NDArray(xh)
+                    @test mul!(yt, wrap(a), xt) === yt
+                    @test Array(yt) ≈ wrap(ah) * yh
+                    copyto!(yt, NDArray(xh))
+                    mul!(yt, wrap(a), xt, T(2), T(-3))
+                    @test Array(yt) ≈ 2wrap(ah) * yh - 3xh
+                    fill!(yt, T(NaN))
+                    mul!(yt, wrap(a), xt, one(T), zero(T))
+                    @test Array(yt) ≈ wrap(ah) * yh
+                    allowfetch(false) do
+                        mul!(yt, wrap(a), xt, sum(NDArray(T[2])), NDArray(T(3)))
+                        @test Array(yt) ≈ 5wrap(ah) * yh
+                    end
+                    mul!(yt, wrap(NDArray(fill(T(NaN), size(ah)))), xt, zero(T), zero(T))
+                    @test all(iszero, Array(yt))
+                    @test_throws ArgumentError mul!(xt, wrap(a), xt)
+                    @test_throws DimensionMismatch mul!(similar(xt), wrap(a), xt)
+                end
                 copyto!(y, cuNumeric.NDArray(yh))
                 @test mul!(y, a, x, T(2), T(-3)) === y
                 @test Array(y) ≈ 2ah * xh - 3yh

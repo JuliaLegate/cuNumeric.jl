@@ -27,6 +27,7 @@ Filter = t -> t isa Function && nameof(t) === :mul!
 Supported `LinearAlgebra` operations include:
 
 - `mul!(y, A, x)` and `mul!(y, A, x, α, β)` for matrix-vector products. `A * x` is also supported.
+- Both `mul!` forms accept `Transpose(A)` and `Adjoint(A)` (or `A'`), including complex conjugation for the adjoint.
 - `mul!(C, A, B, α, β)` for matrix-matrix products.
 - `dot(x, y)` and entrywise `norm(A, p)` (dense-array norms currently require a GPU).
 - `axpy!`, `axpby!`, `lmul!`, and `rmul!`.

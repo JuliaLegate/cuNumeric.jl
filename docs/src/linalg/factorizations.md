@@ -76,9 +76,9 @@ With `k = min(m, n)`, the output shapes are:
 - Full (`full=true`): `U` is `m × m`, `S` has length `k`, and `Vt` is `n × n`.
 
 The default `full=false` returns thin factors. Destructuring as `U, S, V = F` also gives you the
-*adjoint* of `F.Vt`, and `F.V` is a lazy `Adjoint` wrapper, so operating on it
-falls back to scalar indexing until `adjoint(::NDArray)` is implemented. Prefer
-`F.Vt`.
+*adjoint* of `F.Vt`, and `F.V` is a lazy `Adjoint` wrapper. Matrix-vector
+`mul!(y, F.V, x)` supports this wrapper; copying it and matrix-matrix products
+still fall back to scalar indexing. Prefer `F.Vt` for those operations.
 
 `S` is real-valued for both real and complex inputs.
 
