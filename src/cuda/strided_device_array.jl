@@ -21,6 +21,10 @@
 #
 # Dense RunPTXTask / @cuda_task still uses CUDA.jl CuDeviceArray (unchanged).
 
+abstract type BroadcastOffsetPolicy end
+struct FixedOffsets{I<:Signed} <: BroadcastOffsetPolicy end
+struct AdaptiveOffsets <: BroadcastOffsetPolicy end
+
 struct CuStridedDeviceArray{T,N,A} <: AbstractArray{T,N}
     ptr::CUDACore.LLVMPtr{T,A}
     maxsize::Int
@@ -78,6 +82,58 @@ end
 end
 
 @inline _strided_align(::CuStridedDeviceArray{T}) where {T} = Base.datatype_alignment(T)
+
+# Only element-offset arithmetic narrows. Linear coordinate decoding and all
+# traversal counters remain wide, including for ranks above three.
+@inline function _strided_elem_offset(
+    ::FixedOffsets{T}, strides::Dims{N}, I::CartesianIndex{N}
+) where {T,N}
+    off = zero(T)
+    @inbounds for d in 1:N
+        off += ((I[d] - 1) % T) * (strides[d] % T)
+    end
+    return Int(off)
+end
+
+@inline function _strided_elem_offset(
+    ::FixedOffsets{T}, dims::Dims{1}, strides::Dims{1}, I::Integer
+) where {T}
+    return Int(((Int(I) - 1) % T) * (strides[1] % T))
+end
+
+@inline function _strided_elem_offset(
+    ::FixedOffsets{T}, dims::Dims{N}, strides::Dims{N}, I::Integer
+) where {T,N}
+    idx = _bitcast_uint(Int(I) - 1)
+    off = zero(T)
+    @inbounds for d in 1:N
+        dlen = _bitcast_uint(dims[d])
+        c = _bitcast_int(Core.Intrinsics.urem_int(idx, dlen))
+        idx = Core.Intrinsics.udiv_int(idx, dlen)
+        off += (c % T) * (strides[d] % T)
+    end
+    return Int(off)
+end
+
+@inline _broadcast_offset(p::FixedOffsets, A, I::Integer) =
+    _strided_elem_offset(p, A.dims, A.strides, I)
+@inline _broadcast_offset(p::FixedOffsets, A, I::CartesianIndex) =
+    _strided_elem_offset(p, A.strides, I)
+
+@inline function _broadcast_load(p::FixedOffsets, A::CuStridedDeviceArray, I)
+    return unsafe_load(pointer(A), _broadcast_offset(p, A, I) + 1, Val(_strided_align(A)))
+end
+
+@inline function _broadcast_store!(::FixedOffsets, A, v, I)
+    @inbounds A[I] = v
+    return nothing
+end
+
+@inline function _broadcast_store!(p::FixedOffsets, A::CuStridedDeviceArray{T}, v, I) where {T}
+    unsafe_store!(pointer(A), convert(T, v)::T,
+        _broadcast_offset(p, A, I) + 1, Val(_strided_align(A)))
+    return nothing
+end
 
 # No @boundscheck / throw — those emit gpu_report_exception and break LoadPTX.
 CUDACore.@device_function @inline function _strided_arrayref(

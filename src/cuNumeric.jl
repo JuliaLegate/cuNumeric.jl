@@ -26,9 +26,14 @@ using LegatePreferences: LegatePreferences
 # Load CUDACore before Legate/CxxWrap to avoid recompilation in its __init__.
 using CUDACore: CUDACore
 import CUDACore: CuArray
+using PrecompileTools: @recompile_invalidations
+# Repair CxxWrap's invalidations of CUDACore before Legate loads CxxWrap.
+@recompile_invalidations begin
+    using CxxWrap
+end
 using Legate
+using Legate: LegateInternal
 using Libdl
-using CxxWrap
 
 using CUDATools: CUDATools
 import KernelAbstractions: @kernel, @index
@@ -51,8 +56,7 @@ import Random: rand!, randn!, randexp!
 
 using StaticArrays: SVector
 
-using StatsBase
-import StatsBase: var, mean, std
+import Statistics: var, mean, std
 
 include(joinpath(@__DIR__, "../deps/version.jl"))
 include("utilities/preference.jl")
@@ -196,6 +200,7 @@ include("cnscalar.jl")
 include("ndarray/diagonal.jl")
 include("ndarray/promotion.jl")
 include("cuda/cuda_ptx_task.jl")
+include("ndarray/broadcast_flatten.jl")
 include("ndarray/broadcast_fusion.jl")
 include("ndarray/broadcast.jl")
 include("ndarray/ndarray.jl")
@@ -251,10 +256,10 @@ function _start_runtime()
     # AA = ArgcArgv([Base.julia_cmd()[1]])
     cuNumeric.initialize_cunumeric(AA.argc, getargv(AA))
 
-    num_gpus = Int(Legate.num_gpus())
+    num_gpus = Int(LegateInternal.num_gpus())
     HAS_CUDA[] = num_gpus > 0
     _LINALG_RUNTIME[] = _LinalgRuntime(
-        cusolvermp_available(), num_gpus, Int(Legate.num_procs())
+        cusolvermp_available(), num_gpus, Int(LegateInternal.num_procs())
     )
 
     _init_deferred_free!()   # record launch thread for deferred frees (memory.jl)
@@ -309,5 +314,7 @@ function __init__()
     # Requries runtime to be started
     return _setup_cuda_tasking()
 end
+
+include("precompile.jl")
 
 end #module cuNumeric

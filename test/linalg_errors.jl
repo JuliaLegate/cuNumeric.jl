@@ -28,6 +28,6 @@ println("Testing numerical failure with ", typeof(backend))
         cuNumeric.allowscalar() do
             Array(out) # Demand the result so deferred task failures surface.
         end
-        cuNumeric.Legate.issue_execution_fence(true)
+        cuNumeric.Legate.LegateInternal.issue_execution_fence(true)
     end
 end

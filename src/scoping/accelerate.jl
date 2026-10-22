@@ -39,24 +39,31 @@ function _argument_symbols(def)
     return names
 end
 
+# Symbols a scope reads but never assigns. Like function arguments they are
+# stable throughout, so cross-write fusion may guard them with alias checks.
+_free_symbols(body) = setdiff(Set{Symbol}(walk_symbols(body)), _assigned_symbols(body))
+
 # Function form: validate, expand `@.`, normalize trailing `return`, run the
 # lifetime/fusion passes protecting `protected_roots` (the args).
-function _accelerate_rewrite(body, caller::Module, protected_roots::Set{Symbol})
+function _accelerate_rewrite(
+    body, caller::Module, protected_roots::Set{Symbol}; aggressive::Bool=false
+)
     _reject_nonstraightline(body)
     body = _normalize_return(_expand_dot_macros(body, caller))
     on_rewrite = BCAST_FUSION_DEBUG[] ? InterBroadcastFusion.log_rewrite : nothing
-    return process_ndarray_scope(body; on_rewrite, protected_roots)
+    return process_ndarray_scope(body; on_rewrite, protected_roots, aggressive)
 end
 
 # `begin`/expr form: 1:1 Julia scope (no `let`) — named bindings stay live.
 # On GPU, same-shape chains fuse into one multi-output launch; otherwise only
 # anonymous temporaries (slices) are freed.
-function _accelerate_block_soft(block, caller::Module)
+function _accelerate_block_soft(block, caller::Module; aggressive::Bool=false)
     _reject_nonstraightline(block)
     nb = _normalize_return(_expand_dot_macros(block, caller))
     on_rewrite = BCAST_FUSION_DEBUG[] ? InterBroadcastFusion.log_rewrite : nothing
     fallback = process_ndarray_scope(
-        nb; on_rewrite, protected_roots=_assigned_symbols(nb)
+        nb; on_rewrite, protected_roots=union(_assigned_symbols(nb), _free_symbols(nb)),
+        aggressive,
     )
     @static if FUSE_BROADCAST_EXPRS
         fused = _try_fuse_block_multi(nb)
@@ -91,12 +98,14 @@ end
 
 # `let` form: hard scope. Full analysis — combine single-use producers, free
 # every non-returned temp — re-wrapped in a `let` so only the result escapes.
-function _accelerate_block_hard(letexpr, caller::Module)
+function _accelerate_block_hard(letexpr, caller::Module; aggressive::Bool=false)
     body = _let_body(letexpr)
     _reject_nonstraightline(body)
     nb = _normalize_return(_expand_dot_macros(body, caller))
     on_rewrite = BCAST_FUSION_DEBUG[] ? InterBroadcastFusion.log_rewrite : nothing
-    rewritten = process_ndarray_scope(nb; on_rewrite, protected_roots=Set{Symbol}())
+    rewritten = process_ndarray_scope(
+        nb; on_rewrite, protected_roots=_free_symbols(nb), aggressive
+    )
     bindings = union(_assigned_symbols(nb), _assigned_symbols(rewritten))
     return _lexical_scope(rewritten, bindings)
 end
@@ -195,15 +204,89 @@ end
 
 # AST `@accelerate` emits (pre-`esc`); shared with `@show_lifetimes`. Dispatch:
 # function def / `let` (hard scope) / `begin`-expr (soft, 1:1 Julia scope).
-function _accelerate_expand(input, caller::Module)
+function _accelerate_expand(input, caller::Module; aggressive::Bool=false)
+    policy = aggressive ? :(cuNumeric.AdaptiveOffsets()) : :(cuNumeric.FixedOffsets{Int64}())
     if MacroTools.isdef(input)
         def = MacroTools.splitdef(input)
-        def[:body] = _accelerate_rewrite(def[:body], caller, _argument_symbols(def))
+        def[:body] = _accelerate_rewrite(
+            def[:body], caller, _argument_symbols(def); aggressive
+        )
+        def[:body] = _lower_broadcast_policy(def[:body], policy)
         return MacroTools.combinedef(def)
     elseif input isa Expr && input.head === :let
-        return _accelerate_block_hard(input, caller)
+        return _lower_broadcast_policy(_accelerate_block_hard(input, caller; aggressive), policy)
     end
-    return _accelerate_block_soft(input, caller)
+    return _lower_broadcast_policy(_accelerate_block_soft(input, caller; aggressive), policy)
+end
+
+# Final pass, after fusion and lifetime analysis. Only explicit dotted syntax
+# and generated fusion calls acquire the policy; ordinary callees stay unchanged.
+function _policy_broadcasted(ex, policy)
+    _is_top_broadcast(ex) || return _lower_broadcast_policy(ex, policy)
+    f, args = if ex.head === :call
+        _undot(ex.args[1]), ex.args[2:end]
+    else
+        _lower_broadcast_policy(ex.args[1], policy), ex.args[2].args
+    end
+    if f === :^ && length(args) == 2 && args[2] isa Integer
+        return :(Base.broadcasted(Base.literal_pow, ^,
+            $(_policy_broadcasted(args[1], policy)), Base.Val($(args[2]))))
+    end
+    lowered = map(a -> _policy_broadcasted(a, policy), args)
+    # Keyword arguments belong before the function in a Julia call AST.
+    if !isempty(lowered) && lowered[1] isa Expr && lowered[1].head === :parameters
+        return Expr(:call, :(Base.broadcasted), lowered[1], f, lowered[2:end]...)
+    end
+    return Expr(:call, :(Base.broadcasted), f, lowered...)
+end
+
+function _lower_broadcast_policy(ex, policy)
+    ex isa Expr || return ex
+    ex.head in (:quote, :inert) && return ex
+    if ex.head === :call && ex.args[1] in (
+        :(cuNumeric.copyto_fused_multi!), :(cuNumeric.copyto_fused_multi_alloc!),
+        :(cuNumeric.copyto_fused_siblings!),
+    )
+        return Expr(:call, ex.args[1], policy,
+            map(a -> _lower_broadcast_policy(a, policy), ex.args[2:end])...)
+    end
+    head = string(ex.head)
+    if startswith(head, ".") && endswith(head, "=") && length(ex.args) == 2
+        lhs, rhs = ex.args
+        dest = gensym(:broadcast_dest)
+        destexpr = lhs isa Expr && lhs.head === :ref ? :(Base.@view $lhs) : lhs
+        destexpr = _lower_broadcast_policy(destexpr, policy)
+        bc = if ex.head === :(.=)
+            if _is_top_broadcast(rhs)
+                _policy_broadcasted(rhs, policy)
+            else
+                :(Base.broadcasted(identity, $(_lower_broadcast_policy(rhs, policy))))
+            end
+        else
+            op = Symbol(chop(head; head=1, tail=1))
+            :(Base.broadcasted($op, $dest, $(_policy_broadcasted(rhs, policy))))
+        end
+        return :(
+            let $dest = $destexpr
+                cuNumeric._materialize_with_policy!($policy, $dest, $bc)
+            end
+        )
+    end
+    if _is_top_broadcast(ex)
+        return :(cuNumeric._materialize_with_policy($policy, $(_policy_broadcasted(ex, policy))))
+    end
+    return Expr(ex.head, map(a -> _lower_broadcast_policy(a, policy), ex.args)...)
+end
+
+function _accelerate_options(options)
+    aggressive = true   # `aggressive=false` opts out
+    for option in options
+        MacroTools.@capture(option, aggressive = value_) && value isa Bool || error(
+            "@accelerate: unknown option `$option`; expected `aggressive=true` or `aggressive=false`"
+        )
+        aggressive = value
+    end
+    return (; aggressive)
 end
 
 @doc"""
@@ -211,6 +294,7 @@ end
     @accelerate begin ... end
     @accelerate let ... end
     @accelerate expr
+    @accelerate aggressive=true function f(args...) ... end
 
 Optimize straight-line array code by coordinating CUDA broadcast fusion within
 expressions, fusion across broadcast statements, and scope-aware cleanup of
@@ -245,9 +329,23 @@ a, b = @accelerate begin          # a and b both stay live, one GPU launch
 end
 result = @accelerate (x .+ y .* z)
 ```
+
+`aggressive=true` (the default) also merges adjacent in-place updates of different
+arrays, e.g. `u_new[...] .= f(u, v)` then `v_new[...] .= g(u, v)`, into one launch
+that reads shared inputs once. The launch maps every input and output at once,
+raising peak memory; `aggressive=false` opts out.
+
+It also permits adaptive 32/64-bit element-offset arithmetic in eligible GPU
+broadcasts of ranks 1–6 (including single-output and chained broadcasts). Both
+variants are compiled per signature; each launch chooses using its local array
+dimensions and strides. With `aggressive=false`, and outside `@accelerate`,
+broadcasts use 64-bit offsets. Policies do not propagate into ordinary function
+calls, and CPU execution is unchanged.
 """
-macro accelerate(input)
-    return esc(_accelerate_expand(input, __module__))
+macro accelerate(args...)
+    input = last(args)
+    options = _accelerate_options(args[1:(end - 1)])
+    return esc(_accelerate_expand(input, __module__; options...))
 end
 
 @doc"""
@@ -258,7 +356,9 @@ end
 Print the exact expansion [`@accelerate`](@ref) produces for the same input
 (all forms), without running it; inserted frees are highlighted. Pure AST work.
 """
-macro show_lifetimes(input)
-    expansion = _accelerate_expand(input, __module__)
+macro show_lifetimes(args...)
+    input = last(args)
+    options = _accelerate_options(args[1:(end - 1)])
+    expansion = _accelerate_expand(input, __module__; options...)
     return :(print_lifetime_analysis($(QuoteNode(expansion))))
 end

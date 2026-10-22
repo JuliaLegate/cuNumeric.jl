@@ -35,47 +35,47 @@ end
 
 @accelerate function step(u, v, u_new, v_new, args::ParamsGS)
     # calculate F_u and F_v functions
-    # currently we don't have NDArray^x working yet.
-    F_u = (
+    # Dot each complete RHS so GPU CI exercises the full broadcast trees.
+    F_u = @. (
         (
-            -u[2:(end - 1), 2:(end - 1)] .*
-            (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
-        ) + args.f*(1 .- u[2:(end - 1), 2:(end - 1)])
+            -u[2:(end - 1), 2:(end - 1)] *
+            (v[2:(end - 1), 2:(end - 1)] * v[2:(end - 1), 2:(end - 1)])
+        ) + args.f*(1 - u[2:(end - 1), 2:(end - 1)])
     )
-    F_v = (
+    F_v = @. (
         (
-            u[2:(end - 1), 2:(end - 1)] .*
-            (v[2:(end - 1), 2:(end - 1)] .* v[2:(end - 1), 2:(end - 1)])
+            u[2:(end - 1), 2:(end - 1)] *
+            (v[2:(end - 1), 2:(end - 1)] * v[2:(end - 1), 2:(end - 1)])
         ) - (args.f+args.k)*v[2:(end - 1), 2:(end - 1)]
     )
     # 2-D Laplacian of f using array slicing, excluding boundaries
     # For an N x N array f, f_lap is the Nend x Nend array in the "middle"
-    u_lap = (
+    u_lap = @. (
         (
             u[3:end, 2:(end - 1)] - 2*u[2:(end - 1), 2:(end - 1)] +
             u[1:(end - 2), 2:(end - 1)]
-        ) ./ args.dx^2 +
+        ) / args.dx^2 +
         (
             u[2:(end - 1), 3:end] - 2*u[2:(end - 1), 2:(end - 1)] +
             u[2:(end - 1), 1:(end - 2)]
-        ) ./ args.dx^2
+        ) / args.dx^2
     )
-    v_lap = (
+    v_lap = @. (
         (
             v[3:end, 2:(end - 1)] - 2*v[2:(end - 1), 2:(end - 1)] +
             v[1:(end - 2), 2:(end - 1)]
-        ) ./ args.dx^2 +
+        ) / args.dx^2 +
         (
             v[2:(end - 1), 3:end] - 2*v[2:(end - 1), 2:(end - 1)] +
             v[2:(end - 1), 1:(end - 2)]
-        ) ./ args.dx^2
+        ) / args.dx^2
     )
 
     # # Forward-Euler time step for all points except the boundaries
     u_new[2:(end - 1), 2:(end - 1)] =
-        ((args.c_u * u_lap) + F_u) * args.dt + u[2:(end - 1), 2:(end - 1)]
+        @. ((args.c_u * u_lap) + F_u) * args.dt + u[2:(end - 1), 2:(end - 1)]
     v_new[2:(end - 1), 2:(end - 1)] =
-        ((args.c_v * v_lap) + F_v) * args.dt + v[2:(end - 1), 2:(end - 1)]
+        @. ((args.c_v * v_lap) + F_v) * args.dt + v[2:(end - 1), 2:(end - 1)]
 
     # Apply periodic boundary conditions
     u_new[:, 1] = u[:, end - 1]
@@ -88,7 +88,7 @@ end
     v_new[end, :] = v[2, :]
 end
 
-# same as above but without the @accelerate macro
+# Keep the original materialization boundaries as an independent reference.
 function step_base(u, v, u_new, v_new, args::ParamsGS)
     # calculate F_u and F_v functions
     # currently we don't have NDArray^x working yet.
@@ -616,6 +616,7 @@ end
             u_scoped, v_scoped = gray_scott(T, N, u_rand, v_rand)
 
             @test safe_compare(u, u_scoped, atol(T) * N, rtol(T) * 10)
+            @test safe_compare(v, v_scoped, atol(T) * N, rtol(T) * 10)
         end
     end
 end

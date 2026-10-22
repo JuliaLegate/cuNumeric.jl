@@ -9,6 +9,75 @@ struct CUDATask
     end
 end
 
+struct CompiledBroadcast{C}
+    cuda_task::CUDATask
+    ctx::C
+    threads::Int
+end
+
+struct FixedBroadcastPlan{K}
+    kernel::K
+end
+
+struct AdaptiveBroadcastPlan{W,N}
+    wide::W
+    narrow::N
+    function AdaptiveBroadcastPlan(wide::W, narrow::N) where {W,N}
+        wide.cuda_task.argtypes == narrow.cuda_task.argtypes ||
+            throw(ArgumentError("adaptive broadcast variants have different argument ABIs"))
+        (
+            typeof(wide.ctx) === typeof(narrow.ctx) && isbitstype(typeof(wide.ctx)) &&
+            sizeof(wide.ctx) == sizeof(narrow.ctx)
+        ) ||
+            throw(ArgumentError("adaptive broadcast variants have different context layouts"))
+        return new{W,N}(wide, narrow)
+    end
+end
+
+_wide_kernel(p::FixedBroadcastPlan) = p.kernel
+_wide_kernel(p::AdaptiveBroadcastPlan) = p.wide
+
+function _require_adaptive_broadcast_wrapper()
+    isdefined(@__MODULE__, :RUN_PTX_BROADCAST_ADAPTIVE) || error(
+        "Adaptive GPU broadcast indexing requires an updated cuNumeric wrapper. " *
+        "Rebuild lib/cunumeric_jl_wrapper or update cuNumeric_jl_wrapper_jll.",
+    )
+    return nothing
+end
+
+function _launch_broadcast(plan::FixedBroadcastPlan, inputs, outputs, scalars)
+    k = plan.kernel
+    return launch(k.cuda_task, inputs, outputs, scalars;
+        blocks=1, threads=k.threads, taskid=RUN_PTX_BROADCAST, ctx=k.ctx)
+end
+
+function _add_broadcast_context!(task, ctx)
+    ref = Ref(ctx)
+    GC.@preserve ref begin
+        add_scalar_from_ptr(task, Base.unsafe_convert(Ptr{Cvoid}, ref), sizeof(ctx))
+    end
+    return nothing
+end
+
+function _launch_broadcast(plan::AdaptiveBroadcastPlan, inputs, outputs, scalars)
+    _require_adaptive_broadcast_wrapper()
+    rt = Legate.get_runtime()
+    task = LegateInternal.create_auto_task(rt, get_lib(), RUN_PTX_BROADCAST_ADAPTIVE)
+    input_vars = [_add_task_array!(LegateInternal.add_input, task, arr) for arr in inputs]
+    output_vars = [_add_task_array!(LegateInternal.add_output, task, arr) for arr in outputs]
+    # Explicit header: wide name/budget/context, narrow name/budget/context.
+    for k in (plan.wide, plan.narrow)
+        Legate.add_scalar(task, Legate.string_to_scalar(k.cuda_task.func))
+        Legate.add_scalar(task, Legate.Scalar(UInt32(k.threads)))
+        _add_broadcast_context!(task, k.ctx)
+    end
+    for s in scalars
+        Legate.add_scalar(task, Legate.Scalar(s))
+    end
+    Legate.default_alignment(task, input_vars, output_vars)
+    return LegateInternal.submit_auto_task(rt, task)
+end
+
 #! JUST PASS TYPES HERE INSTEAD OF CALLING typeof()
 map_ndarray_cuda_types(args...) = tuple(map(ndarray_cuda_type, typeof.(args))...)
 
@@ -95,17 +164,17 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
     blocks, threads, taskid=cuNumeric.RUN_PTX, ctx=nothing)
     rt = Legate.get_runtime()
     lib = cuNumeric.get_lib()
-    task = Legate.create_auto_task(rt, lib, taskid)
+    task = LegateInternal.create_auto_task(rt, lib, taskid)
     physical = taskid == cuNumeric.RUN_PTX
 
     input_vars = Vector{Legate.Variable}()
     for arr in inputs
-        push!(input_vars, _add_task_array!(Legate.add_input, task, arr; physical))
+        push!(input_vars, _add_task_array!(LegateInternal.add_input, task, arr; physical))
     end
 
     output_vars = Vector{Legate.Variable}()
     for arr in outputs
-        push!(output_vars, _add_task_array!(Legate.add_output, task, arr; physical))
+        push!(output_vars, _add_task_array!(LegateInternal.add_output, task, arr; physical))
     end
 
     # Reserved scalars: kernel_name (0), blocks (1,2,3), threads (4,5,6)
@@ -128,7 +197,7 @@ function Launch(kernel::CUDATask, inputs::Tuple{Vararg{NDArray}},
 
     # all inputs are aligned with all outputs
     Legate.default_alignment(task, input_vars, output_vars)
-    return Legate.submit_auto_task(rt, task)
+    return LegateInternal.submit_auto_task(rt, task)
 end
 
 function launch(kernel::CUDATask, inputs, outputs, scalars;
@@ -169,21 +238,21 @@ function ptx_task(ptx::String, kernel_name)
 
     # One point task per GPU so every GPU compiles the module.
     ngpus = max(_LINALG_RUNTIME[].gpus, 1)
-    domain = Legate.domain_from_shape(Legate.Shape(Legate.to_cxx_vector((ngpus,))))
-    task = Legate.create_manual_task(rt, lib, taskid, domain)
+    domain = LegateInternal.domain_from_shape(Legate.Shape(Legate.to_cxx_vector((ngpus,))))
+    task = LegateInternal.create_manual_task(rt, lib, taskid, domain)
     Legate.add_scalar(task, Legate.string_to_scalar(ptx))
     Legate.add_scalar(task, Legate.string_to_scalar(kernel_name))
-    Legate.submit_manual_task(rt, task)
+    LegateInternal.submit_manual_task(rt, task)
 
     # Fence so every load finishes before any launch reads the cache.
     return issue_execution_fence(; block=false)
 end
 
-function _emit_compatible_ptx(io, f, types)
+function _emit_compatible_ptx(io, f, types; kwargs...)
     ptx_version = _COMPATIBLE_PTX_VERSION[]
     # dump_module=true keeps linked libdevice helpers in the emitted module.
     return CUDATools.code_ptx(
-        io, f, types; raw=false, dump_module=true, kernel=true, ptx=ptx_version
+        io, f, types; raw=false, dump_module=true, kernel=true, ptx=ptx_version, kwargs...
     )
 end
 
