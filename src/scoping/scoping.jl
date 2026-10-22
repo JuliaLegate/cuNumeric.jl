@@ -129,6 +129,20 @@ function _returned_symbols(scope)
     return _result_symbols(last(stmts))
 end
 
+# Until cleanup tracks borrowing, explicit lazy wrappers make the entire scope
+# GC-managed. Matching names conservatively also covers local callable aliases.
+_has_lazy_wrapper(::Any) = false
+_has_lazy_wrapper(x::Symbol) = x in (:transpose, :adjoint, :Transpose, :Adjoint)
+_has_lazy_wrapper(x::GlobalRef) = _has_lazy_wrapper(x.name)
+function _has_lazy_wrapper(ex::Expr)
+    ex.head in (:quote, :inert) && return false
+    ex.head === Symbol("'") && return true
+    if ex.head === :. && last(ex.args) isa QuoteNode
+        _has_lazy_wrapper(last(ex.args).value) && return true
+    end
+    return any(_has_lazy_wrapper, ex.args)
+end
+
 # Turn the named allocations produced by either lifetime rewriter into an
 # executable scope. For example, if tmp1 and tmp2 are last used by statement 3:
 #
@@ -204,6 +218,9 @@ function insert_finalizers(
 
     # Roots (function args) are protected regardless of the terminal statement.
     protected = Set{Symbol}(canon(root) for root in protected_roots)
+    if any(_has_lazy_wrapper, stmts)
+        union!(protected, (canon(v) for v in assigned_vars))
+    end
     if n > 0 && !terminal_indexed
         for result in _result_symbols(stmts[n])
             push!(protected, canon(result))

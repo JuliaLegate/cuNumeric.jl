@@ -20,6 +20,12 @@ Arguments and returned values are never freed. Loops, conditionals, `try`,
 `&&`/`||` and nested functions are rejected: put `@accelerate` on the function
 called in the loop, not around the loop.
 
+Scopes that explicitly use `transpose`, `adjoint`, `Transpose`, `Adjoint`, or
+`A'` keep eligible broadcast fusion but leave temporary cleanup to Julia's GC.
+This keeps lazy wrappers and their parents valid, including returned wrappers.
+It can increase memory use compared with early cleanup. This syntax-based
+fallback does not detect wrappers created only inside another function.
+
 ## Forms
 
 | Form | What stays valid afterwards |
