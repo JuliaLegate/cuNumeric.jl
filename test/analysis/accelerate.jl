@@ -25,6 +25,57 @@
 
 using InteractiveUtils: code_typed
 
+@testset "@accelerate leaves lazy wrapper lifetimes to GC" begin
+    host = ComplexF64[1+im 2; 3 4-im]
+    A = NDArray(host)
+    for wrapper in (:(transpose(B)), :(adjoint(B)), :(B'),
+                    :(Base.transpose(B)), :(Base.adjoint(B)),
+                    :(LinearAlgebra.Transpose(B)), :(LinearAlgebra.Adjoint(B)),
+                    :(adjoint(adjoint(B))), :(adjoint(B).parent))
+        for aggressive in (false, true), form in (:function, :let, :begin, :expression)
+            name = gensym(:wrapped)
+            body = :(begin
+                B = copy(A)
+                alias = B
+                wrapped = $wrapper
+                B = copy(A)
+                wrapped
+            end)
+            input = form === :function ? Expr(:function, :($name(A)), body) :
+                    form === :let ? Expr(:let, Expr(:block), body) :
+                    form === :begin ? body : :(Base.adjoint(copy(A)))
+            expanded = cuNumeric._accelerate_expand(input, @__MODULE__; aggressive)
+            @test !occursin("maybe_insert_delete", string(expanded))
+            definition = form === :function ? expanded : Expr(:function, :($name(A)), expanded)
+            f = Core.eval(@__MODULE__, definition)
+            wrapped = Base.invokelatest(f, A)
+            owner = wrapped isa NDArray ? wrapped : parent(wrapped)
+            @test owner.ptr != C_NULL
+            if owner.ptr != C_NULL
+                @test Array(owner) == host
+            end
+        end
+    end
+    @accelerate function _acc_local_adjoint!(y, A, x)
+        B = copy(A)
+        Bt = B'
+        mul!(y, Bt, x)
+        y
+    end
+    x, y = NDArray(ComplexF64[1, 2]), cuNumeric.zeros(ComplexF64, 2)
+    @test _acc_local_adjoint!(y, A, x) === y
+    @test Array(y) ≈ host' * ComplexF64[1, 2]
+    # Ordinary scopes retain early cleanup, and wrapper scopes still fuse.
+    ordinary = :(function f(A); B = copy(A); sum(B); end)
+    @test occursin("maybe_insert_delete", string(cuNumeric._accelerate_expand(ordinary, @__MODULE__)))
+    chain = :(function f(A); B = A .+ 1; C = B .* 2; Base.adjoint(C); end)
+    expanded = string(cuNumeric._accelerate_expand(chain, @__MODULE__))
+    @test !occursin("maybe_insert_delete", expanded)
+    @test !cuNumeric.FUSE_BROADCAST_EXPRS || !occursin("B =", expanded)
+    eager = cuNumeric.process_lifetime_scope(:(begin B = copy(A); B'; end))
+    @test !occursin("maybe_insert_delete", string(eager))
+end
+
 @testset "@accelerate respects rebindings and alias writes" begin
     @accelerate function _acc_rebind(a, b)
         t = a .+ 1.0f0
