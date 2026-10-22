@@ -216,6 +216,7 @@ include("ndarray/sort.jl")
 include("ndarray/batched_linalg.jl")
 include("ndarray/contract.jl")
 include("ndarray/vector_linalg.jl")
+include("ndarray/transpose_linalg.jl")
 include("ndarray/fft.jl")
 include("scoping/scoping.jl")
 
