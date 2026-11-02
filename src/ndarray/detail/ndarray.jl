@@ -689,13 +689,18 @@ end
 
 # Rank-changing: drop size-1 axes. Empty `axes` drops every size-1 axis.
 function nda_squeeze(arr::NDArray, axes::Vector{Int32})
+    n = ndims(arr) - (isempty(axes) ? count(==(1), size(arr)) : length(axes))
+    return nda_squeeze(arr, axes, Val(n))
+end
+
+function nda_squeeze(arr::NDArray{T}, axes::Vector{Int32}, ::Val{N}; parent=arr) where {T,N}
     axes_c = collect(Int32, axes)
     ptr = @task_scope "squeeze" begin
         ccall((:nda_squeeze, libnda),
             NDArray_t, (NDArray_t, Ptr{Int32}, Int32),
             arr.ptr, axes_c, Int32(length(axes_c)))
     end
-    return NDArray(ptr)
+    return NDArray(ptr, T, Val(N), parent)
 end
 
 function nda_diagonal(arr::NDArray, offset::Int32, axis1::Int32, axis2::Int32)
