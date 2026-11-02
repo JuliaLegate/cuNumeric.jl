@@ -56,7 +56,9 @@ using Krylov
         nonsymmetric = Matrix(Tridiagonal(fill(T(-0.3), n - 1), fill(T(4), n), fill(T(-0.8), n - 1)))
         B = NDArray(nonsymmetric)
         biworkspace = Krylov.BicgstabWorkspace(B, rhs)
-        @allowpromotion @allowfetch Krylov.bicgstab!(biworkspace, B, rhs; atol=zero(R), rtol=tol, itmax=100)
+        allowpromotion(T <: Complex) do
+            @allowfetch Krylov.bicgstab!(biworkspace, B, rhs; atol=zero(R), rtol=tol, itmax=100)
+        end
         @test biworkspace.stats.solved
         @test norm(nonsymmetric * Array(biworkspace.x) - hostb) / norm(hostb) <= 5tol
 

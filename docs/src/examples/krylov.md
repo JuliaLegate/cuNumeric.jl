@@ -68,8 +68,8 @@ vectors. Wrap the solver call in both macros:
 ```
 
 The same macros apply to the allocating `Krylov.cg(A, b)` call.
-Use both macros for the other complex solvers too. BiCGSTAB also currently
-needs `@allowpromotion` for its default identity preconditioner with real inputs.
+Use both macros for the other complex solvers too. Real BiCGSTAB with the default
+identity preconditioner only needs `@allowfetch`.
 
 The benchmarking repository contains a larger
 [Krylov example and run instructions](https://github.com/JuliaLegate/benchmarking/tree/main/composability/krylov)
