@@ -15,7 +15,7 @@ using Test, cuNumeric
                 copyto!(expected, src)
                 for input in (src, NDArray(src))
                     dest = NDArray(fill(zero(T), ddims))
-                    @test copyto!(dest, input) === dest
+                    @test (@inferred copyto!(dest, input)) === dest
                     @test Array(dest) == expected
                 end
             end
@@ -44,13 +44,15 @@ using Test, cuNumeric
             host = Float32.(1:6)
             a = NDArray(host)
             copyto!(view(host, dst), view(host, src))
-            copyto!(view(a, dst), view(a, src))
+            dest, source = view(a, dst), view(a, src)
+            @test (@inferred copyto!(dest, source)) === dest
             @test Array(a) == host
         end
         host = reshape(Float32.(1:12), 3, 4)
         a = NDArray(host)
         copyto!(view(host, :, 2:3), view(host, 1:2, 1:3))
-        copyto!(view(a, :, 2:3), view(a, 1:2, 1:3))
+        dest, source = view(a, :, 2:3), view(a, 1:2, 1:3)
+        @test (@inferred copyto!(dest, source)) === dest
         @test Array(a) == host
     end
 end

@@ -145,20 +145,26 @@ copyto!(a, b);
 copyto!(a, Float32[1 2; 3 4]);
 ```
 """
-function Base.copyto!(dest::NDArray{T}, source::NDArray{T}) where {T}
-    length(source) == length(dest) || throw(DimensionMismatch("source and destination lengths differ"))
-    isempty(source) && return dest
-    dest === source && return dest
-    src = nda_overlaps(dest, source) ? copy(source) : source
+function Base.copyto!(dest::NDArray{T}, src::NDArray{T}) where {T}
+    length(src) == length(dest) || throw(DimensionMismatch("source and destination lengths differ"))
+    isempty(src) && return dest
+    dest === src && return dest
+    nda_overlaps(dest, src) && return _copyto_owned!(dest, copy(src))
+    size(dest) == size(src) || return _copyto_owned!(dest, _copy_reshape(src, size(dest)))
+    nda_assign(dest, src)
+    return dest
+end
+
+# Copy from a non-overlapping temporary and release its handle, including on failure.
+function _copyto_owned!(dest::NDArray, src::NDArray)
     try
-        shaped = _copy_reshape(src, size(dest))
-        try
-            nda_assign(dest, shaped)
-        finally
-            shaped !== src && destroy!(shaped)
+        if size(dest) == size(src)
+            nda_assign(dest, src)
+        else
+            _copyto_owned!(dest, _copy_reshape(src, size(dest)))
         end
     finally
-        src !== source && destroy!(src)
+        destroy!(src)
     end
     return dest
 end
@@ -474,19 +480,26 @@ Base.IndexStyle(::Type{<:NDArray}) = IndexCartesian()
 Base.axes(arr::NDArray) = Base.OneTo.(size(arr))
 Base.view(arr::NDArray, inds...) = arr[inds...] # NDArray slices are views by default.
 
+_view_slice(::Colon, n) = (0, n)
+_view_slice(i::Integer, _) = _zero_based_index(i)
+_view_slice(i::AbstractUnitRange{<:Integer}, _) = _zero_based_range(i)
+
 function Base.view(
     arr::NDArray{T,N}, inds::Vararg{Union{Integer,AbstractUnitRange{<:Integer},Colon},N}
 ) where {T,N}
     @boundscheck checkbounds(arr, inds...)
-    slices = map(inds, size(arr)) do i, n
-        i isa Colon ? (0, n) : i isa Integer ? _zero_based_index(i) : _zero_based_range(i)
-    end
+    slices = map(_view_slice, inds, size(arr))
     sliced = nda_get_slice(arr, slice_array(slices...))
     rank = N - count(i -> i isa Integer, inds)
-    rank == N && return sliced
+    return _view_dropdims(sliced, inds, Val(rank))
+end
+
+_view_dropdims(sliced::NDArray{T,N}, inds, ::Val{N}) where {T,N} = sliced
+
+function _view_dropdims(sliced::NDArray, inds, rank::Val)
     try
-        dropped = Int32[d - 1 for d in 1:N if inds[d] isa Integer]
-        return nda_squeeze(sliced, dropped, Val(rank); parent=arr)
+        dropped = Int32[d - 1 for d in eachindex(inds) if inds[d] isa Integer]
+        return nda_squeeze(sliced, dropped, rank; parent=sliced.parent)
     finally
         destroy!(sliced)
     end
