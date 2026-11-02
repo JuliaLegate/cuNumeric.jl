@@ -1,0 +1,37 @@
+module DistributedExt
+
+using Distributed
+using Sockets
+# Don't import cuNumeric here - it would initialize runtime before env vars are set!
+include("setup.jl")
+include("ports.jl")
+
+function __init__()
+    # Get cuNumeric module from loaded modules without importing it
+    cunumeric_pkgid = Base.PkgId(Base.UUID("0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"), "cuNumeric")
+    cuNumeric = Base.loaded_modules[cunumeric_pkgid]
+    # Register functions at runtime
+    Base.@eval cuNumeric begin
+        function init_workers(; kwargs...)
+            assert_experimental()
+            _assert_not_under_mpi()
+            return $DistributedExt.init_workers_impl(; kwargs...)
+        end
+        function addprocs(n::Integer; kwargs...)
+            assert_experimental()
+            _assert_not_under_mpi()
+            return $DistributedExt.addprocs_impl(n; kwargs...)
+        end
+        function addprocs(manager::$(Distributed.ClusterManager); kwargs...)
+            assert_experimental()
+            _assert_not_under_mpi()
+            return $DistributedExt.addprocs_impl(manager; kwargs...)
+        end
+        function finalize_workers(args...; kwargs...)
+            assert_experimental()
+            return $DistributedExt.finalize_workers_impl(args...; kwargs...)
+        end
+    end
+end
+
+end # module DistributedExt
