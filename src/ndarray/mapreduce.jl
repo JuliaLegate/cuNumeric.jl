@@ -4,27 +4,37 @@ struct NoReductionInit end
 const _MR_ADD = Union{typeof(+),typeof(Base.add_sum)}
 const _MR_MUL = Union{typeof(*),typeof(Base.mul_prod)}
 const _MR_EXTREMA = Union{typeof(min),typeof(max)}
-const _MR_OP = Union{_MR_ADD,_MR_MUL,_MR_EXTREMA}
+const _MR_BOOL = Union{typeof(&),typeof(|)}
+const _MR_OP = Union{_MR_ADD,_MR_MUL,_MR_EXTREMA,_MR_BOOL}
 const _MR_DIMS = Union{Integer,Tuple}
 
 _mr_operator(op::_MR_OP) = op
-_mr_operator(op) = throw(ArgumentError("mapreduce supports only +, *, min, and max"))
+_mr_operator(op) = throw(ArgumentError("mapreduce supports only +, *, min, max, and Boolean &/|"))
 _mr_combine(::_MR_ADD) = (+)
 _mr_combine(::_MR_MUL) = (*)
 _mr_combine(op::_MR_EXTREMA) = op
+_mr_combine(op::_MR_BOOL) = op
 _mr_redop(::_MR_ADD, ::Type) = MAPREDUCE_ADD
 _mr_redop(::_MR_MUL, ::Type) = MAPREDUCE_MUL
 _mr_redop(::typeof(min), ::Type) = MAPREDUCE_MIN
 _mr_redop(::typeof(max), ::Type) = MAPREDUCE_MAX
+# On encoded Boolean values, bitwise AND/OR agree with min/max. The existing
+# Legate reducers combine task contributions without new native operators.
+_mr_redop(::typeof(&), ::Type) = MAPREDUCE_MIN
+_mr_redop(::typeof(|), ::Type) = MAPREDUCE_MAX
 
 _mr_storage(::_MR_OP, ::Type{T}) where {T} = T
 # Legate's bitwise reducers do not provide Bool specializations. Product and
 # extrema on 0/1 bytes preserve the Boolean operations without custom reducers.
 _mr_storage(::Union{_MR_MUL,_MR_EXTREMA}, ::Type{Bool}) = UInt8
+# Keep the reduction store byte-valued even when an integer init determines
+# the dimensional result type. Apply that init only in the finishing kernel.
+_mr_storage(::_MR_BOOL, ::Type{T}) where {T} = UInt8
 _mr_storage(::_MR_EXTREMA, ::Type{Float32}) = UInt32
 _mr_storage(::_MR_EXTREMA, ::Type{Float64}) = UInt64
 _mr_encode(::_MR_OP, x) = x
 _mr_encode(::Union{_MR_MUL,_MR_EXTREMA}, x::Bool) = UInt8(x)
+_mr_encode(::_MR_BOOL, x) = UInt8(x)
 _mr_nan_key(::typeof(min), ::Type{U}) where {U} = zero(U)
 _mr_nan_key(::typeof(max), ::Type{U}) where {U} = typemax(U)
 @inline function _mr_encode(op::_MR_EXTREMA, x::T) where {T<:Union{Float32,Float64}}
@@ -35,6 +45,7 @@ _mr_nan_key(::typeof(max), ::Type{U}) where {U} = typemax(U)
 end
 _mr_decode(::_MR_OP, ::Type{T}, x) where {T} = x
 _mr_decode(::Union{_MR_MUL,_MR_EXTREMA}, ::Type{Bool}, x) = !iszero(x)
+_mr_decode(::_MR_BOOL, ::Type{T}, x) where {T} = T(!iszero(x))
 @inline function _mr_decode(op::_MR_EXTREMA, ::Type{T}, x::U) where {T<:Union{Float32,Float64},U<:Unsigned}
     x == _mr_nan_key(op, U) && return T(NaN)
     sign = one(U) << (8sizeof(U) - 1)
@@ -48,6 +59,8 @@ _mr_identity(::_MR_ADD, ::Type{Complex{T}}) where {T} = Complex{T}(-zero(T), -ze
 _mr_identity(::_MR_MUL, ::Type{T}) where {T} = one(T)
 _mr_identity(::typeof(min), ::Type{T}) where {T} = typemax(T)
 _mr_identity(::typeof(max), ::Type{T}) where {T} = typemin(T)
+_mr_identity(::typeof(&), ::Type{T}) where {T} = typemax(T)
+_mr_identity(::typeof(|), ::Type{T}) where {T} = zero(T)
 
 function _mr_dims(shape::Dims{N}, ::Colon) where {N}
     return ntuple(_ -> true, max(N, 1)), ()
@@ -73,11 +86,21 @@ function _mr_mapped_type(f::F, ::Type{T}) where {F,T}
     return M
 end
 
+struct MapReduceCount{F}
+    f::F
+end
+(m::MapReduceCount)(x) = m.f(x)::Bool
+
+_mr_accumulator_promotion(f, op, M, R) = assertpromotion(op, M, R)
+# Counting inherently accumulates Bool values in integers; no input copy is widened.
+_mr_accumulator_promotion(::MapReduceCount, ::typeof(Base.add_sum), ::Type{Bool}, ::Type{<:Integer}) = nothing
+
 _mr_supported_accumulator(op, ::Type{R}) where {R} = R
 _mr_supported_accumulator(::_MR_MUL, ::Type{ComplexF64}) =
     throw(ArgumentError("ComplexF64 product accumulators are unsupported: Legate has no corresponding built-in reducer"))
 
 function _mr_accumulator(op::_MR_OP, ::Type{M}) where {M}
+    op isa _MR_BOOL && M !== Bool && throw(ArgumentError("mapreduce with & or | requires Bool mapped values; inferred $M"))
     op isa _MR_EXTREMA && M <: Complex && throw(ArgumentError("min/max mapreduce does not support complex mapped values"))
     R = Base.promote_op(Base.reduce_first, typeof(op), M)
     isconcretetype(R) && R <: SUPPORTED_ARRAY_TYPES || throw(ArgumentError("unsupported mapreduce accumulator type $R"))
@@ -104,6 +127,7 @@ _mr_empty(f, op, T, M, ::NoReductionInit, ::Colon) = Base.mapreduce_empty(f, op,
 _mr_empty(f, op, T, M, init, dims) = init
 _mr_empty(f, op::_MR_ADD, T, M, ::NoReductionInit, dims::_MR_DIMS) = zero(_mr_accumulator(op, M))
 _mr_empty(f, op::_MR_MUL, T, M, ::NoReductionInit, dims::_MR_DIMS) = one(_mr_accumulator(op, M))
+_mr_empty(f, op::_MR_BOOL, T, M, ::NoReductionInit, dims::_MR_DIMS) = _mr_identity(op, Bool)
 # Base rejects empty reduced axes before scalar reduction dispatch (which can
 # throw MethodError on Julia 1.10). abs/abs2 maxima have a separate zero seed.
 _mr_empty(f, op::_MR_EXTREMA, T, M, ::NoReductionInit, dims::_MR_DIMS) =
@@ -115,7 +139,8 @@ _mr_empty(f::Union{typeof(abs),typeof(abs2)}, op::typeof(max), T, M, ::NoReducti
     mapreduce(f, op, A::NDArray; dims=:, init)
 
 Fuse a scalar mapping with a distributed GPU reduction. Supported operators are
-`+`, `*`, `min`, and `max`. Full reductions return an `CNScalar`; explicit
+`+`, `*`, `min`, `max`, and `&`/`|` for Bool-valued mappings. Full reductions
+return a `CNScalar` (`CNBool` for Boolean results); explicit
 dimensions retain singleton axes. `sum(f, A)` and `prod(f, A)` use Base's integer
 widening rules, subject to `allowpromotion`.
 
@@ -138,7 +163,7 @@ function Base.mapreduce(f::F, op::OP, A::NDArray{T}; dims=:, init=NoReductionIni
     O = _mr_output_type(op, R, init, dims)
     isconcretetype(O) && O <: SUPPORTED_ARRAY_TYPES || throw(ArgumentError("unsupported mapreduce output type $O"))
     is_wider_type(M, T) && assertpromotion(f, T, M)
-    is_wider_type(R, M) && assertpromotion(op, M, R)
+    is_wider_type(R, M) && _mr_accumulator_promotion(mapper, op, M, R)
     is_wider_type(O, R) && assertpromotion(op, R, O)
     nreduce = prod(d -> mask[d] ? input_shape[d] : 1, 1:ndims(A); init=1)
     if nreduce == 0
@@ -154,4 +179,65 @@ Base.mapreduce(f, op, A::NDArray, B::AbstractArray, rest::AbstractArray...; kwar
 
 for (name, op) in ((:sum, Base.add_sum), (:prod, Base.mul_prod), (:minimum, min), (:maximum, max))
     @eval Base.$name(f, A::NDArray; kwargs...) = mapreduce(f, $op, A; kwargs...)
+end
+
+"""
+    all(f, A::NDArray; dims=:)
+
+Test whether every element satisfies the Bool-valued predicate `f`.
+Empty reductions return true. Returns a deferred `CNBool`, or a Bool NDArray
+when reducing along `dims`. See `mapreduce` for supported callables.
+"""
+Base.all(f, A::NDArray; dims=:) = mapreduce(f, &, A; dims, init=true)
+# Resolve Base's (Function, AbstractArray) method while also supporting functors.
+Base.all(f::Function, A::NDArray; dims=:) = mapreduce(f, &, A; dims, init=true)
+
+"""
+    any(f, A::NDArray; dims=:)
+
+Test whether any element satisfies the Bool-valued predicate `f`.
+Empty reductions return false. Returns a deferred `CNBool`, or a Bool NDArray
+when reducing along `dims`. See `mapreduce` for supported callables.
+"""
+Base.any(f, A::NDArray; dims=:) = mapreduce(f, |, A; dims, init=false)
+Base.any(f::Function, A::NDArray; dims=:) = mapreduce(f, |, A; dims, init=false)
+
+"""
+    count(f, A::NDArray; dims=:, init=0)
+    count(A::NDArray{Bool}; dims=:, init=0)
+
+Count matches for a Bool-valued predicate, or true values in a Bool array.
+Returns a deferred scalar or an NDArray with the reduced axes retained.
+"""
+function Base.count(f, A::NDArray{T}; dims=:, init=0) where {T}
+    mapper = _mr_callable(f)
+    _mr_mapped_type(mapper, T) === Bool || throw(ArgumentError("count requires Bool mapped values"))
+    return mapreduce(MapReduceCount(mapper), Base.add_sum, A; dims, init)
+end
+Base.count(A::NDArray{Bool}; kwargs...) = count(identity, A; kwargs...)
+
+struct MapReduceMean{R,F}
+    f::F
+end
+(m::MapReduceMean{R})(x) where {R} = convert(R, m.f(x))
+
+"""
+    mean(f, A::NDArray; dims=:)
+
+Mean of the mapped values, returning a deferred scalar or an NDArray with the
+reduced axes retained. Uses the callable and promotion rules of `mapreduce`.
+"""
+function mean(f, A::NDArray{T}; dims=:) where {T}
+    mapper = _mr_callable(f)
+    M = _mr_mapped_type(mapper, T)
+    # Statistics promotes each mapped value before summing, avoiding integer overflow.
+    R = Base.promote_op(/, M, Int)
+    total = isempty(A) ? sum(mapper, A; dims) :
+        sum(MapReduceMean{R,typeof(mapper)}(mapper), A; dims)
+    try
+        n = isempty(A) ? 0 : _reduction_nelem(A, dims isa Tuple ? Tuple(Base.unique(dims)) : dims)
+        return _div_nelem(total, n)
+    finally
+        destroy!(total)
+    end
 end
