@@ -319,11 +319,19 @@ end
         host[:, 2] .= _struct_storage_bump.(host[:, 2], 2.0)
         @test Array(device) == host
 
-        mismatched = NDArray(_struct_storage_host(3, 4))
+        # Equal-length copies follow Julia's element order even when shapes differ.
+        source_host = _struct_storage_host(3, 4)
+        source = NDArray(source_host)
+        dest = similar(device)
+        mismatched = NDArray(_struct_storage_host(3, 5))
         try
-            @test_throws DimensionMismatch copyto!(similar(device), mismatched)
+            expected = similar(host)
+            copyto!(expected, source_host)
+            @test copyto!(dest, source) === dest
+            @test Array(dest) == expected
+            @test_throws DimensionMismatch copyto!(dest, mismatched)
         finally
-            cuNumeric.destroy!(mismatched)
+            foreach(cuNumeric.destroy!, (source, dest, mismatched))
         end
 
         # Struct reshapes copy each field, following numeric reshape ordering.
