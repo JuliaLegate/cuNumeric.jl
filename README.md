@@ -46,11 +46,7 @@ s = sum(A)          # CNScalar
 x = fetch(s)        # native Julia scalar, e.g. Float32
 ```
 
-Use `allowfetch() do ... end` or `@allowfetch` to permit host comparisons and numeric conversions of device scalars. Permission is task-local and disabled by default; arithmetic remains on the backend. See [Device scalars](https://julialegate.github.io/cuNumeric.jl/stable/api_cnscalar).
-
-**0D arrays support scalar-shaped arithmetic.** Use `+`, `-`, `*`, `/`, and `^`
-with two 0D NDArrays or with a 0D NDArray and a Julia number. Results stay as
-0D NDArrays on the backend, following the existing promotion policy.
+Use `allowfetch() do ... end` or `@allowfetch` to permit host comparisons and numeric conversions of device scalars. See [Device scalars](https://julialegate.github.io/cuNumeric.jl/stable/api_cnscalar).
 
 **The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into a task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them [for example `println`, `fetch`, or communicating with the Julia runtime (i.e., `Array(A)`)]. Hiding latency enables performant code.
 
@@ -58,7 +54,7 @@ For API details see [Initialization](https://julialegate.github.io/cuNumeric.jl/
 
 ### Kernel Fusion
 
-Nested broadcast expressions fuse into a single kernel by default when on GPU. Prefer `@.` for multi-op elementwise code so every operator is dotted and the expression stays completely fused. Even just forgetting the `.` on unary negation (i.e., `y .= -a .+ b .* c`) will result in unfused code. Use the following pattern instead.
+Broadcast expressions fuse into a single kernel by default when on GPU. Prefer `@.` for multi-op elementwise code so every operator is dotted and the expression stays completely fused. Even just forgetting the `.` on unary negation (i.e., `y .= -a .+ b .* c`) will result in unfused code. Use the following pattern instead.
 
 ```julia
 y .= @. -a + b * c
@@ -74,25 +70,9 @@ See [Kernel Fusion](https://julialegate.github.io/cuNumeric.jl/stable/perf/kerne
 
 Results and reproduction instructions live under [Benchmark Results](https://julialegate.github.io/cuNumeric.jl/stable/benchmarks/results) and [Running the Benchmarks](https://julialegate.github.io/cuNumeric.jl/stable/benchmarks/results#running-the-benchmarks). Run `./scripts/get_benchmarks.sh` to fetch the suite into `benchmark/`.
 
-### TensorOperations.jl Integration
+### Ecosystem Integrations
 
-We implement a package extension for [TensorOperations.jl](https://github.com/QuantumKitHub/TensorOperations.jl) to enable clean syntax and optimal contraction order for tensor contractions. Simply load TensorOperations alongside cuNumeric to take advantage! Some useful macros if you are unfamiliar are [@tensor](https://quantumkithub.github.io/TensorOperations.jl/stable/man/indexnotation/#The-@tensor-macro), [@tensoropt](https://quantumkithub.github.io/TensorOperations.jl/stable/man/indexnotation/#TensorOperations.@tensoropt) and [@notensor](https://quantumkithub.github.io/TensorOperations.jl/stable/man/indexnotation/#TensorOperations.@notensor).
-
-```julia
-using TensorOperations
-using cuNumeric
-
-α = randn() # prefer a Julia Number when you already have one
-A = cuNumeric.randn(5, 5, 5, 5, 5, 5)
-B = cuNumeric.randn(5, 5, 5)
-C = cuNumeric.randn(5, 5, 5)
-D = cuNumeric.zeros(5, 5, 5)
-
-@tensor begin
-    D[a, b, c] = A[a, e, f, c, f, g] * B[g, b, e] + α * C[c, a, b]
-    E[a, b, c] := A[a, e, f, c, f, g] * B[g, b, e] + α * C[c, a, b]
-end
-```
+We implement a package extensions for [TensorOperations.jl](https://github.com/QuantumKitHub/TensorOperations.jl) and [Krylov.jl](https://github.com/juliasmoothoptimizers/krylov.jl). Simply load TensorOperations or Krylov alongside cuNumeric to take advantage! We also demonstrate composability with libraries like [OrdinaryDiffEq.jl](https://github.com/SciML/OrdinaryDiffEq.jl). Check out the [examples](https://julialegate.github.io/cuNumeric.jl/stable/examples/ordinarydiffeq) in the documentation. Let us know if there's a feature in these libraries that doesn't work for you. 
 
 ### Try an example
 
