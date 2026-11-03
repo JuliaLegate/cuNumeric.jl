@@ -132,8 +132,9 @@ Base.copy(arr::NDArray) = nda_copy(arr)
     copyto!(arr::NDArray, other::NDArray)
     copyto!(arr::NDArray, other::Array)
 
-Overwrite `arr` with the values of `other`, which may be another NDArray or a
-Julia host `Array` of the same element type and shape. A host copy returns
+Copy `other` into `arr` in Julia's column-major element order.
+The arrays must have the same element type and number of elements; their shapes
+may differ. Copying only a prefix of the destination is unsupported. A host copy returns
 once the data is on the device, so `other` can be reused right away.
 
 # Examples
@@ -144,12 +145,51 @@ copyto!(a, b);
 copyto!(a, Float32[1 2; 3 4]);
 ```
 """
-@inline function Base.copyto!(arr::NDArray{T,N}, other::NDArray{T,N}) where {T,N}
-    nda_assign(arr, other)
-    return arr
+function Base.copyto!(dest::NDArray{T}, src::NDArray{T}) where {T}
+    length(src) == length(dest) || throw(DimensionMismatch("source and destination lengths differ"))
+    isempty(src) && return dest
+    dest === src && return dest
+    nda_overlaps(dest, src) && return _copyto_owned!(dest, copy(src))
+    size(dest) == size(src) || return _copyto_owned!(dest, _copy_reshape(src, size(dest)))
+    nda_assign(dest, src)
+    return dest
 end
 
-function Base.copyto!(dest::NDArray{T,N}, src::Array{T,N}) where {T,N}
+# Copy from a non-overlapping temporary and release its handle, including on failure.
+function _copyto_owned!(dest::NDArray, src::NDArray)
+    try
+        if size(dest) == size(src)
+            nda_assign(dest, src)
+        else
+            _copyto_owned!(dest, _copy_reshape(src, size(dest)))
+        end
+    finally
+        destroy!(src)
+    end
+    return dest
+end
+
+# Reverse axes around the backend's C-order reshape to preserve Julia order.
+# This is a copy helper, not a promise that a reshaped destination aliases storage.
+function _copy_reshape(src::NDArray, dims::Dims)
+    size(src) == dims && return src
+    reversed = ndims(src) > 1 ? nda_transpose(src) : src
+    try
+        shaped = reshape(reversed, reverse(dims))
+        length(dims) <= 1 && return shaped
+        try
+            return nda_transpose(shaped)
+        finally
+            destroy!(shaped)
+        end
+    finally
+        reversed !== src && destroy!(reversed)
+    end
+end
+
+function Base.copyto!(dest::NDArray{T}, src::Array{T}) where {T}
+    length(src) == length(dest) || throw(DimensionMismatch("source and destination lengths differ"))
+    isempty(src) && return dest
     attached = _nda_from_julia_array(src)
     try
         GC.@preserve src attached begin
@@ -440,6 +480,31 @@ Base.IndexStyle(::Type{<:NDArray}) = IndexCartesian()
 Base.axes(arr::NDArray) = Base.OneTo.(size(arr))
 Base.view(arr::NDArray, inds...) = arr[inds...] # NDArray slices are views by default.
 
+_view_slice(::Colon, n) = (0, n)
+_view_slice(i::Integer, _) = _zero_based_index(i)
+_view_slice(i::AbstractUnitRange{<:Integer}, _) = _zero_based_range(i)
+
+function Base.view(
+    arr::NDArray{T,N}, inds::Vararg{Union{Integer,AbstractUnitRange{<:Integer},Colon},N}
+) where {T,N}
+    @boundscheck checkbounds(arr, inds...)
+    slices = map(_view_slice, inds, size(arr))
+    sliced = nda_get_slice(arr, slice_array(slices...))
+    rank = N - count(i -> i isa Integer, inds)
+    return _view_dropdims(sliced, inds, Val(rank))
+end
+
+_view_dropdims(sliced::NDArray{T,N}, inds, ::Val{N}) where {T,N} = sliced
+
+function _view_dropdims(sliced::NDArray, inds, rank::Val)
+    try
+        dropped = Int32[d - 1 for d in eachindex(inds) if inds[d] isa Integer]
+        return nda_squeeze(sliced, dropped, rank; parent=sliced.parent)
+    finally
+        destroy!(sliced)
+    end
+end
+
 # All-colon getindex copies, but view/dotview must retain the original store.
 # A separate handle is required because @accelerate frees temporary views.
 function Base.view(arr::NDArray{T,N}, ::Vararg{Colon,N}) where {T,N}
@@ -485,6 +550,7 @@ end
 Overloads `Base.getindex` and `Base.setindex!` to support multidimensional indexing and slicing on `cuNumeric.NDArray`s.
 
 Slicing supports combinations of `Integer`, `UnitRange`, and `Colon()` for selecting ranges of rows and columns.
+Integer indices drop their dimensions; ranges and colons retain them.
 Using one colon per dimension (`v[:]`, `A[:, :]`, etc.) returns an `NDArray`
 copy. `view` and dotted assignment share the original storage instead.
 Linear range/colon indexing of multidimensional arrays is unsupported; use one
@@ -627,10 +693,11 @@ function _setindex_slice!(lhs::NDArray{T}, rhs::NDArray, slices) where {T}
         # mismatch raises DimensionMismatch as in Base instead of writing silently.
         Base.setindex_shape_check(rhs, size(s)...)
         src = checked_promote_arr(rhs, T)
-        shaped = size(src) == size(s) ? src : reshape(src, size(s))
-        copyto!(s, shaped)
-        shaped === src || destroy!(shaped)
-        src === rhs || destroy!(src)
+        try
+            copyto!(s, src)
+        finally
+            src === rhs || destroy!(src)
+        end
     finally
         destroy!(s)
     end
@@ -718,15 +785,11 @@ end
 end
 
 @inline function Base.getindex(arr::NDArray{T,2}, ::Colon, j::Integer) where {T}
-    @boundscheck checkbounds(arr, :, j)
-    return nda_get_slice(
-        arr, slice_array((0, size(arr, 1)), _zero_based_index(j))
-    )
+    return view(arr, :, j)
 end
 
 @inline function Base.getindex(arr::NDArray{T,2}, i::Integer, ::Colon) where {T}
-    @boundscheck checkbounds(arr, i, :)
-    return nda_get_slice(arr, slice_array(_zero_based_index(i)))
+    return view(arr, i, :)
 end
 
 @inline function Base.getindex(
@@ -750,19 +813,13 @@ end
 @inline function Base.getindex(
     arr::NDArray{T,2}, i::AbstractUnitRange{<:Integer}, j::Integer
 ) where {T}
-    @boundscheck checkbounds(arr, i, j)
-    return nda_get_slice(
-        arr, slice_array(_zero_based_range(i), _zero_based_index(j))
-    )
+    return view(arr, i, j)
 end
 
 @inline function Base.getindex(
     arr::NDArray{T,2}, i::Integer, j::AbstractUnitRange{<:Integer}
 ) where {T}
-    @boundscheck checkbounds(arr, i, j)
-    return nda_get_slice(
-        arr, slice_array(_zero_based_index(i), _zero_based_range(j))
-    )
+    return view(arr, i, j)
 end
 
 @inline function Base.getindex(
@@ -819,6 +876,7 @@ end
 @inline function Base.setindex!(
     arr::NDArray{T,N}, rhs::NDArray{T}, c::Vararg{Colon,N}
 ) where {T,N}
+    Base.setindex_shape_check(rhs, size(arr)...)
     return Base.copyto!(arr, rhs)
 end
 
