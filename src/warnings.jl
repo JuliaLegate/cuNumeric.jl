@@ -349,15 +349,16 @@ end
         ...
     end
 
-Use this function to allow or disallow scalar indexing, either globall or for the
+Use this function to allow or disallow scalar indexing, either globally or for the
 duration of the do block.
 
 See also: [`@allowscalar`](@ref).
 """
 allowscalar
 
-function allowscalar(f::Base.Callable)
-    return task_local_storage(f, :ScalarIndexing, ScalarAllowed)
+function allowscalar(f::Base.Callable, allow::Bool=true)
+    setting = allow ? ScalarAllowed : ScalarDisallowed
+    return task_local_storage(f, :ScalarIndexing, setting)
 end
 
 function allowscalar(allow::Bool=true)

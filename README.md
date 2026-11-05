@@ -120,4 +120,3 @@ More worked examples (initialization, Gray-Scott, …) are in the documentation 
 
 - There is no support for `Float16` or `ComplexF16` or `Complex{<:Integer}`
 - Stochastic bug in FFT can cause segfault
-- Unfused broadcasting of a `Vector` reshaped to (1, n) will not mimic Julia semantics
