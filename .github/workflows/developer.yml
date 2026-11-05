@@ -61,12 +61,14 @@ jobs:
       # Example: include "[legate-branch: my-feature]" anywhere in the message.
       - name: Detect Legate branch override
         id: legate-branch
+        # Pass event text as data so Markdown backticks cannot execute shell commands.
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          MSG=$(printf '%s\n%s' \
-            "${{ github.event.head_commit.message }}" \
-            "${{ github.event.pull_request.body }}")
-          BRANCH=$(echo "$MSG" | grep -oiP 'legate[-_]branch:\s*\K\S+' | head -1 | tr -d '[]' || true)
-          echo "branch=${BRANCH}" >> $GITHUB_OUTPUT
+          MSG=$(printf '%s\n%s' "$HEAD_COMMIT_MESSAGE" "$PR_BODY")
+          BRANCH=$(printf '%s\n' "$MSG" | grep -oiP 'legate[-_]branch:\s*\K\S+' | head -1 | tr -d '[]' || true)
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
           if [[ -n "$BRANCH" ]]; then
             echo "Using Legate.jl branch override: $BRANCH"
           else
