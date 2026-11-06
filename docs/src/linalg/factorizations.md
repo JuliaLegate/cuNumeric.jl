@@ -21,16 +21,13 @@ F = cholesky(A)
 L = F.L          # LowerTriangular view of F.factors
 ```
 
-Three things differ from Base:
+Two things differ from Base:
 
 - The input is **not** checked for being Hermitian. Only its lower triangle is
   read. There are no `Hermitian` / `Symmetric` overloads.
 - A non-positive-definite input raises an `ErrorException` carrying the task's
   `"Matrix is not positive definite"` message, not a `PosDefException`. The
   `check` keyword is therefore not supported.
-- `F.U` (and hence destructuring as `L, U = F`) needs `copy(F.factors')`, which
-  falls back to scalar indexing until `adjoint(::NDArray)` is implemented. Use
-  `F.L` or `F.factors`.
 
 ## Eigendecomposition
 
@@ -76,9 +73,8 @@ With `k = min(m, n)`, the output shapes are:
 - Full (`full=true`): `U` is `m × m`, `S` has length `k`, and `Vt` is `n × n`.
 
 The default `full=false` returns thin factors. Destructuring as `U, S, V = F` also gives you the
-*adjoint* of `F.Vt`, and `F.V` is a lazy `Adjoint` wrapper, so operating on it
-falls back to scalar indexing until `adjoint(::NDArray)` is implemented. Prefer
-`F.Vt`.
+*adjoint* of `F.Vt`, and `F.V` is a lazy `Adjoint` wrapper. It supports copying,
+matrix-vector products, and matrix-matrix products, including `mul!`.
 
 `S` is real-valued for both real and complex inputs.
 

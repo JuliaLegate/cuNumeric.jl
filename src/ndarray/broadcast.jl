@@ -205,6 +205,17 @@ end
     return nothing
 end
 
+# Julia broadcasts along trailing singleton dimensions; cuPyNumeric inserts
+# missing dimensions at the front. Match the output rank before native ops so
+# both implementations expand the same axes. Adding/removing trailing ones
+# preserves element order and creates only a store view, not a general reshape.
+@inline _unfused_broadcast_arg(x, dest) = x
+@inline function _unfused_broadcast_arg(x::NDArray{T,N}, dest::NDArray{S,M}) where {T,N,S,M}
+    # Scalars already broadcast correctly, and same-rank inputs need no wrapper.
+    (N == 0 || N == M) && return x
+    return nda_reshape_array(x, ntuple(i -> size(x, i), Val(M)))
+end
+
 # Un-fused implementation of broadcast tree. `dest`, when given, receives the
 # top-level result directly if its eltype matches and no input partially overlaps it.
 function unravel_broadcast_tree(bc::Broadcasted, dest=nothing)
@@ -226,16 +237,15 @@ function unravel_broadcast_tree(bc::Broadcasted, dest=nothing)
 
     out = _unfused_output(dest, T_OUT, bc, in_args)
 
-    # If the operation, "bc.f",  is supported by cuNumeric, this
-    # dispatches to a function calling the C-API.
-    # If not it falls back to a pass-through that just calls
-    # the Julia function and assumes the user defined a function
-    # composed of supported operations.
-    result = __broadcast(bc.f, out, in_args...)
-    for i in eachindex(materialized_args)
-        _destroy_unfused_arg_temps!(bc.args[i], materialized_args[i], in_args[i])
+    broadcast_args = map(arg -> _unfused_broadcast_arg(arg, out), in_args)
+    try
+        return __broadcast(bc.f, out, broadcast_args...)
+    finally
+        for i in eachindex(materialized_args)
+            broadcast_args[i] !== in_args[i] && destroy!(broadcast_args[i])
+            _destroy_unfused_arg_temps!(bc.args[i], materialized_args[i], in_args[i])
+        end
     end
-    return result
 end
 
 @inline _unfused_output(::Nothing, ::Type{T}, bc, in_args) where {T} =

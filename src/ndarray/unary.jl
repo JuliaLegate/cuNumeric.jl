@@ -442,9 +442,9 @@ function Base.any(input::NDArray{Bool}; dims=Colon())
     return _scalar_result(_bool_reduction_impl(cuNumeric.ANY, input, dims))
 end
 
-# Compare on-device against `zero(T)` / `_eye(T, n)` (identity filled with `one(T)`).
-# Returns a 0D `NDArray{Bool}` — not a Julia `Bool`.
+# Predicates return deferred CNBool results.
 function Base.iszero(A::NDArray{T}) where {T}
+    _has_gpu_target() && return all(iszero, A)
     return all(A .== zero(T))
 end
 function Base.isone(A::NDArray{T,2}) where {T}
@@ -530,28 +530,6 @@ function _sqrt_ndarray(v::NDArray{T}) where {T}
     destroy!(v)
     return out
 end
-
-# function _count_nonzero(input::NDArray, dims)
-#     nz = input .!= zero(eltype(input))
-#     result = sum(nz; dims=dims)
-#     destroy!(nz)
-#     return result
-# end
-#
-# """
-#     count(A::NDArray{Bool}; dims=:)
-#     count(!iszero, A::NDArray; dims=:)
-#
-# Count `true` values in a `Bool` array, or nonzeros in a numeric array.
-# Returns an `CNScalar` or dimension-preserving `NDArray` of integers, not a Julia `Int`.
-# """
-# function count(arr::NDArray{Bool}; dims=Colon())
-#     return _count_nonzero(arr, dims)
-# end
-#
-# function count(::ComposedFunction{typeof(!),typeof(iszero)}, arr::NDArray; dims=Colon())
-#     return _count_nonzero(arr, dims)
-# end
 
 # Kernel ARGMAX/ARGMIN are 0-based. Julia indices are 1-based.
 function _indices_to_one_based(raw::NDArray{Int64})

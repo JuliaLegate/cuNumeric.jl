@@ -591,11 +591,6 @@ end
     end
 
     @testset "shape-mismatched broadcast refuses fusion" begin
-        # Linear fusion requires every NDArray leaf to match dest shape.
-        # Matrix .+ vector must fall back to the unfused path.
-        #
-        # NOTE: the unfused matrix.+vector path currently disagrees with Julia
-        # broadcasting semantics; do not assert equality with `ja .+ jv` here.
         M, N = 64, 32
         ja = rand(T, M, N)
         jv = rand(T, M)
@@ -605,19 +600,12 @@ end
         bc = Base.Broadcast.instantiate(Base.broadcasted(+, a, v))
         @test !cuNumeric.can_fuse_linear_broadcast(dest, bc)
 
-        # Unfused fallback should not crash (correctness vs Julia is known-wrong).
         result = a .+ v
         @test size(result) == (M, N)
+        @test Array(result) ≈ ja .+ jv
     end
 
     @testset "0-d scalar NDArray (fusion refused, unfused ok)" begin
-        # RunPTXBroadcastTask only supports dims in [1, 6]; can_fuse refuses
-        # 0-d so `_copyto!` falls back to unfused.
-        #
-        # NOTE: `z1 .+ z2` still errors after a successful `copyto!` because
-        # `Broadcast.copy` for NDArrayStyle{0} unwraps with
-        # `dest[CartesianIndex()]`, which is not implemented. Test via
-        # `copyto!` into an explicit 0-d dest instead.
         z1 = @allowscalar NDArray(T(2))
         z2 = @allowscalar NDArray(T(3))
         @test ndims(z1) == 0

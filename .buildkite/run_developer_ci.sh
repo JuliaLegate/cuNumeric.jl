@@ -80,8 +80,10 @@ julia --color=yes --project=. -e '
 
 cp LocalPreferences.toml test/LocalPreferences.toml
 
+source .buildkite/set_test_jobs.sh
+
 julia --color=yes --project=. -e '
     using Pkg
     Pkg.develop(PackageSpec(path = "lib/CNPreferences"))
-    Pkg.test("cuNumeric"; test_args = ["--jobs=8", "--verbose"])
+    Pkg.test("cuNumeric"; test_args = ["--verbose"])
 '

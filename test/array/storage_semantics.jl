@@ -91,5 +91,5 @@ end
     @test_throws ArgumentError (a[:] = cuNumeric.ones(Float32, 2, 3))
     @test_throws ArgumentError (a[:] .= 9f0)
     @test Array(a[1:2, 2:3]) == Float32[3 5; 4 6]
-    @test Array(a[:, 2]) == reshape(Float32[3, 4], 2, 1)
+    @test Array(a[:, 2]) == Float32[3, 4]
 end

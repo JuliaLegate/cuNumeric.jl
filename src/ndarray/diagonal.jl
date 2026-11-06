@@ -454,6 +454,31 @@ function Base.:*(J::LinearAlgebra.UniformScaling, A::NDArray{T}) where {T}
     return _uniformscale_mul(T, _scale_storage(J.λ), A)
 end
 
+# I stores `true`; applying it must not request Bool-to-element-type promotion.
+function _mul_identity!(dest::NDArray{T}, J, src, α, β) where {T}
+    size(dest) == size(src) || throw(DimensionMismatch("identity multiplication dimensions do not match"))
+    α, β = _scale_storage(α), _scale_storage(β)
+    if !J.λ || _host_iszero(α)
+        _host_iszero(β) ? fill!(dest, zero(T)) : (dest .*= _mul_output_scale(β, T))
+    elseif _host_iszero(β)
+        _host_isone(α) ? (dest .= src) : (dest .= _mul_output_scale(α, T) .* src)
+    else
+        dest .= _mul_output_scale(α, T) .* src .+ _mul_output_scale(β, T) .* dest
+    end
+    return dest
+end
+
+for N in (1, 2)
+    @eval LinearAlgebra.mul!(dest::NDArray{T,$N}, J::LinearAlgebra.UniformScaling{Bool}, src::NDArray{T,$N}) where {T} =
+        _mul_identity!(dest, J, src, true, false)
+    @eval LinearAlgebra.mul!(dest::NDArray{T,$N}, J::LinearAlgebra.UniformScaling{Bool}, src::NDArray{T,$N}, α::Number, β::Number) where {T} =
+        _mul_identity!(dest, J, src, α, β)
+end
+LinearAlgebra.mul!(dest::NDArray{T,2}, src::NDArray{T,2}, J::LinearAlgebra.UniformScaling{Bool}) where {T} =
+    _mul_identity!(dest, J, src, true, false)
+LinearAlgebra.mul!(dest::NDArray{T,2}, src::NDArray{T,2}, J::LinearAlgebra.UniformScaling{Bool}, α::Number, β::Number) where {T} =
+    _mul_identity!(dest, J, src, α, β)
+
 function Base.one(A::NDArray{T,2}) where {T}
     LinearAlgebra.checksquare(A)
     return _eye(T, size(A, 1))
