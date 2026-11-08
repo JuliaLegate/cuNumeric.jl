@@ -1,4 +1,5 @@
 [deps]
+ArrayInterface = "4fba245c-0d91-5ea0-9b3e-6abc04ee57a9"
 Krylov = "ba0b0d4f-ebba-5204-a429-3ac8c609bfb7"
 CNPreferences = "3e078157-ea10-49d5-bf32-908f777cd46f"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
@@ -15,6 +16,7 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 cuNumeric = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
 
 [compat]
+ArrayInterface = "7"
 CUDA = "6.4"
 StructArrays = "0.7"
 
