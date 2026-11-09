@@ -58,7 +58,7 @@ jobs:
         env:
           LAST: ${{ steps.last.outputs.sha }}
         run: |
-          paths=(src lib ext deps docker Project.toml)
+          paths=(src lib ext deps docker Project.toml .github/workflows/container.yml)
           if [[ -z "$LAST" ]]; then
             echo "No previous image built from main found; building"
             echo "source=true" >> "$GITHUB_OUTPUT"
@@ -209,7 +209,8 @@ jobs:
           tags: |
               type=raw,value=${{ steps.pkg.outputs.commit }}-julia${{ matrix.julia }}-cuda${{ steps.cuda.outputs.major }}.${{ steps.cuda.outputs.minor }}
               type=raw,value=${{ steps.pkg.outputs.name }},enable=${{ github.ref_type == 'tag' || inputs.tag != '' }}
-              type=raw,value=latest,enable=${{ github.ref_type == 'tag' || (inputs.tag != '' && inputs.mark_as_latest) }}
+              type=raw,value=v${{ steps.pkg.outputs.version }},enable=${{ github.ref == 'refs/heads/main' && inputs.tag == '' }}
+              type=raw,value=latest,enable=${{ github.ref_type == 'tag' || (github.ref == 'refs/heads/main' && inputs.tag == '') || (inputs.tag != '' && inputs.mark_as_latest) }}
               type=raw,value=dev,enable=${{ github.ref_type == 'branch' && inputs.tag == '' }}
           labels: |
               org.opencontainers.image.version=${{ steps.pkg.outputs.version }}
