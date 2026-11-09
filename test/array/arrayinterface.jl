@@ -25,5 +25,10 @@ import ArrayInterface as AI
         result = @inferred AI.zeromatrix(A)
         @test result isa NDArray{Float32,2}
         @test Array(result) == zeros(Float32, length(A), length(A))
+
+        prototype = @inferred AI.qr_instance(A, NoPivot())
+        @test typeof(prototype) === typeof(qr(A))
+        @test isempty(prototype.Q) && isempty(prototype.R)
+        @test_throws r"ColumnNorm.*NoPivot" AI.qr_instance(A, ColumnNorm())
     end
 end

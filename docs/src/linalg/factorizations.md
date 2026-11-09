@@ -97,4 +97,18 @@ Q, R = F                 # or: F.Q, F.R
 Unlike Base's default QR factorization, `F.Q` is a materialized `NDArray`
 rather than a lazy `QRCompactWYQ`.
 
+For full-column-rank square or tall matrices, `F \ b` and `ldiv!(x, F, b)`
+solve square systems or least-squares problems. Vector and matrix right-hand
+sides are supported, using backend multiplication and triangular solves.
+Wide and rank-deficient solves are not supported.
+
+`qr(A, NoPivot())` is equivalent to `qr(A)`. `qr!(A, NoPivot())` supports
+floating-point square or tall inputs and overwrites `A` with explicit `Q`.
+It reuses backend-owned `A` as `F.Q`; parented inputs return independent factors.
+The backend still requires a full matrix workspace and a separate `R` allocation.
+
+With LinearSolve loaded, `QRFactorization()` and `QRFactorization(NoPivot(), false)`
+use these methods. The ArrayInterface extension supplies an empty factorization
+prototype so cache initialization does not factor the input matrix.
+
 SVD and QR accept only 2D arrays. There are no batched versions.
