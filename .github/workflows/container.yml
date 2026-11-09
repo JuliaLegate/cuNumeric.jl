@@ -14,18 +14,75 @@ on:
   # Build the image associated with a published GitHub release.
   release:
     types: [published]
-  # GitHub Actions cannot filter pushes by commit message at trigger time, so
-  # the job-level condition below implements the [container] opt-in.
   push:
 jobs:
+  changes:
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      source: ${{ steps.diff.outputs.source }}
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Find last built commit on main
+        id: last
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          last=""
+          runs=$(gh api "repos/$REPO/actions/workflows/container.yml/runs?branch=main&status=success&per_page=100" \
+            --jq '.workflow_runs[] | "\(.id) \(.head_sha)"')
+          while read -r id sha; do
+            [[ -z "$id" ]] && continue
+            built=$(gh api "repos/$REPO/actions/runs/$id/jobs" \
+              --jq '[.jobs[] | select(.name | startswith("Container for")) | select(.conclusion == "success")] | length')
+            if [[ "$built" -gt 0 ]] && git cat-file -e "$sha^{commit}" 2>/dev/null \
+               && git merge-base --is-ancestor "$sha" HEAD; then
+              last="$sha"
+              break
+            fi
+          done <<< "$runs"
+          echo "Last built commit on main: ${last:-<none>}"
+          echo "sha=$last" >> "$GITHUB_OUTPUT"
+
+      - name: Detect source changes since last build
+        id: diff
+        env:
+          LAST: ${{ steps.last.outputs.sha }}
+        run: |
+          paths=(src lib ext deps docker Project.toml)
+          if [[ -z "$LAST" ]]; then
+            echo "No previous image built from main found; building"
+            echo "source=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$LAST" HEAD -- "${paths[@]}"; then
+            echo "No source changes since $LAST"
+            echo "source=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Source changes since $LAST:"
+            git diff --name-only "$LAST" HEAD -- "${paths[@]}"
+            echo "source=true" >> "$GITHUB_OUTPUT"
+          fi
+
   push_to_registry:
+    needs: changes
     if: >-
       ${{
+        !cancelled() &&
+        needs.changes.result != 'failure' &&
         !contains(toJSON(github.event), '[skip ci]') &&
         (
           github.event_name == 'workflow_dispatch' ||
           github.event_name == 'release' ||
-          (github.event_name == 'push' && contains(github.event.head_commit.message, '[container]'))
+          (github.event_name == 'push' && contains(github.event.head_commit.message, '[container]')) ||
+          (github.event_name == 'push' && needs.changes.outputs.source == 'true')
         )
       }}
     name: Container for ${{ matrix.platform }} - Julia ${{ matrix.julia }} - CUDA ${{ matrix.cuda }}
