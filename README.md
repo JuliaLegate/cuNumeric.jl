@@ -19,8 +19,7 @@ using Pkg
 Pkg.add("cuNumeric")
 ```
 
-The first installation can take a while because it includes several large dependencies, such as the CUDA SDK. To use a local cupynumeric build, see [Build Modes](https://julialegate.github.io/cuNumeric.jl/stable/install).
-
+The first installation can take a while because it includes several large dependencies, such as the CUDA SDK. After successful installation you can check the install details by calling `versioninfo`.
 ```julia
 using cuNumeric
 cuNumeric.versioninfo()
@@ -47,6 +46,8 @@ x = fetch(s)        # native Julia scalar, e.g. Float32
 ```
 
 Use `allowfetch() do ... end` or `@allowfetch` to permit host comparisons and numeric conversions of device scalars. See [Device scalars](https://julialegate.github.io/cuNumeric.jl/stable/api_cnscalar).
+
+**Underlying data is row-major** cuNumeric automatically handles conversion between col-major and row-major for entry points which accept a Julia array. The only known API hole as a result is `Base.reshape` which we do not currently implement. 
 
 **The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into a task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them [for example `println`, `fetch`, or communicating with the Julia runtime (i.e., `Array(A)`)]. Hiding latency enables performant code.
 
@@ -99,4 +100,4 @@ More worked examples (initialization, Gray-Scott, …) are in the documentation 
 ### Known Limitations & Bugs
 
 - There is no support for `Float16` or `ComplexF16` or `Complex{<:Integer}`
-- Stochastic bug in FFT can cause segfault
+- `Base.reshape` is not supported
