@@ -26,9 +26,7 @@ cuNumeric.versioninfo()
 ```
 
 > [!WARNING]
-> Starting more than one instance of cuNumeric.jl can lead to a hard-crash. The default hardware configuration reserves all available resources.
-
-For more details, see [Hardware](https://julialegate.github.io/cuNumeric.jl/stable/configuration/hardware).
+> **The default hardware configuration reserves all available resources.** Starting more than one instance of cuNumeric.jl or starting cuNumeric.jl on a GPU with existing allocations can lead to a hard-crash. For more details, see [Hardware](https://julialegate.github.io/cuNumeric.jl/stable/configuration/hardware).
 
 ### How `NDArray`s work
 
