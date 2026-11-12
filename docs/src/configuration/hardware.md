@@ -30,7 +30,7 @@ julia --project myscript.jl
 Automatic memory sizing can still reserve most of the available memory. For a
 shared machine, set memory limits as well. For example, this fully manual
 configuration requests one GPU, one CPU task processor, 4 GiB of system memory,
-and 4 GiB of device memory:
+and 4 GiB of device memory **per GPU** (`--fbmem`):
 
 ```bash
 export LEGATE_AUTO_CONFIG=0
@@ -109,9 +109,6 @@ For concurrent jobs, give each process its own devices where possible and budget
 host memory across all processes. If startup fails while reserving GPU memory,
 check device usage with `nvidia-smi`, choose an available GPU, or lower `--fbmem`.
 If host-memory reservation fails, try lowering `--sysmem`.
-Launching extra Julia processes does not itself create a distributed Legate run.
-Multi-node execution also requires a networking-enabled runtime and a compatible
-launcher.
 
 ## Further reference
 
@@ -123,7 +120,3 @@ site. Use `LEGATE_CONFIG="--help"` for the options available in your installed
 version.
 
 The same `LEGATE_CONFIG` string can carry logging / profiling flags (for example `--logging legate=debug --log-to-file`). Those are covered under [Debugging](../debugging.md#Trace-Legate-runtime-work), including how they pair with [CNPreferences](../api_preferences.md#Task-scope-names) task-scope naming.
-
-The [benchmarking repository](https://github.com/JuliaLegate/benchmarking) provides
-its own launch scripts and hardware settings. Check those settings when
-reproducing benchmark results.
