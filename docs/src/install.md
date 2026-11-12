@@ -67,7 +67,7 @@ After enabling developer mode or editing the wrapper, rebuild with
 > [!WARNING]
 > This feature is not passing our CI currently. Please use with caution. We are failing to currently match proper versions of .so libraries together. Our hope is to get this functional for users already using Legate within conda.
 
-Note, you need conda >= 24.1 to install the conda package. More installation details are found [here](https://docs.nvidia.com/cupynumeric/latest/installation.html).
+Note, you need conda >= 24.1 to install the conda package. Historical installation details are in the [archived cuPyNumeric installation guide](https://github.com/nv-legate/cupynumeric/blob/v26.06.01/docs/cupynumeric/source/installation.rst).
 
 ````@eval
 using Markdown

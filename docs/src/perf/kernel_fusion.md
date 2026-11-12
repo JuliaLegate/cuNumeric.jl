@@ -37,4 +37,4 @@ Fusion works within one expression. To fuse a chain of statements, and free
 temporaries early, use [`@accelerate`](./accelerate.md).
 
 To see the kernels that fusion generates, set
-[`BCAST_FUSION_DEBUG`](../debugging.md#inspect-fused-broadcasts-with-bcast_fusion_debug).
+[`BCAST_FUSION_DEBUG`](../debugging.md#Inspect-fused-broadcasts-with-BCAST_FUSION_DEBUG).

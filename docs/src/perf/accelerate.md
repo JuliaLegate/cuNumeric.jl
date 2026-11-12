@@ -61,7 +61,7 @@ The form also affects how much memory is left for Julia's garbage collector to r
 - Calls to other functions run in order and are not fused through.
   Annotate those functions separately if they should be accelerated too.
 
-[`@show_lifetimes`](../debugging.md#inspect-lifetime-rewrites-with-show_lifetimes)
+[`@show_lifetimes`](../debugging.md#Inspect-lifetime-rewrites-with-@show_lifetimes)
 prints the rewritten code without running it.
 
 ## Aggressive fusion and adaptive offsets
