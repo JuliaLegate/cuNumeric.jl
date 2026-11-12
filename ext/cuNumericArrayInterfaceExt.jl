@@ -2,7 +2,7 @@ module cuNumericArrayInterfaceExt
 
 using ArrayInterface: ArrayInterface
 using cuNumeric: cuNumeric, NDArray, @allowscalar
-using LinearAlgebra: Adjoint, Transpose
+using LinearAlgebra: LinearAlgebra, Adjoint, Transpose
 
 const NDArrayOrWrapper = Union{
     NDArray,
@@ -24,6 +24,19 @@ end
 # Avoid the generic vec/outer-product path, including reading the input values.
 function ArrayInterface.zeromatrix(x::NDArray)
     return cuNumeric.zeros(eltype(x), length(x), length(x))
+end
+
+# Reject unsupported pivoting before initializing a solver cache.
+function ArrayInterface.qr_instance(A::NDArray{<:Any,2}, pivot::LinearAlgebra.ColumnNorm)
+    return LinearAlgebra.qr(A, pivot)
+end
+
+# Match qr(A)'s concrete type without reading or factoring A.
+function ArrayInterface.qr_instance(
+    A::NDArray{T,2}, ::LinearAlgebra.NoPivot=LinearAlgebra.NoPivot()
+) where {T<:cuNumeric._QR_ACCEPTED}
+    S = cuNumeric._qr_eltype(T)
+    return cuNumeric.NDArrayQR(similar(A, S, 0, 0), similar(A, S, 0, 0))
 end
 
 end

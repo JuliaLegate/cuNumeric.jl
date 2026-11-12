@@ -263,6 +263,36 @@ _svd_eltype(::Type{T}) where {T<:SUPPORTED_SVD_TYPES} = T
 
 # qr
 
+# QR back-substitution; the mapper supplies column-major matrix instances.
+function _qr_trsm!(x::NDArray{T,2}, r::NDArray{T,2}, b::NDArray{T,2}) where {T}
+    isempty(x) && return x
+    @task_scope "qr_solve" begin
+        rt = Legate.get_runtime()
+        task = LegateInternal.create_auto_task(rt, get_lib(), TRSM)
+        task_throws_exception(task, true)
+        for (add!, a) in ((LegateInternal.add_input, r),
+            (LegateInternal.add_input, b), (LegateInternal.add_output, x))
+            v = _add_task_array!(add!, task, a)
+            Legate.add_constraint(task, LegateInternal.broadcast(v))
+        end
+        _linalg_scalars!(task, true, false, Int32(0), false)
+        LegateInternal.submit_auto_task(rt, task)
+    end
+    return x
+end
+
+function _qr_trsm!(x::NDArray{T,1}, r::NDArray{T,2}, b::NDArray{T,1}) where {T}
+    xm = nda_reshape_array(x, (length(x), 1))
+    bm = nda_reshape_array(b, (length(b), 1))
+    try
+        _qr_trsm!(xm, r, bm)
+        return x
+    finally
+        destroy!(xm)
+        destroy!(bm)
+    end
+end
+
 function _qr!(::_SingleProcLinalg, q, r, a)
     rt = Legate.get_runtime()
     lib = cuNumeric.get_lib()
