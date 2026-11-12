@@ -50,7 +50,7 @@ Use `allowfetch() do ... end` or `@allowfetch` to permit host comparisons and nu
 
 **The Legate runtime builds a DAG asynchronously.** Calling `cuNumeric.zeros` or `A .+ B` records work into a task graph rather than blocking until every GPU kernel finishes. Results are materialized when you need them [for example `println`, `fetch`, or communicating with the Julia runtime (i.e., `Array(A)`)]. Hiding latency enables performant code.
 
-For API details see [Initialization](https://julialegate.github.io/cuNumeric.jl/stable/api_initialization) and [NDArray Reference](https://julialegate.github.io/cuNumeric.jl/stable/api). For common performance pitfalls, see [Patterns to Avoid](https://julialegate.github.io/cuNumeric.jl/stable/perf/patterns_to_avoid).
+For API details see [Initialization](https://julialegate.github.io/cuNumeric.jl/stable/api_initialization) and [Indexing, Sorting & Utilities](https://julialegate.github.io/cuNumeric.jl/stable/api_util). For common performance pitfalls, see [Patterns to Avoid](https://julialegate.github.io/cuNumeric.jl/stable/perf/patterns_to_avoid).
 
 ### Kernel Fusion
 
@@ -64,11 +64,11 @@ See [Kernel Fusion](https://julialegate.github.io/cuNumeric.jl/stable/perf/kerne
 
 ### The `@accelerate` macro
 
-`@accelerate` fuses eligible GPU broadcasts within and across statements, then releases materialized temporary `NDArray`s after their last use on CPU or GPU. See [The `@accelerate` Macro](https://julialegate.github.io/cuNumeric.jl/stable/perf/accelerate/) for usage guidance.
+`@accelerate` fuses eligible GPU broadcasts within and across statements, then releases materialized temporary `NDArray`s after their last use on CPU or GPU. See [The `@accelerate` Macro](https://julialegate.github.io/cuNumeric.jl/stable/perf/accelerate) for usage guidance.
 
 ### Benchmarks
 
-Results and reproduction instructions live under [Benchmark Results](https://julialegate.github.io/cuNumeric.jl/stable/benchmarks/results) and [Running the Benchmarks](https://julialegate.github.io/cuNumeric.jl/stable/benchmarks/results#running-the-benchmarks). Run `./scripts/get_benchmarks.sh` to fetch the suite into `benchmark/`.
+Results and reproduction instructions live under [Benchmark Results](https://julialegate.github.io/cuNumeric.jl/stable/benchmarks/results) and [Running the Benchmarks](https://julialegate.github.io/cuNumeric.jl/stable/benchmarks/results#Running-the-Benchmarks). Run `./scripts/get_benchmarks.sh` to fetch the suite into `benchmark/`.
 
 ### Ecosystem Integrations
 
