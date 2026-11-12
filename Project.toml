@@ -1,6 +1,6 @@
 name = "cuNumeric"
 uuid = "0fd9ffd4-7e84-4cd0-b8f8-645bd8c73620"
-version = "0.3.2"
+version = "0.3.3"
 
 [workspace]
 projects = ["test", "dev"]
@@ -31,17 +31,20 @@ cupynumeric_jll = "2862d674-414d-5b0b-a494-b21f8deca547"
 libcxxwrap_julia_jll = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
 
 [weakdeps]
+ArrayInterface = "4fba245c-0d91-5ea0-9b3e-6abc04ee57a9"
 StructArrays = "09ab397b-f2b6-538f-b94a-2f83cf4a842a"
 Krylov = "ba0b0d4f-ebba-5204-a429-3ac8c609bfb7"
 TensorOperations = "6aa20fa7-93e2-5fca-9bc0-fbd0db3c71a2"
 
 [extensions]
+cuNumericArrayInterfaceExt = "ArrayInterface"
 cuNumericStructArraysExt = "StructArrays"
 cuNumericKrylovExt = "Krylov"
 cuNumericTensorOperationsExt = "TensorOperations"
 
 [compat]
 AbstractFFTs = "1.5"
+ArrayInterface = "7"
 CNPreferences = "0.1.4"
 CUDACore = "6.4"
 CUDATools = "6.4"

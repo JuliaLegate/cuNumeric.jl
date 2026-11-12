@@ -4,9 +4,9 @@ Debug the layer that matches the problem:
 
 | Question | Tool |
 |:---|:---|
-| Which operations did Legate submit, and when did they run? | [Legate logs and profiles](#trace-legate-runtime-work) |
-| How were broadcasts fused? | [`BCAST_FUSION_DEBUG`](#inspect-fused-broadcasts-with-bcast_fusion_debug) |
-| How does `@accelerate` rewrite code and free temporaries? | [`@show_lifetimes`](#inspect-lifetime-rewrites-with-show_lifetimes) |
+| Which operations did Legate submit, and when did they run? | [Legate logs and profiles](#Trace-Legate-runtime-work) |
+| How were broadcasts fused? | [`BCAST_FUSION_DEBUG`](#Inspect-fused-broadcasts-with-BCAST_FUSION_DEBUG) |
+| How does `@accelerate` rewrite code and free temporaries? | [`@show_lifetimes`](#Inspect-lifetime-rewrites-with-@show_lifetimes) |
 
 ## Trace Legate runtime work
 
@@ -30,11 +30,11 @@ julia --project=. -e \
   'using CNPreferences; CNPreferences.enable_task_scope_names!()'
 ```
 
-Then start a fresh process with logging enabled:
+Choose your [hardware configuration](./configuration/hardware.md), then append
+the logging flags and start a fresh Julia process:
 
 ```bash
-export LEGATE_AUTO_CONFIG=0
-export LEGATE_CONFIG="--gpus 1 --cpus 4 --logging legate=debug --log-to-file"
+export LEGATE_CONFIG="${LEGATE_CONFIG} --logging legate=debug --log-to-file"
 julia --project=. workload.jl
 ```
 
@@ -50,7 +50,7 @@ julia --project=. -e \
   'using CNPreferences; CNPreferences.disable_task_scope_names!()'
 ```
 
-See [Task scope names](./api_preferences.md#task-scope-names) for the preference API.
+See [Task scope names](./api_preferences.md#Task-scope-names) for the preference API.
 
 ### Label larger phases
 

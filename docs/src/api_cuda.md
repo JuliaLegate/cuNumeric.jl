@@ -19,7 +19,12 @@ The interface has two steps:
     dependency analysis. If an array is both read and written, list it as an `output`.
 
 !!! warning "Array sizes"
-    Mismatched array sizes are automatically padded to the largest shape. To address this, we plan to add support for other Legate constraints in the future (more information [here](https://docs.nvidia.com/legate/latest/api/cpp/generated/group/group__partitioning.html)).
+    Mismatched array sizes are automatically padded to the largest shape. Legate's
+    partitioning constraints describe how task arguments are divided: alignment
+    gives corresponding arguments matching index ranges, while a broadcast
+    constraint keeps an argument (or selected dimensions) whole in each task.
+    These are runtime partitioning rules, distinct from Julia's dotted broadcast
+    syntax.
 
 ## Example
 

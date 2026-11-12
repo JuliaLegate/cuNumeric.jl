@@ -206,3 +206,89 @@ end
 function LinearAlgebra.qr(a::NDArray{<:Any,2})
     return throw(ArgumentError("array type $(eltype(a)) is unsupported in qr"))
 end
+
+LinearAlgebra.qr(a::NDArray{<:Any,2}, ::LinearAlgebra.NoPivot) = qr(a)
+
+function LinearAlgebra.qr(::NDArray{<:Any,2}, ::LinearAlgebra.ColumnNorm)
+    return throw(
+        ArgumentError(
+            "ColumnNorm() pivoting is not supported for NDArray; use NoPivot() if unpivoted QR is suitable. Rank-deficient solves require pivoted QR support.",
+        ),
+    )
+end
+LinearAlgebra.qr!(a::NDArray{<:Any,2}, pivot::LinearAlgebra.ColumnNorm) = qr(a, pivot)
+
+"""
+    LinearAlgebra.qr!(A::NDArray, pivot=NoPivot()) -> NDArrayQR
+
+Compute unpivoted QR of a floating-point square or tall matrix, overwriting A
+with its explicit economy-size Q. Backend-owned inputs are reused as F.Q;
+parented inputs (including views) return independent factors. A full matrix
+workspace and R are still allocated because the backend requires distinct
+input and output buffers.
+"""
+function LinearAlgebra.qr!(
+    a::NDArray{T,2}, ::LinearAlgebra.NoPivot=LinearAlgebra.NoPivot()
+) where {T<:SUPPORTED_QR_TYPES}
+    m, n = size(a)
+    m >= n || throw(ArgumentError("qr! requires a square or tall matrix; use qr for wide matrices"))
+    # Keep the factorization type identical to qr(a), including for parented inputs.
+    q = a isa NDArray{T,2,Nothing} ? a : similar(a)
+    input = q === a ? copy(a) : a
+    r = _undef_array(T, (n, n))
+    try
+        n == 0 || _qr!(_linalg_backend(Val(:qr), a), q, r, input)
+        q === a || copyto!(a, q)
+        return NDArrayQR(q, r)
+    finally
+        input !== a && destroy!(input)
+    end
+end
+
+function LinearAlgebra.qr!(a::NDArray{<:Any,2}, ::LinearAlgebra.NoPivot=LinearAlgebra.NoPivot())
+    return throw(ArgumentError("qr! requires Float32, Float64, ComplexF32, or ComplexF64 input"))
+end
+
+function _qr_ldiv!(x::NDArray{T}, F::NDArrayQR, b::NDArray) where {T}
+    m, n = size(F)
+    m >= n || throw(ArgumentError("QR solves require a square or tall full-column-rank matrix"))
+    size(b, 1) == m || throw(DimensionMismatch("QR right-hand side must have $m rows"))
+    size(x) == (n, Base.tail(size(b))...) ||
+        throw(DimensionMismatch("QR solution must have $n rows and match the right-hand side rank"))
+    required = promote_type(eltype(F), eltype(b))
+    promote_type(T, required) === T ||
+        throw(ArgumentError("ldiv! output type $T cannot hold promoted input type $required"))
+    (nda_overlaps(x, F.Q) || nda_overlaps(x, F.R)) &&
+        throw(ArgumentError("ldiv! output must not alias the QR factors"))
+    isempty(x) && return x
+    r = checked_promote_arr(ldiv!, F.R, T)
+    try
+        y = similar(x)
+        try
+            mul!(y, adjoint(F.Q), b)
+            return _qr_trsm!(x, r, y)
+        finally
+            destroy!(y)
+        end
+    finally
+        r !== F.R && destroy!(r)
+    end
+end
+
+function Base.:\(F::NDArrayQR, b::Union{NDArray{T,1},NDArray{T,2}}) where {T<:_SOLVE_ACCEPTED}
+    S = promote_type(eltype(F), T)
+    x = similar(b, S, (size(F, 2), Base.tail(size(b))...))
+    try
+        return ldiv!(x, F, b)
+    catch
+        destroy!(x)
+        rethrow()
+    end
+end
+
+# Separate vector/matrix methods resolve LinearAlgebra's corresponding fallbacks.
+for N in (1, 2)
+    @eval LinearAlgebra.ldiv!(
+        x::NDArray{T,$N}, F::NDArrayQR, b::NDArray{S,$N}
+    ) where {T<:SUPPORTED_QR_TYPES,S<:_SOLVE_ACCEPTED} = _qr_ldiv!(x, F, b)
+end

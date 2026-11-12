@@ -29,7 +29,7 @@ Failed collectives are not retried using another algorithm.
 
 ## Tuning
 
-Use [`CNPreferences.set_linalg!`](../api_preferences.md#linear-algebra) to set any
+Use [`CNPreferences.set_linalg!`](../api_preferences.md#Linear-algebra) to set any
 of the seven documented constants. `MIN_*_MATRIX_SIZE` controls when an operation
 can select cuSolverMp. Solve and Cholesky use the row count. QR uses the number
 of matrix elements. `MIN_SOLVE_TILE_SIZE`, `MIN_CHOLESKY_TILE_SIZE`, and
