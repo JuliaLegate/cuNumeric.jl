@@ -85,6 +85,7 @@ makedocs(;
             "HDF5" => "api_hdf5.md",
             "Indexing, Sorting & Utilities" => "api_util.md",
             "CUDA.jl Tasking" => "api_cuda.md",
+            "Distributed Execution" => "api_distributed.md",
             "Internal API" => "api_internal.md",
         ],
     ],
